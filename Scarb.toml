@@ -1,0 +1,12 @@
+
+[package]
+name = "myfans"
+version = "0.1.0"
+edition = "2023_11"
+
+[dependencies]
+starknet = ">=2.11.2"
+
+[dev-dependencies]
+snforge_std = "0.38.3"
+assert_macros = "2.9.2"
