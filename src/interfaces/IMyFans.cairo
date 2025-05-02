@@ -1,3 +1,2 @@
 #[starknet::interface]
-pub trait IMyFans<TContractState> {
-}
+pub trait IMyFans<TContractState> {}
