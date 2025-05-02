@@ -1,4 +1,5 @@
 target
 .snfoundry_cache/
-.env
-flow
+snfoundry_trace/
+coverage/
+profile/
