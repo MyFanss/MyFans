@@ -1,9 +1,11 @@
-use myfans::{
-    IHelloStarknetDispatcher, IHelloStarknetDispatcherTrait, IHelloStarknetSafeDispatcher,
-    IHelloStarknetSafeDispatcherTrait,
-};
-use snforge_std::{ContractClassTrait, DeclareResultTrait, declare};
 use starknet::ContractAddress;
+
+use snforge_std::{declare, ContractClassTrait, DeclareResultTrait};
+
+use my_fans::IHelloStarknetSafeDispatcher;
+use my_fans::IHelloStarknetSafeDispatcherTrait;
+use my_fans::IHelloStarknetDispatcher;
+use my_fans::IHelloStarknetDispatcherTrait;
 
 fn deploy_contract(name: ByteArray) -> ContractAddress {
     let contract = declare(name).unwrap().contract_class();
