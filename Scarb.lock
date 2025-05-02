@@ -2,7 +2,7 @@
 version = 1
 
 [[package]]
-name = "my_fans"
+name = "myfans"
 version = "0.1.0"
 dependencies = [
  "snforge_std",
@@ -19,6 +19,7 @@ name = "snforge_std"
 version = "0.39.0"
 source = "registry+https://scarbs.xyz/"
 checksum = "sha256:31f118f54e5d87393e50c07e8c052f03ff4af945a2b65b56e6edbd3b5b7fd127"
+
 dependencies = [
  "snforge_scarb_plugin",
 ]
