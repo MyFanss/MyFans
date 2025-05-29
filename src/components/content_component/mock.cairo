@@ -18,4 +18,4 @@ mod MockContent {
 
     #[abi(embed_v0)]
     impl ContentImpl = ContentComponent::ContentImpl<ContractState>;
-} 
+}

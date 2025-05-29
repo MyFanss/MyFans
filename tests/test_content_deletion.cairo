@@ -1,7 +1,9 @@
 #[cfg(test)]
 mod content_deletion_tests {
     use core::array::ArrayTrait;
-    use myfans::components::content_component::interface::{IContentDispatcher, IContentDispatcherTrait};
+    use myfans::components::content_component::interface::{
+        IContentDispatcher, IContentDispatcherTrait,
+    };
     use snforge_std::{
         ContractClassTrait, DeclareResultTrait, declare, start_cheat_caller_address,
         stop_cheat_caller_address,
@@ -11,7 +13,7 @@ mod content_deletion_tests {
     fn deploy_myfans() -> ContractAddress {
         let declare_result = declare("MyFans");
         assert(declare_result.is_ok(), 'Contract declaration failed');
-        
+
         let contract_class = declare_result.unwrap().contract_class();
         let mut calldata = array![];
         let (contract_address, _) = contract_class.deploy(@calldata).unwrap();
@@ -30,11 +32,8 @@ mod content_deletion_tests {
 
         // 1. Create content as creator
         start_cheat_caller_address(contract_address, creator_address);
-        let content_id = content_dispatcher.create_content(
-            'ipfs://QmTest',
-            'Test Content',
-            'Description'
-        );
+        let content_id = content_dispatcher
+            .create_content('ipfs://QmTest', 'Test Content', 'Description');
         stop_cheat_caller_address(creator_address);
 
         // 2. Try to delete content as non-creator (should fail)
@@ -52,12 +51,9 @@ mod content_deletion_tests {
 
         // 1. Create content as creator
         start_cheat_caller_address(contract_address, creator_address);
-        let content_id = content_dispatcher.create_content(
-            'ipfs://QmTest',
-            'Test Content',
-            'Description'
-        );
-        
+        let content_id = content_dispatcher
+            .create_content('ipfs://QmTest', 'Test Content', 'Description');
+
         // 2. Delete content as creator
         let deletion_result = content_dispatcher.delete_content(content_id);
         stop_cheat_caller_address(creator_address);
@@ -84,17 +80,14 @@ mod content_deletion_tests {
 
         // Create content
         start_cheat_caller_address(contract_address, creator_address);
-        let content_id = content_dispatcher.create_content(
-            'ipfs://QmTest',
-            'Test Content',
-            'Description'
-        );
-        
+        let content_id = content_dispatcher
+            .create_content('ipfs://QmTest', 'Test Content', 'Description');
+
         // Delete content
         content_dispatcher.delete_content(content_id);
-        
+
         // Try to delete again (should fail)
         content_dispatcher.delete_content(content_id);
         stop_cheat_caller_address(creator_address);
     }
-} 
+}

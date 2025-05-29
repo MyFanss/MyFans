@@ -18,4 +18,4 @@ pub struct Content {
     pub updated_at: u64,
     // Flag to track if content is active or deleted
     pub is_active: bool,
-} 
+}

@@ -1,12 +1,14 @@
 #[cfg(test)]
 mod tests {
-    use myfans::components::content_component::interface::{IContentDispatcher, IContentDispatcherTrait};
+    use core::array::ArrayTrait;
+    use myfans::components::content_component::interface::{
+        IContentDispatcher, IContentDispatcherTrait,
+    };
     use snforge_std::{
         ContractClassTrait, DeclareResultTrait, declare, start_cheat_caller_address,
         stop_cheat_caller_address,
     };
     use starknet::ContractAddress;
-    use core::array::ArrayTrait;
 
     fn setup() -> ContractAddress {
         let declare_result = declare("MockContent");
@@ -65,10 +67,10 @@ mod tests {
 
         // Get creator's content
         let creator_content = dispatcher.get_creator_content(creator_address);
-        
+
         // Verify content count
         assert(creator_content.len() == 3, 'Should have 3 content items');
-        
+
         // Verify content IDs
         assert(*creator_content.at(0) == 1, 'First content ID should be 1');
         assert(*creator_content.at(1) == 2, 'Second content ID should be 2');
@@ -85,21 +87,21 @@ mod tests {
         // Create content
         start_cheat_caller_address(contract_address, creator_address);
         let content_id = dispatcher.create_content('ipfs://content', 'Title', 'Description');
-        
+
         // Delete content as creator
         let result = dispatcher.delete_content(content_id);
         stop_cheat_caller_address(creator_address);
 
         // Verify deletion was successful
         assert(result == true, 'Deletion should succeed');
-        
+
         // Check content existence
         let exists = dispatcher.content_exists(content_id);
         assert(exists == false, 'Content not deleted');
-        
+
         // Get creator's content
         let creator_content = dispatcher.get_creator_content(creator_address);
-        
+
         // Verify deleted content is not returned
         assert(creator_content.len() == 0, 'No content should be returned');
     }
@@ -117,7 +119,7 @@ mod tests {
         start_cheat_caller_address(contract_address, creator_address);
         let content_id = dispatcher.create_content('ipfs://content', 'Title', 'Description');
         stop_cheat_caller_address(creator_address);
-        
+
         // Try to delete content as non-creator (should fail)
         start_cheat_caller_address(contract_address, other_address);
         dispatcher.delete_content(content_id);
@@ -149,12 +151,12 @@ mod tests {
         // Create content
         start_cheat_caller_address(contract_address, creator_address);
         let content_id = dispatcher.create_content('ipfs://content', 'Title', 'Description');
-        
+
         // Delete content
         dispatcher.delete_content(content_id);
-        
+
         // Try to delete again (should fail)
         dispatcher.delete_content(content_id);
         stop_cheat_caller_address(creator_address);
     }
-} 
+}
