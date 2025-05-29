@@ -22,6 +22,7 @@ mod MyFans {
     #[derive(Drop, starknet::Event)]
     enum Event {
         FollowEvent: FollowEvent,
+        UnfollowEvent: UnfollowEvent,
     }
 
      #[derive(Drop, starknet::Event)]
@@ -30,7 +31,11 @@ mod MyFans {
         creator: ContractAddress,
     }
 
-    
+     #[derive(Drop, starknet::Event)]
+    pub struct UnfollowEvent {
+        follower: ContractAddress,
+        creator: ContractAddress,
+    }
 
     #[constructor]
     fn constructor(ref self: ContractState) {}
@@ -56,5 +61,23 @@ mod MyFans {
             true
         }
         
+        fn unfollow_user(ref self: ContractState, creator_address: ContractAddress) -> bool {
+            let caller = get_caller_address();
+            let follows = self.follows.read((caller, creator_address));
+
+            assert(follows == true, 'Not following');
+
+            self.follows.write((caller, creator_address), false);
+            let count = self.follower_count.read(creator_address);
+            assert(count > 0, 'Follower count cannot be negative');
+            self.follower_count.write(creator_address, count - 1);
+
+            self.emit(UnfollowEvent {
+                follower: caller,
+                creator: creator_address,
+            });
+
+            true
+        }
     }
 }
