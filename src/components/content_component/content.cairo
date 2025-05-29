@@ -137,25 +137,21 @@ pub mod ContentComponent {
             let mut active_content = ArrayTrait::new();
             let content_count = self.content_count.read();
 
-            // Iterate through all content IDs
-            let mut i: u256 = 1;
-            loop {
-                if i > content_count {
-                    break;
-                }
+            // Convert u256 content_count to u128 (safe if within bounds)
+            let count_u128: u128 = content_count.try_into().unwrap_or(0);
 
-                // Check if content belongs to creator and is active
-                let belongs_to_creator = self.creator_content_mapping.read((creator, i));
+            // Use a for loop with u128 range
+            for i in 1..=count_u128 {
+                let id_u256: u256 = i.into();
+                let belongs_to_creator = self.creator_content_mapping.read((creator, id_u256));
 
                 if belongs_to_creator {
-                    let content = self.content.read(i);
+                    let content = self.content.read(id_u256);
 
                     if content.is_active {
-                        active_content.append(i);
+                        active_content.append(id_u256);
                     }
                 }
-
-                i += 1;
             }
 
             active_content
