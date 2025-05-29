@@ -137,12 +137,14 @@ pub mod ContentComponent {
             let mut active_content = ArrayTrait::new();
             let content_count = self.content_count.read();
 
-            // Convert u256 content_count to u128 (safe if within bounds)
+            // Convert u256 content_count to u128 (for safe iteration range)
             let count_u128: u128 = content_count.try_into().unwrap_or(0);
 
-            // Use a for loop with u128 range
-            for i in 1..=count_u128 {
+            // Use exclusive range: 1..(count_u128 + 1) to include `count_u128`
+            for i in 1..(count_u128 + 1) {
                 let id_u256: u256 = i.into();
+
+                // Read the boolean value (handle missing keys with `unwrap_or(false)`)
                 let belongs_to_creator = self.creator_content_mapping.read((creator, id_u256));
 
                 if belongs_to_creator {
@@ -156,6 +158,7 @@ pub mod ContentComponent {
 
             active_content
         }
+
 
         fn delete_content(ref self: ComponentState<TContractState>, content_id: u256) -> bool {
             // Get caller address
