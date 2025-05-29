@@ -11,14 +11,50 @@ mod MyFans {
     use crate::interfaces::IERC20::{IERC20Dispatcher, IERC20DispatcherTrait};
 
     #[storage]
-    struct Storage {}
+    struct Storage {
+        /// (creator, fan) -> bool (true if fan follows creator)
+        follows: Map<(ContractAddress, ContractAddress), bool>,
+        /// creator -> follower count
+        follower_count: Map<ContractAddress, u128>,
+    }
+
     #[event]
     #[derive(Drop, starknet::Event)]
-    enum Event {}
+    enum Event {
+        FollowEvent: FollowEvent,
+    }
+
+     #[derive(Drop, starknet::Event)]
+    pub struct FollowEvent {
+        follower: ContractAddress,
+        creator: ContractAddress,
+    }
+
+    
 
     #[constructor]
     fn constructor(ref self: ContractState) {}
 
     #[abi(embed_v0)]
-    impl MyFansImpl of IMyFans<ContractState> {}
+    impl MyFansImpl of IMyFans<ContractState> {
+
+        fn follow_user(ref self: ContractState, creator_address: ContractAddress) -> bool {
+            let caller = get_caller_address();
+            let follows = self.follows.read((caller, creator_address));
+
+            assert(follows == false, 'Already following');
+
+            self.follows.write((caller, creator_address), true);
+            let count = self.follower_count.read(creator_address);
+            self.follower_count.write(creator_address, count + 1);
+
+            self.emit(FollowEvent {
+                follower: caller,
+                creator: creator_address,
+            });
+
+            true
+        }
+        
+    }
 }
