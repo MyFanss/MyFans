@@ -76,7 +76,6 @@ mod MyFans {
                 follower: caller,
                 creator: creator_address,
             });
-
             true
         }
     }
