@@ -23,7 +23,10 @@ pub trait IUser<TContractState> {
     // fn become_creator(ref self: TContractState) -> bool;
 
     // /// @notice Follow another user
-    // fn follow_user(ref self: TContractState, target: ContractAddress) -> bool;
+    fn follow_user(ref self: TContractState, creator_address: ContractAddress) -> bool;
+
+    // /// @notice unfFollow another user
+    fn unfollow_user(ref self: TContractState, creator_address: ContractAddress) -> bool;
 
     // /// @notice Get the full profile of a user
     fn get_user_profile(ref self: TContractState, user: ContractAddress) -> User;
