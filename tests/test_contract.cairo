@@ -1,4 +1,3 @@
-use core::num::traits::Pow;
 use core::result::ResultTrait;
 use core::traits::TryInto;
 use myfans::components::user_component::interface::{IUserDispatcher, IUserDispatcherTrait};
@@ -27,7 +26,8 @@ pub fn NON_CREATOR() -> ContractAddress {
 }
 
 // Use u256::pow directly after importing the trait
-const SUBSCRIPTION_FEE: u256 = 10 * 10_u256.pow(18); // 10 tokens
+const TENPOWEIGHTHEEN: u256 = 1000_000_000_000_000_000_u256; // 10^18
+const SUBSCRIPTION_FEE: u256 = 10 * TENPOWEIGHTHEEN;
 const SUBSCRIPTION_DURATION_DAYS: u64 = 30;
 
 struct SetupResult {
