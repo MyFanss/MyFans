@@ -15,3 +15,13 @@ pub mod components {
         pub mod types;
     }
 }
+
+pub mod interfaces {
+    pub mod IERC20;
+    pub mod IMyFans;
+}
+pub mod myfans;
+
+pub mod mocks {
+    pub mod mock_erc20;
+}
