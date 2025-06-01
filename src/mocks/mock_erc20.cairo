@@ -20,7 +20,7 @@ pub trait IERC20<TContractState> {
 
 #[starknet::contract]
 pub mod MockToken {
-    use core::num::traits::{Pow, Zero};
+    use core::num::traits::Zero;
     use starknet::event::EventEmitter;
     use starknet::storage::{
         Map, StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess,
@@ -28,7 +28,8 @@ pub mod MockToken {
     use starknet::{ContractAddress, get_caller_address};
     use super::IERC20;
 
-    const INITIAL_SUPPLY: u256 = 1_000_000_000 * 10_u256.pow(18); // 1B tokens with 18 decimals
+    const TENPOWEIGHTHEEN: u256 = 1000_000_000_000_000_000_u256; // 10^18
+    const INITIAL_SUPPLY: u256 = 1_000_000_000 * TENPOWEIGHTHEEN; // 1B tokens with 18 decimals
 
     #[storage]
     pub struct Storage {

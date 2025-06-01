@@ -154,7 +154,7 @@ pub mod ContentComponent {
                         active_content.append(id_u256);
                     }
                 }
-            } //scarb fmt removes a semicolon here that messes with the workflow
+            };
 
             active_content
         }
