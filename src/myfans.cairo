@@ -237,7 +237,7 @@ pub mod MyFans {
                 .emit(
                     Event::AutorenewPreferenceSet(
                         AutorenewPreferenceSet {
-                            fan: fan_address, creator: creator_address, enabled: true,
+                            fan: fan_address, creator: creator_address, enabled: enable,
                         },
                     ),
                 );
