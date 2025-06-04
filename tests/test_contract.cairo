@@ -530,3 +530,65 @@ fn test_renew_subscription_fail_not_found() {
     myfans_dispatcher.renew_subscription(fan_address, creator_address); 
     stop_cheat_caller_address(setup_res.myfans_contract_address);
 }
+
+#[test]
+fn test_set_autorenew_enable_by_fan() {
+    let setup_res = setup_full_env();
+    let myfans_dispatcher = IMyFansDispatcher {
+        contract_address: setup_res.myfans_contract_address,
+    };
+    let erc20_dispatcher = IERC20Dispatcher { contract_address: setup_res.erc20_contract_address };
+    let mut spy = spy_events();
+
+    // Fan1 approves MyFans contract to spend tokens for subscription
+    start_cheat_caller_address(setup_res.erc20_contract_address, setup_res.fan1_address);
+    erc20_dispatcher.approve(setup_res.myfans_contract_address, SUBSCRIPTION_FEE);
+    stop_cheat_caller_address(setup_res.erc20_contract_address);
+
+    // Cheat timestamp for initial subscription
+    start_cheat_block_timestamp(setup_res.myfans_contract_address, INITIAL_TIMESTAMP);
+
+    // Fan1 subscribes to Creator1 (Autorenew is default false)
+    start_cheat_caller_address(setup_res.myfans_contract_address, setup_res.fan1_address);
+    myfans_dispatcher.subscribe(setup_res.creator1_address);
+    stop_cheat_caller_address(setup_res.myfans_contract_address);
+    stop_cheat_block_timestamp(setup_res.myfans_contract_address);
+
+    // Verify initial autorenew state
+    let sub_details_before = myfans_dispatcher
+        .get_subscription_details(setup_res.fan1_address, setup_res.creator1_address);
+    assert(!sub_details_before.autorenew, 'Autorenew should be false');
+
+    // Fan1 enables autorenew
+    start_cheat_caller_address(setup_res.myfans_contract_address, setup_res.fan1_address);
+    myfans_dispatcher.set_autorenew(setup_res.creator1_address, true);
+    stop_cheat_caller_address(setup_res.myfans_contract_address);
+
+    // Verify updated autorenew state
+    let sub_details_after = myfans_dispatcher
+        .get_subscription_details(setup_res.fan1_address, setup_res.creator1_address);
+    assert(sub_details_after.autorenew, 'Autorenew should be true');
+
+    // Verify event emission
+    let expected_autorenew_event = myfans::MyFans::Event::AutorenewPreferenceSet(
+        myfans::MyFans::AutorenewPreferenceSet {
+            fan: setup_res.fan1_address, creator: setup_res.creator1_address, enabled: true,
+        },
+    );
+    // Need to assert both events (subscribe + set_autorenew)
+    spy
+        .assert_emitted(
+            @array![
+                (
+                    setup_res.myfans_contract_address,
+                    myfans::MyFans::Event::Subscribed(
+                        myfans::MyFans::Subscribed {
+                            fan: setup_res.fan1_address,
+                            creator: setup_res.creator1_address,
+                            expiry_time: INITIAL_TIMESTAMP + SUBSCRIPTION_DURATION_SECONDS
+                        }
+                    )
+                ), (setup_res.myfans_contract_address, expected_autorenew_event)
+            ],
+        );
+}
