@@ -513,3 +513,20 @@ fn test_renew_subscription_fail_relayer_autorenew_disabled() {
     stop_cheat_caller_address(setup_res.myfans_contract_address);
     stop_cheat_block_timestamp(setup_res.myfans_contract_address);
 }
+
+#[test]
+#[should_panic(expected: 'Subscription not found')]
+fn test_renew_subscription_fail_not_found() {
+    let setup_res = setup_full_env();
+    let myfans_dispatcher = IMyFansDispatcher {
+        contract_address: setup_res.myfans_contract_address,
+    };
+    let fan_address: ContractAddress = FAN1();
+    let creator_address: ContractAddress = CREATOR1();
+    let relayer_address: ContractAddress = RELAYER();
+
+    // Attempt to renew a non-existent subscription by RELAYER
+    start_cheat_caller_address(setup_res.myfans_contract_address, relayer_address);
+    myfans_dispatcher.renew_subscription(fan_address, creator_address); 
+    stop_cheat_caller_address(setup_res.myfans_contract_address);
+}
