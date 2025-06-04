@@ -476,3 +476,40 @@ fn test_renew_subscription_expired_by_relayer_autorenew_enabled() {
             ],
         );
 }
+
+#[test]
+#[should_panic(expected: 'Autorenew not enabled')]
+fn test_renew_subscription_fail_relayer_autorenew_disabled() {
+    let setup_res = setup_full_env();
+    let myfans_dispatcher = IMyFansDispatcher {
+        contract_address: setup_res.myfans_contract_address,
+    };
+    let erc20_dispatcher = IERC20Dispatcher { contract_address: setup_res.erc20_contract_address };
+    let relayer_address: ContractAddress = RELAYER();
+
+    // Fan1 approves MyFans contract to spend tokens for subscription
+    start_cheat_caller_address(setup_res.erc20_contract_address, setup_res.fan1_address);
+    erc20_dispatcher.approve(setup_res.myfans_contract_address, SUBSCRIPTION_FEE);
+    stop_cheat_caller_address(setup_res.erc20_contract_address);
+
+    // Cheat timestamp for initial subscription
+    let initial_sub_time = INITIAL_TIMESTAMP;
+    start_cheat_block_timestamp(setup_res.myfans_contract_address, initial_sub_time);
+
+    // Fan1 subscribes to Creator1 (Autorenew is default false)
+    start_cheat_caller_address(setup_res.myfans_contract_address, setup_res.fan1_address);
+    myfans_dispatcher.subscribe(setup_res.creator1_address);
+    stop_cheat_caller_address(setup_res.myfans_contract_address);
+    stop_cheat_block_timestamp(setup_res.myfans_contract_address);
+
+
+    // Cheat timestamp to be after expiry
+    let renewal_time = initial_sub_time + SUBSCRIPTION_DURATION_SECONDS + 100;
+    start_cheat_block_timestamp(setup_res.myfans_contract_address, renewal_time);
+
+    // Attempt to renew subscription by RELAYER when autorenew is disabled
+    start_cheat_caller_address(setup_res.myfans_contract_address, relayer_address);
+    myfans_dispatcher.renew_subscription(setup_res.fan1_address, setup_res.creator1_address); // This should panic
+    stop_cheat_caller_address(setup_res.myfans_contract_address);
+    stop_cheat_block_timestamp(setup_res.myfans_contract_address);
+}
