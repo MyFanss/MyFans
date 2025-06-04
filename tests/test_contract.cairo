@@ -5,7 +5,8 @@ use myfans::interfaces::IERC20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use myfans::interfaces::IMyFans::{IMyFansDispatcher, IMyFansDispatcherTrait};
 use snforge_std::{
     ContractClassTrait, DeclareResultTrait, declare, start_cheat_block_timestamp,
-    start_cheat_caller_address, stop_cheat_block_timestamp, stop_cheat_caller_address,
+    start_cheat_caller_address, stop_cheat_block_timestamp, stop_cheat_caller_address, 
+    spy_events, EventSpyAssertionsTrait, Event,
 };
 use starknet::{ContractAddress, get_block_timestamp};
 
@@ -29,6 +30,10 @@ pub fn NON_CREATOR() -> ContractAddress {
 const TENPOWEIGHTHEEN: u256 = 1000_000_000_000_000_000_u256; // 10^18
 const SUBSCRIPTION_FEE: u256 = 10 * TENPOWEIGHTHEEN;
 const SUBSCRIPTION_DURATION_DAYS: u64 = 30;
+const INITIAL_TIMESTAMP: u64 = 1000;
+const DAY_IN_SECONDS: u64 = 24 * 60 * 60;
+const SUBSCRIPTION_DURATION_SECONDS: u64 = SUBSCRIPTION_DURATION_DAYS * DAY_IN_SECONDS;
+
 
 struct SetupResult {
     myfans_contract_address: ContractAddress,
@@ -211,53 +216,78 @@ fn test_subscribe_insufficient_allowance() {
 }
 
 #[test]
-fn test_subscribe_after_expiry() {
+fn test_renew_subscription_expired_by_fan() {
     let setup_res = setup_full_env();
     let myfans_dispatcher = IMyFansDispatcher {
         contract_address: setup_res.myfans_contract_address,
     };
     let erc20_dispatcher = IERC20Dispatcher { contract_address: setup_res.erc20_contract_address };
+    let mut spy = spy_events();
 
-    // Fan1 approves MyFans contract for two subscriptions
-
+    // Fan1 approves MyFans contract to spend tokens for subscription and renewal
     start_cheat_caller_address(setup_res.erc20_contract_address, setup_res.fan1_address);
     erc20_dispatcher.approve(setup_res.myfans_contract_address, SUBSCRIPTION_FEE * 2);
-
     stop_cheat_caller_address(setup_res.erc20_contract_address);
 
-    // First subscription
+    // Cheat timestamp for initial subscription to make it expire soon
+    let initial_sub_time = INITIAL_TIMESTAMP;
+    start_cheat_block_timestamp(setup_res.myfans_contract_address, initial_sub_time);
 
+    // Fan1 subscribes to Creator1
     start_cheat_caller_address(setup_res.myfans_contract_address, setup_res.fan1_address);
     myfans_dispatcher.subscribe(setup_res.creator1_address);
-
     stop_cheat_caller_address(setup_res.myfans_contract_address);
-
-    let first_sub_details = myfans_dispatcher
-        .get_subscription_details(setup_res.fan1_address, setup_res.creator1_address);
-
-    // Advance time past expiry
-    let current_block_timestamp = get_block_timestamp();
-    let time_to_advance = first_sub_details.expiry_time
-        - current_block_timestamp
-        + 1; // 1 second after expiry
-    start_cheat_block_timestamp(
-        setup_res.myfans_contract_address, current_block_timestamp + time_to_advance,
-    );
-
-    // Second subscription (should succeed as first one expired)
-
-    start_cheat_caller_address(setup_res.myfans_contract_address, setup_res.fan1_address);
-    myfans_dispatcher.subscribe(setup_res.creator1_address);
-
-    stop_cheat_caller_address(setup_res.myfans_contract_address);
-
     stop_cheat_block_timestamp(setup_res.myfans_contract_address);
 
-    let second_sub_details = myfans_dispatcher
+    // Cheat timestamp to be after expiry
+    let renewal_time = initial_sub_time + SUBSCRIPTION_DURATION_SECONDS + 100;
+    start_cheat_block_timestamp(setup_res.myfans_contract_address, renewal_time);
+
+    // Renew subscription by FAN1
+    start_cheat_caller_address(setup_res.myfans_contract_address, setup_res.fan1_address);
+    myfans_dispatcher.renew_subscription(setup_res.fan1_address, setup_res.creator1_address);
+    stop_cheat_caller_address(setup_res.myfans_contract_address);
+    stop_cheat_block_timestamp(setup_res.myfans_contract_address);
+
+    // Verify the updated subscription details
+    let sub_details = myfans_dispatcher
         .get_subscription_details(setup_res.fan1_address, setup_res.creator1_address);
-    assert(second_sub_details.is_active, 'Second sub should be active');
-    assert(
-        second_sub_details.start_time > first_sub_details.start_time,
-        'Second sub start time invalid',
+
+    assert(sub_details.is_active, 'Subscription is not active');
+    assert(sub_details.start_time == renewal_time, 'Renewal start time mismatch'); // Should renew from current time
+    let expected_expiry = renewal_time + SUBSCRIPTION_DURATION_SECONDS;
+    assert(sub_details.expiry_time == expected_expiry, 'Renewal expiry time mismatch');
+
+    // Verify fee transfer
+    let contract_balance = erc20_dispatcher.balance_of(setup_res.myfans_contract_address);
+    assert(contract_balance == SUBSCRIPTION_FEE * 2, 'Contract fee incorrect');
+    let fan_balance_after = erc20_dispatcher.balance_of(setup_res.fan1_address);
+    // Initial: 3*FEE, subscribed: 2*FEE, renewed: 1*FEE
+    assert(fan_balance_after == 0, 'Fan balance incorrect');
+
+    // Verify event emission
+    let expected_renewed_event = myfans::MyFans::Event::Renewed(
+        myfans::MyFans::Renewed {
+            fan: setup_res.fan1_address,
+            creator: setup_res.creator1_address,
+            new_expiry_time: expected_expiry,
+            renewed_by: setup_res.fan1_address,
+        },
     );
+    // Need to assert both events (subscribe + renew) if not clearing spy
+    spy
+        .assert_emitted(
+            @array![
+                (
+                    setup_res.myfans_contract_address,
+                    myfans::MyFans::Event::Subscribed(
+                        myfans::MyFans::Subscribed {
+                            fan: setup_res.fan1_address,
+                            creator: setup_res.creator1_address,
+                            expiry_time: initial_sub_time + SUBSCRIPTION_DURATION_SECONDS
+                        }
+                    )
+                ), (setup_res.myfans_contract_address, expected_renewed_event)
+            ],
+        );
 }

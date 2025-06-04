@@ -45,7 +45,7 @@ pub mod MyFans {
 
     #[event]
     #[derive(Drop, starknet::Event)]
-    enum Event {
+    pub enum Event {
         ContentEvent: ContentComponent::Event,
         UserEvent: UserComponent::Event,
         Subscribed: Subscribed,
@@ -54,31 +54,31 @@ pub mod MyFans {
     }
 
     #[derive(Drop, starknet::Event)]
-    struct Subscribed {
+    pub struct Subscribed {
         #[key]
-        fan: ContractAddress,
+        pub fan: ContractAddress,
         #[key]
-        creator: ContractAddress,
-        expiry_time: u64,
+        pub creator: ContractAddress,
+        pub expiry_time: u64,
     }
 
     #[derive(Drop, starknet::Event)]
-    struct Renewed {
+    pub struct Renewed {
         #[key]
-        fan: ContractAddress,
+        pub fan: ContractAddress,
         #[key]
-        creator: ContractAddress,
-        new_expiry_time: u64,
-        renewed_by: ContractAddress,
+        pub creator: ContractAddress,
+        pub new_expiry_time: u64,
+        pub renewed_by: ContractAddress,
     }
 
     #[derive(Drop, starknet::Event)]
-    struct AutorenewPreferenceSet {
+    pub struct AutorenewPreferenceSet {
         #[key]
-        fan: ContractAddress,
+        pub fan: ContractAddress,
         #[key]
-        creator: ContractAddress,
-        enabled: bool,
+        pub creator: ContractAddress,
+        pub enabled: bool,
     }
 
     #[constructor]

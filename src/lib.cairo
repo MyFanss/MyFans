@@ -21,6 +21,8 @@ pub mod interfaces {
     pub mod IMyFans;
 }
 pub mod myfans;
+    pub use myfans::MyFans;
+    pub use myfans::MyFans::Event;
 
 pub mod mocks {
     pub mod mock_erc20;
