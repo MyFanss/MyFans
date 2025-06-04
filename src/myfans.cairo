@@ -213,7 +213,7 @@ pub mod MyFans {
                 );
         }
 
-        fn set_autorenew_preference(
+        fn set_autorenew(
             ref self: ContractState, creator_address: ContractAddress, enable: bool,
         ) {
             let fan_address = get_caller_address();
