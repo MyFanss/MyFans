@@ -26,6 +26,10 @@ pub fn NON_CREATOR() -> ContractAddress {
     'NON_CREATOR'.try_into().unwrap()
 }
 
+pub fn RELAYER() -> ContractAddress {
+    'RELAYER'.try_into().unwrap()
+}
+
 // Use u256::pow directly after importing the trait
 const TENPOWEIGHTHEEN: u256 = 1000_000_000_000_000_000_u256; // 10^18
 const SUBSCRIPTION_FEE: u256 = 10 * TENPOWEIGHTHEEN;
@@ -291,3 +295,92 @@ fn test_renew_subscription_expired_by_fan() {
             ],
         );
 }
+
+#[test]
+fn test_renew_subscription_not_expired_by_fan() {
+    let setup_res = setup_full_env();
+    let myfans_dispatcher = IMyFansDispatcher {
+        contract_address: setup_res.myfans_contract_address,
+    };
+    let erc20_dispatcher = IERC20Dispatcher { contract_address: setup_res.erc20_contract_address };
+    let mut spy = spy_events();
+
+    // Fan1 approves MyFans contract to spend tokens for subscription and renewal
+    start_cheat_caller_address(setup_res.erc20_contract_address, setup_res.fan1_address);
+    erc20_dispatcher.approve(setup_res.myfans_contract_address, SUBSCRIPTION_FEE * 2);
+    stop_cheat_caller_address(setup_res.erc20_contract_address);
+
+    // Cheat timestamp for initial subscription
+    let initial_sub_time = INITIAL_TIMESTAMP;
+    start_cheat_block_timestamp(setup_res.myfans_contract_address, initial_sub_time);
+
+    // Fan1 subscribes to Creator1
+    start_cheat_caller_address(setup_res.myfans_contract_address, setup_res.fan1_address);
+    myfans_dispatcher.subscribe(setup_res.creator1_address);
+    stop_cheat_caller_address(setup_res.myfans_contract_address);
+    stop_cheat_block_timestamp(setup_res.myfans_contract_address);
+
+    // Get initial expiry time
+    let sub_details_before_renew = myfans_dispatcher
+        .get_subscription_details(setup_res.fan1_address, setup_res.creator1_address);
+    let original_expiry_time = sub_details_before_renew.expiry_time;
+
+    // Cheat timestamp to be before expiry
+    let renewal_time = initial_sub_time + SUBSCRIPTION_DURATION_SECONDS - 100;
+    start_cheat_block_timestamp(setup_res.myfans_contract_address, renewal_time);
+
+    // Renew subscription by FAN1
+    start_cheat_caller_address(setup_res.myfans_contract_address, setup_res.fan1_address);
+    myfans_dispatcher.renew_subscription(setup_res.fan1_address, setup_res.creator1_address);
+    stop_cheat_caller_address(setup_res.myfans_contract_address);
+    stop_cheat_block_timestamp(setup_res.myfans_contract_address);
+
+    // Verify the updated subscription details
+    let sub_details_after_renew = myfans_dispatcher
+        .get_subscription_details(setup_res.fan1_address, setup_res.creator1_address);
+
+    assert(sub_details_after_renew.is_active, 'Subscription is not active');
+    // Should extend from original expiry time
+    assert(sub_details_after_renew.start_time == original_expiry_time, 'Renewal start time mismatch');
+    let expected_expiry = original_expiry_time + SUBSCRIPTION_DURATION_SECONDS;
+    assert(
+        sub_details_after_renew.expiry_time == expected_expiry, 'Renewal expiry time mismatch'
+    );
+
+    // Verify fee transfer
+    let contract_balance = erc20_dispatcher.balance_of(setup_res.myfans_contract_address);
+    assert(
+        contract_balance == SUBSCRIPTION_FEE * 2, 'Contract fee incorrect'
+    );
+    let fan_balance_after = erc20_dispatcher.balance_of(setup_res.fan1_address);
+    // Initial: 3*FEE, subscribed: 2*FEE, renewed: 1*FEE
+    assert(fan_balance_after == 0, 'Fan balance incorrect');
+
+    // Verify event emission
+    let expected_renewed_event = myfans::MyFans::Event::Renewed(
+        myfans::MyFans::Renewed {
+            fan: setup_res.fan1_address,
+            creator: setup_res.creator1_address,
+            new_expiry_time: expected_expiry,
+            renewed_by: setup_res.fan1_address,
+        },
+    );
+    // Need to assert both events (subscribe + renew) if not clearing spy
+    spy
+        .assert_emitted(
+            @array![
+                (
+                    setup_res.myfans_contract_address,
+                    myfans::MyFans::Event::Subscribed(
+                        myfans::MyFans::Subscribed {
+                            fan: setup_res.fan1_address,
+                            creator: setup_res.creator1_address,
+                            expiry_time: original_expiry_time
+                        }
+                    )
+                ), (setup_res.myfans_contract_address, expected_renewed_event)
+            ],
+        );
+}
+
+
