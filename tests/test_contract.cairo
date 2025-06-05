@@ -4,9 +4,9 @@ use myfans::components::user_component::interface::{IUserDispatcher, IUserDispat
 use myfans::interfaces::IERC20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use myfans::interfaces::IMyFans::{IMyFansDispatcher, IMyFansDispatcherTrait};
 use snforge_std::{
-    ContractClassTrait, DeclareResultTrait, declare, start_cheat_block_timestamp,
-    start_cheat_caller_address, stop_cheat_block_timestamp, stop_cheat_caller_address, 
-    spy_events, EventSpyAssertionsTrait, Event,
+    ContractClassTrait, DeclareResultTrait, Event, EventSpyAssertionsTrait, declare, spy_events,
+    start_cheat_block_timestamp, start_cheat_caller_address, stop_cheat_block_timestamp,
+    stop_cheat_caller_address,
 };
 use starknet::{ContractAddress, get_block_timestamp};
 
@@ -258,7 +258,9 @@ fn test_renew_subscription_expired_by_fan() {
         .get_subscription_details(setup_res.fan1_address, setup_res.creator1_address);
 
     assert(sub_details.is_active, 'Subscription is not active');
-    assert(sub_details.start_time == renewal_time, 'Renewal start time mismatch'); // Should renew from current time
+    assert(
+        sub_details.start_time == renewal_time, 'Renewal start time mismatch',
+    ); // Should renew from current time
     let expected_expiry = renewal_time + SUBSCRIPTION_DURATION_SECONDS;
     assert(sub_details.expiry_time == expected_expiry, 'Renewal expiry time mismatch');
 
@@ -288,10 +290,11 @@ fn test_renew_subscription_expired_by_fan() {
                         myfans::MyFans::Subscribed {
                             fan: setup_res.fan1_address,
                             creator: setup_res.creator1_address,
-                            expiry_time: initial_sub_time + SUBSCRIPTION_DURATION_SECONDS
-                        }
-                    )
-                ), (setup_res.myfans_contract_address, expected_renewed_event)
+                            expiry_time: initial_sub_time + SUBSCRIPTION_DURATION_SECONDS,
+                        },
+                    ),
+                ),
+                (setup_res.myfans_contract_address, expected_renewed_event),
             ],
         );
 }
@@ -341,17 +344,15 @@ fn test_renew_subscription_not_expired_by_fan() {
 
     assert(sub_details_after_renew.is_active, 'Subscription is not active');
     // Should extend from original expiry time
-    assert(sub_details_after_renew.start_time == original_expiry_time, 'Renewal start time mismatch');
-    let expected_expiry = original_expiry_time + SUBSCRIPTION_DURATION_SECONDS;
     assert(
-        sub_details_after_renew.expiry_time == expected_expiry, 'Renewal expiry time mismatch'
+        sub_details_after_renew.start_time == original_expiry_time, 'Renewal start time mismatch',
     );
+    let expected_expiry = original_expiry_time + SUBSCRIPTION_DURATION_SECONDS;
+    assert(sub_details_after_renew.expiry_time == expected_expiry, 'Renewal expiry time mismatch');
 
     // Verify fee transfer
     let contract_balance = erc20_dispatcher.balance_of(setup_res.myfans_contract_address);
-    assert(
-        contract_balance == SUBSCRIPTION_FEE * 2, 'Contract fee incorrect'
-    );
+    assert(contract_balance == SUBSCRIPTION_FEE * 2, 'Contract fee incorrect');
     let fan_balance_after = erc20_dispatcher.balance_of(setup_res.fan1_address);
     // Initial: 3*FEE, subscribed: 2*FEE, renewed: 1*FEE
     assert(fan_balance_after == 0, 'Fan balance incorrect');
@@ -375,10 +376,11 @@ fn test_renew_subscription_not_expired_by_fan() {
                         myfans::MyFans::Subscribed {
                             fan: setup_res.fan1_address,
                             creator: setup_res.creator1_address,
-                            expiry_time: original_expiry_time
-                        }
-                    )
-                ), (setup_res.myfans_contract_address, expected_renewed_event)
+                            expiry_time: original_expiry_time,
+                        },
+                    ),
+                ),
+                (setup_res.myfans_contract_address, expected_renewed_event),
             ],
         );
 }
@@ -425,13 +427,14 @@ fn test_renew_subscription_expired_by_relayer_autorenew_enabled() {
     stop_cheat_caller_address(setup_res.myfans_contract_address);
     stop_cheat_block_timestamp(setup_res.myfans_contract_address);
 
-
     // Verify the updated subscription details
     let sub_details = myfans_dispatcher
         .get_subscription_details(setup_res.fan1_address, setup_res.creator1_address);
 
     assert(sub_details.is_active, 'Subscription is not active');
-    assert(sub_details.start_time == renewal_time, 'Renewal start time mismatch'); // Should renew from current time
+    assert(
+        sub_details.start_time == renewal_time, 'Renewal start time mismatch',
+    ); // Should renew from current time
     let expected_expiry = renewal_time + SUBSCRIPTION_DURATION_SECONDS;
     assert(sub_details.expiry_time == expected_expiry, 'Renewal expiry time mismatch');
     assert(sub_details.autorenew, 'Autorenew should be enabled');
@@ -443,14 +446,13 @@ fn test_renew_subscription_expired_by_relayer_autorenew_enabled() {
     // Initial: 3*FEE, subscribed: 2*FEE, renewed: 1*FEE
     assert(fan_balance_after == 0, 'Fan balance incorrect');
 
-
     // Verify event emission
     let expected_renewed_event = myfans::MyFans::Event::Renewed(
         myfans::MyFans::Renewed {
             fan: setup_res.fan1_address,
             creator: setup_res.creator1_address,
             new_expiry_time: expected_expiry,
-            renewed_by: relayer_address, // Renewed by relayer
+            renewed_by: relayer_address // Renewed by relayer
         },
     );
     let expected_autorenew_event = myfans::MyFans::Event::AutorenewPreferenceSet(
@@ -468,11 +470,12 @@ fn test_renew_subscription_expired_by_relayer_autorenew_enabled() {
                         myfans::MyFans::Subscribed {
                             fan: setup_res.fan1_address,
                             creator: setup_res.creator1_address,
-                            expiry_time: initial_sub_time + SUBSCRIPTION_DURATION_SECONDS
-                        }
-                    )
-                ), (setup_res.myfans_contract_address, expected_autorenew_event),
-                (setup_res.myfans_contract_address, expected_renewed_event)
+                            expiry_time: initial_sub_time + SUBSCRIPTION_DURATION_SECONDS,
+                        },
+                    ),
+                ),
+                (setup_res.myfans_contract_address, expected_autorenew_event),
+                (setup_res.myfans_contract_address, expected_renewed_event),
             ],
         );
 }
@@ -502,14 +505,16 @@ fn test_renew_subscription_fail_relayer_autorenew_disabled() {
     stop_cheat_caller_address(setup_res.myfans_contract_address);
     stop_cheat_block_timestamp(setup_res.myfans_contract_address);
 
-
     // Cheat timestamp to be after expiry
     let renewal_time = initial_sub_time + SUBSCRIPTION_DURATION_SECONDS + 100;
     start_cheat_block_timestamp(setup_res.myfans_contract_address, renewal_time);
 
     // Attempt to renew subscription by RELAYER when autorenew is disabled
     start_cheat_caller_address(setup_res.myfans_contract_address, relayer_address);
-    myfans_dispatcher.renew_subscription(setup_res.fan1_address, setup_res.creator1_address); // This should panic
+    myfans_dispatcher
+        .renew_subscription(
+            setup_res.fan1_address, setup_res.creator1_address,
+        ); // This should panic
     stop_cheat_caller_address(setup_res.myfans_contract_address);
     stop_cheat_block_timestamp(setup_res.myfans_contract_address);
 }
@@ -527,7 +532,7 @@ fn test_renew_subscription_fail_not_found() {
 
     // Attempt to renew a non-existent subscription by RELAYER
     start_cheat_caller_address(setup_res.myfans_contract_address, relayer_address);
-    myfans_dispatcher.renew_subscription(fan_address, creator_address); 
+    myfans_dispatcher.renew_subscription(fan_address, creator_address);
     stop_cheat_caller_address(setup_res.myfans_contract_address);
 }
 
@@ -585,10 +590,11 @@ fn test_set_autorenew_enable_by_fan() {
                         myfans::MyFans::Subscribed {
                             fan: setup_res.fan1_address,
                             creator: setup_res.creator1_address,
-                            expiry_time: INITIAL_TIMESTAMP + SUBSCRIPTION_DURATION_SECONDS
-                        }
-                    )
-                ), (setup_res.myfans_contract_address, expected_autorenew_event)
+                            expiry_time: INITIAL_TIMESTAMP + SUBSCRIPTION_DURATION_SECONDS,
+                        },
+                    ),
+                ),
+                (setup_res.myfans_contract_address, expected_autorenew_event),
             ],
         );
 }
@@ -621,7 +627,6 @@ fn test_set_autorenew_disable_by_fan() {
     myfans_dispatcher.set_autorenew(setup_res.creator1_address, true);
     stop_cheat_caller_address(setup_res.myfans_contract_address);
 
-
     // Verify autorenew state is true
     let sub_details_enabled = myfans_dispatcher
         .get_subscription_details(setup_res.fan1_address, setup_res.creator1_address);
@@ -631,7 +636,6 @@ fn test_set_autorenew_disable_by_fan() {
     start_cheat_caller_address(setup_res.myfans_contract_address, setup_res.fan1_address);
     myfans_dispatcher.set_autorenew(setup_res.creator1_address, false);
     stop_cheat_caller_address(setup_res.myfans_contract_address);
-
 
     // Verify updated autorenew state
     let sub_details_disabled = myfans_dispatcher
@@ -658,11 +662,13 @@ fn test_set_autorenew_disable_by_fan() {
                         myfans::MyFans::Subscribed {
                             fan: setup_res.fan1_address,
                             creator: setup_res.creator1_address,
-                            expiry_time: INITIAL_TIMESTAMP + SUBSCRIPTION_DURATION_SECONDS
-                        }
-                    )
-                ), (setup_res.myfans_contract_address, expected_enable_event),
-                (setup_res.myfans_contract_address, expected_disable_event)
+                            expiry_time: INITIAL_TIMESTAMP + SUBSCRIPTION_DURATION_SECONDS,
+                        },
+                    ),
+                ),
+                (setup_res.myfans_contract_address, expected_enable_event),
+                (setup_res.myfans_contract_address, expected_disable_event),
             ],
         );
 }
+

@@ -213,9 +213,7 @@ pub mod MyFans {
                 );
         }
 
-        fn set_autorenew(
-            ref self: ContractState, creator_address: ContractAddress, enable: bool,
-        ) {
+        fn set_autorenew(ref self: ContractState, creator_address: ContractAddress, enable: bool) {
             let fan_address = get_caller_address();
             let mut subscription = self.subscriptions.read((fan_address, creator_address));
 
