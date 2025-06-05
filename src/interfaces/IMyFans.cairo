@@ -7,4 +7,8 @@ pub trait IMyFans<TContractState> { // Main contract functionality will be added
     fn get_subscription_details(
         self: @TContractState, fan_address: ContractAddress, creator_address: ContractAddress,
     ) -> Subscription;
+    fn renew_subscription(
+        ref self: TContractState, fan_address: ContractAddress, creator_address: ContractAddress,
+    );
+    fn set_autorenew(ref self: TContractState, creator_address: ContractAddress, enable: bool);
 }

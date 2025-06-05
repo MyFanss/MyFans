@@ -28,6 +28,7 @@ pub mod MyFans {
         pub start_time: u64,
         pub expiry_time: u64,
         pub is_active: bool,
+        pub autorenew: bool // optional field for auto-renewal
     }
 
     #[storage]
@@ -44,19 +45,40 @@ pub mod MyFans {
 
     #[event]
     #[derive(Drop, starknet::Event)]
-    enum Event {
+    pub enum Event {
         ContentEvent: ContentComponent::Event,
         UserEvent: UserComponent::Event,
         Subscribed: Subscribed,
+        Renewed: Renewed,
+        AutorenewPreferenceSet: AutorenewPreferenceSet,
     }
 
     #[derive(Drop, starknet::Event)]
-    struct Subscribed {
+    pub struct Subscribed {
         #[key]
-        fan: ContractAddress,
+        pub fan: ContractAddress,
         #[key]
-        creator: ContractAddress,
-        expiry_time: u64,
+        pub creator: ContractAddress,
+        pub expiry_time: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct Renewed {
+        #[key]
+        pub fan: ContractAddress,
+        #[key]
+        pub creator: ContractAddress,
+        pub new_expiry_time: u64,
+        pub renewed_by: ContractAddress,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct AutorenewPreferenceSet {
+        #[key]
+        pub fan: ContractAddress,
+        #[key]
+        pub creator: ContractAddress,
+        pub enabled: bool,
     }
 
     #[constructor]
@@ -116,6 +138,7 @@ pub mod MyFans {
                 start_time: start_time,
                 expiry_time: expiry_time,
                 is_active: true,
+                autorenew: false // Default to false
             };
             self.subscriptions.write((fan_address, creator_address), new_subscription);
 
@@ -133,6 +156,89 @@ pub mod MyFans {
         ) -> Subscription {
             let sub = self.subscriptions.read((fan_address, creator_address));
             sub
+        }
+
+        fn renew_subscription(
+            ref self: ContractState, fan_address: ContractAddress, creator_address: ContractAddress,
+        ) {
+            let caller = get_caller_address();
+            let mut subscription = self.subscriptions.read((fan_address, creator_address));
+
+            // Assert subscription exists
+            assert(subscription.fan != Zero::zero(), 'Subscription not found');
+            assert(subscription.creator != Zero::zero(), 'Subscription not found');
+
+            let current_timestamp = get_block_timestamp();
+            let duration = self.subscription_duration_seconds.read();
+            let fee = self.subscription_fee.read();
+            let token_address = self.fee_token_address.read();
+
+            // Relayer can only renew if autorenew is true
+            if caller != fan_address {
+                assert(subscription.autorenew, 'Autorenew not enabled');
+            }
+
+            // Handle fee transfer - requires fan to have approved the contract or relayer
+            let token_dispatcher = IERC20Dispatcher { contract_address: token_address };
+            let success = token_dispatcher.transfer_from(fan_address, get_contract_address(), fee);
+            assert(success, 'Fee transfer failed');
+
+            // Calculate new expiry time. If expired, renew from current timestamp. If not, extend
+            // from expiry.
+            let renewal_start_time = if current_timestamp > subscription.expiry_time {
+                current_timestamp
+            } else {
+                subscription.expiry_time
+            };
+
+            subscription
+                .start_time = renewal_start_time; // Update start time to actual renewal start
+            subscription.expiry_time = renewal_start_time + duration;
+            subscription.is_active = true; // Ensure subscription is active
+
+            // Update subscription in storage
+            self.subscriptions.write((fan_address, creator_address), subscription);
+
+            // Emit Renewed event
+            self
+                .emit(
+                    Event::Renewed(
+                        Renewed {
+                            fan: fan_address,
+                            creator: creator_address,
+                            new_expiry_time: subscription.expiry_time,
+                            renewed_by: caller,
+                        },
+                    ),
+                );
+        }
+
+        fn set_autorenew(ref self: ContractState, creator_address: ContractAddress, enable: bool) {
+            let fan_address = get_caller_address();
+            let mut subscription = self.subscriptions.read((fan_address, creator_address));
+
+            // Assert caller is the fan
+            assert(get_caller_address() == fan_address, 'Only fan can set preference');
+
+            // Assert subscription exists
+            assert(subscription.fan != Zero::zero(), 'Subscription not found');
+            assert(subscription.creator != Zero::zero(), 'Subscription not found');
+
+            // Update autorenew flag
+            subscription.autorenew = enable;
+
+            // Write updated subscription back to storage
+            self.subscriptions.write((fan_address, creator_address), subscription);
+
+            // Emit event
+            self
+                .emit(
+                    Event::AutorenewPreferenceSet(
+                        AutorenewPreferenceSet {
+                            fan: fan_address, creator: creator_address, enabled: enable,
+                        },
+                    ),
+                );
         }
     }
 
