@@ -17,6 +17,9 @@ pub mod MyFans {
     use crate::interfaces::IERC20::{IERC20Dispatcher, IERC20DispatcherTrait};
 
 
+    const PLATFORM_FEE_PERCENTAGE: u8 = 10;
+
+
     // Define components
     component!(path: ContentComponent, storage: content_storage, event: ContentEvent);
     component!(path: UserComponent, storage: user_storage, event: UserEvent);
@@ -41,6 +44,8 @@ pub mod MyFans {
         subscription_fee: u256,
         subscription_duration_seconds: u64,
         fee_token_address: ContractAddress,
+        platform_address: ContractAddress,
+        creator_balances: Map<ContractAddress, u256>,
     }
 
     #[event]
@@ -51,6 +56,9 @@ pub mod MyFans {
         Subscribed: Subscribed,
         Renewed: Renewed,
         AutorenewPreferenceSet: AutorenewPreferenceSet,
+        PlatformFeePaid: PlatformFeePaid,
+        CreatorShareDeposited: CreatorShareDeposited,
+        CreatorBalanceWithdrawal: CreatorBalanceWithdrawal,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -81,16 +89,41 @@ pub mod MyFans {
         pub enabled: bool,
     }
 
+    #[derive(Drop, starknet::Event)]
+    pub struct PlatformFeePaid {
+        pub subscriber: ContractAddress,
+        pub creator: ContractAddress,
+        pub platform: ContractAddress,
+        pub amount: u256,
+        pub total_fee: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct CreatorShareDeposited {
+        pub subscriber: ContractAddress,
+        pub creator: ContractAddress,
+        pub amount: u256,
+        pub total_fee: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct CreatorBalanceWithdrawal {
+        pub creator: ContractAddress,
+        pub amount: u256,
+    }
+
     #[constructor]
     fn constructor(
         ref self: ContractState,
         initial_fee_token_address: ContractAddress,
         initial_subscription_fee: u256,
         initial_subscription_duration_days: u64,
+        initial_platform_address: ContractAddress,
     ) {
         self.fee_token_address.write(initial_fee_token_address);
         self.subscription_fee.write(initial_subscription_fee);
         self.subscription_duration_seconds.write(initial_subscription_duration_days * 24 * 60 * 60);
+        self.platform_address.write(initial_platform_address);
     }
 
     #[abi(embed_v0)]
