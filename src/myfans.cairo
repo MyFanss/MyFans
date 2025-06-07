@@ -17,6 +17,9 @@ pub mod MyFans {
     use crate::interfaces::IERC20::{IERC20Dispatcher, IERC20DispatcherTrait};
 
 
+    const PLATFORM_FEE_PERCENTAGE: u8 = 10;
+
+
     // Define components
     component!(path: ContentComponent, storage: content_storage, event: ContentEvent);
     component!(path: UserComponent, storage: user_storage, event: UserEvent);
@@ -46,6 +49,8 @@ pub mod MyFans {
         subscription_fee: u256,
         subscription_duration_seconds: u64,
         fee_token_address: ContractAddress,
+        platform_address: ContractAddress,
+        creator_balances: Map<ContractAddress, u256>,
 
     }
 
@@ -74,6 +79,9 @@ pub mod MyFans {
         Subscribed: Subscribed,
         Renewed: Renewed,
         AutorenewPreferenceSet: AutorenewPreferenceSet,
+        PlatformFeePaid: PlatformFeePaid,
+        CreatorShareDeposited: CreatorShareDeposited,
+        CreatorBalanceWithdrawal: CreatorBalanceWithdrawal,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -105,16 +113,41 @@ pub mod MyFans {
 
     }
 
+    #[derive(Drop, starknet::Event)]
+    pub struct PlatformFeePaid {
+        pub subscriber: ContractAddress,
+        pub creator: ContractAddress,
+        pub platform: ContractAddress,
+        pub amount: u256,
+        pub total_fee: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct CreatorShareDeposited {
+        pub subscriber: ContractAddress,
+        pub creator: ContractAddress,
+        pub amount: u256,
+        pub total_fee: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct CreatorBalanceWithdrawal {
+        pub creator: ContractAddress,
+        pub amount: u256,
+    }
+
     #[constructor]
     fn constructor(
         ref self: ContractState,
         initial_fee_token_address: ContractAddress,
         initial_subscription_fee: u256,
         initial_subscription_duration_days: u64,
+        initial_platform_address: ContractAddress,
     ) {
         self.fee_token_address.write(initial_fee_token_address);
         self.subscription_fee.write(initial_subscription_fee);
         self.subscription_duration_seconds.write(initial_subscription_duration_days * 24 * 60 * 60);
+        self.platform_address.write(initial_platform_address);
     }
 
     #[abi(embed_v0)]
@@ -140,9 +173,13 @@ pub mod MyFans {
 
             // 3. Handle subscription fee transfer
             let fee = self.subscription_fee.read();
+            assert(fee > 0, 'Subscription fee must be > 0');
             let token_address = self.fee_token_address.read();
             assert(token_address != Zero::zero(), 'Fee token not set');
-            assert(fee > 0, 'Subscription fee must be > 0');
+            let platform_recipient = self.platform_address.read();
+            assert(
+                platform_recipient != Zero::zero(), 'Platform address not set',
+            ); // Asserting the platform address is set
 
             let token_dispatcher = IERC20Dispatcher { contract_address: token_address };
             // Transfer fee from fan to the contract.
@@ -151,7 +188,27 @@ pub mod MyFans {
             let success = token_dispatcher.transfer_from(fan_address, get_contract_address(), fee);
             assert(success, 'Fee transfer failed');
 
-            // 4. Record the subscription
+            // Calculate platform fee and creator share
+            let platform_fee_amount: u256 = (fee * PLATFORM_FEE_PERCENTAGE.into()) / 100.into();
+            let creator_share_amount: u256 = fee - platform_fee_amount;
+
+            // Transfer platform fee to platform address
+            let platform_fee_success = token_dispatcher
+                .transfer(platform_recipient, platform_fee_amount);
+            assert(platform_fee_success, 'Platform fee transfer failed');
+
+            // Transfer creator's share to the creator
+            let creator_share_success = token_dispatcher
+                .transfer(creator_address, creator_share_amount);
+            assert(creator_share_success, 'Creator share transfer failed');
+
+            // Add creator's share to their balance stored in the contract
+            let current_creator_balance = self.creator_balances.read(creator_address);
+            self
+                .creator_balances
+                .write(creator_address, current_creator_balance + creator_share_amount);
+
+            // Record the subscription
             let start_time = current_timestamp;
             let duration = self.subscription_duration_seconds.read();
             let expiry_time = start_time + duration;
@@ -171,6 +228,29 @@ pub mod MyFans {
                 .emit(
                     Event::Subscribed(
                         Subscribed { fan: fan_address, creator: creator_address, expiry_time },
+                    ),
+                );
+            self
+                .emit(
+                    Event::PlatformFeePaid(
+                        PlatformFeePaid {
+                            subscriber: fan_address,
+                            creator: creator_address,
+                            platform: platform_recipient,
+                            amount: platform_fee_amount,
+                            total_fee: fee,
+                        },
+                    ),
+                );
+            self
+                .emit(
+                    Event::CreatorShareDeposited(
+                        CreatorShareDeposited {
+                            subscriber: fan_address,
+                            creator: creator_address,
+                            amount: creator_share_amount,
+                            total_fee: fee,
+                        },
                     ),
                 );
         }
@@ -196,6 +276,9 @@ pub mod MyFans {
             let duration = self.subscription_duration_seconds.read();
             let fee = self.subscription_fee.read();
             let token_address = self.fee_token_address.read();
+            let platform_recipient = self.platform_address.read();
+            assert(fee > 0, 'Subscription fee must be > 0');
+            assert(platform_recipient != Zero::zero(), 'Platform address not set');
 
             // Relayer can only renew if autorenew is true
             if caller != fan_address {
@@ -206,6 +289,26 @@ pub mod MyFans {
             let token_dispatcher = IERC20Dispatcher { contract_address: token_address };
             let success = token_dispatcher.transfer_from(fan_address, get_contract_address(), fee);
             assert(success, 'Fee transfer failed');
+
+            // Calculate platform fee and creator share
+            let platform_fee_amount: u256 = (fee * PLATFORM_FEE_PERCENTAGE.into()) / 100.into();
+            let creator_share_amount: u256 = fee - platform_fee_amount;
+
+            // Transfer platform fee to platform address
+            let platform_fee_success = token_dispatcher
+                .transfer(platform_recipient, platform_fee_amount);
+            assert(platform_fee_success, 'Platform fee transfer failed');
+
+            // Transfer creator's share to the creator
+            let creator_share_success = token_dispatcher
+                .transfer(creator_address, creator_share_amount);
+            assert(creator_share_success, 'Creator share transfer failed');
+
+            // Add creator's share to their balance stored in the contract
+            let current_creator_balance = self.creator_balances.read(creator_address);
+            self
+                .creator_balances
+                .write(creator_address, current_creator_balance + creator_share_amount);
 
             // Calculate new expiry time. If expired, renew from current timestamp. If not, extend
             // from expiry.
@@ -232,6 +335,29 @@ pub mod MyFans {
                             creator: creator_address,
                             new_expiry_time: subscription.expiry_time,
                             renewed_by: caller,
+                        },
+                    ),
+                );
+            self
+                .emit(
+                    Event::PlatformFeePaid(
+                        PlatformFeePaid {
+                            subscriber: fan_address,
+                            creator: creator_address,
+                            platform: platform_recipient,
+                            amount: platform_fee_amount,
+                            total_fee: fee,
+                        },
+                    ),
+                );
+            self
+                .emit(
+                    Event::CreatorShareDeposited(
+                        CreatorShareDeposited {
+                            subscriber: fan_address,
+                            creator: creator_address,
+                            amount: creator_share_amount,
+                            total_fee: fee,
                         },
                     ),
                 );
@@ -264,7 +390,11 @@ pub mod MyFans {
                     ),
                 );
         }
+        fn get_creator_balance(self: @ContractState, creator: ContractAddress) -> u256 {
+            self.creator_balances.read(creator)
+        }
     }
+
 
     // Implement content interface
     #[abi(embed_v0)]
