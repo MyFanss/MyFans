@@ -247,6 +247,9 @@ pub mod MyFans {
             let duration = self.subscription_duration_seconds.read();
             let fee = self.subscription_fee.read();
             let token_address = self.fee_token_address.read();
+            let platform_recipient = self.platform_address.read();
+            assert(fee > 0, 'Subscription fee must be > 0');
+            assert(platform_recipient != Zero::zero(), 'Platform address not set');
 
             // Relayer can only renew if autorenew is true
             if caller != fan_address {
@@ -257,6 +260,21 @@ pub mod MyFans {
             let token_dispatcher = IERC20Dispatcher { contract_address: token_address };
             let success = token_dispatcher.transfer_from(fan_address, get_contract_address(), fee);
             assert(success, 'Fee transfer failed');
+
+            // Calculate platform fee and creator share
+            let platform_fee_amount: u256 = (fee * PLATFORM_FEE_PERCENTAGE.into()) / 100.into();
+            let creator_share_amount: u256 = fee - platform_fee_amount;
+
+            // Transfer platform fee to platform address
+            let platform_fee_success = token_dispatcher
+                .transfer(platform_recipient, platform_fee_amount);
+            assert(platform_fee_success, 'Platform fee transfer failed');
+
+            // Add creator's share to their balance stored in the contract
+            let current_creator_balance = self.creator_balances.read(creator_address);
+            self
+                .creator_balances
+                .write(creator_address, current_creator_balance + creator_share_amount);
 
             // Calculate new expiry time. If expired, renew from current timestamp. If not, extend
             // from expiry.
@@ -283,6 +301,29 @@ pub mod MyFans {
                             creator: creator_address,
                             new_expiry_time: subscription.expiry_time,
                             renewed_by: caller,
+                        },
+                    ),
+                );
+            self
+                .emit(
+                    Event::PlatformFeePaid(
+                        PlatformFeePaid {
+                            subscriber: fan_address,
+                            creator: creator_address,
+                            platform: platform_recipient,
+                            amount: platform_fee_amount,
+                            total_fee: fee,
+                        },
+                    ),
+                );
+            self
+                .emit(
+                    Event::CreatorShareDeposited(
+                        CreatorShareDeposited {
+                            subscriber: fan_address,
+                            creator: creator_address,
+                            amount: creator_share_amount,
+                            total_fee: fee,
                         },
                     ),
                 );
