@@ -358,6 +358,10 @@ pub mod MyFans {
         }
     }
 
+    fn get_creator_balance(self: @ContractState, creator: ContractAddress) -> u256 {
+        self.creator_balances.read(creator)
+    }
+
     // Implement content interface
     #[abi(embed_v0)]
     impl ContentImpl = ContentComponent::ContentImpl<ContractState>;
