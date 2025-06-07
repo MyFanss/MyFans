@@ -13,26 +13,19 @@ pub trait IUser<TContractState> {
     fn get_username_from_address(ref self: TContractState, address: ContractAddress) -> felt252;
 
     fn get_address_from_username(ref self: TContractState, username: felt252) -> ContractAddress;
-    // /// @notice Check if user has creator privileges
-    // fn is_creator(self: @TContractState, user: ContractAddress) -> bool;
-
-    // /// @notice Check if user has fan privileges
-    // fn is_fan(self: @TContractState, user: ContractAddress) -> bool;
-
-    // /// @notice Add creator capabilities to an existing user
-    // fn become_creator(ref self: TContractState) -> bool;
 
     // /// @notice Follow another user
-    fn follow_user(ref self: TContractState, creator_address: ContractAddress) -> bool;
+    fn follow_user(ref self: TContractState, follow_address: ContractAddress) -> bool;
 
     // /// @notice unfFollow another user
-    fn unfollow_user(ref self: TContractState, creator_address: ContractAddress) -> bool;
+    fn unfollow_user(ref self: TContractState, unfollow_address: ContractAddress) -> bool;
 
     // /// @notice Get the full profile of a user
     fn get_user_profile(ref self: TContractState, user: ContractAddress) -> User;
-    // /// @notice Get the list of addresses the user is following
-// fn get_following(self: @TContractState, user: ContractAddress) -> Span<ContractAddress>;
 
-    // /// @notice Get the list of followers for a user
-// fn get_followers(self: @TContractState, user: ContractAddress) -> Span<ContractAddress>;
+    /// @notice Get the list of addresses the user is following
+    fn get_following(self: @TContractState, user: ContractAddress) -> Span<ContractAddress>;
+
+    /// @notice Get the list of followers for a user
+    fn get_followers(self: @TContractState, user: ContractAddress) -> Span<ContractAddress>;
 }
