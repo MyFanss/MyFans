@@ -30,6 +30,10 @@ pub fn RELAYER() -> ContractAddress {
     'RELAYER'.try_into().unwrap()
 }
 
+pub fn PLATFORM() -> ContractAddress {
+    'PLATFORM'.try_into().unwrap()
+}
+
 // Use u256::pow directly after importing the trait
 const TENPOWEIGHTHEEN: u256 = 1000_000_000_000_000_000_u256; // 10^18
 const SUBSCRIPTION_FEE: u256 = 10 * TENPOWEIGHTHEEN;
@@ -37,6 +41,9 @@ const SUBSCRIPTION_DURATION_DAYS: u64 = 30;
 const INITIAL_TIMESTAMP: u64 = 1000;
 const DAY_IN_SECONDS: u64 = 24 * 60 * 60;
 const SUBSCRIPTION_DURATION_SECONDS: u64 = SUBSCRIPTION_DURATION_DAYS * DAY_IN_SECONDS;
+const PLATFORM_FEE_PERCENTAGE: u256 = 10;
+const PLATFORM_FEE_AMOUNT: u256 = (SUBSCRIPTION_FEE * PLATFORM_FEE_PERCENTAGE) / 100;
+const CREATOR_SHARE_AMOUNT: u256 = SUBSCRIPTION_FEE - PLATFORM_FEE_AMOUNT;
 
 
 struct SetupResult {
@@ -45,6 +52,7 @@ struct SetupResult {
     owner_address: ContractAddress,
     fan1_address: ContractAddress,
     creator1_address: ContractAddress,
+    platform_address: ContractAddress,
 }
 
 fn setup_erc20(owner: ContractAddress) -> ContractAddress {
@@ -61,7 +69,10 @@ fn setup_erc20(owner: ContractAddress) -> ContractAddress {
 }
 
 fn setup_myfans(
-    fee_token_address: ContractAddress, subscription_fee: u256, subscription_duration_days: u64,
+    fee_token_address: ContractAddress,
+    subscription_fee: u256,
+    subscription_duration_days: u64,
+    initial_platform_address: ContractAddress,
 ) -> ContractAddress {
     let contract = declare("MyFans").unwrap();
     let mut constructor_calldata = array![
@@ -69,6 +80,7 @@ fn setup_myfans(
         subscription_fee.low.into(),
         subscription_fee.high.into(),
         subscription_duration_days.into(),
+        initial_platform_address.into(),
     ];
     let (myfans_address, _) = contract.contract_class().deploy(@constructor_calldata).unwrap();
     myfans_address
@@ -78,18 +90,21 @@ fn setup_full_env() -> SetupResult {
     let owner_address: ContractAddress = OWNER();
     let fan1_address: ContractAddress = FAN1();
     let creator1_address: ContractAddress = CREATOR1();
+    let platform_address: ContractAddress = PLATFORM();
 
     let erc20_address = setup_erc20(owner_address);
 
-    let myfans_address = setup_myfans(erc20_address, SUBSCRIPTION_FEE, SUBSCRIPTION_DURATION_DAYS);
+    let myfans_address = setup_myfans(
+        erc20_address, SUBSCRIPTION_FEE, SUBSCRIPTION_DURATION_DAYS, platform_address,
+    );
 
     // Distribute some tokens to fan1 for testing
     let erc20_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
 
     start_cheat_caller_address(erc20_address, owner_address);
     erc20_dispatcher
-        .transfer(fan1_address, SUBSCRIPTION_FEE * 2); // Give fan enough for 2 subscriptions
-
+        .transfer(fan1_address, SUBSCRIPTION_FEE * 5); // Give fan enough for 5 subscriptions
+    erc20_dispatcher.transfer(platform_address, 1000);
     stop_cheat_caller_address(erc20_address);
 
     // Setup creator account
@@ -106,6 +121,7 @@ fn setup_full_env() -> SetupResult {
         owner_address,
         fan1_address,
         creator1_address,
+        platform_address,
     }
 }
 
