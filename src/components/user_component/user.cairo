@@ -1,4 +1,5 @@
 use myfans::components::user_component::interface::IUser;
+
 #[starknet::component]
 pub mod UserComponent {
     use myfans::components::user_component::types::User;
@@ -10,7 +11,6 @@ pub mod UserComponent {
         ContractAddress, contract_address_const, get_block_timestamp, get_caller_address,
     };
 
-
     #[storage]
     pub struct Storage {
         user: Map<ContractAddress, User>,
@@ -19,6 +19,11 @@ pub mod UserComponent {
         users_id: Map<u256, ContractAddress>,
         username_exists: Map<felt252, bool>,
         id_count: u256,
+        following_map: Map<(ContractAddress, ContractAddress), bool>,
+        user_following: Map<(ContractAddress, u256), ContractAddress>, // who a user is following
+        following_count: Map<ContractAddress, u256>,
+        user_followers: Map<(ContractAddress, u256), ContractAddress>, // who follows a user
+        follower_count: Map<ContractAddress, u256>,
     }
 
     #[event]
@@ -41,7 +46,6 @@ pub mod UserComponent {
         owner_address: ContractAddress,
     }
 
-
     #[embeddable_as(UserImpl)]
     impl UserComponentImpl<
         TContractState, +HasComponent<TContractState>,
@@ -49,17 +53,14 @@ pub mod UserComponent {
         fn get_username_from_address(
             ref self: ComponentState<TContractState>, address: ContractAddress,
         ) -> felt252 {
-            let username = self.user_address.read(address);
-            username
+            self.user_address.read(address)
         }
 
         fn get_address_from_username(
             ref self: ComponentState<TContractState>, username: felt252,
         ) -> ContractAddress {
-            let username = self.username.read(username);
-            username
+            self.username.read(username)
         }
-
 
         fn create_account(ref self: ComponentState<TContractState>, username: felt252) -> u256 {
             let caller = get_caller_address();
@@ -90,20 +91,123 @@ pub mod UserComponent {
                 };
 
             self.user.write(caller, user);
-
             self.username_exists.write(username, true);
-
             self.username.write(username, caller);
-
             self.user_address.write(caller, username);
-
             self.users_id.write(id, caller);
-
             self.id_count.write(id);
 
-            self.emit(Event::UserCreated(UserCreated { user: caller, username: username }));
+            self.emit(Event::UserCreated(UserCreated { user: caller, username }));
 
             id
+        }
+
+        fn follow_user(
+            ref self: ComponentState<TContractState>, follow_address: ContractAddress,
+        ) -> bool {
+            let caller = get_caller_address();
+
+            // Prevent users from following themselves
+            assert(caller != follow_address, 'Cannot follow yourself');
+
+            // Check if caller is already following the target user
+            let already_following = self.following_map.read((caller, follow_address));
+            assert(!already_following, 'Already following user');
+
+            // Get current following and follower counts
+            let caller_following_count = self.following_count.read(caller);
+            let followee_follower_count = self.follower_count.read(follow_address);
+
+            // Update the following list for the caller
+            self.user_following.write((caller, caller_following_count), follow_address);
+            self.following_count.write(caller, caller_following_count + 1);
+
+            // Update the follower list for the followee
+            self.user_followers.write((follow_address, followee_follower_count), caller);
+            self.follower_count.write(follow_address, followee_follower_count + 1);
+
+            // Mark that the caller is now following the followee
+            self.following_map.write((caller, follow_address), true);
+
+            // Update caller's user profile
+            let mut caller_user = self.get_user_profile(caller);
+            caller_user.following += 1;
+            caller_user.updated_at = get_block_timestamp();
+            self.user.write(caller, caller_user);
+
+            // Update followee's user profile
+            let mut followee_user = self.get_user_profile(follow_address);
+            followee_user.followers += 1;
+            followee_user.updated_at = get_block_timestamp();
+            self.user.write(follow_address, followee_user);
+
+            true
+        }
+
+
+        fn unfollow_user(
+            ref self: ComponentState<TContractState>, unfollow_address: ContractAddress,
+        ) -> bool {
+            let caller = get_caller_address();
+
+            // Prevent users from unfollowing themselves
+            assert(caller != unfollow_address, 'Cannot unfollow yourself');
+
+            // Ensure the caller is actually following the user
+            let is_following = self.following_map.read((caller, unfollow_address));
+            assert(is_following, 'Not currently following user');
+
+            // Decrease follow counts in user profiles
+            let mut caller_user = self.get_user_profile(caller);
+            caller_user.following -= 1;
+            caller_user.updated_at = get_block_timestamp();
+            self.user.write(caller, caller_user);
+
+            let mut unfollowed_user = self.get_user_profile(unfollow_address);
+            unfollowed_user.followers -= 1;
+            unfollowed_user.updated_at = get_block_timestamp();
+            self.user.write(unfollow_address, unfollowed_user);
+
+            // Update follow map to indicate unfollow
+            self.following_map.write((caller, unfollow_address), false);
+
+            // NOTE: You might also want to remove the entry from `user_following` and
+            // `user_followers` if required
+
+            true
+        }
+
+
+        /// @notice Get the list of addresses the user is following
+        fn get_following(
+            self: @ComponentState<TContractState>, user: ContractAddress,
+        ) -> Span<ContractAddress> {
+            let count = self.following_count.read(user);
+            let mut following_list: Array<ContractAddress> = ArrayTrait::new();
+
+            // iterate i from 0 up to (but not including) count
+            for i in 0..count {
+                let following = self.user_following.read((user, i));
+                following_list.append(following);
+            }
+
+            following_list.span()
+        }
+
+        /// @notice Get the list of followers for a user
+        fn get_followers(
+            self: @ComponentState<TContractState>, user: ContractAddress,
+        ) -> Span<ContractAddress> {
+            let count = self.follower_count.read(user);
+            let mut follower_list: Array<ContractAddress> = ArrayTrait::new();
+
+            // iterate i from 0 up to (but not including) count
+            for i in 0..count {
+                let follower = self.user_followers.read((user, i));
+                follower_list.append(follower);
+            }
+
+            follower_list.span()
         }
 
 
