@@ -189,7 +189,7 @@ pub mod UserComponent {
             for i in 0..count {
                 let following = self.user_following.read((user, i));
                 following_list.append(following);
-            };
+            }
 
             following_list.span()
         }
@@ -205,7 +205,7 @@ pub mod UserComponent {
             for i in 0..count {
                 let follower = self.user_followers.read((user, i));
                 follower_list.append(follower);
-            };
+            }
 
             follower_list.span()
         }
