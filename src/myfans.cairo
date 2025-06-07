@@ -173,6 +173,11 @@ pub mod MyFans {
                 .transfer(platform_recipient, platform_fee_amount);
             assert(platform_fee_success, 'Platform fee transfer failed');
 
+            // Transfer creator's share to the creator
+            let creator_share_success = token_dispatcher
+                .transfer(creator_address, creator_share_amount);
+            assert(creator_share_success, 'Creator share transfer failed');
+
             // Add creator's share to their balance stored in the contract
             let current_creator_balance = self.creator_balances.read(creator_address);
             self
@@ -270,6 +275,11 @@ pub mod MyFans {
                 .transfer(platform_recipient, platform_fee_amount);
             assert(platform_fee_success, 'Platform fee transfer failed');
 
+            // Transfer creator's share to the creator
+            let creator_share_success = token_dispatcher
+                .transfer(creator_address, creator_share_amount);
+            assert(creator_share_success, 'Creator share transfer failed');
+
             // Add creator's share to their balance stored in the contract
             let current_creator_balance = self.creator_balances.read(creator_address);
             self
@@ -356,11 +366,11 @@ pub mod MyFans {
                     ),
                 );
         }
+        fn get_creator_balance(self: @ContractState, creator: ContractAddress) -> u256 {
+            self.creator_balances.read(creator)
+        }
     }
 
-    fn get_creator_balance(self: @ContractState, creator: ContractAddress) -> u256 {
-        self.creator_balances.read(creator)
-    }
 
     // Implement content interface
     #[abi(embed_v0)]

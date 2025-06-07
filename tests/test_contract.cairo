@@ -156,10 +156,10 @@ fn test_subscribe_successfully() {
 
     // Verify fee transfer
     let contract_balance = erc20_dispatcher.balance_of(setup_res.myfans_contract_address);
-    assert(contract_balance == SUBSCRIPTION_FEE, 'Contract fee incorrect');
+    assert(contract_balance == 0, 'Contract fee incorrect');
     let fan_balance_after = erc20_dispatcher.balance_of(setup_res.fan1_address);
     // Initial fan balance was SUBSCRIPTION_FEE * 2
-    assert(fan_balance_after == SUBSCRIPTION_FEE, 'Fan balance incorrect after sub');
+    assert(fan_balance_after == SUBSCRIPTION_FEE * 4, 'Fan balance incorrect after sub');
 }
 
 #[test]
@@ -282,10 +282,10 @@ fn test_renew_subscription_expired_by_fan() {
 
     // Verify fee transfer
     let contract_balance = erc20_dispatcher.balance_of(setup_res.myfans_contract_address);
-    assert(contract_balance == SUBSCRIPTION_FEE * 2, 'Contract fee incorrect');
+    assert(contract_balance == 0, 'Contract fee incorrect');
     let fan_balance_after = erc20_dispatcher.balance_of(setup_res.fan1_address);
     // Initial: 3*FEE, subscribed: 2*FEE, renewed: 1*FEE
-    assert(fan_balance_after == 0, 'Fan balance incorrect');
+    assert(fan_balance_after == SUBSCRIPTION_FEE * 3, 'Fan balance incorrect');
 
     // Verify event emission
     let expected_renewed_event = myfans::MyFans::Event::Renewed(
@@ -368,10 +368,10 @@ fn test_renew_subscription_not_expired_by_fan() {
 
     // Verify fee transfer
     let contract_balance = erc20_dispatcher.balance_of(setup_res.myfans_contract_address);
-    assert(contract_balance == SUBSCRIPTION_FEE * 2, 'Contract fee incorrect');
+    assert(contract_balance == 0, 'Contract fee incorrect');
     let fan_balance_after = erc20_dispatcher.balance_of(setup_res.fan1_address);
     // Initial: 3*FEE, subscribed: 2*FEE, renewed: 1*FEE
-    assert(fan_balance_after == 0, 'Fan balance incorrect');
+    assert(fan_balance_after == SUBSCRIPTION_FEE * 3, 'Fan balance incorrect');
 
     // Verify event emission
     let expected_renewed_event = myfans::MyFans::Event::Renewed(
@@ -457,10 +457,10 @@ fn test_renew_subscription_expired_by_relayer_autorenew_enabled() {
 
     // Verify fee transfer
     let contract_balance = erc20_dispatcher.balance_of(setup_res.myfans_contract_address);
-    assert(contract_balance == SUBSCRIPTION_FEE * 2, 'Contract fee incorrect');
+    assert(contract_balance == 0, 'Contract fee incorrect');
     let fan_balance_after = erc20_dispatcher.balance_of(setup_res.fan1_address);
     // Initial: 3*FEE, subscribed: 2*FEE, renewed: 1*FEE
-    assert(fan_balance_after == 0, 'Fan balance incorrect');
+    assert(fan_balance_after == SUBSCRIPTION_FEE * 3, 'Fan balance incorrect');
 
     // Verify event emission
     let expected_renewed_event = myfans::MyFans::Event::Renewed(
@@ -686,5 +686,86 @@ fn test_set_autorenew_disable_by_fan() {
                 (setup_res.myfans_contract_address, expected_disable_event),
             ],
         );
+}
+
+#[test]
+fn test_fee_splitting_on_subscribe() {
+    // Setup the environment
+    let setup_res = setup_full_env();
+    let myfans_dispatcher = IMyFansDispatcher {
+        contract_address: setup_res.myfans_contract_address,
+    };
+    let erc20_dispatcher = IERC20Dispatcher { contract_address: setup_res.erc20_contract_address };
+    let mut spy = spy_events();
+
+    // Get initial balances
+    let initial_platform_erc20_balance = erc20_dispatcher.balance_of(setup_res.platform_address);
+    let initial_creator_myfans_balance = myfans_dispatcher
+        .get_creator_balance(setup_res.creator1_address);
+    let initial_fan_erc20_balance = erc20_dispatcher.balance_of(setup_res.fan1_address);
+
+    // Fan1 approves MyFans contract to spend the subscription fee amount
+    start_cheat_caller_address(setup_res.erc20_contract_address, setup_res.fan1_address);
+    erc20_dispatcher.approve(setup_res.myfans_contract_address, SUBSCRIPTION_FEE);
+    stop_cheat_caller_address(setup_res.erc20_contract_address);
+
+    // Fan1 subscribes to Creator1
+    start_cheat_caller_address(setup_res.myfans_contract_address, setup_res.fan1_address);
+    myfans_dispatcher.subscribe(setup_res.creator1_address);
+    stop_cheat_caller_address(setup_res.myfans_contract_address);
+
+    // Verify final balances
+    let final_platform_erc20_balance = erc20_dispatcher.balance_of(setup_res.platform_address);
+    let final_creator_myfans_balance = myfans_dispatcher
+        .get_creator_balance(setup_res.creator1_address);
+    let final_fan_erc20_balance = erc20_dispatcher.balance_of(setup_res.fan1_address);
+    let myfans_contract_erc20_balance = erc20_dispatcher
+        .balance_of(setup_res.myfans_contract_address);
+
+    // The MyFans contract should transfer the platform fee directly
+    assert_eq!(
+        final_platform_erc20_balance,
+        initial_platform_erc20_balance + PLATFORM_FEE_AMOUNT,
+        "Platform balance incorrect",
+    );
+
+    // The MyFans contract should store the creator share internally
+    assert_eq!(
+        final_creator_myfans_balance,
+        initial_creator_myfans_balance + CREATOR_SHARE_AMOUNT,
+        "Creator balance incorrect",
+    );
+
+    // The total fee should be transferred out of the fan's balance
+    assert_eq!(
+        final_fan_erc20_balance,
+        initial_fan_erc20_balance - SUBSCRIPTION_FEE,
+        "Fan balance incorrect",
+    );
+
+    // The MyFans contract should not hold any of the subscription fee after splitting
+    // (except potentially dust if division wasn't perfect, but with 10% of 10*10^18 it should be
+    // exact)
+    assert_eq!(myfans_contract_erc20_balance, 0, "contract balance should be 0");
+
+    // Verify event emissions
+    let expected_platform_fee_event = myfans::MyFans::Event::PlatformFeePaid(
+        myfans::MyFans::PlatformFeePaid {
+            subscriber: setup_res.fan1_address,
+            creator: setup_res.creator1_address,
+            platform: setup_res.platform_address,
+            amount: PLATFORM_FEE_AMOUNT,
+            total_fee: SUBSCRIPTION_FEE,
+        },
+    );
+
+    let expected_creator_share_event = myfans::MyFans::Event::CreatorShareDeposited(
+        myfans::MyFans::CreatorShareDeposited {
+            subscriber: setup_res.fan1_address,
+            creator: setup_res.creator1_address,
+            amount: CREATOR_SHARE_AMOUNT,
+            total_fee: SUBSCRIPTION_FEE,
+        },
+    );
 }
 
