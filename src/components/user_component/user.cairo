@@ -179,23 +179,20 @@ pub mod UserComponent {
 
 
         /// @notice Get the list of addresses the user is following
-        /// @notice Get the list of addresses the user is following
         fn get_following(
             self: @ComponentState<TContractState>, user: ContractAddress,
         ) -> Span<ContractAddress> {
             let count = self.following_count.read(user);
             let mut following_list: Array<ContractAddress> = ArrayTrait::new();
 
-            let mut i = 0;
-            while i < count {
+            // iterate i from 0 up to (but not including) count
+            for i in 0..count {
                 let following = self.user_following.read((user, i));
                 following_list.append(following);
-                i += 1;
             };
 
             following_list.span()
         }
-
 
         /// @notice Get the list of followers for a user
         fn get_followers(
@@ -204,11 +201,10 @@ pub mod UserComponent {
             let count = self.follower_count.read(user);
             let mut follower_list: Array<ContractAddress> = ArrayTrait::new();
 
-            let mut i = 0;
-            while i < count {
+            // iterate i from 0 up to (but not including) count
+            for i in 0..count {
                 let follower = self.user_followers.read((user, i));
                 follower_list.append(follower);
-                i += 1;
             };
 
             follower_list.span()
