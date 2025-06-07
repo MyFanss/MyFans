@@ -154,7 +154,7 @@ pub mod ContentComponent {
                         active_content.append(id_u256);
                     }
                 }
-            };
+            }
 
             active_content
         }
