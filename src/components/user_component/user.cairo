@@ -10,6 +10,7 @@ pub mod UserComponent {
     use starknet::{
         ContractAddress, contract_address_const, get_block_timestamp, get_caller_address,
     };
+    use super::IUser;
 
     #[storage]
     pub struct Storage {
@@ -24,6 +25,9 @@ pub mod UserComponent {
         following_count: Map<ContractAddress, u256>,
         user_followers: Map<(ContractAddress, u256), ContractAddress>, // who follows a user
         follower_count: Map<ContractAddress, u256>,
+        is_blocked: Map<(ContractAddress, ContractAddress), bool>,
+        user_follower_before_block: Map<(ContractAddress, ContractAddress), bool>,
+        blocked_count: Map<ContractAddress, u256>,
     }
 
     #[event]
@@ -31,6 +35,8 @@ pub mod UserComponent {
     pub enum Event {
         UserCreated: UserCreated,
         UserUpdated: UserUpdated,
+        UserBlocked: UserBlocked,
+        UserUnblocked: UserUnblocked,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -44,6 +50,22 @@ pub mod UserComponent {
     struct UserUpdated {
         #[key]
         owner_address: ContractAddress,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct UserBlocked {
+        #[key]
+        blocker: ContractAddress,
+        #[key]
+        blocked: ContractAddress,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct UserUnblocked {
+        #[key]
+        blocker: ContractAddress,
+        #[key]
+        blocked: ContractAddress,
     }
 
     #[embeddable_as(UserImpl)]
@@ -151,25 +173,27 @@ pub mod UserComponent {
             let caller = get_caller_address();
 
             // Prevent users from unfollowing themselves
-            assert(caller != unfollow_address, 'Cannot unfollow yourself');
+            // assert(caller != unfollow_address, 'Cannot unfollow yourself');
 
-            // Ensure the caller is actually following the user
-            let is_following = self.following_map.read((caller, unfollow_address));
-            assert(is_following, 'Not currently following user');
+            // // Ensure the caller is actually following the user
+            // let is_following = self.following_map.read((caller, unfollow_address));
+            // assert(is_following, 'Not currently following user');
 
-            // Decrease follow counts in user profiles
-            let mut caller_user = self.get_user_profile(caller);
-            caller_user.following -= 1;
-            caller_user.updated_at = get_block_timestamp();
-            self.user.write(caller, caller_user);
+            // // Decrease follow counts in user profiles
+            // let mut caller_user = self.get_user_profile(caller);
+            // caller_user.following -= 1;
+            // caller_user.updated_at = get_block_timestamp();
+            // self.user.write(caller, caller_user);
 
-            let mut unfollowed_user = self.get_user_profile(unfollow_address);
-            unfollowed_user.followers -= 1;
-            unfollowed_user.updated_at = get_block_timestamp();
-            self.user.write(unfollow_address, unfollowed_user);
+            // let mut unfollowed_user = self.get_user_profile(unfollow_address);
+            // unfollowed_user.followers -= 1;
+            // unfollowed_user.updated_at = get_block_timestamp();
+            // self.user.write(unfollow_address, unfollowed_user);
 
-            // Update follow map to indicate unfollow
-            self.following_map.write((caller, unfollow_address), false);
+            // // Update follow map to indicate unfollow
+            // self.following_map.write((caller, unfollow_address), false);
+
+            self._unfollow_user(caller, unfollow_address);
 
             // NOTE: You might also want to remove the entry from `user_following` and
             // `user_followers` if required
@@ -215,6 +239,97 @@ pub mod UserComponent {
             ref self: ComponentState<TContractState>, user: ContractAddress,
         ) -> User {
             self.user.read(user)
+        }
+
+        fn block_user(ref self: ComponentState<TContractState>, user: ContractAddress) -> bool {
+            let caller: ContractAddress = get_caller_address();
+            let zero_address = contract_address_const::<'0x0'>();
+
+            assert!(caller != user, "caller cannot block self");
+            // confirm user is not blocked before
+            let is_userblocked: bool = self.is_blocked.read((caller, user));
+            assert!(!is_userblocked, "user already blocked");
+            assert!(user != zero_address, "zero address not allowed");
+
+            //check if user caller is following user
+            let is_caller_following_user: bool = self.following_map.read((caller, user));
+
+            if (is_caller_following_user) {
+                self._unfollow_user(caller, user);
+                self.user_follower_before_block.write((caller, user), true);
+            }
+
+            // update the state
+            self.is_blocked.write((caller, user), true);
+            // increment the number of caller blocked
+            let number_of_blocked: u256 = self.blocked_count.read(caller);
+            self.blocked_count.write(caller, (number_of_blocked + 1));
+
+            // emit an event
+            self.emit(Event::UserBlocked(UserBlocked { blocker: caller, blocked: user }));
+
+            false
+        }
+
+
+        fn unblock_user(ref self: ComponentState<TContractState>, user: ContractAddress) -> bool {
+            let caller: ContractAddress = get_caller_address();
+
+            assert!(caller != user, "action cannot be carried out on self");
+            let is_userblocked: bool = self.is_blocked.read((caller, user));
+            assert!(is_userblocked, "user is not blocked");
+
+            // check if previously a follower
+            let is_user_follower: bool = self.user_follower_before_block.read((caller, user));
+            self.is_blocked.write((caller, user), false);
+
+            let number_of_blocked: u256 = self.blocked_count.read(caller);
+            self.blocked_count.write(caller, (number_of_blocked - 1));
+            if (is_user_follower) {
+                // follow the user back
+                self.follow_user(user);
+            }
+
+            self.emit(Event::UserUnblocked(UserUnblocked { blocker: caller, blocked: user }));
+            true
+        }
+
+        // @dev this give the total number of blocked users by a user
+        fn get_user_blocked_count(self: @ComponentState<TContractState>) -> u256 {
+            let caller: ContractAddress = get_caller_address();
+
+            return self.blocked_count.read(caller);
+        }
+    }
+
+    #[generate_trait]
+    impl InternalImpl<
+        TContractState, +HasComponent<TContractState>,
+    > of InternalImplTrait<TContractState> {
+        fn _unfollow_user(
+            ref self: ComponentState<TContractState>,
+            caller: ContractAddress,
+            unfollow_address: ContractAddress,
+        ) {
+            assert(caller != unfollow_address, 'Cannot unfollow yourself');
+
+            // Ensure the caller is actually following the user
+            let is_following = self.following_map.read((caller, unfollow_address));
+            assert(is_following, 'Not currently following user');
+
+            // Decrease follow counts in user profiles
+            let mut caller_user = self.get_user_profile(caller);
+            caller_user.following -= 1;
+            caller_user.updated_at = get_block_timestamp();
+            self.user.write(caller, caller_user);
+
+            let mut unfollowed_user = self.get_user_profile(unfollow_address);
+            unfollowed_user.followers -= 1;
+            unfollowed_user.updated_at = get_block_timestamp();
+            self.user.write(unfollow_address, unfollowed_user);
+
+            // Update follow map to indicate unfollow
+            self.following_map.write((caller, unfollow_address), false);
         }
     }
 }
