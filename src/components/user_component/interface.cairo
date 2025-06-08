@@ -37,6 +37,6 @@ pub trait IUser<TContractState> {
     // @param user: the address to unblock
     fn unblock_user(ref self: TContractState, user: ContractAddress) -> bool;
 
-    // @dev this give the total number of blocked users by a user 
+    // @dev this give the total number of blocked users by a user
     fn get_user_blocked_count(self: @TContractState) -> u256;
 }
