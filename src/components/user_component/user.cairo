@@ -36,7 +36,7 @@ pub mod UserComponent {
         UserCreated: UserCreated,
         UserUpdated: UserUpdated,
         UserBlocked: UserBlocked,
-        UserUnblocked: UserUnblocked
+        UserUnblocked: UserUnblocked,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -245,7 +245,6 @@ pub mod UserComponent {
             let caller: ContractAddress = get_caller_address();
             let zero_address = contract_address_const::<'0x0'>();
 
-
             assert!(caller != user, "caller cannot block self");
             // confirm user is not blocked before
             let is_userblocked: bool = self.is_blocked.read((caller, user));
@@ -266,13 +265,9 @@ pub mod UserComponent {
             let number_of_blocked: u256 = self.blocked_count.read(caller);
             self.blocked_count.write(caller, (number_of_blocked + 1));
 
-
             // emit an event
-            self.emit(Event::UserBlocked(UserBlocked {
-                blocker: caller,
-                blocked: user
-            }));
-            
+            self.emit(Event::UserBlocked(UserBlocked { blocker: caller, blocked: user }));
+
             false
         }
 
@@ -290,15 +285,12 @@ pub mod UserComponent {
 
             let number_of_blocked: u256 = self.blocked_count.read(caller);
             self.blocked_count.write(caller, (number_of_blocked - 1));
-            if(is_user_follower) {
+            if (is_user_follower) {
                 // follow the user back
                 self.follow_user(user);
             }
 
-            self.emit(Event::UserUnblocked(UserUnblocked{
-                blocker: caller,
-                blocked: user
-            }));
+            self.emit(Event::UserUnblocked(UserUnblocked { blocker: caller, blocked: user }));
             true
         }
 
@@ -310,12 +302,14 @@ pub mod UserComponent {
         }
     }
 
-     #[generate_trait]
+    #[generate_trait]
     impl InternalImpl<
         TContractState, +HasComponent<TContractState>,
     > of InternalImplTrait<TContractState> {
         fn _unfollow_user(
-            ref self: ComponentState<TContractState>, caller: ContractAddress, unfollow_address: ContractAddress,
+            ref self: ComponentState<TContractState>,
+            caller: ContractAddress,
+            unfollow_address: ContractAddress,
         ) {
             assert(caller != unfollow_address, 'Cannot unfollow yourself');
 
