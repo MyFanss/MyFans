@@ -2,7 +2,8 @@ use myfans::components::user_component::interface::IUser;
 
 #[starknet::component]
 pub mod UserComponent {
-    use myfans::components::user_component::types::User;
+    use super::IUser;
+use myfans::components::user_component::types::User;
     use starknet::storage::{
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess,
@@ -24,6 +25,8 @@ pub mod UserComponent {
         following_count: Map<ContractAddress, u256>,
         user_followers: Map<(ContractAddress, u256), ContractAddress>, // who follows a user
         follower_count: Map<ContractAddress, u256>,
+        is_blocked: Map<(ContractAddress, ContractAddress), bool>,
+        blocked_count: Map<ContractAddress, u256>
     }
 
     #[event]
@@ -216,5 +219,43 @@ pub mod UserComponent {
         ) -> User {
             self.user.read(user)
         }
+
+        fn block_user(ref self: ComponentState<TContractState>, user: ContractAddress) -> bool {
+            let caller: ContractAddress = get_caller_address();
+            let zero_address = contract_address_const::<'0x0'>()
+
+            assert!(caller != user, "caller cannot block self");
+            // confirm user is not blocked before 
+            let is_userblocked: bool = self.is_blocked.read((caller, user));
+            assert!(!is_userblocked, "user already blocked");
+            assert!(user != zero_address, "zero address not allowed");
+
+            //check if user caller is following user
+            let is_caller_following_user: bool = self.following_map.read((caller, user));
+            
+            if(is_caller_following_user) {
+                self.unfollow_user(user);
+            }
+
+            // update the state
+            self.is_blocked.write((caller, user), true);
+            // increment the number of caller blocked
+            let number_of_blocked: u256 = self.blocked_count.read(caller);
+            self.blocked_count.write(caller, (number_of_blocked + 1));
+
+            // emit an event
+            false
+        }
+
+    
+    fn unblock_user(ref self: ComponentState<TContractState>, user: ContractAddress) -> bool {
+        false
+    }
+
+    // @dev this give the total number of blocked users by a user 
+    fn get_user_blocked_count(self: @ComponentState<TContractState>) -> u256 {
+        0
+    }
+
     }
 }
