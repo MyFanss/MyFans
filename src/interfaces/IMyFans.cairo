@@ -12,4 +12,7 @@ pub trait IMyFans<TContractState> { // Main contract functionality will be added
     );
     fn set_autorenew(ref self: TContractState, creator_address: ContractAddress, enable: bool);
     fn get_creator_balance(self: @TContractState, creator: ContractAddress) -> u256;
+    fn is_subscription_active(
+        self: @TContractState, fan_address: ContractAddress, creator: ContractAddress,
+    ) -> bool;
 }
