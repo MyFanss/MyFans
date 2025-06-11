@@ -238,6 +238,13 @@ pub mod MyFans {
             sub
         }
 
+        fn is_subscription_active(
+            self: @ContractState, fan_address: ContractAddress, creator: ContractAddress,
+        ) -> bool {
+            let subscription = self.subscriptions.read((fan_address, creator));
+            subscription.expiry_time <= get_block_timestamp()
+        }
+
         fn renew_subscription(
             ref self: ContractState, fan_address: ContractAddress, creator_address: ContractAddress,
         ) {
