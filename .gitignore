@@ -1,5 +1,38 @@
-target
-.snfoundry_cache/
-snfoundry_trace/
+# Dependencies
+node_modules/
+
+# Contract (Rust / Soroban)
+contract/target/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build / cache
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Misc
+*.pem
+.vercel
 coverage/
-profile/
