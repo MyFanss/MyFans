@@ -4,7 +4,7 @@
 
 ---
 
-## Why Stellar (Improved Over L1/Other Chains)
+## Why Stellar
 
 - **Speed & cost**: 3–5 second finality and very low fees, suitable for subscriptions and micro-payments.
 - **Multi-currency**: Native support for XLM and Stellar assets (e.g. USDC, EURT) so fans can pay in stablecoins or XLM.
@@ -151,7 +151,7 @@ You will keep only these three folders and this README; other files can be remov
 
 ---
 
-## Development Milestones (Stellar Version)
+## Development Milestones
 
 1. **Contract**
    - Implement subscription lifecycle (create plan, subscribe, renew, cancel).
@@ -195,4 +195,4 @@ MIT.
 
 - Email: realjaiboi70@gmail.com
 
-This README describes the improved Stellar-based MyFans design. Implement each module (contract, backend, frontend) step by step and remove any other files in the repo as needed.
+This README describes the MyFans project on Stellar. Implement each module (contract, backend, frontend) step by step as needed.
