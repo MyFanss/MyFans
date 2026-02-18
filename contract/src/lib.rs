@@ -1,6 +1,8 @@
 //! MyFans – Soroban subscription and payment contract (scaffold).
 //! See repository README for full interface and deployment.
 
+#![no_std]
+
 use soroban_sdk::{contract, contractimpl, Env};
 
 #[contract]
