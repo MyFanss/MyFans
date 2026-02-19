@@ -23,12 +23,50 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+MyFans backend API - a NestJS application with TypeScript, TypeORM, and PostgreSQL. Serves as the API layer for the creator/fans subscription platform, handling users, creators, subscriptions, posts, payments, and messaging.
 
-## Project setup
+## Local Setup
+
+### Prerequisites
+
+- Node.js 18+ LTS
+- Docker and Docker Compose (for PostgreSQL)
+
+### 1. Start PostgreSQL with Docker Compose
 
 ```bash
-$ npm install
+# Use either command (Docker Compose v2 or standalone)
+docker compose up -d
+# or
+docker-compose up -d
+```
+
+This starts:
+- **PostgreSQL** on port 5432 (default credentials: postgres/postgres)
+- **Redis** on port 6379 (optional, for future caching)
+
+### 2. Configure Environment
+
+```bash
+cp .env.example .env
+# Edit .env with your local values if needed
+```
+
+### 3. Install Dependencies
+
+```bash
+npm install
+```
+
+### 4. Run the Application
+
+```bash
+# development (watch mode)
+npm run start:dev
+
+# production
+npm run build
+npm run start:prod
 ```
 
 ## Compile and run the project
