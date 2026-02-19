@@ -1,19 +1,9 @@
-[package]
-name = "myfans-contract"
-version = "0.1.0"
-edition = "2021"
-publish = false
-description = "MyFans subscription and payment logic on Stellar Soroban"
+[workspace]
+members = ["contracts/*"]
+resolver = "2"
 
-[lib]
-crate-type = ["cdylib"]
-doctest = false
-
-[dependencies]
-soroban-sdk = "22"
-
-[dev-dependencies]
-soroban-sdk = { version = "22", features = ["testutils"] }
+[workspace.dependencies]
+soroban-sdk = "21.7.0"
 
 [profile.release]
 opt-level = "z"
@@ -27,5 +17,4 @@ lto = true
 
 [profile.release-with-logs]
 inherits = "release"
-debug = 1
-strip = "debuginfo"
+debug-assertions = true
