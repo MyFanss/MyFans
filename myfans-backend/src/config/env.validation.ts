@@ -7,6 +7,10 @@ const requiredEnvVars = [
 ] as const;
 
 export function validate(config: Record<string, unknown>): Record<string, unknown> {
+  if (config.NODE_ENV === 'test') {
+    return config;
+  }
+
   const missing = requiredEnvVars.filter(
     (key) => !config[key] || String(config[key]).trim() === '',
   );
