@@ -56,9 +56,8 @@ export class Post {
   @Column({
     name: 'media_urls',
     type: 'simple-json',
-    default: [],
   })
-  media_urls!: string[];
+  media_urls: string[] = [];
 
   @Column({ name: 'published_at', type: 'datetime', nullable: true })
   published_at!: Date | null;
