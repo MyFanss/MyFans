@@ -4,7 +4,6 @@ import { TestValidationDto } from './app/dto/test-validation.dto';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 
-
 @Controller()
 export class AppController {
   constructor(
@@ -31,13 +30,15 @@ export class AppController {
       }
       return { status: 'ok', redis: 'connected' };
     } catch (error: any) {
-      return { status: 'error', redis: 'disconnected', message: error?.message || 'Unknown error' };
+      return {
+        status: 'error',
+        redis: 'disconnected',
+        message: error?.message || 'Unknown error',
+      };
     }
   }
 
-
   @Post('validate-test')
-
   validateTest(@Body() dto: TestValidationDto) {
     return { received: dto };
   }

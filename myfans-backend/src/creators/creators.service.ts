@@ -27,7 +27,8 @@ export class CreatorsService {
   private async invalidateCache() {
     try {
       const cacheAny = this.cacheManager as any;
-      const store = cacheAny.store || (cacheAny.stores ? cacheAny.stores[0] : null);
+      const store =
+        cacheAny.store || (cacheAny.stores ? cacheAny.stores[0] : null);
       if (store && store.client && typeof store.client.keys === 'function') {
         const keys = await store.client.keys('*creators*');
         if (keys.length > 0) {
@@ -44,8 +45,6 @@ export class CreatorsService {
       console.error('Failed to invalidate creators cache:', error);
     }
   }
-
-
 
   async findAll(query: FindCreatorsQueryDto) {
     const { page = 1, limit = 20, is_verified, min_price, max_price } = query;
@@ -104,13 +103,17 @@ export class CreatorsService {
       .getOne();
 
     if (!creator) {
-      throw new NotFoundException(`Creator with username ${username} not found`);
+      throw new NotFoundException(
+        `Creator with username ${username} not found`,
+      );
     }
     return this.toDetailItem(creator);
   }
 
   async follow(creatorId: string, followerId: string) {
-    const creator = await this.creatorRepo.findOne({ where: { id: creatorId } });
+    const creator = await this.creatorRepo.findOne({
+      where: { id: creatorId },
+    });
     if (!creator) {
       throw new NotFoundException(`Creator with id ${creatorId} not found`);
     }
@@ -137,7 +140,9 @@ export class CreatorsService {
   }
 
   async unfollow(creatorId: string, followerId: string) {
-    const creator = await this.creatorRepo.findOne({ where: { id: creatorId } });
+    const creator = await this.creatorRepo.findOne({
+      where: { id: creatorId },
+    });
     if (!creator) {
       throw new NotFoundException(`Creator with id ${creatorId} not found`);
     }
