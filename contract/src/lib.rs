@@ -15,7 +15,7 @@ impl MyfansContract {
     }
 
     /// Placeholder: check if an address is an active subscriber for a creator.
-    /// Implement full subscription state and payment logic as per README.
+    /// Implement full subscription state and payment logic as per README. Hii
     pub fn is_subscriber(_env: Env, _fan: soroban_sdk::Address, _creator: soroban_sdk::Address) -> bool {
         false
     }
