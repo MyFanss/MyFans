@@ -16,6 +16,7 @@ import { UsersModule } from './users/users.module';
       database: process.env.DB_NAME || 'myfans',
       entities: [User],
       synchronize: true,
+      autoLoadEntities: true,
     }),
     UsersModule,
   ],
