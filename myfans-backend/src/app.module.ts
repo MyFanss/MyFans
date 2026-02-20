@@ -12,6 +12,7 @@ import { PostsModule } from './posts/posts.module';
 import { MessagesModule } from './messages/messages.module';
 import { PaymentsModule } from './payments/payments.module';
 import { CommentsModule } from './comments/comments.module';
+import { EarningsModule } from './earnings/earnings.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import { redisStore } from 'cache-manager-redis-yet';
 
@@ -65,6 +66,7 @@ import { redisStore } from 'cache-manager-redis-yet';
     MessagesModule,
     PaymentsModule,
     CommentsModule,
+    EarningsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
