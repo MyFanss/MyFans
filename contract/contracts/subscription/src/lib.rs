@@ -38,6 +38,10 @@ impl MyfansContract {
         env.storage().instance().set(&DataKey::PlanCount, &0u32);
     }
 
+    pub fn admin(env: Env) -> Address {
+        env.storage().instance().get(&DataKey::Admin).unwrap()
+    }
+
     pub fn create_plan(env: Env, creator: Address, asset: Address, amount: i128, interval_days: u32) -> u32 {
         creator.require_auth();
         let count: u32 = env.storage().instance().get(&DataKey::PlanCount).unwrap_or(0);

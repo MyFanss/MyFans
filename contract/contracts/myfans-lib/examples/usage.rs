@@ -1,5 +1,3 @@
-#![no_std]
-
 //! Example contract demonstrating myfans-lib usage
 //! 
 //! This shows how to import and use SubscriptionStatus and ContentType
@@ -33,6 +31,8 @@ impl ExampleContract {
         content_type == ContentType::Paid
     }
 }
+
+fn main() {}
 
 #[cfg(test)]
 mod test {
