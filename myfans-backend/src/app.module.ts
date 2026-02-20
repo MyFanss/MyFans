@@ -9,6 +9,7 @@ import { UsersModule } from './users/users.module';
 import { CreatorsModule } from './creators/creators.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { PostsModule } from './posts/posts.module';
+import { MessagesModule } from './messages/messages.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { PostsModule } from './posts/posts.module';
     CreatorsModule,
     SubscriptionsModule,
     PostsModule,
+    MessagesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
