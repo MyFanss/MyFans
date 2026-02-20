@@ -28,7 +28,6 @@ export class CreatorsController {
     return this.creatorsService.findAll(query);
   }
 
-
   @Get('by-username/:username')
   findOneByUsername(@Param('username') username: string) {
     return this.creatorsService.findOneByUsername(username);
@@ -41,19 +40,13 @@ export class CreatorsController {
 
   @Post(':id/follow')
   @UseGuards(AuthGuard)
-  follow(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: User,
-  ) {
+  follow(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     return this.creatorsService.follow(id, user.id);
   }
 
   @Delete(':id/follow')
   @UseGuards(AuthGuard)
-  unfollow(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: User,
-  ) {
+  unfollow(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     return this.creatorsService.unfollow(id, user.id);
   }
 }

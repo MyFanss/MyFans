@@ -36,7 +36,6 @@ import { redisStore } from 'cache-manager-redis-yet';
       },
     }),
     TypeOrmModule.forRootAsync({
-
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) =>
@@ -55,7 +54,8 @@ import { redisStore } from 'cache-manager-redis-yet';
               password: configService.get<string>('DB_PASSWORD'),
               database: configService.get<string>('DB_DATABASE'),
               autoLoadEntities: true,
-              synchronize: configService.get<string>('NODE_ENV') !== 'production',
+              synchronize:
+                configService.get<string>('NODE_ENV') !== 'production',
             },
     }),
     UsersModule,

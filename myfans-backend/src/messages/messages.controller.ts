@@ -30,7 +30,9 @@ export class MessagesController {
       user.id,
       createConversationDto.creator_id,
     );
-    const lastMessage = await this.messagesService.getLastMessage(conversation.id);
+    const lastMessage = await this.messagesService.getLastMessage(
+      conversation.id,
+    );
     return {
       ...conversation,
       lastMessage,
@@ -50,7 +52,7 @@ export class MessagesController {
   ) {
     // Validate participant
     await this.messagesService.getConversationById(id, user.id);
-    
+
     // Mark as read when viewing messages
     await this.messagesService.markAsRead(id, user.id);
 

@@ -15,4 +15,3 @@ export default () => ({
     posts_ttl: parseInt(process.env.CACHE_TTL_POSTS ?? '120', 10),
   },
 });
-

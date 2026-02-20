@@ -1,4 +1,11 @@
-import { IsOptional, IsEnum, IsNumber, Min, Max, IsUUID } from 'class-validator';
+import {
+  IsOptional,
+  IsEnum,
+  IsNumber,
+  Min,
+  Max,
+  IsUUID,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { PostType } from '../entities/post.entity';
 
