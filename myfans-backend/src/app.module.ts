@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import configuration from './config/configuration';
 import { validate } from './config/env.validation';
 import { UsersModule } from './users/users.module';
+import { CreatorsModule } from './creators/creators.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { UsersModule } from './users/users.module';
             },
     }),
     UsersModule,
+    CreatorsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
