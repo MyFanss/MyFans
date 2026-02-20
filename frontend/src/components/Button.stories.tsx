@@ -127,6 +127,7 @@ export const DisabledWallet: Story = {
 
 // All Variants in Sizes
 export const AllVariantsSmall: Story = {
+  args: {},
   parameters: {
     layout: 'padded',
   },
@@ -149,6 +150,7 @@ export const AllVariantsSmall: Story = {
 };
 
 export const AllVariantsMedium: Story = {
+  args: {},
   parameters: {
     layout: 'padded',
   },
