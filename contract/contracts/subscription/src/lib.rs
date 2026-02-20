@@ -1,173 +1,89 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env};
-use myfans_lib::SubscriptionStatus;
+use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SubscriptionCreated {
-    pub fan: Address,
+pub struct Plan {
     pub creator: Address,
-    pub expires_at: u64,
+    pub asset: Address,
+    pub amount: i128,
+    pub interval_days: u32,
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SubscriptionCancelled {
+pub struct Subscription {
     pub fan: Address,
-    pub creator: Address,
+    pub plan_id: u32,
+    pub expiry: u64,
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SubscriptionExpired {
-    pub fan: Address,
-    pub creator: Address,
+pub enum DataKey {
+    Admin,
+    FeeBps,
+    FeeRecipient,
+    PlanCount,
+    Plan(u32),
+    Sub(Address, Address),
 }
 
 #[contract]
-pub struct SubscriptionContract;
+pub struct MyfansContract;
 
 #[contractimpl]
-impl SubscriptionContract {
-    pub fn create_subscription(
-        env: Env,
-        fan: Address,
-        creator: Address,
-        expires_at: u64,
-    ) -> SubscriptionStatus {
-        let key = (fan.clone(), creator.clone());
-        env.storage().instance().set(&key, &expires_at);
-
-        env.events().publish(
-            (symbol_short!("sub_new"),),
-            SubscriptionCreated {
-                fan,
-                creator,
-                expires_at,
-            },
-        );
-
-        SubscriptionStatus::Active
+impl MyfansContract {
+    pub fn init(env: Env, admin: Address, fee_bps: u32, fee_recipient: Address) {
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
+        env.storage().instance().set(&DataKey::FeeRecipient, &fee_recipient);
+        env.storage().instance().set(&DataKey::PlanCount, &0u32);
     }
 
-    pub fn cancel_subscription(env: Env, fan: Address, creator: Address) {
-        let key = (fan.clone(), creator.clone());
-        env.storage().instance().remove(&key);
-
-        env.events().publish(
-            (symbol_short!("sub_cncl"),),
-            SubscriptionCancelled { fan, creator },
-        );
+    pub fn create_plan(env: Env, creator: Address, asset: Address, amount: i128, interval_days: u32) -> u32 {
+        creator.require_auth();
+        let count: u32 = env.storage().instance().get(&DataKey::PlanCount).unwrap_or(0);
+        let plan_id = count + 1;
+        let plan = Plan { creator: creator.clone(), asset, amount, interval_days };
+        env.storage().instance().set(&DataKey::Plan(plan_id), &plan);
+        env.storage().instance().set(&DataKey::PlanCount, &plan_id);
+        env.events().publish((Symbol::new(&env, "plan_created"), plan_id), creator);
+        plan_id
     }
 
-    pub fn expire_subscription(env: Env, fan: Address, creator: Address) {
-        let key = (fan.clone(), creator.clone());
-        env.storage().instance().remove(&key);
-
-        env.events().publish(
-            (symbol_short!("sub_exp"),),
-            SubscriptionExpired { fan, creator },
-        );
+    pub fn subscribe(env: Env, fan: Address, plan_id: u32) {
+        fan.require_auth();
+        let plan: Plan = env.storage().instance().get(&DataKey::Plan(plan_id)).unwrap();
+        let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
+        let fee_recipient: Address = env.storage().instance().get(&DataKey::FeeRecipient).unwrap();
+        
+        let fee = (plan.amount * fee_bps as i128) / 10000;
+        let creator_amount = plan.amount - fee;
+        
+        let token_client = token::Client::new(&env, &plan.asset);
+        token_client.transfer(&fan, &plan.creator, &creator_amount);
+        if fee > 0 {
+            token_client.transfer(&fan, &fee_recipient, &fee);
+        }
+        
+        let expiry = env.ledger().timestamp() + (plan.interval_days as u64 * 86400);
+        let sub = Subscription { fan: fan.clone(), plan_id, expiry };
+        env.storage().instance().set(&DataKey::Sub(fan.clone(), plan.creator.clone()), &sub);
+        env.events().publish((Symbol::new(&env, "subscribed"), plan_id), fan);
     }
 
-    pub fn get_expiry(env: Env, fan: Address, creator: Address) -> Option<u64> {
-        let key = (fan, creator);
-        env.storage().instance().get(&key)
+    pub fn is_subscriber(env: Env, fan: Address, creator: Address) -> bool {
+        if let Some(sub) = env.storage().instance().get::<DataKey, Subscription>(&DataKey::Sub(fan, creator)) {
+            sub.expiry > env.ledger().timestamp()
+        } else {
+            false
+        }
+    }
+
+    pub fn cancel(env: Env, fan: Address, creator: Address) {
+        fan.require_auth();
+        env.storage().instance().remove(&DataKey::Sub(fan.clone(), creator));
+        env.events().publish((Symbol::new(&env, "cancelled"),), fan);
     }
 }
 
 #[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
-
-    #[test]
-    fn test_create_subscription_emits_event() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, SubscriptionContract);
-        let client = SubscriptionContractClient::new(&env, &contract_id);
-
-        let fan = Address::generate(&env);
-        let creator = Address::generate(&env);
-        let expires_at = 1000;
-
-        let status = client.create_subscription(&fan, &creator, &expires_at);
-        assert_eq!(status, SubscriptionStatus::Active);
-
-        let events = env.events().all();
-        assert_eq!(events.len(), 1);
-
-        let event = events.get(0).unwrap();
-        assert_eq!(
-            event.topics,
-            (symbol_short!("sub_new"),)
-        );
-    }
-
-    #[test]
-    fn test_cancel_subscription_emits_event() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, SubscriptionContract);
-        let client = SubscriptionContractClient::new(&env, &contract_id);
-
-        let fan = Address::generate(&env);
-        let creator = Address::generate(&env);
-        let expires_at = 1000;
-
-        client.create_subscription(&fan, &creator, &expires_at);
-        client.cancel_subscription(&fan, &creator);
-
-        let events = env.events().all();
-        assert_eq!(events.len(), 2);
-
-        let cancel_event = events.get(1).unwrap();
-        assert_eq!(
-            cancel_event.topics,
-            (symbol_short!("sub_cncl"),)
-        );
-    }
-
-    #[test]
-    fn test_expire_subscription_emits_event() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, SubscriptionContract);
-        let client = SubscriptionContractClient::new(&env, &contract_id);
-
-        let fan = Address::generate(&env);
-        let creator = Address::generate(&env);
-        let expires_at = 1000;
-
-        client.create_subscription(&fan, &creator, &expires_at);
-        client.expire_subscription(&fan, &creator);
-
-        let events = env.events().all();
-        assert_eq!(events.len(), 2);
-
-        let expire_event = events.get(1).unwrap();
-        assert_eq!(
-            expire_event.topics,
-            (symbol_short!("sub_exp"),)
-        );
-    }
-
-    #[test]
-    fn test_subscription_lifecycle() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, SubscriptionContract);
-        let client = SubscriptionContractClient::new(&env, &contract_id);
-
-        let fan = Address::generate(&env);
-        let creator = Address::generate(&env);
-        let expires_at = 1000;
-
-        client.create_subscription(&fan, &creator, &expires_at);
-        
-        let expiry = client.get_expiry(&fan, &creator);
-        assert_eq!(expiry, Some(expires_at));
-
-        client.cancel_subscription(&fan, &creator);
-        
-        let expiry_after_cancel = client.get_expiry(&fan, &creator);
-        assert_eq!(expiry_after_cancel, None);
-    }
-}
+mod test;

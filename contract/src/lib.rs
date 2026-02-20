@@ -78,8 +78,28 @@ impl MyfansContract {
         }
     }
 
+    /// Alias matching the issue spec naming. Delegates to `is_subscriber`.
+    pub fn is_subscribed(env: Env, fan: Address, creator: Address) -> bool {
+        if let Some(sub) = env.storage().instance().get::<DataKey, Subscription>(&DataKey::Sub(fan, creator)) {
+            sub.expiry > env.ledger().timestamp()
+        } else {
+            false
+        }
+    }
+
+    /// Returns Some(expiry) if subscription exists, None otherwise.
+    pub fn get_subscription_expiry(env: Env, fan: Address, creator: Address) -> Option<u64> {
+        env.storage().instance()
+            .get::<DataKey, Subscription>(&DataKey::Sub(fan, creator))
+            .map(|sub| sub.expiry)
+    }
+
+    /// Cancel a subscription. Only the fan can cancel. Panics if no subscription exists.
     pub fn cancel(env: Env, fan: Address, creator: Address) {
         fan.require_auth();
+        if !env.storage().instance().has(&DataKey::Sub(fan.clone(), creator.clone())) {
+            panic!("subscription does not exist");
+        }
         env.storage().instance().remove(&DataKey::Sub(fan.clone(), creator));
         env.events().publish((Symbol::new(&env, "cancelled"),), fan);
     }
