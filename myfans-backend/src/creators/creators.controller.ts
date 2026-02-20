@@ -1,10 +1,16 @@
 import {
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
+  Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
+import { AuthGuard } from '../auth/auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { User } from '../users/entities/user.entity';
 import { CreatorsService } from './creators.service';
 import { FindCreatorsQueryDto } from './dto/find-creators-query.dto';
 
@@ -25,5 +31,23 @@ export class CreatorsController {
   @Get(':id')
   findOneById(@Param('id', ParseUUIDPipe) id: string) {
     return this.creatorsService.findOneById(id);
+  }
+
+  @Post(':id/follow')
+  @UseGuards(AuthGuard)
+  follow(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.creatorsService.follow(id, user.id);
+  }
+
+  @Delete(':id/follow')
+  @UseGuards(AuthGuard)
+  unfollow(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.creatorsService.unfollow(id, user.id);
   }
 }

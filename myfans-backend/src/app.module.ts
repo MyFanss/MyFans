@@ -11,6 +11,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { PostsModule } from './posts/posts.module';
 import { MessagesModule } from './messages/messages.module';
 import { PaymentsModule } from './payments/payments.module';
+import { CommentsModule } from './comments/comments.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { PaymentsModule } from './payments/payments.module';
     PostsModule,
     MessagesModule,
     PaymentsModule,
+    CommentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
