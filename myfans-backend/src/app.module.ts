@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import configuration from './config/configuration';
 import { validate } from './config/env.validation';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { validate } from './config/env.validation';
               synchronize: configService.get<string>('NODE_ENV') !== 'production',
             },
     }),
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
