@@ -12,6 +12,8 @@ import { PostsModule } from './posts/posts.module';
 import { MessagesModule } from './messages/messages.module';
 import { PaymentsModule } from './payments/payments.module';
 import { CommentsModule } from './comments/comments.module';
+import { CacheModule } from '@nestjs/cache-manager';
+import { redisStore } from 'cache-manager-redis-yet';
 
 @Module({
   imports: [
@@ -20,7 +22,21 @@ import { CommentsModule } from './comments/comments.module';
       load: [configuration],
       validate,
     }),
+    CacheModule.registerAsync({
+      isGlobal: true,
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: async (configService: ConfigService) => {
+        const store = await redisStore({
+          url: configService.get<string>('redis.url'),
+          ttl: (configService.get<number>('cache.creators_ttl') ?? 300) * 1000,
+        });
+
+        return { store };
+      },
+    }),
     TypeOrmModule.forRootAsync({
+
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) =>
