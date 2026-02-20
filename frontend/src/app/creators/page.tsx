@@ -1,6 +1,9 @@
 'use client';
-import { useState } from 'react';
+
+import { Suspense, useState } from 'react';
 import WalletConnect from '@/components/WalletConnect';
+import { EarningsChart } from '@/components/earnings';
+import { EarningsChartSkeleton } from '@/components/earnings/EarningsChartSkeleton';
 
 export default function CreatorsPage() {
   const [asset, setAsset] = useState('');
@@ -17,6 +20,12 @@ export default function CreatorsPage() {
         <h1 className="text-2xl font-bold">Creator Dashboard</h1>
         <WalletConnect />
       </header>
+
+      <section className="mb-10" aria-label="Earnings">
+        <Suspense fallback={<EarningsChartSkeleton />}>
+          <EarningsChart />
+        </Suspense>
+      </section>
 
       <div className="max-w-2xl mx-auto">
         <h2 className="text-xl mb-4">Create Subscription Plan</h2>
