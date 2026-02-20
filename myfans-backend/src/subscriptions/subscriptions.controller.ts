@@ -24,10 +24,7 @@ export class SubscriptionsController {
   }
 
   @Delete(':id')
-  cancel(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: User,
-  ) {
+  cancel(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     return this.subscriptionsService.cancel(id, user.id);
   }
 
