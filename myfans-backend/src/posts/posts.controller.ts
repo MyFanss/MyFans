@@ -9,42 +9,57 @@ import {
   Query,
   ParseUUIDPipe,
   UseInterceptors,
+  UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PostsService } from './posts.service';
 import { FindPostsQueryDto } from './dto/find-posts-query.dto';
-import { CacheInterceptor, CacheKey, CacheTTL } from '@nestjs/cache-manager';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
+import { AuthGuard } from '../auth/auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { Public } from '../auth/public.decorator';
+import { User } from '../users/entities/user.entity';
+import { CreatePostDto } from './dto/create-post.dto';
+import { UpdatePostDto } from './dto/update-post.dto';
 
 @Controller('posts')
+@UseGuards(AuthGuard)
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
+  @Public()
   @Get()
   @UseInterceptors(CacheInterceptor)
-  @CacheTTL(120) // 2 minutes (overrides default if needed, though we will set it in module)
-  findAll(@Query() query: FindPostsQueryDto) {
-    return this.postsService.findAll(query);
+  @CacheTTL(120) // 2 minutes
+  findAll(@Query() query: FindPostsQueryDto, @CurrentUser() user?: User) {
+    return this.postsService.findAll(query, user?.id);
   }
 
+  @Public()
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.postsService.findOne(id);
+  findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: User) {
+    return this.postsService.findOne(id, user?.id);
   }
 
   @HttpPost()
-  create(@Body() dto: any) {
-    // In a real app, we'd get the creator from the current user
-    // For now, assume creator is passed or handled in service
-    return this.postsService.create(null, dto);
+  create(@Body() dto: CreatePostDto, @CurrentUser() user: User) {
+    if (!user.is_creator) {
+      throw new ForbiddenException('Only creators can create posts');
+    }
+    return this.postsService.create(user.id, dto);
   }
 
   @Patch(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any) {
-    return this.postsService.update(id, dto);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePostDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.postsService.update(id, dto, user.id);
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.postsService.delete(id);
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+    return this.postsService.delete(id, user.id);
   }
 }
-
