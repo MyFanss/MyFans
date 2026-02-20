@@ -44,9 +44,6 @@ export class User {
   @Column({ default: false })
   is_creator: boolean;
 
-  @Column({ nullable: true, unique: true })
-  wallet_address: string;
-
   @CreateDateColumn()
   created_at: Date;
 

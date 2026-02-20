@@ -18,8 +18,5 @@ export class UserProfileDto {
   is_creator: boolean;
 
   @Expose()
-  wallet_address: string;
-
-  @Expose()
   created_at: Date;
 }
