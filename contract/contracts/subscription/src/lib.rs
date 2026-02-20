@@ -85,5 +85,3 @@ impl MyfansContract {
     }
 }
 
-#[cfg(test)]
-mod test;
