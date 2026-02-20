@@ -1,13 +1,23 @@
 'use client';
 
-import { Suspense } from 'react';
+import { useState, useRef } from 'react';
 import WalletConnect from '@/components/WalletConnect';
-import { EarningsChart } from '@/components/earnings';
-import { EarningsChartSkeleton } from '@/components/earnings/EarningsChartSkeleton';
-import { SubscriptionPlanForm } from '@/components/plan';
-import { ContentLibrary } from '@/components/content-library';
+import { DashboardHome } from '@/components/dashboard';
 
 export default function CreatorsPage() {
+  const [asset, setAsset] = useState('');
+  const [amount, setAmount] = useState('');
+  const [days, setDays] = useState('30');
+  const createPlanSectionRef = useRef<HTMLDivElement>(null);
+
+  const handleCreatePlan = async () => {
+    alert(`Plan created: ${amount} ${asset} every ${days} days`);
+  };
+
+  const scrollToCreatePlan = () => {
+    createPlanSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   return (
     <div className="min-h-screen p-8">
       <header className="flex justify-between items-center mb-8">
@@ -15,38 +25,49 @@ export default function CreatorsPage() {
         <WalletConnect />
       </header>
 
-      <section className="mb-10" aria-label="Earnings">
-        <Suspense fallback={<EarningsChartSkeleton />}>
-          <EarningsChart />
-        </Suspense>
-      </section>
-
-      <section className="max-w-5xl mx-auto mb-10" aria-label="Create or edit subscription plan">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">Create subscription plan</h2>
-        <SubscriptionPlanForm
-          onSave={async (values) => {
-            console.log('Save draft', values);
-          }}
-          onPublish={async (values) => {
-            console.log('Publish', values);
-          }}
+      <section className="mb-10" aria-label="Dashboard home">
+        <DashboardHome
+          onCreatePlan={scrollToCreatePlan}
+          onUploadContent={() => alert('Upload content — coming soon')}
         />
       </section>
 
-      <section className="max-w-6xl mx-auto" aria-label="Content library">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Content library</h2>
-        <ContentLibrary
-          onUpload={async (files) => {
-            console.log('Upload', files.map((f) => f.name));
-          }}
-          onBulkDelete={async (ids) => {
-            console.log('Bulk delete', ids);
-          }}
-          onBulkArchive={async (ids) => {
-            console.log('Bulk archive', ids);
-          }}
-        />
-      </section>
+      <div ref={createPlanSectionRef} className="max-w-2xl">
+        <h2 className="text-xl mb-4">Create Subscription Plan</h2>
+
+        <div className="space-y-4">
+          <input
+            type="text"
+            placeholder="Asset (e.g., USDC address)"
+            value={asset}
+            onChange={(e) => setAsset(e.target.value)}
+            className="w-full p-2 border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+          />
+
+          <input
+            type="number"
+            placeholder="Amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="w-full p-2 border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+          />
+
+          <input
+            type="number"
+            placeholder="Interval (days)"
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
+            className="w-full p-2 border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+          />
+
+          <button
+            onClick={handleCreatePlan}
+            className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+          >
+            Create Plan
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
