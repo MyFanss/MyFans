@@ -7,7 +7,9 @@ const requiredEnvVars = [
   'REDIS_URL',
 ] as const;
 
-export function validate(config: Record<string, unknown>): Record<string, unknown> {
+export function validate(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
   if (config.NODE_ENV === 'test') {
     return config;
   }
