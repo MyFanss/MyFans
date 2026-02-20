@@ -9,6 +9,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { Post } from '../../posts/entities/post.entity';
 import { Subscription } from '../../subscriptions/entities/subscription.entity';
 
 /**
@@ -53,4 +54,7 @@ export class Creator {
 
   @OneToMany(() => Subscription, (sub) => sub.creator)
   subscriptions?: Subscription[];
+
+  @OneToMany(() => Post, (post) => post.creator)
+  posts?: Post[];
 }
