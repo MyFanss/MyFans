@@ -7,6 +7,7 @@ import configuration from './config/configuration';
 import { validate } from './config/env.validation';
 import { UsersModule } from './users/users.module';
 import { CreatorsModule } from './creators/creators.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { CreatorsModule } from './creators/creators.module';
     }),
     UsersModule,
     CreatorsModule,
+    SubscriptionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
