@@ -1,43 +1,71 @@
 # Content Access Contract
 
-Soroban smart contract for managing content access control in MyFans platform.
+Soroban smart contract for managing paid content access in MyFans platform.
 
 ## Features
 
-- **has_access**: Check if a buyer has access to specific content
-- **grant_access**: Grant access to content for a buyer
-- **has_access_batch**: Batch check access for multiple content items
+- **initialize**: Set up contract with admin and token address
+- **unlock_content**: Buyer authorizes and pays to unlock content
+- **has_access**: Check if buyer has access to specific content
+- **Idempotent unlocks**: Duplicate unlock attempts are no-ops
 
 ## Functions
+
+### initialize
+```rust
+pub fn initialize(env: Env, admin: Address, token_address: Address)
+```
+Initialize the contract with admin and token address for payments.
+
+**Parameters:**
+- `admin` - Admin address
+- `token_address` - Token contract address used for payments
+
+### unlock_content
+```rust
+pub fn unlock_content(
+    env: Env,
+    buyer: Address,
+    creator: Address,
+    content_id: u64,
+    price: i128,
+)
+```
+Unlock content for a buyer by transferring payment to creator.
+
+**Parameters:**
+- `buyer` - Buyer address (must authorize transaction)
+- `creator` - Creator address (receives payment)
+- `content_id` - Content ID to unlock
+- `price` - Price in tokens
+
+**Behavior:**
+- Buyer must authorize the transaction
+- Transfers `price` tokens from buyer to creator
+- Stores access record (buyer, creator, content_id) → true
+- Idempotent: duplicate unlock is a no-op (returns early if already unlocked)
+- Emits `content_unlocked` event
 
 ### has_access
 ```rust
 pub fn has_access(env: Env, buyer: Address, creator: Address, content_id: u64) -> bool
 ```
-Check if buyer has access to a single content item.
-
-### grant_access
-```rust
-pub fn grant_access(env: Env, buyer: Address, creator: Address, content_id: u64)
-```
-Grant access to content for a buyer (typically called after subscription payment).
-
-### has_access_batch
-```rust
-pub fn has_access_batch(
-    env: Env,
-    buyer: Address,
-    content_ids: Vec<(Address, u64)>
-) -> Vec<bool>
-```
-Batch check access for multiple content items. Returns a vector of boolean results in the same order as input.
+Check if buyer has access to specific content.
 
 **Parameters:**
-- `buyer`: The address checking for access
-- `content_ids`: Vector of (creator_address, content_id) tuples
+- `buyer` - Buyer address
+- `creator` - Creator address
+- `content_id` - Content ID
 
 **Returns:**
-- Vector of boolean values indicating access for each content item
+- `true` if buyer has unlocked this content, `false` otherwise
+
+## Storage
+
+Uses enum-based DataKey pattern for efficient storage:
+- `DataKey::Admin` - Admin address
+- `DataKey::TokenAddress` - Token contract address
+- `DataKey::Access(buyer, creator, content_id)` - Access records
 
 ## Tests
 
@@ -48,38 +76,49 @@ cargo test
 
 ### Test Coverage
 
-1. **test_has_access_single** - Basic single access check
-2. **test_has_access_batch_empty** - Batch check with empty input
-3. **test_has_access_batch_single** - Batch check with one item
-4. **test_has_access_batch_multiple** - Batch check with multiple items (mixed access)
-5. **test_has_access_batch_different_buyers** - Verify access is buyer-specific
+1. **test_initialize** - Contract initialization
+2. **test_unlock_content_works** - Basic unlock and access check
+3. **test_unlock_content_requires_buyer_auth** - Authorization enforcement
+4. **test_duplicate_unlock_is_idempotent** - Duplicate unlock handling
+5. **test_has_access_returns_false_for_non_existent** - Non-existent content
+6. **test_access_is_buyer_specific** - Access isolation by buyer
+7. **test_access_is_creator_specific** - Access isolation by creator
+8. **test_access_is_content_id_specific** - Access isolation by content ID
+9. **test_multiple_unlocks_different_content** - Multiple content unlocks
+10. **test_multiple_buyers_same_content** - Multiple buyers for same content
+
+## Acceptance Criteria
+
+✅ Buyer can unlock content (with authorization)
+✅ Payment transferred to creator (via token contract)
+✅ has_access returns true after unlock
+✅ Duplicate unlock is idempotent (no-op)
+✅ All tests pass
 
 ## Usage Example
 
 ```rust
 let buyer = Address::generate(&env);
-let creator1 = Address::generate(&env);
-let creator2 = Address::generate(&env);
+let creator = Address::generate(&env);
+let token_address = Address::generate(&env);
 
-// Grant access
-client.grant_access(&buyer, &creator1, &1);
-client.grant_access(&buyer, &creator2, &3);
+// Initialize
+client.initialize(&admin, &token_address);
 
-// Batch check
-let content_ids = vec![
-    &env,
-    (creator1, 1),
-    (creator1, 2),
-    (creator2, 3),
-];
+// Unlock content
+client.unlock_content(&buyer, &creator, &1, &100);
 
-let results = client.has_access_batch(&buyer, &content_ids);
-// results: [true, false, true]
+// Check access
+assert!(client.has_access(&buyer, &creator, &1));
+
+// Duplicate unlock is safe
+client.unlock_content(&buyer, &creator, &1, &100); // no-op
 ```
 
 ## Integration
 
 This contract works with:
-- Subscription contracts (grant access on payment)
-- Content delivery backend (check access before serving)
-- Frontend (display accessible content)
+- Token contracts (for payment transfers)
+- Backend services (to verify access before serving content)
+- Frontend (to display accessible content)
+

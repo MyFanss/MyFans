@@ -1,95 +1,156 @@
-# Batch has_access Check - Acceptance Criteria ✅
+# Content Access Contract - Acceptance Criteria ✅
 
 ## Implementation Complete
 
-### Function Signature
+### Core Functions
+
+#### initialize
 ```rust
-pub fn has_access_batch(
+pub fn initialize(env: Env, admin: Address, token_address: Address)
+```
+Sets up contract with admin and token address for payments.
+
+#### unlock_content
+```rust
+pub fn unlock_content(
     env: Env,
     buyer: Address,
-    content_ids: Vec<(Address, u64)>
-) -> Vec<bool>
+    creator: Address,
+    content_id: u64,
+    price: i128,
+)
 ```
+Buyer authorizes and pays to unlock content. Idempotent: duplicate unlocks are no-ops.
 
-**Parameters:**
-- `env`: Soroban environment
-- `buyer`: Address of the buyer checking access
-- `content_ids`: Vector of tuples containing (creator_address, content_id)
-
-**Returns:**
-- `Vec<bool>`: Vector of boolean results in same order as input
+#### has_access
+```rust
+pub fn has_access(env: Env, buyer: Address, creator: Address, content_id: u64) -> bool
+```
+Check if buyer has access to specific content.
 
 ## Acceptance Criteria Verification
 
-### ✅ Batch check returns correct results
+### ✅ Buyer can unlock content
+
+**Implementation:**
+- `unlock_content` requires buyer authorization via `buyer.require_auth()`
+- Buyer must explicitly authorize the transaction
+- Returns early if already unlocked (idempotent)
 
 **Test Coverage:**
+- `test_unlock_content_works` - Verifies unlock succeeds and access is granted
+- `test_unlock_content_requires_buyer_auth` - Verifies authorization is enforced
 
-1. **Empty input** - Returns empty vector
-2. **Single item** - Returns correct access status
-3. **Multiple items** - Returns correct status for each item
-4. **Mixed access** - Correctly handles granted and non-granted access
-5. **Different buyers** - Access is buyer-specific
+### ✅ Payment transferred to creator
 
-### ✅ Tests pass
+**Implementation:**
+- Uses Soroban token client to transfer tokens
+- Transfers `price` amount from buyer to creator
+- Token address configured during initialization
 
-**5 comprehensive tests:**
+**Test Coverage:**
+- `test_unlock_content_works` - Verifies unlock succeeds (token transfer mocked)
+- Mock token contract validates transfer is called
+
+### ✅ has_access returns true after unlock
+
+**Implementation:**
+- Stores access record: `DataKey::Access(buyer, creator, content_id) → true`
+- `has_access` queries storage and returns boolean
+
+**Test Coverage:**
+- `test_unlock_content_works` - Verifies has_access returns true after unlock
+- `test_has_access_returns_false_for_non_existent` - Verifies false for non-existent
+- `test_access_is_buyer_specific` - Verifies access isolation by buyer
+- `test_access_is_creator_specific` - Verifies access isolation by creator
+- `test_access_is_content_id_specific` - Verifies access isolation by content ID
+
+### ✅ Duplicate unlock handled (idempotent)
+
+**Implementation:**
+- Checks if access already exists: `if env.storage().instance().has(&access_key) { return; }`
+- Returns early without error or re-transfer
+- Safe to call multiple times
+
+**Test Coverage:**
+- `test_duplicate_unlock_is_idempotent` - Verifies second unlock is no-op
+
+### ✅ All tests pass
+
+**10 comprehensive tests:**
 
 ```
-test_has_access_single              ✓ Basic access check
-test_has_access_batch_empty         ✓ Empty input handling
-test_has_access_batch_single        ✓ Single item batch
-test_has_access_batch_multiple      ✓ Multiple items with mixed access
-test_has_access_batch_different_buyers ✓ Buyer-specific access
+test_initialize                          ✓ Contract initialization
+test_unlock_content_works                ✓ Basic unlock and access
+test_unlock_content_requires_buyer_auth  ✓ Authorization enforcement
+test_duplicate_unlock_is_idempotent      ✓ Idempotent behavior
+test_has_access_returns_false_for_non_existent ✓ Non-existent content
+test_access_is_buyer_specific            ✓ Buyer isolation
+test_access_is_creator_specific          ✓ Creator isolation
+test_access_is_content_id_specific       ✓ Content ID isolation
+test_multiple_unlocks_different_content  ✓ Multiple content items
+test_multiple_buyers_same_content        ✓ Multiple buyers
 ```
 
-## Test Results
+## Storage Design
 
-### test_has_access_batch_multiple
-Tests the core batch functionality:
-- 4 content items from 2 creators
-- 2 items granted, 2 not granted
-- Results: [true, false, true, false]
-- ✅ All assertions pass
+Uses enum-based DataKey pattern for efficient storage:
+- `DataKey::Admin` - Admin address
+- `DataKey::TokenAddress` - Token contract address
+- `DataKey::Access(buyer, creator, content_id)` - Access records (boolean)
 
-### test_has_access_batch_different_buyers
-Verifies access isolation:
-- Same content, different buyers
-- Only buyer1 has access
-- buyer1 result: true
-- buyer2 result: false
-- ✅ Access properly isolated
+**Key Design:**
+- Composite key: (buyer, creator, content_id) ensures proper isolation
+- Boolean value: Simple and efficient
+- Instance storage: Fast access for frequent queries
+
+## Security Features
+
+1. **Authorization**: `buyer.require_auth()` enforces buyer authorization
+2. **Access Isolation**: Composite keys prevent cross-buyer/creator access
+3. **Idempotent**: Safe to retry without side effects
+4. **Token Integration**: Delegates payment to token contract
 
 ## Performance
 
-- **O(n)** complexity where n = number of content items
-- Single storage lookup per item
-- Efficient for batch operations
+- **O(1)** storage lookup for access checks
+- **O(1)** storage write for unlock
+- Efficient composite key design
+- No loops or expensive operations
 
 ## Usage Example
 
 ```rust
-// Check access to multiple content items
-let content_ids = vec![
-    &env,
-    (creator1, 1),
-    (creator2, 5),
-    (creator3, 10),
-];
+// Initialize
+client.initialize(&admin, &token_address);
 
-let results = client.has_access_batch(&buyer, &content_ids);
-// Returns: [true, false, true] (example)
+// Buyer unlocks content
+client.unlock_content(&buyer, &creator, &1, &100);
+
+// Check access
+assert!(client.has_access(&buyer, &creator, &1));
+
+// Duplicate unlock is safe (no-op)
+client.unlock_content(&buyer, &creator, &1, &100);
+
+// Different buyer has no access
+assert!(!client.has_access(&other_buyer, &creator, &1));
 ```
 
 ## Integration Points
 
-1. **Frontend**: Batch check before displaying content list
-2. **Backend**: Validate access for multiple items in one call
-3. **Subscription contract**: Works with grant_access after payment
+1. **Token Contract**: Handles payment transfers
+2. **Backend**: Verifies access before serving content
+3. **Frontend**: Displays accessible content
+4. **Subscription Contract**: Can call unlock_content after subscription payment
 
 ## Summary
 
-✅ **Implemented**: has_access_batch function  
-✅ **Tests**: 5 comprehensive tests covering all scenarios  
-✅ **Correct results**: All test assertions pass  
+✅ **Implemented**: initialize, unlock_content, has_access  
+✅ **Authorization**: Buyer must authorize unlock  
+✅ **Payment**: Tokens transferred to creator  
+✅ **Access Control**: Proper isolation by buyer/creator/content_id  
+✅ **Idempotent**: Duplicate unlocks are safe no-ops  
+✅ **Tests**: 10 comprehensive tests, all passing  
 ✅ **Ready**: For deployment and integration
+
