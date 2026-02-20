@@ -10,6 +10,7 @@ import { CreatorsModule } from './creators/creators.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { PostsModule } from './posts/posts.module';
 import { MessagesModule } from './messages/messages.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { MessagesModule } from './messages/messages.module';
     SubscriptionsModule,
     PostsModule,
     MessagesModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
