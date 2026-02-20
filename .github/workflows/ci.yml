@@ -79,3 +79,15 @@ jobs:
       - name: Run tests
         run: cargo test
         working-directory: contract
+
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli
+
+      - name: Deploy and verify on Futurenet
+        run: |
+          ./scripts/deploy.sh \
+            --network futurenet \
+            --source "ci-deployer-${{ github.run_id }}-${{ github.run_attempt }}" \
+            --out ./deployed-ci.json \
+            --env-out ./.env.deployed-ci
+        working-directory: contract
