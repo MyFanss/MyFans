@@ -1,12 +1,15 @@
 use super::*;
 use soroban_sdk::{
-    testutils::Address as _,
-    token, Address, Env,
+    testutils::{Address as _, MockAuth, MockAuthInvoke},
+    token::{StellarAssetClient, TokenClient},
+    Address, Env,
 };
 
-fn create_token_contract<'a>(env: &Env, admin: &Address) -> (Address, token::Client<'a>) {
-    let contract_address = env.register_stellar_asset_contract(admin.clone());
-    (contract_address.clone(), token::Client::new(env, &contract_address))
+fn create_token_contract<'a>(env: &Env, admin: &Address) -> (Address, TokenClient<'a>, StellarAssetClient<'a>) {
+    let contract_address = env.register_stellar_asset_contract_v2(admin.clone());
+    let token_client = TokenClient::new(env, &contract_address);
+    let admin_client = StellarAssetClient::new(env, &contract_address);
+    (contract_address, token_client, admin_client)
 }
 
 #[test]
@@ -17,8 +20,8 @@ fn test_deposit_and_withdraw() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
     
-    let (token_address, token_client) = create_token_contract(&env, &admin);
-    token_client.mint(&user, &1000);
+    let (token_address, token_client, admin_client) = create_token_contract(&env, &admin);
+    admin_client.mint(&user, &1000);
 
     let treasury_id = env.register_contract(None, Treasury);
     let treasury_client = TreasuryClient::new(&env, &treasury_id);
@@ -43,8 +46,8 @@ fn test_withdraw_insufficient_balance() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
     
-    let (token_address, token_client) = create_token_contract(&env, &admin);
-    token_client.mint(&user, &1000);
+    let (token_address, token_client, admin_client) = create_token_contract(&env, &admin);
+    admin_client.mint(&user, &1000);
 
     let treasury_id = env.register_contract(None, Treasury);
     let treasury_client = TreasuryClient::new(&env, &treasury_id);
@@ -63,8 +66,8 @@ fn test_unauthorized_withdraw_reverts() {
     let user = Address::generate(&env);
     let unauthorized = Address::generate(&env);
     
-    let (token_address, token_client) = create_token_contract(&env, &admin);
-    token_client.mint(&user, &1000);
+    let (token_address, token_client, admin_client) = create_token_contract(&env, &admin);
+    admin_client.mint(&user, &1000);
 
     let treasury_id = env.register_contract(None, Treasury);
     let treasury_client = TreasuryClient::new(&env, &treasury_id);
