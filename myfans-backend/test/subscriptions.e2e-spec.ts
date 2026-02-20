@@ -6,7 +6,10 @@ import { Repository } from 'typeorm';
 import { AppModule } from './../src/app.module';
 import { applyAppConfig } from './../src/app.config';
 import { Creator } from '../src/creators/entities/creator.entity';
-import { Subscription, SubscriptionStatus } from '../src/subscriptions/entities/subscription.entity';
+import {
+  Subscription,
+  SubscriptionStatus,
+} from '../src/subscriptions/entities/subscription.entity';
 import { User } from '../src/users/entities/user.entity';
 
 describe('SubscriptionsController (e2e)', () => {

@@ -55,7 +55,10 @@ describe('Post Entity', () => {
       body: 'Post body content',
       type: PostType.PAID,
       price: '4.99',
-      media_urls: ['https://example.com/image1.jpg', 'https://example.com/video.mp4'],
+      media_urls: [
+        'https://example.com/image1.jpg',
+        'https://example.com/video.mp4',
+      ],
       published_at: new Date(),
     });
     await postRepo.save(post);
