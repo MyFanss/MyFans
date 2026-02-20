@@ -33,8 +33,10 @@ export class AuthGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<Request>();
+    const rawUserId = request.headers['x-user-id'];
+    const headerUserId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
     const userId =
-      request.headers['x-user-id'] ??
+      headerUserId ??
       this.extractUserIdFromBearer(request.headers.authorization);
 
     if (!userId || typeof userId !== 'string') {
