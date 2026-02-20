@@ -7,8 +7,11 @@ import {
   Post,
   Query,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import { AuthGuard } from '../auth/auth.guard';
+
 import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '../users/entities/user.entity';
 import { CreatorsService } from './creators.service';
@@ -19,9 +22,12 @@ export class CreatorsController {
   constructor(private readonly creatorsService: CreatorsService) {}
 
   @Get()
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(300) // 5 minutes
   findAll(@Query() query: FindCreatorsQueryDto) {
     return this.creatorsService.findAll(query);
   }
+
 
   @Get('by-username/:username')
   findOneByUsername(@Param('username') username: string) {
