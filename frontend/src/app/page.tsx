@@ -24,9 +24,12 @@ export default function Home() {
             <p>Subscribe to your favorite creators</p>
           </Link>
         </div>
-        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">
+        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400 space-x-4">
           <Link href="/creator/jane" className="text-primary-600 dark:text-primary-400 hover:underline">
             View sample creator profile
+          </Link>
+          <Link href="/subscriptions" className="text-primary-600 dark:text-primary-400 hover:underline">
+            My subscriptions
           </Link>
         </p>
       </main>
