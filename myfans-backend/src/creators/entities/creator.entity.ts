@@ -3,11 +3,13 @@ import {
   CreateDateColumn,
   Entity,
   JoinColumn,
+  OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { Subscription } from '../../subscriptions/entities/subscription.entity';
 
 /**
  * Creator entity - one-to-one extension of User when user.is_creator is true.
@@ -48,4 +50,7 @@ export class Creator {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updated_at!: Date;
+
+  @OneToMany(() => Subscription, (sub) => sub.creator)
+  subscriptions?: Subscription[];
 }
