@@ -2,9 +2,12 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Inject,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { Creator } from './entities/creator.entity';
 import { Follow } from './entities/follow.entity';
 import { FindCreatorsQueryDto } from './dto/find-creators-query.dto';
@@ -18,7 +21,31 @@ export class CreatorsService {
     private readonly creatorRepo: Repository<Creator>,
     @InjectRepository(Follow)
     private readonly followRepo: Repository<Follow>,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
+
+  private async invalidateCache() {
+    try {
+      const cacheAny = this.cacheManager as any;
+      const store = cacheAny.store || (cacheAny.stores ? cacheAny.stores[0] : null);
+      if (store && store.client && typeof store.client.keys === 'function') {
+        const keys = await store.client.keys('*creators*');
+        if (keys.length > 0) {
+          await store.client.del(...keys);
+        }
+      } else {
+        if (typeof cacheAny.reset === 'function') {
+          await cacheAny.reset();
+        } else if (typeof cacheAny.clear === 'function') {
+          await cacheAny.clear();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to invalidate creators cache:', error);
+    }
+  }
+
+
 
   async findAll(query: FindCreatorsQueryDto) {
     const { page = 1, limit = 20, is_verified, min_price, max_price } = query;
@@ -106,6 +133,7 @@ export class CreatorsService {
     });
 
     await this.creatorRepo.increment({ id: creatorId }, 'followers_count', 1);
+    await this.invalidateCache();
   }
 
   async unfollow(creatorId: string, followerId: string) {
@@ -121,6 +149,7 @@ export class CreatorsService {
 
     if (result.affected && result.affected > 0) {
       await this.creatorRepo.decrement({ id: creatorId }, 'followers_count', 1);
+      await this.invalidateCache();
     }
   }
 
