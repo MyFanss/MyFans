@@ -122,7 +122,7 @@ export function useFormValidation<T extends Record<string, unknown>>(options: {
 }): FormValidationResult<T> {
   const {
     initialValues,
-    fields = {},
+    fields = {} as FormFieldsConfig<T>,
     validateOnBlur = true,
     validateOnChange = false,
     customValidator,
