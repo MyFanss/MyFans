@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Vec};
 use myfans_lib::SubscriptionStatus;
 
 #[contracttype]
@@ -73,6 +73,23 @@ impl SubscriptionContract {
     pub fn get_expiry(env: Env, fan: Address, creator: Address) -> Option<u64> {
         let key = (fan, creator);
         env.storage().instance().get(&key)
+    }
+
+    pub fn is_subscribed(env: Env, fan: Address, creator: Address) -> bool {
+        let key = (fan, creator);
+        if let Some(expires_at) = env.storage().instance().get::<_, u64>(&key) {
+            env.ledger().timestamp() < expires_at
+        } else {
+            false
+        }
+    }
+
+    pub fn is_subscribed_batch(env: Env, fan: Address, creators: Vec<Address>) -> Vec<bool> {
+        let mut results = Vec::new(&env);
+        for creator in creators.iter() {
+            results.push_back(Self::is_subscribed(env.clone(), fan.clone(), creator));
+        }
+        results
     }
 }
 
@@ -169,5 +186,84 @@ mod test {
         
         let expiry_after_cancel = client.get_expiry(&fan, &creator);
         assert_eq!(expiry_after_cancel, None);
+    }
+
+    #[test]
+    fn test_is_subscribed() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 500);
+        let contract_id = env.register_contract(None, SubscriptionContract);
+        let client = SubscriptionContractClient::new(&env, &contract_id);
+
+        let fan = Address::generate(&env);
+        let creator = Address::generate(&env);
+
+        assert!(!client.is_subscribed(&fan, &creator));
+
+        client.create_subscription(&fan, &creator, &1000);
+        assert!(client.is_subscribed(&fan, &creator));
+
+        env.ledger().with_mut(|li| li.timestamp = 1001);
+        assert!(!client.is_subscribed(&fan, &creator));
+    }
+
+    #[test]
+    fn test_is_subscribed_batch_mixed() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 500);
+        let contract_id = env.register_contract(None, SubscriptionContract);
+        let client = SubscriptionContractClient::new(&env, &contract_id);
+
+        let fan = Address::generate(&env);
+        let creator1 = Address::generate(&env);
+        let creator2 = Address::generate(&env);
+        let creator3 = Address::generate(&env);
+
+        client.create_subscription(&fan, &creator1, &1000);
+        client.create_subscription(&fan, &creator3, &1000);
+
+        let mut creators = Vec::new(&env);
+        creators.push_back(creator1.clone());
+        creators.push_back(creator2.clone());
+        creators.push_back(creator3.clone());
+
+        let results = client.is_subscribed_batch(&fan, &creators);
+        assert_eq!(results.len(), 3);
+        assert_eq!(results.get(0).unwrap(), true);
+        assert_eq!(results.get(1).unwrap(), false);
+        assert_eq!(results.get(2).unwrap(), true);
+    }
+
+    #[test]
+    fn test_is_subscribed_batch_all_unsubscribed() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SubscriptionContract);
+        let client = SubscriptionContractClient::new(&env, &contract_id);
+
+        let fan = Address::generate(&env);
+        let creator1 = Address::generate(&env);
+        let creator2 = Address::generate(&env);
+
+        let mut creators = Vec::new(&env);
+        creators.push_back(creator1);
+        creators.push_back(creator2);
+
+        let results = client.is_subscribed_batch(&fan, &creators);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results.get(0).unwrap(), false);
+        assert_eq!(results.get(1).unwrap(), false);
+    }
+
+    #[test]
+    fn test_is_subscribed_batch_empty() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SubscriptionContract);
+        let client = SubscriptionContractClient::new(&env, &contract_id);
+
+        let fan = Address::generate(&env);
+        let creators = Vec::new(&env);
+
+        let results = client.is_subscribed_batch(&fan, &creators);
+        assert_eq!(results.len(), 0);
     }
 }
