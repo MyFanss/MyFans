@@ -20,3 +20,6 @@ export {
   type TransactionOptions,
   type TransactionResult,
 } from './useTransaction';
+
+// Wallet hook
+export { useWallet } from './useWallet';
