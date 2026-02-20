@@ -31,6 +31,10 @@ export default function Home() {
           <Link href="/subscriptions" className="text-primary-600 dark:text-primary-400 hover:underline">
             My subscriptions
           </Link>
+          {' · '}
+          <Link href="/ui" className="text-primary-600 dark:text-primary-400 hover:underline">
+            UI components
+          </Link>
         </p>
       </main>
     </div>
