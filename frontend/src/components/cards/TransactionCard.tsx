@@ -82,7 +82,7 @@ export const TransactionCard: React.FC<TransactionCardProps> = ({
   status,
   date,
   counterpartyName,
-  counterpartyAvatar,
+  // counterpartyAvatar: _counterpartyAvatar,
   description,
   paymentMethod,
   isIncoming = false,

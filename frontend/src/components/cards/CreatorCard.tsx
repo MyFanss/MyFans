@@ -1,5 +1,6 @@
 import React from 'react';
 import { BaseCard, BaseCardProps } from './BaseCard';
+import Image from 'next/image';
 
 export interface CreatorCardProps extends Omit<BaseCardProps, 'children'> {
   /**
@@ -99,9 +100,11 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
         {/* Avatar */}
         <div className="relative flex-shrink-0">
           {avatarUrl ? (
-            <img
+            <Image
               src={avatarUrl}
               alt={name}
+              width={16}
+              height={16}
               className="w-16 h-16 rounded-full object-cover ring-2 ring-gray-100 dark:ring-gray-700"
             />
           ) : (
