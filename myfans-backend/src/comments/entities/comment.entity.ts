@@ -21,14 +21,14 @@ export class Comment {
   @JoinColumn({ name: 'post_id' })
   post!: Post;
 
-  @Column({ name: 'post_id' })
+  @Column({ type: 'uuid' })
   post_id!: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'user_id' })
   user!: User;
 
-  @Column({ name: 'user_id' })
+  @Column({ type: 'uuid' })
   user_id!: string;
 
   @Column({ type: 'text' })
