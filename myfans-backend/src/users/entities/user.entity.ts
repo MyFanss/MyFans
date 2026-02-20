@@ -2,11 +2,13 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Creator } from '../../creators/entities/creator.entity';
+import { Subscription } from '../../subscriptions/entities/subscription.entity';
 
 /**
  * User entity. When is_creator is true, a corresponding Creator row must exist.
@@ -40,4 +42,7 @@ export class User {
 
   @OneToOne(() => Creator, (creator) => creator.user, { cascade: true })
   creator?: Creator | null;
+
+  @OneToMany(() => Subscription, (sub) => sub.fan)
+  subscriptions?: Subscription[];
 }
