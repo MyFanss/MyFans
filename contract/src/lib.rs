@@ -5,6 +5,8 @@
 
 use soroban_sdk::{contract, contractimpl, Env};
 
+pub mod treasury;
+
 #[contract]
 pub struct MyfansContract;
 
@@ -23,3 +25,6 @@ impl MyfansContract {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod treasury_test;
