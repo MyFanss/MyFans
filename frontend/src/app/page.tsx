@@ -1,21 +1,30 @@
-import Link from "next/link";
+import WalletConnect from '@/components/WalletConnect';
+import Link from 'next/link';
 
 export default function Home() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
-      <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">MyFans</p>
-        <h1 className="mt-2 text-3xl font-semibold text-slate-900">Settings Workspace</h1>
-        <p className="mt-3 text-sm text-slate-600">
-          Open the new creator and fan settings flow with role-based sections and secure account deletion confirmation.
-        </p>
-        <Link
-          className="mt-6 inline-flex rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700"
-          href="/settings"
-        >
-          Open settings
-        </Link>
-      </div>
-    </main>
+    <div className="min-h-screen p-8">
+      <header className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold">MyFans</h1>
+        <WalletConnect />
+      </header>
+      
+      <main className="max-w-4xl mx-auto">
+        <h2 className="text-2xl mb-4">Decentralized Content Subscription Platform</h2>
+        <p className="mb-6">Built on Stellar with Soroban smart contracts</p>
+        
+        <div className="grid grid-cols-2 gap-4">
+          <Link href="/creators" className="p-6 border rounded hover:bg-gray-50">
+            <h3 className="text-xl font-semibold mb-2">For Creators</h3>
+            <p>Create subscription plans and monetize your content</p>
+          </Link>
+          
+          <Link href="/subscribe" className="p-6 border rounded hover:bg-gray-50">
+            <h3 className="text-xl font-semibold mb-2">For Fans</h3>
+            <p>Subscribe to your favorite creators</p>
+          </Link>
+        </div>
+      </main>
+    </div>
   );
 }
