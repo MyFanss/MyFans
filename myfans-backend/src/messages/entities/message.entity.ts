@@ -33,8 +33,8 @@ export class Message {
   @Column({ type: 'text' })
   body!: string;
 
-  @Column({ type: 'timestamp', nullable: true })
-  read_at!: Date | null;
+  @Column({ type: 'varchar', nullable: true })
+  read_at!: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   created_at!: Date;

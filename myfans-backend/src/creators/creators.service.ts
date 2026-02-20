@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Creator } from './entities/creator.entity';
+import { Follow } from './entities/follow.entity';
 import { FindCreatorsQueryDto } from './dto/find-creators-query.dto';
 
 const BIO_SNIPPET_LENGTH = 150;
@@ -11,6 +16,8 @@ export class CreatorsService {
   constructor(
     @InjectRepository(Creator)
     private readonly creatorRepo: Repository<Creator>,
+    @InjectRepository(Follow)
+    private readonly followRepo: Repository<Follow>,
   ) {}
 
   async findAll(query: FindCreatorsQueryDto) {
@@ -75,6 +82,48 @@ export class CreatorsService {
     return this.toDetailItem(creator);
   }
 
+  async follow(creatorId: string, followerId: string) {
+    const creator = await this.creatorRepo.findOne({ where: { id: creatorId } });
+    if (!creator) {
+      throw new NotFoundException(`Creator with id ${creatorId} not found`);
+    }
+
+    if (creator.user_id === followerId) {
+      throw new BadRequestException('You cannot follow yourself');
+    }
+
+    const existingFollow = await this.followRepo.findOne({
+      where: { creator_id: creatorId, follower_id: followerId },
+    });
+
+    if (existingFollow) {
+      return; // Idempotent
+    }
+
+    await this.followRepo.save({
+      creator_id: creatorId,
+      follower_id: followerId,
+    });
+
+    await this.creatorRepo.increment({ id: creatorId }, 'followers_count', 1);
+  }
+
+  async unfollow(creatorId: string, followerId: string) {
+    const creator = await this.creatorRepo.findOne({ where: { id: creatorId } });
+    if (!creator) {
+      throw new NotFoundException(`Creator with id ${creatorId} not found`);
+    }
+
+    const result = await this.followRepo.delete({
+      creator_id: creatorId,
+      follower_id: followerId,
+    });
+
+    if (result.affected && result.affected > 0) {
+      await this.creatorRepo.decrement({ id: creatorId }, 'followers_count', 1);
+    }
+  }
+
   private toListItem(creator: Creator) {
     const bio = creator.bio ?? '';
     const bio_snippet =
@@ -93,6 +142,7 @@ export class CreatorsService {
       is_verified: creator.is_verified,
       post_count: 0,
       subscriber_count: 0,
+      followers_count: creator.followers_count,
     };
   }
 
@@ -108,6 +158,7 @@ export class CreatorsService {
       is_verified: creator.is_verified,
       post_count: 0,
       subscriber_count: 0,
+      followers_count: creator.followers_count,
       created_at: creator.created_at,
       updated_at: creator.updated_at,
     };
