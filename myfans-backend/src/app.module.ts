@@ -8,6 +8,7 @@ import { validate } from './config/env.validation';
 import { UsersModule } from './users/users.module';
 import { CreatorsModule } from './creators/creators.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { PostsModule } from './posts/posts.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     UsersModule,
     CreatorsModule,
     SubscriptionsModule,
+    PostsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

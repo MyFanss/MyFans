@@ -1,5 +1,6 @@
 import { DataSource } from 'typeorm';
 import { Creator } from './creator.entity';
+import { Post } from '../../posts/entities/post.entity';
 import { Subscription } from '../../subscriptions/entities/subscription.entity';
 import { User } from '../../users/entities/user.entity';
 
@@ -10,7 +11,7 @@ describe('Creator Entity', () => {
     dataSource = new DataSource({
       type: 'better-sqlite3',
       database: ':memory:',
-      entities: [User, Creator, Subscription],
+      entities: [User, Creator, Subscription, Post],
       synchronize: true,
     });
     await dataSource.initialize();
