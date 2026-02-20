@@ -1,5 +1,6 @@
 import React from 'react';
 import { BaseCard, BaseCardProps } from './BaseCard';
+import Image from 'next/image';
 
 export type ContentType = 'image' | 'video' | 'audio' | 'text' | 'live';
 export type ContentStatus = 'published' | 'draft' | 'scheduled' | 'archived';
@@ -200,10 +201,11 @@ export const ContentCard: React.FC<ContentCardProps> = ({
       {/* Thumbnail */}
       <div className="relative aspect-video bg-gray-100 dark:bg-gray-800 overflow-hidden">
         {thumbnailUrl ? (
-          <img
+          <Image
             src={thumbnailUrl}
             alt={title}
-            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            fill
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
@@ -282,9 +284,11 @@ export const ContentCard: React.FC<ContentCardProps> = ({
         {creatorName && (
           <div className="flex items-center gap-2 mb-3">
             {creatorAvatar ? (
-              <img
+              <Image
                 src={creatorAvatar}
                 alt={creatorName}
+                width={24}
+                height={24}
                 className="w-6 h-6 rounded-full object-cover"
               />
             ) : (
