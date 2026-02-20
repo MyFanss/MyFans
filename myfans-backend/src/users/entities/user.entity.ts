@@ -23,6 +23,15 @@ export class User {
   @Column({ unique: true })
   email!: string;
 
+  @Column({ type: 'varchar', unique: true, nullable: true })
+  username!: string | null;
+
+  @Column({ name: 'display_name', type: 'varchar', nullable: true })
+  display_name!: string | null;
+
+  @Column({ name: 'avatar_url', type: 'varchar', nullable: true })
+  avatar_url!: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   created_at!: Date;
 
