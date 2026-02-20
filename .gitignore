@@ -3,6 +3,11 @@ node_modules/
 
 # Contract (Rust / Soroban)
 contract/target/
+contract/deployed.json
+contract/.env.deployed
+contract/deployed-ci.json
+contract/.env.deployed-ci
+contract/.stellar/
 
 # Environment
 .env
