@@ -6,10 +6,12 @@ import {
   Param,
   UseInterceptors,
   ClassSerializerInterceptor,
+  Req,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UpdateUserDto, UserProfileDto } from './dto';
 import { plainToInstance } from 'class-transformer';
+import { UpdateNotificationsDto } from './dto/update-notifications.dto';
 
 @Controller('users')
 @UseInterceptors(ClassSerializerInterceptor)
@@ -30,5 +32,20 @@ export class UsersController {
     const userId = 'temp-user-id';
     const user = await this.usersService.update(userId, updateUserDto);
     return plainToInstance(UserProfileDto, user);
+  }
+   @Patch('me/notifications')
+  async updateNotifications(
+    @Req() req,
+    @Body() dto: UpdateNotificationsDto,
+  ) {
+    return this.usersService.updateNotificationPreferences(
+      req.user.id,
+      dto,
+    );
+  }
+
+  @Get('me')
+  async getMeByID(@Req() req) {
+    return this.usersService.findById(req.user.id);
   }
 }
