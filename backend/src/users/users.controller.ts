@@ -19,9 +19,9 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('me')
-  async getMe(): Promise<UserProfileDto> {
-    // TODO: Get user ID from auth token/session
-    const userId = 'temp-user-id';
+  async getMe(@Req() req): Promise<UserProfileDto> {
+    
+    const userId = req.user.id;
     const user = await this.usersService.findOne(userId);
     return plainToInstance(UserProfileDto, user);
   }
