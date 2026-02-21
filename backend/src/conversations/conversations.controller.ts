@@ -9,20 +9,10 @@ import {
   UseInterceptors,
   ClassSerializerInterceptor,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags, ApiProperty } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ConversationsService } from './conversations.service';
 import { ConversationDto, MessageDto, CreateConversationDto, SendMessageDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
-
-class PaginatedConversationsDto extends PaginatedResponseDto<ConversationDto> {
-  @ApiProperty({ type: [ConversationDto] })
-  data: ConversationDto[];
-}
-
-class PaginatedMessagesDto extends PaginatedResponseDto<MessageDto> {
-  @ApiProperty({ type: [MessageDto] })
-  data: MessageDto[];
-}
 
 @ApiTags('conversations')
 @Controller('conversations')
@@ -41,7 +31,7 @@ export class ConversationsController {
 
   @Get()
   @ApiOperation({ summary: 'List user conversations (paginated)' })
-  @ApiResponse({ status: 200, description: 'Paginated conversations list', type: PaginatedConversationsDto })
+  @ApiResponse({ status: 200, description: 'Paginated conversations list' })
   async findAll(@Query() pagination: PaginationDto): Promise<PaginatedResponseDto<ConversationDto>> {
     // TODO: Get user ID from auth token/session
     const userId = 'temp-user-id';
@@ -59,7 +49,7 @@ export class ConversationsController {
 
   @Get(':id/messages')
   @ApiOperation({ summary: 'List messages in a conversation (paginated)' })
-  @ApiResponse({ status: 200, description: 'Paginated messages list', type: PaginatedMessagesDto })
+  @ApiResponse({ status: 200, description: 'Paginated messages list' })
   async getMessages(
     @Param('id') id: string,
     @Query() pagination: PaginationDto,

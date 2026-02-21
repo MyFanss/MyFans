@@ -1,4 +1,4 @@
-import { SelectQueryBuilder } from 'typeorm';
+import { SelectQueryBuilder, ObjectLiteral } from 'typeorm';
 import { PaginationDto } from '../dto/pagination.dto';
 import { PaginatedResponseDto } from '../dto/paginated-response.dto';
 
@@ -8,7 +8,7 @@ import { PaginatedResponseDto } from '../dto/paginated-response.dto';
  * @param paginationDto - Pagination parameters (page, limit)
  * @returns PaginatedResponseDto with data and pagination metadata
  */
-export async function paginate<T>(
+export async function paginate<T extends ObjectLiteral>(
   queryBuilder: SelectQueryBuilder<T>,
   paginationDto: PaginationDto,
 ): Promise<PaginatedResponseDto<T>> {

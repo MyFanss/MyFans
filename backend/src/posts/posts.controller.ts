@@ -10,15 +10,10 @@ import {
   UseInterceptors,
   ClassSerializerInterceptor,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags, ApiProperty } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PostsService } from './posts.service';
 import { PostDto, CreatePostDto, UpdatePostDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
-
-class PaginatedPostsDto extends PaginatedResponseDto<PostDto> {
-  @ApiProperty({ type: [PostDto] })
-  data: PostDto[];
-}
 
 @ApiTags('posts')
 @Controller('posts')
@@ -37,14 +32,14 @@ export class PostsController {
 
   @Get()
   @ApiOperation({ summary: 'List all posts (paginated)' })
-  @ApiResponse({ status: 200, description: 'Paginated posts list', type: PaginatedPostsDto })
+  @ApiResponse({ status: 200, description: 'Paginated posts list' })
   async findAll(@Query() pagination: PaginationDto): Promise<PaginatedResponseDto<PostDto>> {
     return this.postsService.findAll(pagination);
   }
 
   @Get('author/:authorId')
   @ApiOperation({ summary: 'List posts by author (paginated)' })
-  @ApiResponse({ status: 200, description: 'Paginated author posts list', type: PaginatedPostsDto })
+  @ApiResponse({ status: 200, description: 'Paginated author posts list' })
   async findByAuthor(
     @Param('authorId') authorId: string,
     @Query() pagination: PaginationDto,
