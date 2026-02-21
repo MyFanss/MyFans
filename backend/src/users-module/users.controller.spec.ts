@@ -3,7 +3,7 @@ import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { UserProfileDto, PaginationDto } from './dto/user-profile.dto';
+import { UserProfileDto, PaginationDto } from './user-profile.dto';
 
 const mockProfile = (): UserProfileDto => ({
   id: 'uuid-1',
