@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
 
-import { AuthController } from '../auth.controller';
-import { RefreshTokenService } from '../refresh-token.service';
-import { RefreshTokenDto, LogoutDto } from '../dto/refresh-token.dto';
+import { AuthController } from './auth.controller';
+import { RefreshTokenService } from './refresh-token.service';
+import { RefreshTokenDto, LogoutDto } from './refresh-token.dto';
 
 const mockTokenPair = {
   access_token: 'new-access-jwt',
