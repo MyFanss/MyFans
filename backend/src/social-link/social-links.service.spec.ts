@@ -1,5 +1,5 @@
-import { SocialLinksService } from '../social-links.service';
-import { SocialLinksResponseDto } from '../dto/user-profile.dto';
+import { SocialLinksService } from './social-links.service';
+import { SocialLinksResponseDto } from './user-profile.dto';
 
 describe('SocialLinksService', () => {
   let service: SocialLinksService;

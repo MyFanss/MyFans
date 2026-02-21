@@ -18,7 +18,10 @@ export class SocialLinksDto {
   @IsString()
   @MaxLength(500)
   @IsSafeUrl({ message: 'website_url must be a valid http or https URL' })
-  @Transform(({ value }) => sanitizeUrl(value))
+  @Transform(({ value }) => {
+    const sanitized = sanitizeUrl(value);
+    return sanitized !== null ? sanitized : value ?? null;
+  })
   websiteUrl?: string | null;
 
   @ApiPropertyOptional({
@@ -51,6 +54,9 @@ export class SocialLinksDto {
   @IsString()
   @MaxLength(500)
   @IsSafeUrl({ message: 'other_link must be a valid http or https URL' })
-  @Transform(({ value }) => sanitizeUrl(value))
+  @Transform(({ value }) => {
+    const sanitized = sanitizeUrl(value);
+    return sanitized !== null ? sanitized : value ?? null;
+  })
   otherLink?: string | null;
 }
