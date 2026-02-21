@@ -24,6 +24,7 @@ pub enum DataKey {
     PlanCount,
     Plan(u32),
     Sub(Address, Address),
+    Paused,
 }
 
 #[contract]
@@ -38,6 +39,7 @@ impl MyfansContract {
             .instance()
             .set(&DataKey::FeeRecipient, &fee_recipient);
         env.storage().instance().set(&DataKey::PlanCount, &0u32);
+        env.storage().instance().set(&DataKey::Paused, &false);
     }
 
     pub fn create_plan(
@@ -150,6 +152,37 @@ impl MyfansContract {
             .instance()
             .remove(&DataKey::Sub(fan.clone(), creator));
         env.events().publish((Symbol::new(&env, "cancelled"),), fan);
+    }
+
+    /// Pause the contract (admin only)
+    /// Prevents all state-changing operations: create_plan, subscribe, cancel
+    pub fn pause(env: Env) {
+        let admin: Address = env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not initialized");
+        admin.require_auth();
+        
+        env.storage().instance().set(&DataKey::Paused, &true);
+        env.events().publish((Symbol::new(&env, "paused"),), admin);
+    }
+
+    /// Unpause the contract (admin only)
+    /// Allows state-changing operations to resume
+    pub fn unpause(env: Env) {
+        let admin: Address = env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not initialized");
+        admin.require_auth();
+        
+        env.storage().instance().set(&DataKey::Paused, &false);
+        env.events().publish((Symbol::new(&env, "unpaused"),), admin);
+    }
+
+    /// Check if the contract is paused (view function)
+    pub fn is_paused(env: Env) -> bool {
+        env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
     }
 }
 
