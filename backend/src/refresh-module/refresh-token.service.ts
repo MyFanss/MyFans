@@ -27,7 +27,7 @@ export class RefreshTokenService {
     private readonly refreshTokenRepo: Repository<RefreshToken>,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
-  ) {}
+  ) { }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
