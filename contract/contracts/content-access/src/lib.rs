@@ -34,26 +34,6 @@ impl ContentAccess {
             .set(&DataKey::TokenAddress, &token_address);
     }
 
-    /// Update the admin address
-    ///
-    /// # Arguments
-    /// * `env` - Soroban environment
-    /// * `new_admin` - New admin address
-    pub fn set_admin(env: Env, new_admin: Address) {
-        Self::require_admin(&env);
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
-    }
-
-    /// Internal helper to require admin authorization
-    fn require_admin(env: &Env) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("not initialized");
-        admin.require_auth();
-    }
-
     /// Unlock content for a buyer by transferring payment to creator
     ///
     /// # Arguments
@@ -99,8 +79,12 @@ impl ContentAccess {
 
         // Emit event
         env.events().publish(
-            (Symbol::new(&env, "content_unlocked"), content_id),
-            (buyer, creator),
+            (
+                Symbol::new(&env, "ContentUnlocked"),
+                buyer.clone(),
+                creator.clone(),
+            ),
+            (content_id, price),
         );
     }
 
@@ -123,7 +107,10 @@ impl ContentAccess {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::{
+        testutils::{Address as _, Events},
+        vec, Env, IntoVal,
+    };
 
     // Mock token contract for testing
     #[contract]
@@ -182,6 +169,24 @@ mod test {
 
         // Verify access after unlock
         assert!(client.has_access(&buyer, &creator, &1));
+
+        let events = env.events().all();
+        assert_eq!(
+            events,
+            vec![
+                &env,
+                (
+                    contract_id.clone(),
+                    (
+                        Symbol::new(&env, "ContentUnlocked"),
+                        buyer.clone(),
+                        creator.clone()
+                    )
+                        .into_val(&env),
+                    (1u64, 100i128).into_val(&env)
+                )
+            ]
+        );
     }
 
     #[test]
