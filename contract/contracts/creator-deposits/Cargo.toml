@@ -1,5 +1,5 @@
 [package]
-name = "myfans-contract"
+name = "creator-deposits"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,20 +11,6 @@ soroban-sdk = "21.7.0"
 
 [dev-dependencies]
 soroban-sdk = { version = "21.7.0", features = ["testutils"] }
-
-[workspace]
-members = [
-    "contracts/content-access",
-    "contracts/content-likes",
-    "contracts/creator-deposits",
-    "contracts/myfans-lib",
-    "contracts/myfans-token",
-    "contracts/subscription",
-    "contracts/test-consumer",
-]
-
-[workspace.dependencies]
-soroban-sdk = "21.7.0"
 
 [profile.release]
 opt-level = "z"
