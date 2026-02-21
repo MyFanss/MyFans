@@ -58,3 +58,5 @@ mod test {
         assert!(!client.requires_payment(&ContentType::Free));
     }
 }
+
+fn main() {}

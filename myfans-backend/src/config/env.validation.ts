@@ -4,9 +4,12 @@ const requiredEnvVars = [
   'DB_USERNAME',
   'DB_PASSWORD',
   'DB_DATABASE',
+  'REDIS_URL',
 ] as const;
 
-export function validate(config: Record<string, unknown>): Record<string, unknown> {
+export function validate(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
   if (config.NODE_ENV === 'test') {
     return config;
   }

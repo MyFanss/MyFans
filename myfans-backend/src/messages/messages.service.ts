@@ -1,4 +1,8 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { Conversation } from './entities/conversation.entity';
@@ -24,12 +28,15 @@ export class MessagesService {
     userId1: string,
     userId2: string,
   ): Promise<Conversation> {
-    const creator = await this.userRepository.findOne({ where: { id: userId2 } });
+    const creator = await this.userRepository.findOne({
+      where: { id: userId2 },
+    });
     if (!creator) {
       throw new NotFoundException('Creator not found');
     }
 
-    const [p1, p2] = userId1 < userId2 ? [userId1, userId2] : [userId2, userId1];
+    const [p1, p2] =
+      userId1 < userId2 ? [userId1, userId2] : [userId2, userId1];
 
     let conversation = await this.conversationRepository.findOne({
       where: {
@@ -68,7 +75,9 @@ export class MessagesService {
       conversation.participant_1_id !== userId &&
       conversation.participant_2_id !== userId
     ) {
-      throw new ForbiddenException('User is not a participant in this conversation');
+      throw new ForbiddenException(
+        'User is not a participant in this conversation',
+      );
     }
 
     return conversation;
@@ -126,10 +135,7 @@ export class MessagesService {
 
   async listConversations(userId: string): Promise<any[]> {
     const conversations = await this.conversationRepository.find({
-      where: [
-        { participant_1_id: userId },
-        { participant_2_id: userId },
-      ],
+      where: [{ participant_1_id: userId }, { participant_2_id: userId }],
       relations: ['participant_1', 'participant_2'],
       order: { updated_at: 'DESC' },
     });
@@ -144,7 +150,10 @@ export class MessagesService {
         const unreadCount = await this.messageRepository.count({
           where: {
             conversation_id: conv.id,
-            sender_id: userId === conv.participant_1_id ? conv.participant_2_id : conv.participant_1_id,
+            sender_id:
+              userId === conv.participant_1_id
+                ? conv.participant_2_id
+                : conv.participant_1_id,
             read_at: IsNull(),
           },
         });
