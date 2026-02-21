@@ -32,6 +32,9 @@ pub struct MyfansContract;
 #[contractimpl]
 impl MyfansContract {
     pub fn init(env: Env, admin: Address, fee_bps: u32, fee_recipient: Address) {
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic!("already initialized");
+        }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         env.storage()
