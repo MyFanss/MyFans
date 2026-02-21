@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env};
+use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
 
 #[derive(Clone)]
 #[contracttype]
@@ -18,28 +18,74 @@ impl CreatorDeposits {
     pub fn init(env: Env, admin: Address, platform_fee_bps: u32, platform_treasury: Address) {
         assert!(platform_fee_bps < 10000, "fee must be < 10000 bps");
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::PlatformFeeBps, &platform_fee_bps);
-        env.storage().instance().set(&DataKey::PlatformTreasury, &platform_treasury);
+        env.storage()
+            .instance()
+            .set(&DataKey::PlatformFeeBps, &platform_fee_bps);
+        env.storage()
+            .instance()
+            .set(&DataKey::PlatformTreasury, &platform_treasury);
     }
 
     pub fn deposit(env: Env, creator: Address, token: Address, amount: i128) {
         creator.require_auth();
-        
-        let fee_bps: u32 = env.storage().instance().get(&DataKey::PlatformFeeBps).unwrap();
-        let treasury: Address = env.storage().instance().get(&DataKey::PlatformTreasury).unwrap();
-        
+
+        let fee_bps: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PlatformFeeBps)
+            .unwrap();
+        let treasury: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PlatformTreasury)
+            .unwrap();
+
         let fee = (amount * fee_bps as i128) / 10000;
         let net = amount - fee;
-        
+
         let token_client = token::Client::new(&env, &token);
-        
+
         if fee > 0 {
             token_client.transfer(&creator, &treasury, &fee);
         }
-        
+
         let balance_key = DataKey::CreatorBalance(creator.clone());
         let current: i128 = env.storage().instance().get(&balance_key).unwrap_or(0);
         env.storage().instance().set(&balance_key, &(current + net));
+
+        env.events().publish(
+            (
+                Symbol::new(&env, "EarningsDeposited"),
+                creator.clone(),
+                token,
+            ),
+            net,
+        );
+    }
+
+    pub fn withdraw(env: Env, creator: Address, token: Address, amount: i128) {
+        creator.require_auth();
+
+        let balance_key = DataKey::CreatorBalance(creator.clone());
+        let current: i128 = env.storage().instance().get(&balance_key).unwrap_or(0);
+
+        assert!(current >= amount, "insufficient balance");
+
+        env.storage()
+            .instance()
+            .set(&balance_key, &(current - amount));
+
+        let token_client = token::Client::new(&env, &token);
+        token_client.transfer(&env.current_contract_address(), &creator, &amount);
+
+        env.events().publish(
+            (
+                Symbol::new(&env, "EarningsWithdrawn"),
+                creator.clone(),
+                token,
+            ),
+            amount,
+        );
     }
 
     pub fn set_platform_fee(env: Env, bps: u32) {
@@ -50,18 +96,27 @@ impl CreatorDeposits {
     }
 
     pub fn get_balance(env: Env, creator: Address) -> i128 {
-        env.storage().instance().get(&DataKey::CreatorBalance(creator)).unwrap_or(0)
+        env.storage()
+            .instance()
+            .get(&DataKey::CreatorBalance(creator))
+            .unwrap_or(0)
     }
 
     pub fn get_platform_fee(env: Env) -> u32 {
-        env.storage().instance().get(&DataKey::PlatformFeeBps).unwrap_or(0)
+        env.storage()
+            .instance()
+            .get(&DataKey::PlatformFeeBps)
+            .unwrap_or(0)
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::{
+        testutils::{Address as _, Events},
+        vec, Env, IntoVal, Symbol, TryFromVal,
+    };
 
     fn setup() -> (Env, Address, Address, Address, Address) {
         let env = Env::default();
@@ -91,6 +146,24 @@ mod test {
         client.deposit(&creator, &token, &1000);
 
         assert_eq!(client.get_balance(&creator), 950); // 1000 - 50 fee
+
+        let events = env.events().all();
+        assert_eq!(
+            events,
+            vec![
+                &env,
+                (
+                    contract_id.clone(),
+                    (
+                        Symbol::new(&env, "EarningsDeposited"),
+                        creator.clone(),
+                        token.clone()
+                    )
+                        .into_val(&env),
+                    950i128.into_val(&env)
+                )
+            ]
+        );
     }
 
     #[test]
@@ -181,5 +254,74 @@ mod test {
         client.deposit(&creator, &token, &2000);
 
         assert_eq!(client.get_balance(&creator), 2850); // 950 + 1900
+    }
+
+    #[test]
+    fn test_withdraw_works() {
+        let (env, admin, treasury, creator, token) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        client.init(&admin, &0, &treasury);
+        client.deposit(&creator, &token, &1000);
+
+        assert_eq!(client.get_balance(&creator), 1000);
+
+        // Let's test the event being output from deposit before clearing it
+        let events_deposit = env.events().all();
+        assert_eq!(
+            events_deposit,
+            vec![
+                &env,
+                (
+                    contract_id.clone(),
+                    (
+                        Symbol::new(&env, "EarningsDeposited"),
+                        creator.clone(),
+                        token.clone()
+                    )
+                        .into_val(&env),
+                    1000i128.into_val(&env)
+                )
+            ]
+        );
+
+        // Reset the event buffer or we just have two events
+        let mut events_vec = env.events().all();
+        events_vec.remove(0); // This just shows how you can clear, better to check length
+
+        client.withdraw(&creator, &token, &500);
+
+        assert_eq!(client.get_balance(&creator), 500);
+
+        let events = env.events().all();
+        let expected_topics = (
+            Symbol::new(&env, "EarningsWithdrawn"),
+            creator.clone(),
+            token.clone(),
+        )
+            .into_val(&env);
+
+        let actual_event = events.last().unwrap();
+        assert_eq!(actual_event.0, contract_id.clone());
+        assert_eq!(actual_event.1, expected_topics);
+
+        let actual_data: i128 = i128::try_from_val(&env, &actual_event.2).unwrap();
+        assert_eq!(actual_data, 500i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "insufficient balance")]
+    fn test_withdraw_insufficient_balance() {
+        let (env, admin, treasury, creator, token) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        client.init(&admin, &0, &treasury);
+        client.deposit(&creator, &token, &1000);
+
+        client.withdraw(&creator, &token, &1001);
     }
 }
