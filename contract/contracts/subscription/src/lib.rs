@@ -24,6 +24,7 @@ pub enum DataKey {
     PlanCount,
     Plan(u32),
     Sub(Address, Address),
+    AcceptedToken(Address),
 }
 
 #[contract]
@@ -70,7 +71,7 @@ impl MyfansContract {
         plan_id
     }
 
-    pub fn subscribe(env: Env, fan: Address, plan_id: u32) {
+    pub fn subscribe(env: Env, fan: Address, plan_id: u32, token: Address) {
         fan.require_auth();
         let plan: Plan = env
             .storage()
