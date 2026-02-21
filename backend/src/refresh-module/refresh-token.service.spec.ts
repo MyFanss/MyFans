@@ -6,8 +6,8 @@ import { UnauthorizedException } from '@nestjs/common';
 import { Repository, DeleteResult } from 'typeorm';
 import * as crypto from 'crypto';
 
-import { RefreshTokenService } from '../refresh-token.service';
-import { RefreshToken } from '../entities/refresh-token.entity';
+import { RefreshTokenService } from './refresh-token.service';
+import { RefreshToken } from './refresh-token.entity';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
