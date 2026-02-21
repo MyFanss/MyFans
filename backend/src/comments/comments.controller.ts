@@ -10,15 +10,10 @@ import {
   UseInterceptors,
   ClassSerializerInterceptor,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags, ApiProperty } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CommentsService } from './comments.service';
 import { CommentDto, CreateCommentDto, UpdateCommentDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
-
-class PaginatedCommentsDto extends PaginatedResponseDto<CommentDto> {
-  @ApiProperty({ type: [CommentDto] })
-  data: CommentDto[];
-}
 
 @ApiTags('comments')
 @Controller('comments')
@@ -37,14 +32,14 @@ export class CommentsController {
 
   @Get()
   @ApiOperation({ summary: 'List all comments (paginated)' })
-  @ApiResponse({ status: 200, description: 'Paginated comments list', type: PaginatedCommentsDto })
+  @ApiResponse({ status: 200, description: 'Paginated comments list' })
   async findAll(@Query() pagination: PaginationDto): Promise<PaginatedResponseDto<CommentDto>> {
     return this.commentsService.findAll(pagination);
   }
 
   @Get('post/:postId')
   @ApiOperation({ summary: 'List comments by post (paginated)' })
-  @ApiResponse({ status: 200, description: 'Paginated post comments list', type: PaginatedCommentsDto })
+  @ApiResponse({ status: 200, description: 'Paginated post comments list' })
   async findByPost(
     @Param('postId') postId: string,
     @Query() pagination: PaginationDto,
