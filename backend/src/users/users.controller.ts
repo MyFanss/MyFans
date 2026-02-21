@@ -22,6 +22,9 @@ export class UsersController {
   async getMe(@Req() req): Promise<UserProfileDto> {
     
     const userId = req.user.id;
+    if(!userId) {
+      throw new Error('User ID not found in request');
+    }
     const user = await this.usersService.findOne(userId);
     return plainToInstance(UserProfileDto, user);
   }
