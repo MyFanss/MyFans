@@ -96,3 +96,59 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+## Rate Limiting
+
+The MyFans backend implements rate limiting to protect against abuse and ensure fair usage. Rate limiting is implemented using `@nestjs/throttler`.
+
+### Rate Limit Configuration
+
+| Route Type | Limit | Time Window | Description |
+|------------|-------|-------------|-------------|
+| Global (all routes) | 100 requests | 60 seconds | Default limit per IP address |
+| Auth routes (login, register) | 5 requests | 60 seconds | Stricter limit to prevent brute-force attacks |
+| Health check | Unlimited | - | Excluded from rate limiting |
+
+### HTTP Status Codes
+
+- **200 OK**: Request successful
+- **429 Too Many Requests**: Rate limit exceeded
+
+### Rate Limit Headers
+
+When a rate limit is exceeded, the API returns a `429` status with the following headers:
+
+- `Retry-After`: Seconds until the rate limit resets
+
+### Example Error Response
+
+```json
+{
+  "statusCode": 429,
+  "message": "Too many requests",
+  "error": "Rate limit exceeded. Please try again later."
+}
+```
+
+### Configuration
+
+Rate limiting can be configured in `src/app.module.ts`:
+
+```typescript
+ThrottlerModule.forRoot([
+  {
+    name: 'short',
+    ttl: 60000,  // 60 seconds in milliseconds
+    limit: 100,  // max requests per TTL
+  },
+  {
+    name: 'auth',
+    ttl: 60000,
+    limit: 5,
+  },
+]),
+```
+
+### Redis Support (Optional)
+
+For distributed rate limiting across multiple instances, you can configure Redis storage. Install `ioredis` and configure the throttler to use Redis as the storage backend.
