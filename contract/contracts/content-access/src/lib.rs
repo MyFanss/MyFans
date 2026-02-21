@@ -26,7 +26,9 @@ impl ContentAccess {
     /// * `token_address` - Token contract address for payments
     pub fn initialize(env: Env, admin: Address, token_address: Address) {
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::TokenAddress, &token_address);
+        env.storage()
+            .instance()
+            .set(&DataKey::TokenAddress, &token_address);
     }
 
     /// Unlock content for a buyer by transferring payment to creator
@@ -59,7 +61,11 @@ impl ContentAccess {
         }
 
         // Get token address
-        let token_address: Address = env.storage().instance().get(&DataKey::TokenAddress).unwrap();
+        let token_address: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::TokenAddress)
+            .unwrap();
 
         // Transfer tokens from buyer to creator
         let token_client = token::Client::new(&env, &token_address);
@@ -70,8 +76,12 @@ impl ContentAccess {
 
         // Emit event
         env.events().publish(
-            (Symbol::new(&env, "content_unlocked"), content_id),
-            (buyer, creator),
+            (
+                Symbol::new(&env, "ContentUnlocked"),
+                buyer.clone(),
+                creator.clone(),
+            ),
+            (content_id, price),
         );
     }
 
@@ -94,7 +104,10 @@ impl ContentAccess {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::{
+        testutils::{Address as _, Events},
+        vec, Env, IntoVal,
+    };
 
     // Mock token contract for testing
     #[contract]
@@ -153,6 +166,24 @@ mod test {
 
         // Verify access after unlock
         assert!(client.has_access(&buyer, &creator, &1));
+
+        let events = env.events().all();
+        assert_eq!(
+            events,
+            vec![
+                &env,
+                (
+                    contract_id.clone(),
+                    (
+                        Symbol::new(&env, "ContentUnlocked"),
+                        buyer.clone(),
+                        creator.clone()
+                    )
+                        .into_val(&env),
+                    (1u64, 100i128).into_val(&env)
+                )
+            ]
+        );
     }
 
     #[test]
