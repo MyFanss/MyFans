@@ -48,7 +48,7 @@ fn test_withdraw_insufficient_balance() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
     
-    let (token_address, token_client, admin_client) = create_token_contract(&env, &admin);
+    let (token_address, _token_client, admin_client) = create_token_contract(&env, &admin);
     admin_client.mint(&user, &1000);
 
     let treasury_id = env.register_contract(None, Treasury);
@@ -63,18 +63,18 @@ fn test_withdraw_insufficient_balance() {
 #[test]
 fn test_unauthorized_withdraw_reverts() {
     let env = Env::default();
+    env.mock_all_auths();
 
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
     let unauthorized = Address::generate(&env);
     
-    let (token_address, token_client, admin_client) = create_token_contract(&env, &admin);
+    let (token_address, _token_client, admin_client) = create_token_contract(&env, &admin);
     admin_client.mint(&user, &1000);
 
     let treasury_id = env.register_contract(None, Treasury);
     let treasury_client = TreasuryClient::new(&env, &treasury_id);
 
-    env.mock_all_auths();
     treasury_client.initialize(&admin, &token_address);
     treasury_client.deposit(&user, &500);
 
