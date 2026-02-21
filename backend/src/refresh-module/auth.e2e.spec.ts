@@ -13,11 +13,11 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import * as request from 'supertest';
 import * as crypto from 'crypto';
 
-import { RefreshToken } from '../entities/refresh-token.entity';
-import { User } from '../entities/user.entity';
-import { RefreshTokenService } from '../refresh-token.service';
-import { AuthController } from '../auth.controller';
-import { JwtStrategy } from '../strategies/jwt.strategy';
+import { RefreshToken } from './refresh-token.entity';
+import { User } from '../users-module/user.entity';
+import { RefreshTokenService } from './refresh-token.service';
+import { AuthController } from './auth.controller';
+import { JwtStrategy } from './jwt.strategy';
 
 const TEST_SECRET = 'test-secret-key';
 const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex');

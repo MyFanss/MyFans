@@ -21,9 +21,9 @@ import {
 } from '@nestjs/swagger';
 
 import { UsersService } from './users.service';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { UserProfileDto, PaginationDto, PaginatedUsersDto } from './dto/user-profile.dto';
+import { CreateUserDto } from './create-user.dto';
+import { UpdateUserDto } from './update-user.dto';
+import { UserProfileDto, PaginationDto, PaginatedUsersDto } from './user-profile.dto';
 
 @ApiTags('Users')
 @Controller('users')
