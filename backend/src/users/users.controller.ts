@@ -44,8 +44,5 @@ export class UsersController {
     );
   }
 
-  @Get('me')
-  async getMeByID(@Req() req) {
-    return this.usersService.findById(req.user.id);
-  }
+  
 }
