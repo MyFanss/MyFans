@@ -32,4 +32,4 @@ import { JwtStrategy } from './jwt.strategy';
   providers: [RefreshTokenService, JwtStrategy],
   exports: [RefreshTokenService, JwtModule],
 })
-export class AuthModule {}
+export class AuthModule { }

@@ -186,3 +186,5 @@ mod test {
         client.create_subscription(&fan, &creator, &duration_ledgers);
     }
 }
+
+mod test;
