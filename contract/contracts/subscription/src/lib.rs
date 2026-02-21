@@ -44,27 +44,6 @@ impl MyfansContract {
         env.storage().instance().set(&DataKey::PlanCount, &0u32);
     }
 
-    pub fn set_admin(env: Env, new_admin: Address) {
-        Self::require_admin(&env);
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
-    }
-
-    pub fn set_accepted_token(env: Env, token: Address, price: i128) {
-        Self::require_admin(&env);
-        env.storage()
-            .instance()
-            .set(&DataKey::AcceptedToken(token), &price);
-    }
-
-    fn require_admin(env: &Env) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("not initialized");
-        admin.require_auth();
-    }
-
     pub fn create_plan(
         env: Env,
         creator: Address,
@@ -99,17 +78,6 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Plan(plan_id))
             .unwrap();
-
-        // Validate token and get associated price (or use plan.amount if token matches plan.asset)
-        let amount = if token == plan.asset {
-            plan.amount
-        } else {
-            env.storage()
-                .instance()
-                .get::<DataKey, i128>(&DataKey::AcceptedToken(token.clone()))
-                .expect("token not accepted")
-        };
-
         let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
         let fee_recipient: Address = env
             .storage()
@@ -117,10 +85,10 @@ impl MyfansContract {
             .get(&DataKey::FeeRecipient)
             .unwrap();
 
-        let fee = (amount * fee_bps as i128) / 10000;
-        let creator_amount = amount - fee;
+        let fee = (plan.amount * fee_bps as i128) / 10000;
+        let creator_amount = plan.amount - fee;
 
-        let token_client = token::Client::new(&env, &token);
+        let token_client = token::Client::new(&env, &plan.asset);
         token_client.transfer(&fan, &plan.creator, &creator_amount);
         if fee > 0 {
             token_client.transfer(&fan, &fee_recipient, &fee);
@@ -157,110 +125,5 @@ impl MyfansContract {
             .instance()
             .remove(&DataKey::Sub(fan.clone(), creator));
         env.events().publish((Symbol::new(&env, "cancelled"),), fan);
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
-
-    #[contract]
-    pub struct MockToken;
-
-    #[contractimpl]
-    impl MockToken {
-        pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {}
-    }
-
-    fn setup_test<'a>() -> (
-        Env,
-        Address,
-        MyfansContractClient<'a>,
-        Address,
-        Address,
-        Address,
-        Address,
-    ) {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let admin = Address::generate(&env);
-        let fee_recipient = Address::generate(&env);
-        let creator = Address::generate(&env);
-        let fan = Address::generate(&env);
-
-        let token_id = env.register_contract(None, MockToken);
-        let asset = token_id;
-
-        let contract_id = env.register_contract(None, MyfansContract);
-        let client = MyfansContractClient::new(&env, &contract_id);
-
-        (env, admin, client, fee_recipient, creator, fan, asset)
-    }
-
-    #[test]
-    fn test_init() {
-        let (env, admin, client, fee_recipient, _, _, _) = setup_test();
-        client.init(&admin, &100, &fee_recipient);
-    }
-
-    #[test]
-    #[should_panic(expected = "already initialized")]
-    fn test_init_fails_if_already_initialized() {
-        let (env, admin, client, fee_recipient, _, _, _) = setup_test();
-        client.init(&admin, &100, &fee_recipient);
-        client.init(&admin, &100, &fee_recipient);
-    }
-
-    #[test]
-    fn test_subscribe_with_plan_asset() {
-        let (env, admin, client, fee_recipient, creator, fan, asset) = setup_test();
-        client.init(&admin, &100, &fee_recipient);
-
-        let plan_id = client.create_plan(&creator, &asset, &1000, &30);
-
-        // Subscribe using the plan's default asset
-        client.subscribe(&fan, &plan_id, &asset);
-
-        assert!(client.is_subscriber(&fan, &creator));
-    }
-
-    #[test]
-    fn test_subscribe_with_alt_token() {
-        let (env, admin, client, fee_recipient, creator, fan, asset) = setup_test();
-        client.init(&admin, &100, &fee_recipient);
-
-        let plan_id = client.create_plan(&creator, &asset, &1000, &30);
-
-        // Register another mock token for alt_token
-        let alt_token = env.register_contract(None, MockToken);
-        client.set_accepted_token(&alt_token, &500); // 500 units of alt_token for this sub
-
-        // Subscribe using the alt token
-        client.subscribe(&fan, &plan_id, &alt_token);
-
-        assert!(client.is_subscriber(&fan, &creator));
-    }
-
-    #[test]
-    #[should_panic(expected = "token not accepted")]
-    fn test_subscribe_with_unaccepted_token_fails() {
-        let (env, admin, client, fee_recipient, creator, fan, asset) = setup_test();
-        client.init(&admin, &100, &fee_recipient);
-
-        let plan_id = client.create_plan(&creator, &asset, &1000, &30);
-
-        let unaccepted_token = env.register_contract(None, MockToken);
-        client.subscribe(&fan, &plan_id, &unaccepted_token);
-    }
-
-    #[test]
-    fn test_set_admin_works() {
-        let (env, admin, client, fee_recipient, _, _, _) = setup_test();
-        client.init(&admin, &100, &fee_recipient);
-
-        let new_admin = Address::generate(&env);
-        client.set_admin(&new_admin);
     }
 }

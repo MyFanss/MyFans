@@ -7,12 +7,12 @@ pub struct ContentLikes;
 #[contractimpl]
 impl ContentLikes {
     /// Like a content item (idempotent)
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Soroban environment
     /// * `user` - Address of the user liking the content
     /// * `content_id` - ID of the content being liked
-    /// 
+    ///
     /// # Behavior
     /// - User must authorize the transaction
     /// - Adds user to the liked map for this content
@@ -40,11 +40,7 @@ impl ContentLikes {
             env.storage().instance().set(&like_map_key, &likes);
 
             // Increment count
-            let current_count: u32 = env
-                .storage()
-                .instance()
-                .get(&count_key)
-                .unwrap_or(0);
+            let current_count: u32 = env.storage().instance().get(&count_key).unwrap_or(0);
             env.storage()
                 .instance()
                 .set(&count_key, &(current_count + 1));
@@ -56,12 +52,12 @@ impl ContentLikes {
     }
 
     /// Unlike a content item
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Soroban environment
     /// * `user` - Address of the user unliking the content
     /// * `content_id` - ID of the content being unliked
-    /// 
+    ///
     /// # Behavior
     /// - User must authorize the transaction
     /// - Removes user from the liked map
@@ -90,11 +86,7 @@ impl ContentLikes {
         env.storage().instance().set(&like_map_key, &likes);
 
         // Decrement count
-        let current_count: u32 = env
-            .storage()
-            .instance()
-            .get(&count_key)
-            .unwrap_or(0);
+        let current_count: u32 = env.storage().instance().get(&count_key).unwrap_or(0);
         if current_count > 0 {
             env.storage()
                 .instance()
@@ -107,11 +99,11 @@ impl ContentLikes {
     }
 
     /// Get the total like count for a content item
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Soroban environment
     /// * `content_id` - ID of the content
-    /// 
+    ///
     /// # Returns
     /// Total number of likes for this content (0 if never liked)
     pub fn like_count(env: Env, content_id: u32) -> u32 {
@@ -120,12 +112,12 @@ impl ContentLikes {
     }
 
     /// Check if a user has liked a content item
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Soroban environment
     /// * `user` - Address of the user
     /// * `content_id` - ID of the content
-    /// 
+    ///
     /// # Returns
     /// true if user has liked the content, false otherwise
     pub fn has_liked(env: Env, user: Address, content_id: u32) -> bool {
