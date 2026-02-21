@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { SocialLinksDto } from '../dto/social-links.dto';
-import { SocialLinksResponseDto } from '../dto/user-profile.dto';
+import { SocialLinksDto } from './social-links.dto';
+import { SocialLinksResponseDto } from './user-profile.dto';
 
 /**
  * SocialLinksService

@@ -5,8 +5,8 @@ import {
   IsSocialHandleConstraint,
   sanitizeUrl,
   normalizeHandle,
-} from '../common/social-links.validator';
-import { SocialLinksDto } from '../dto/social-links.dto';
+} from './social-links.validator';
+import { SocialLinksDto } from './social-links.dto';
 
 // ─── IsSafeUrlConstraint ─────────────────────────────────────────────────────
 
