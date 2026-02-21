@@ -50,7 +50,7 @@ mod tests {
     #[test]
     fn test_subscription_status_serialization() {
         let env = Env::default();
-        
+
         let pending = SubscriptionStatus::Pending;
         let val: soroban_sdk::Val = pending.into_val(&env);
         let decoded: SubscriptionStatus = val.try_into_val(&env).unwrap();
@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn test_content_type_serialization() {
         let env = Env::default();
-        
+
         let free = ContentType::Free;
         let val: soroban_sdk::Val = free.into_val(&env);
         let decoded: ContentType = val.try_into_val(&env).unwrap();
@@ -91,7 +91,7 @@ mod tests {
     fn test_enum_equality() {
         assert_eq!(SubscriptionStatus::Active, SubscriptionStatus::Active);
         assert_ne!(SubscriptionStatus::Active, SubscriptionStatus::Pending);
-        
+
         assert_eq!(ContentType::Free, ContentType::Free);
         assert_ne!(ContentType::Free, ContentType::Paid);
     }
