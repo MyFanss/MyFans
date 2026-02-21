@@ -7,17 +7,20 @@ import {
   UseInterceptors,
   ClassSerializerInterceptor,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UpdateUserDto, UserProfileDto } from './dto';
 import { plainToInstance } from 'class-transformer';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
+import { AuthGuard } from 'src/utils/auth.guard';
 
 @Controller('users')
 @UseInterceptors(ClassSerializerInterceptor)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  @UseGuards(AuthGuard)
   @Get('me')
   async getMe(@Req() req): Promise<UserProfileDto> {
     
