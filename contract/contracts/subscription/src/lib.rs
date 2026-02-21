@@ -85,3 +85,4 @@ impl MyfansContract {
     }
 }
 
+mod test;
