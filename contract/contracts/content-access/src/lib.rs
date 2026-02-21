@@ -25,8 +25,33 @@ impl ContentAccess {
     /// * `admin` - Admin address
     /// * `token_address` - Token contract address for payments
     pub fn initialize(env: Env, admin: Address, token_address: Address) {
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic!("already initialized");
+        }
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::TokenAddress, &token_address);
+        env.storage()
+            .instance()
+            .set(&DataKey::TokenAddress, &token_address);
+    }
+
+    /// Update the admin address
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `new_admin` - New admin address
+    pub fn set_admin(env: Env, new_admin: Address) {
+        Self::require_admin(&env);
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+    }
+
+    /// Internal helper to require admin authorization
+    fn require_admin(env: &Env) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+        admin.require_auth();
     }
 
     /// Unlock content for a buyer by transferring payment to creator
@@ -59,7 +84,11 @@ impl ContentAccess {
         }
 
         // Get token address
-        let token_address: Address = env.storage().instance().get(&DataKey::TokenAddress).unwrap();
+        let token_address: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::TokenAddress)
+            .unwrap();
 
         // Transfer tokens from buyer to creator
         let token_client = token::Client::new(&env, &token_address);
@@ -293,5 +322,47 @@ mod test {
         assert!(client.has_access(&buyer, &creator, &1));
         assert!(client.has_access(&buyer2, &creator, &1));
         assert!(!client.has_access(&buyer3, &creator, &1));
+    }
+
+    #[test]
+    fn test_set_admin_works() {
+        let (env, contract_id, admin, token_address, _, _) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+
+        let new_admin = Address::generate(&env);
+        client.set_admin(&new_admin);
+
+        // Verify by setting it again with new admin
+        let admin3 = Address::generate(&env);
+        client.set_admin(&admin3);
+    }
+
+    #[test]
+    #[should_panic] // Status codes in Soroban tests can be tricky
+    fn test_set_admin_fails_if_not_authorized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, ContentAccess);
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let token_address = Address::generate(&env);
+        client.initialize(&admin, &token_address);
+
+        let non_admin = Address::generate(&env);
+        // We don't call mock_all_auths, but we need to specify whose auth we are testing
+        // For simplicity, we just check that it doesn't work without any auth setup
+        client.set_admin(&non_admin);
+    }
+
+    #[test]
+    #[should_panic(expected = "already initialized")]
+    fn test_initialize_fails_if_already_initialized() {
+        let (env, contract_id, admin, token_address, _, _) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        client.initialize(&admin, &token_address);
     }
 }
