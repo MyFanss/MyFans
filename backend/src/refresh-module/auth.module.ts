@@ -5,11 +5,11 @@ import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 
-import { RefreshToken } from './entities/refresh-token.entity';
-import { User } from './entities/user.entity';
+import { RefreshToken } from './refresh-token.entity';
+import { User } from '../users-module/user.entity';
 import { RefreshTokenService } from './refresh-token.service';
 import { AuthController } from './auth.controller';
-import { JwtStrategy } from './strategies/jwt.strategy';
+import { JwtStrategy } from './jwt.strategy';
 
 @Module({
   imports: [
