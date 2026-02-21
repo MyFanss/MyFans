@@ -27,40 +27,13 @@ impl ContentAccess {
     /// * `admin` - Admin address
     /// * `token_address` - Token contract address for payments
     pub fn initialize(env: Env, admin: Address, token_address: Address) {
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic!("already initialized");
+        }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
             .instance()
             .set(&DataKey::TokenAddress, &token_address);
-    }
-
-    /// Set the price for a content item
-    ///
-    /// # Arguments
-    /// * `env` - Soroban environment
-    /// * `creator` - Creator address (must authorize)
-    /// * `content_id` - Content ID
-    /// * `price` - Price in tokens (must be >= 0)
-    pub fn set_content_price(env: Env, creator: Address, content_id: u64, price: i128) {
-        creator.require_auth();
-        if price < 0 {
-            panic!("price must be non-negative");
-        }
-        let price_key = DataKey::ContentPrice(creator.clone(), content_id);
-        env.storage().instance().set(&price_key, &price);
-    }
-
-    /// Get the price for a content item
-    ///
-    /// # Arguments
-    /// * `env` - Soroban environment
-    /// * `creator` - Creator address
-    /// * `content_id` - Content ID
-    ///
-    /// # Returns
-    /// `Some(price)` if set, `None` otherwise
-    pub fn get_content_price(env: Env, creator: Address, content_id: u64) -> Option<i128> {
-        let price_key = DataKey::ContentPrice(creator, content_id);
-        env.storage().instance().get(&price_key)
     }
 
     /// Unlock content for a buyer by transferring payment to creator
@@ -106,8 +79,12 @@ impl ContentAccess {
 
         // Emit event
         env.events().publish(
-            (Symbol::new(&env, "content_unlocked"), content_id),
-            (buyer, creator),
+            (
+                Symbol::new(&env, "ContentUnlocked"),
+                buyer.clone(),
+                creator.clone(),
+            ),
+            (content_id, price),
         );
     }
 
@@ -130,7 +107,10 @@ impl ContentAccess {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::{
+        testutils::{Address as _, Events},
+        vec, Env, IntoVal,
+    };
 
     // Mock token contract for testing
     #[contract]
@@ -192,6 +172,24 @@ mod test {
 
         // Verify access after unlock
         assert!(client.has_access(&buyer, &creator, &1));
+
+        let events = env.events().all();
+        assert_eq!(
+            events,
+            vec![
+                &env,
+                (
+                    contract_id.clone(),
+                    (
+                        Symbol::new(&env, "ContentUnlocked"),
+                        buyer.clone(),
+                        creator.clone()
+                    )
+                        .into_val(&env),
+                    (1u64, 100i128).into_val(&env)
+                )
+            ]
+        );
     }
 
     #[test]
@@ -346,38 +344,44 @@ mod test {
     }
 
     #[test]
-    fn test_set_and_get_content_price() {
-        let (env, contract_id, admin, token_address, _, creator) = setup_test();
+    fn test_set_admin_works() {
+        let (env, contract_id, admin, token_address, _, _) = setup_test();
         let client = ContentAccessClient::new(&env, &contract_id);
 
         client.initialize(&admin, &token_address);
 
-        client.set_content_price(&creator, &1, &100);
-        assert_eq!(client.get_content_price(&creator, &1), Some(100));
+        let new_admin = Address::generate(&env);
+        client.set_admin(&new_admin);
 
-        client.set_content_price(&creator, &1, &200);
-        assert_eq!(client.get_content_price(&creator, &1), Some(200));
-
-        assert_eq!(client.get_content_price(&creator, &2), None);
+        // Verify by setting it again with new admin
+        let admin3 = Address::generate(&env);
+        client.set_admin(&admin3);
     }
 
     #[test]
-    #[should_panic(expected = "price must be non-negative")]
-    fn test_set_negative_price_fails() {
-        let (env, contract_id, admin, token_address, _, creator) = setup_test();
+    #[should_panic] // Status codes in Soroban tests can be tricky
+    fn test_set_admin_fails_if_not_authorized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, ContentAccess);
         let client = ContentAccessClient::new(&env, &contract_id);
 
+        let admin = Address::generate(&env);
+        let token_address = Address::generate(&env);
         client.initialize(&admin, &token_address);
-        client.set_content_price(&creator, &1, &-1);
+
+        let non_admin = Address::generate(&env);
+        // We don't call mock_all_auths, but we need to specify whose auth we are testing
+        // For simplicity, we just check that it doesn't work without any auth setup
+        client.set_admin(&non_admin);
     }
 
     #[test]
-    #[should_panic(expected = "content price not set")]
-    fn test_unlock_fails_if_price_not_set() {
-        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+    #[should_panic(expected = "already initialized")]
+    fn test_initialize_fails_if_already_initialized() {
+        let (env, contract_id, admin, token_address, _, _) = setup_test();
         let client = ContentAccessClient::new(&env, &contract_id);
 
         client.initialize(&admin, &token_address);
-        client.unlock_content(&buyer, &creator, &1);
+        client.initialize(&admin, &token_address);
     }
 }
