@@ -9,6 +9,11 @@ import { UsersModule } from './users/users.module';
 import { CreatorsModule } from './creators/creators.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { PostsModule } from './posts/posts.module';
+import { MessagesModule } from './messages/messages.module';
+import { PaymentsModule } from './payments/payments.module';
+import { CommentsModule } from './comments/comments.module';
+import { CacheModule } from '@nestjs/cache-manager';
+import { redisStore } from 'cache-manager-redis-yet';
 
 @Module({
   imports: [
@@ -16,6 +21,19 @@ import { PostsModule } from './posts/posts.module';
       isGlobal: true,
       load: [configuration],
       validate,
+    }),
+    CacheModule.registerAsync({
+      isGlobal: true,
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: async (configService: ConfigService) => {
+        const store = await redisStore({
+          url: configService.get<string>('redis.url'),
+          ttl: (configService.get<number>('cache.creators_ttl') ?? 300) * 1000,
+        });
+
+        return { store };
+      },
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -36,13 +54,17 @@ import { PostsModule } from './posts/posts.module';
               password: configService.get<string>('DB_PASSWORD'),
               database: configService.get<string>('DB_DATABASE'),
               autoLoadEntities: true,
-              synchronize: configService.get<string>('NODE_ENV') !== 'production',
+              synchronize:
+                configService.get<string>('NODE_ENV') !== 'production',
             },
     }),
     UsersModule,
     CreatorsModule,
     SubscriptionsModule,
     PostsModule,
+    MessagesModule,
+    PaymentsModule,
+    CommentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

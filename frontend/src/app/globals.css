@@ -20,6 +20,58 @@
   --primary-700: #0369a1;
   --primary-800: #075985;
   --primary-900: #0c4a6e;
+  
+  /* Semantic colors */
+  --success-50: #f0fdf4;
+  --success-100: #dcfce7;
+  --success-500: #22c55e;
+  --success-600: #16a34a;
+  --success-700: #15803d;
+  
+  --warning-50: #fffbeb;
+  --warning-100: #fef3c7;
+  --warning-500: #f59e0b;
+  --warning-600: #d97706;
+  --warning-700: #b45309;
+  
+  --error-50: #fef2f2;
+  --error-100: #fee2e2;
+  --error-500: #ef4444;
+  --error-600: #dc2626;
+  --error-700: #b91c1c;
+  
+  --info-50: #eff6ff;
+  --info-100: #dbeafe;
+  --info-500: #3b82f6;
+  --info-600: #2563eb;
+  --info-700: #1d4ed8;
+  
+  /* Surface colors */
+  --surface-50: #f8fafc;
+  --surface-100: #f1f5f9;
+  --surface-200: #e2e8f0;
+  --surface-300: #cbd5e1;
+  --surface-400: #94a3b8;
+  --surface-500: #64748b;
+  --surface-600: #475569;
+  --surface-700: #334155;
+  --surface-800: #1e293b;
+  --surface-900: #0f172a;
+  
+  /* Input colors */
+  --input-bg: #ffffff;
+  --input-border: #d1d5db;
+  --input-border-focus: #0ea5e9;
+  --input-placeholder: #9ca3af;
+  --input-text: #111827;
+  
+  /* Modal/Overlay */
+  --modal-overlay: rgba(0, 0, 0, 0.5);
+  --modal-bg: #ffffff;
+  
+  /* Skeleton loading */
+  --skeleton-bg: #e2e8f0;
+  --skeleton-shine: #f1f5f9;
 }
 
 @theme inline {
@@ -41,12 +93,86 @@
   --color-primary-900: var(--primary-900);
 }
 
+/* Dark mode via data attribute (used by ThemeProvider) */
+[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  
+  /* Card colors - dark mode */
+  --card-bg: #1f2937;
+  --card-border: #374151;
+  --card-shadow: rgba(0, 0, 0, 0.3);
+  
+  /* Primary brand colors - slightly lighter for dark mode */
+  --primary-50: #0c4a6e;
+  --primary-100: #075985;
+  --primary-200: #0369a1;
+  --primary-300: #0284c7;
+  --primary-400: #0ea5e9;
+  --primary-500: #38bdf8;
+  --primary-600: #7dd3fc;
+  --primary-700: #bae6fd;
+  --primary-800: #e0f2fe;
+  --primary-900: #f0f9ff;
+  
+  /* Semantic colors - dark mode */
+  --success-50: #14532d;
+  --success-100: #166534;
+  --success-500: #4ade80;
+  --success-600: #22c55e;
+  --success-700: #16a34a;
+  
+  --warning-50: #451a03;
+  --warning-100: #78350f;
+  --warning-500: #fbbf24;
+  --warning-600: #f59e0b;
+  --warning-700: #d97706;
+  
+  --error-50: #450a0a;
+  --error-100: #7f1d1d;
+  --error-500: #f87171;
+  --error-600: #ef4444;
+  --error-700: #dc2626;
+  
+  --info-50: #1e3a8a;
+  --info-100: #1d4ed8;
+  --info-500: #60a5fa;
+  --info-600: #3b82f6;
+  --info-700: #2563eb;
+  
+  /* Surface colors - inverted for dark mode */
+  --surface-50: #0f172a;
+  --surface-100: #1e293b;
+  --surface-200: #334155;
+  --surface-300: #475569;
+  --surface-400: #64748b;
+  --surface-500: #94a3b8;
+  --surface-600: #cbd5e1;
+  --surface-700: #e2e8f0;
+  --surface-800: #f1f5f9;
+  --surface-900: #f8fafc;
+  
+  /* Input colors - dark mode */
+  --input-bg: #1f2937;
+  --input-border: #374151;
+  --input-border-focus: #38bdf8;
+  --input-placeholder: #6b7280;
+  --input-text: #f9fafb;
+  
+  /* Modal/Overlay - dark mode */
+  --modal-overlay: rgba(0, 0, 0, 0.7);
+  --modal-bg: #1f2937;
+  
+  /* Skeleton loading - dark mode */
+  --skeleton-bg: #374151;
+  --skeleton-shine: #4b5563;
+}
+
+/* Fallback for system preference (used before ThemeProvider loads) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --background: #0a0a0a;
     --foreground: #ededed;
-    
-    /* Card colors - dark mode */
     --card-bg: #1f2937;
     --card-border: #374151;
     --card-shadow: rgba(0, 0, 0, 0.3);
@@ -123,6 +249,121 @@ body {
 
 .success-pop {
   animation: success-pop 220ms ease-out;
+}
+/* Focus visible styles */
+.focus-visible:focus-visible {
+  outline: 2px solid var(--primary-500);
+  outline-offset: 2px;
+}
+
+/* Skeleton animation */
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.skeleton {
+  background-color: var(--skeleton-bg);
+  animation: skeleton-pulse 2s ease-in-out infinite;
+}
+
+/* Error shake animation */
+@keyframes error-shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-4px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(4px);
+  }
+}
+
+.animate-shake {
+  animation: error-shake 0.5s ease-in-out;
+}
+
+/* Fade in animation */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Slide up animation */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+/* Toast slide in */
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-toast-in {
+  animation: toast-slide-in 0.3s ease-out;
+}
+
+/* Spin animation for loading states */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Chart theme variables (for charting libraries) */
+.chart-theme {
+  --chart-grid: var(--surface-200);
+  --chart-text: var(--surface-600);
+  --chart-primary: var(--primary-500);
+  --chart-secondary: var(--primary-300);
+  --chart-success: var(--success-500);
+  --chart-warning: var(--warning-500);
+  --chart-error: var(--error-500);
+}
+
+[data-theme="dark"] .chart-theme {
+  --chart-grid: var(--surface-700);
+  --chart-text: var(--surface-400);
+  --chart-primary: var(--primary-400);
+  --chart-secondary: var(--primary-600);
 }
 
 @media (prefers-reduced-motion: reduce) {
