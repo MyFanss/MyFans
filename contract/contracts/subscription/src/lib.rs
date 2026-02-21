@@ -24,6 +24,7 @@ pub enum DataKey {
     PlanCount,
     Plan(u32),
     Sub(Address, Address),
+    CreatorSubscriptionCount(Address),
     AcceptedToken(Address),
 }
 
@@ -125,5 +126,63 @@ impl MyfansContract {
             .instance()
             .remove(&DataKey::Sub(fan.clone(), creator));
         env.events().publish((Symbol::new(&env, "cancelled"),), fan);
+    }
+
+    pub fn create_subscription(
+        env: Env,
+        fan: Address,
+        creator: Address,
+        duration_ledgers: u32,
+    ) {
+        fan.require_auth();
+
+        let expires_at_ledger = env.ledger().sequence() + duration_ledgers;
+        
+        let sub = Subscription { 
+            fan: fan.clone(), 
+            plan_id: 0, // Mock id, just entity persistence
+            expiry: expires_at_ledger as u64 
+        };
+        
+        env.storage().instance().set(&DataKey::Sub(fan.clone(), creator.clone()), &sub);
+
+        let mut current_count: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::CreatorSubscriptionCount(creator.clone()))
+            .unwrap_or(0);
+        
+        current_count += 1;
+        env.storage().instance().set(&DataKey::CreatorSubscriptionCount(creator), &current_count);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env};
+
+    #[test]
+    fn test_subscription_entity_create() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let contract_id = env.register_contract(None, MyfansContract);
+        let client = MyfansContractClient::new(&env, &contract_id);
+        
+        let fan = Address::generate(&env);
+        let creator = Address::generate(&env);
+
+        let fee_recipient = Address::generate(&env);
+        client.init(&creator, &0, &fee_recipient); // mock admin init
+
+        env.ledger().with_mut(|li| {
+            li.sequence_number = 1000;
+        });
+
+        // Add 30 days of ledgers
+        let duration_ledgers = 518400;
+
+        client.create_subscription(&fan, &creator, &duration_ledgers);
     }
 }
