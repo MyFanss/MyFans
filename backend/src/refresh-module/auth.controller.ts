@@ -14,8 +14,8 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { RefreshTokenService, TokenPair } from './refresh-token.service';
-import { RefreshTokenDto, LogoutDto, TokenResponseDto } from './dto/refresh-token.dto';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RefreshTokenDto, LogoutDto, TokenResponseDto } from './refresh-token.dto';
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 @ApiTags('auth')
 @Controller('auth')
