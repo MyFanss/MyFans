@@ -8,10 +8,10 @@ import { Repository, DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { plainToInstance } from 'class-transformer';
 
-import { User } from './entities/user.entity';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { UserProfileDto, PaginationDto, PaginatedUsersDto } from './dto/user-profile.dto';
+import { User } from './user.entity';
+import { CreateUserDto } from './create-user.dto';
+import { UpdateUserDto } from './update-user.dto';
+import { UserProfileDto, PaginationDto, PaginatedUsersDto } from './user-profile.dto';
 
 const BCRYPT_ROUNDS = 12;
 
