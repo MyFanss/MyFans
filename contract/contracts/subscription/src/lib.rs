@@ -43,20 +43,6 @@ impl MyfansContract {
         env.storage().instance().set(&DataKey::PlanCount, &0u32);
     }
 
-    pub fn set_admin(env: Env, new_admin: Address) {
-        Self::require_admin(&env);
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
-    }
-
-    fn require_admin(env: &Env) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("not initialized");
-        admin.require_auth();
-    }
-
     pub fn create_plan(
         env: Env,
         creator: Address,
@@ -138,72 +124,5 @@ impl MyfansContract {
             .instance()
             .remove(&DataKey::Sub(fan.clone(), creator));
         env.events().publish((Symbol::new(&env, "cancelled"),), fan);
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
-
-    fn setup_test() -> (Env, Address, Address, Address) {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let admin = Address::generate(&env);
-        let fee_recipient = Address::generate(&env);
-
-        let contract_id = env.register_contract(None, MyfansContract);
-
-        (env, contract_id, admin, fee_recipient)
-    }
-
-    #[test]
-    fn test_init() {
-        let (env, contract_id, admin, fee_recipient) = setup_test();
-        let client = MyfansContractClient::new(&env, &contract_id);
-
-        client.init(&admin, &100, &fee_recipient);
-    }
-
-    #[test]
-    #[should_panic(expected = "already initialized")]
-    fn test_init_fails_if_already_initialized() {
-        let (env, contract_id, admin, fee_recipient) = setup_test();
-        let client = MyfansContractClient::new(&env, &contract_id);
-
-        client.init(&admin, &100, &fee_recipient);
-        client.init(&admin, &100, &fee_recipient);
-    }
-
-    #[test]
-    fn test_set_admin_works() {
-        let (env, contract_id, admin, fee_recipient) = setup_test();
-        let client = MyfansContractClient::new(&env, &contract_id);
-
-        client.init(&admin, &100, &fee_recipient);
-
-        let new_admin = Address::generate(&env);
-        client.set_admin(&new_admin);
-
-        // Verify by setting it again
-        let admin3 = Address::generate(&env);
-        client.set_admin(&admin3);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_set_admin_fails_if_unauthorized() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, MyfansContract);
-        let client = MyfansContractClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
-        let fee_recipient = Address::generate(&env);
-        client.init(&admin, &100, &fee_recipient);
-
-        let non_admin = Address::generate(&env);
-        // No mock_all_auths here, so it should fail
-        client.set_admin(&non_admin);
     }
 }
