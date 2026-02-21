@@ -9,7 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import * as crypto from 'crypto';
-import { RefreshToken } from './entities/refresh-token.entity';
+import { RefreshToken } from './refresh-token.entity';
 
 export interface TokenPair {
   access_token: string;
