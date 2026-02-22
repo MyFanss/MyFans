@@ -27,14 +27,13 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       lg: 'h-12 px-6 text-lg rounded-lg'
     };
     
-    const widthClass = fullWidth ? 'w-full' : '';
-    
     return (
       <button
         ref={ref}
         disabled={disabled || loading}
-        className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${widthClass} ${className}`}
+        className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${fullWidth ? 'w-full' : ''} ${className}`}
         aria-busy={loading}
+        aria-disabled={disabled || loading}
         {...props}
       >
         {loading && (
