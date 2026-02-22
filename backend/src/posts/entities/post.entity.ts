@@ -1,4 +1,12 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
+import { Like } from '../../likes/entities/like.entity';
 
 @Entity('posts')
 export class Post {
@@ -16,6 +24,15 @@ export class Post {
 
   @Column({ default: false })
   isPublished: boolean;
+
+  @Column({ default: false })
+  isPremium: boolean;
+
+  @Column({ default: 0 })
+  likesCount: number;
+
+  @OneToMany(() => Like, (like) => like.post)
+  likes: Like[];
 
   @CreateDateColumn()
   createdAt: Date;
