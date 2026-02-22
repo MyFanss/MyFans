@@ -1,6 +1,6 @@
 #![no_std]
+use myfans_lib::{ContentType, SubscriptionStatus};
 use soroban_sdk::{contract, contractimpl, Env};
-use myfans_lib::{SubscriptionStatus, ContentType};
 
 #[contract]
 pub struct TestConsumer;
@@ -10,11 +10,11 @@ impl TestConsumer {
     pub fn get_status(_env: Env) -> SubscriptionStatus {
         SubscriptionStatus::Active
     }
-    
+
     pub fn get_content(_env: Env) -> ContentType {
         ContentType::Paid
     }
-    
+
     pub fn is_active(_env: Env, status: SubscriptionStatus) -> bool {
         status == SubscriptionStatus::Active
     }
