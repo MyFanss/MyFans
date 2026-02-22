@@ -34,6 +34,16 @@ export class User {
   @Column({ nullable: true })
   avatar_url: string;
 
+// ✅ Notification Preferences
+  @Column({ type: 'boolean', default: true })
+  email_notifications: boolean;
+
+   @Column({ type: 'boolean', default: false })
+  push_notifications: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  marketing_emails: boolean;
+
   @Column({
     type: 'enum',
     enum: UserRole,
