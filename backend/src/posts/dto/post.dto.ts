@@ -24,6 +24,14 @@ export class PostDto {
 
   @ApiProperty()
   @Expose()
+  isPremium: boolean;
+
+  @ApiProperty()
+  @Expose()
+  likesCount: number;
+
+  @ApiProperty()
+  @Expose()
   createdAt: Date;
 
   @ApiProperty()
@@ -40,6 +48,9 @@ export class CreatePostDto {
 
   @ApiPropertyOptional()
   isPublished?: boolean;
+
+  @ApiPropertyOptional()
+  isPremium?: boolean;
 }
 
 export class UpdatePostDto {
@@ -51,4 +62,7 @@ export class UpdatePostDto {
 
   @ApiPropertyOptional()
   isPublished?: boolean;
+
+  @ApiPropertyOptional()
+  isPremium?: boolean;
 }
