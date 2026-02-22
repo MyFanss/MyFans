@@ -4,6 +4,11 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
+jest.mock('bcrypt', () => ({
+  hash: jest.fn(),
+  compare: jest.fn(),
+}));
+
 import { UsersService } from './users.service';
 import { User } from './user.entity';
 import { CreateUserDto } from './create-user.dto';
@@ -35,6 +40,7 @@ const createQb = (result: User | null = null) => ({
 
 describe('UsersService', () => {
   let service: UsersService;
+  const bcryptHashMock = bcrypt.hash as jest.MockedFunction<typeof bcrypt.hash>;
 
   const mockRepo = {
     findOne: jest.fn(),
@@ -79,7 +85,7 @@ describe('UsersService', () => {
 
     it('should create and return a user profile without passwordHash', async () => {
       mockRepo.createQueryBuilder.mockReturnValue(createQb(null));
-      jest.spyOn(bcrypt, 'hash').mockResolvedValue('hashed' as never);
+      bcryptHashMock.mockResolvedValue('hashed' as never);
 
       const result = await service.create(dto);
 
@@ -107,11 +113,11 @@ describe('UsersService', () => {
 
     it('should hash password with bcrypt', async () => {
       mockRepo.createQueryBuilder.mockReturnValue(createQb(null));
-      const hashSpy = jest.spyOn(bcrypt, 'hash').mockResolvedValue('hashed' as never);
+      bcryptHashMock.mockResolvedValue('hashed' as never);
 
       await service.create(dto);
 
-      expect(hashSpy).toHaveBeenCalledWith(dto.password, 12);
+      expect(bcryptHashMock).toHaveBeenCalledWith(dto.password, 12);
     });
   });
 
@@ -178,11 +184,11 @@ describe('UsersService', () => {
     it('should hash password if provided', async () => {
       mockRepo.findOne.mockResolvedValue(mockUser());
       mockRepo.createQueryBuilder.mockReturnValue(createQb(null));
-      const hashSpy = jest.spyOn(bcrypt, 'hash').mockResolvedValue('newhashed' as never);
+      bcryptHashMock.mockResolvedValue('newhashed' as never);
 
       await service.update('uuid-1', { password: 'NewPass123!' });
 
-      expect(hashSpy).toHaveBeenCalledWith('NewPass123!', 12);
+      expect(bcryptHashMock).toHaveBeenCalledWith('NewPass123!', 12);
     });
 
     it('should throw 404 when user not found', async () => {
