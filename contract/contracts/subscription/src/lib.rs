@@ -95,11 +95,11 @@ impl MyfansContract {
             token_client.transfer(&fan, &fee_recipient, &fee);
         }
 
-        let expiry = env.ledger().timestamp() + (plan.interval_days as u64 * 86400);
+        let expiry = env.ledger().sequence() + (plan.interval_days * 17280);
         let sub = Subscription {
             fan: fan.clone(),
             plan_id,
-            expiry,
+            expiry: expiry as u64,
         };
         env.storage()
             .instance()
@@ -114,10 +114,66 @@ impl MyfansContract {
             .instance()
             .get::<DataKey, Subscription>(&DataKey::Sub(fan, creator))
         {
-            sub.expiry > env.ledger().timestamp()
+            env.ledger().sequence() <= sub.expiry as u32
         } else {
             false
         }
+    }
+
+    pub fn extend_subscription(
+        env: Env,
+        fan: Address,
+        creator: Address,
+        extra_ledgers: u32,
+        token: Address,
+    ) {
+        fan.require_auth();
+
+        let sub: Subscription = env
+            .storage()
+            .instance()
+            .get(&DataKey::Sub(fan.clone(), creator.clone()))
+            .expect("subscription not found");
+
+        if env.ledger().sequence() > sub.expiry as u32 {
+            panic!("subscription expired");
+        }
+
+        let plan: Plan = env
+            .storage()
+            .instance()
+            .get(&DataKey::Plan(sub.plan_id))
+            .unwrap();
+
+        let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
+        let fee_recipient: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeRecipient)
+            .unwrap();
+
+        let fee = (plan.amount * fee_bps as i128) / 10000;
+        let creator_amount = plan.amount - fee;
+
+        let token_client = token::Client::new(&env, &token);
+        token_client.transfer(&fan, &creator, &creator_amount);
+        if fee > 0 {
+            token_client.transfer(&fan, &fee_recipient, &fee);
+        }
+
+        let new_expiry = sub.expiry + extra_ledgers as u64;
+        let updated_sub = Subscription {
+            fan: fan.clone(),
+            plan_id: sub.plan_id,
+            expiry: new_expiry,
+        };
+
+        env.storage()
+            .instance()
+            .set(&DataKey::Sub(fan.clone(), creator), &updated_sub);
+
+        env.events()
+            .publish((Symbol::new(&env, "extended"), sub.plan_id), fan);
     }
 
     pub fn cancel(env: Env, fan: Address, creator: Address) {
