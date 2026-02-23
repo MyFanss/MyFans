@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
@@ -21,6 +21,7 @@ export class PostsService {
     const post = this.postsRepository.create({
       ...dto,
       authorId,
+      likesCount: 0,
     });
     const saved = await this.postsRepository.save(post);
     return this.toDto(saved);
@@ -71,6 +72,17 @@ export class PostsService {
     return this.toDto(post);
   }
 
+  async findOneWithLikes(id: string): Promise<Post> {
+    const post = await this.postsRepository.findOne({ 
+      where: { id },
+      relations: ['likes'],
+    });
+    if (!post) {
+      throw new NotFoundException(`Post with id "${id}" not found`);
+    }
+    return post;
+  }
+
   async update(id: string, dto: UpdatePostDto): Promise<PostDto> {
     const post = await this.postsRepository.findOne({ where: { id } });
     if (!post) {
@@ -87,5 +99,13 @@ export class PostsService {
       throw new NotFoundException(`Post with id "${id}" not found`);
     }
     await this.postsRepository.remove(post);
+  }
+
+  async incrementLikesCount(id: string): Promise<void> {
+    await this.postsRepository.increment({ id }, 'likesCount', 1);
+  }
+
+  async decrementLikesCount(id: string): Promise<void> {
+    await this.postsRepository.decrement({ id }, 'likesCount', 1);
   }
 }
