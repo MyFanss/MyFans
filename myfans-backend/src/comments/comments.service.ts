@@ -46,13 +46,13 @@ export class CommentsService {
     });
 
     const saved = await this.commentRepo.save(comment);
-    
+
     // Fetch again to include author info for the response
     const complete = await this.commentRepo.findOne({
       where: { id: saved.id },
       relations: ['user'],
     });
-    
+
     return this.toResponse(complete!);
   }
 
@@ -115,7 +115,7 @@ export class CommentsService {
 
   private async verifyPostAccess(user: User, post: Post) {
     // Designer note: Verify user has access to post before allowing comment.
-    
+
     // 1. Owner (the creator) always has access
     if (post.creator.user_id === user.id) {
       return;
