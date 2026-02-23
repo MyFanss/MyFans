@@ -1,5 +1,7 @@
 import { createAppError } from '@/types/errors';
 
+declare const process: { env: { NEXT_PUBLIC_API_URL?: string } };
+
 export interface EarningsSummary {
   total_earnings: string;
   total_earnings_usd: number;
@@ -81,7 +83,7 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
     });
 
     if (!response.ok) {
-      throw createAppError('API_ERROR', {
+      throw createAppError('INTERNAL_ERROR', {
         message: `API request failed: ${response.statusText}`,
         severity: 'error',
       });
