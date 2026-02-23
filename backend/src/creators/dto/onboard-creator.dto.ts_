@@ -1,0 +1,54 @@
+import { IsString, IsNotEmpty, IsNumber, IsOptional, MaxLength, Min, IsIn } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+export const ALLOWED_CURRENCIES = ['XLM', 'USDC'] as const;
+export type Currency = typeof ALLOWED_CURRENCIES[number];
+
+export class OnboardCreatorDto {
+  @ApiPropertyOptional({ maxLength: 500, example: 'I create amazing content about technology and design.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  bio?: string;
+
+  @ApiProperty({ minimum: 0, example: 10 })
+  @IsNotEmpty()
+  @IsNumber()
+  @Min(0)
+  subscription_price!: number;
+
+  @ApiProperty({ enum: ALLOWED_CURRENCIES, example: 'XLM' })
+  @IsNotEmpty()
+  @IsIn(ALLOWED_CURRENCIES)
+  currency!: Currency;
+}
+
+export class CreatorProfileResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  user_id: string;
+
+  @ApiPropertyOptional()
+  bio: string | null;
+
+  @ApiProperty()
+  subscription_price: string;
+
+  @ApiProperty()
+  currency: string;
+
+  @ApiProperty()
+  is_verified: boolean;
+
+  @ApiProperty()
+  followers_count: number;
+
+  @ApiProperty()
+  created_at: Date;
+
+  @ApiProperty()
+  updated_at: Date;
+}
+
