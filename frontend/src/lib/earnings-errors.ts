@@ -13,7 +13,9 @@ export class EarningsError extends Error {
 
 export function handleEarningsError(error: unknown): AppError {
   if (error instanceof EarningsError) {
-    return createAppError(error.code as any, {
+    // Map custom error codes to valid ErrorCode types
+    const validCode = error.code as any;
+    return createAppError(validCode === 'EARNINGS_ERROR' ? 'INTERNAL_ERROR' : validCode, {
       message: error.message,
       severity: 'error',
     });
@@ -44,7 +46,7 @@ export function handleEarningsError(error: unknown): AppError {
       });
     }
 
-    return createAppError('EARNINGS_ERROR', {
+    return createAppError('INTERNAL_ERROR', {
       message: error.message,
       severity: 'error',
     });
