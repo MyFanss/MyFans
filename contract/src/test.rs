@@ -253,13 +253,16 @@ fn test_transfer_fails_when_paused() {
     let asset = Address::generate(&env);
 
     client.init(&admin, &250, &fee_recipient);
-    let _plan_id = client.create_plan(&creator, &asset, &1000, &30);
+    
+    // Create a plan first (before pausing)
+    let plan_id = client.create_plan(&creator, &asset, &1000, &30);
+    assert_eq!(plan_id, 1);
 
     // Pause the contract
     client.pause();
 
-    // Attempt to subscribe (transfer) should fail
-    client.subscribe(&fan, &1);
+    // Attempt to subscribe (transfer) should fail with "contract is paused"
+    client.subscribe(&fan, &plan_id);
 }
 
 #[test]
@@ -280,8 +283,9 @@ fn test_mint_fails_when_paused() {
 
     // Pause the contract
     client.pause();
+    assert!(client.is_paused());
 
-    // Attempt to create_plan (mint) should fail
+    // Attempt to create_plan (mint) should fail with "contract is paused"
     client.create_plan(&creator, &asset, &1000, &30);
 }
 
@@ -314,10 +318,14 @@ fn test_burn_fails_when_paused() {
             .set(&DataKey::Sub(fan.clone(), creator.clone()), &sub);
     });
 
+    // Verify subscription exists before pausing
+    assert!(client.is_subscribed(&fan, &creator));
+
     // Pause the contract
     client.pause();
+    assert!(client.is_paused());
 
-    // Attempt to cancel (burn) should fail
+    // Attempt to cancel (burn) should fail with "contract is paused"
     client.cancel(&fan, &creator);
 }
 
