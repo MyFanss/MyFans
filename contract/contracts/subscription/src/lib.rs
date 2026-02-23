@@ -24,6 +24,14 @@ pub struct SubscriptionExpired {
     pub creator: Address,
 }
 
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SubscriptionExtended {
+    pub fan: Address,
+    pub creator: Address,
+    pub new_expires_at: u64,
+}
+
 #[contract]
 pub struct SubscriptionContract;
 
@@ -78,10 +86,46 @@ impl SubscriptionContract {
     pub fn is_subscribed(env: Env, fan: Address, creator: Address) -> bool {
         let key = (fan, creator);
         if let Some(expires_at) = env.storage().instance().get::<_, u64>(&key) {
-            env.ledger().timestamp() < expires_at
+            env.ledger().sequence() <= expires_at
         } else {
             false
         }
+    }
+
+    pub fn extend_subscription(
+        env: Env,
+        fan: Address,
+        creator: Address,
+        extra_ledgers: u64,
+        payment: u64,
+    ) -> u64 {
+        fan.require_auth();
+
+        let key = (fan.clone(), creator.clone());
+        let expires_at = env.storage().instance().get::<_, u64>(&key)
+            .expect("subscription not active");
+
+        if env.ledger().sequence() > expires_at {
+            panic!("subscription expired");
+        }
+
+        if payment == 0 {
+            panic!("payment required");
+        }
+
+        let new_expires_at = expires_at + extra_ledgers;
+        env.storage().instance().set(&key, &new_expires_at);
+
+        env.events().publish(
+            (symbol_short!("sub_ext"),),
+            SubscriptionExtended {
+                fan,
+                creator,
+                new_expires_at,
+            },
+        );
+
+        new_expires_at
     }
 
     pub fn is_subscribed_batch(env: Env, fan: Address, creators: Vec<Address>) -> Vec<bool> {
@@ -191,7 +235,7 @@ mod test {
     #[test]
     fn test_is_subscribed() {
         let env = Env::default();
-        env.ledger().with_mut(|li| li.timestamp = 500);
+        env.ledger().with_mut(|li| li.sequence_number = 500);
         let contract_id = env.register_contract(None, SubscriptionContract);
         let client = SubscriptionContractClient::new(&env, &contract_id);
 
@@ -203,14 +247,63 @@ mod test {
         client.create_subscription(&fan, &creator, &1000);
         assert!(client.is_subscribed(&fan, &creator));
 
-        env.ledger().with_mut(|li| li.timestamp = 1001);
+        env.ledger().with_mut(|li| li.sequence_number = 1001);
         assert!(!client.is_subscribed(&fan, &creator));
+    }
+
+    #[test]
+    fn test_is_subscribed_false_after_expiry() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.sequence_number = 100);
+        let contract_id = env.register_contract(None, SubscriptionContract);
+        let client = SubscriptionContractClient::new(&env, &contract_id);
+
+        let fan = Address::generate(&env);
+        let creator = Address::generate(&env);
+
+        client.create_subscription(&fan, &creator, &200);
+        assert!(client.is_subscribed(&fan, &creator));
+
+        env.ledger().with_mut(|li| li.sequence_number = 201);
+        assert!(!client.is_subscribed(&fan, &creator));
+    }
+
+    #[test]
+    fn test_extend_updates_expiry() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.sequence_number = 100);
+        let contract_id = env.register_contract(None, SubscriptionContract);
+        let client = SubscriptionContractClient::new(&env, &contract_id);
+
+        let fan = Address::generate(&env);
+        let creator = Address::generate(&env);
+
+        client.create_subscription(&fan, &creator, &200);
+        
+        let new_expiry = client.extend_subscription(&fan, &creator, &100, &50);
+        assert_eq!(new_expiry, 300);
+        assert_eq!(client.get_expiry(&fan, &creator), Some(300));
+    }
+
+    #[test]
+    #[should_panic(expected = "payment required")]
+    fn test_extend_requires_payment() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.sequence_number = 100);
+        let contract_id = env.register_contract(None, SubscriptionContract);
+        let client = SubscriptionContractClient::new(&env, &contract_id);
+
+        let fan = Address::generate(&env);
+        let creator = Address::generate(&env);
+
+        client.create_subscription(&fan, &creator, &200);
+        client.extend_subscription(&fan, &creator, &100, &0);
     }
 
     #[test]
     fn test_is_subscribed_batch_mixed() {
         let env = Env::default();
-        env.ledger().with_mut(|li| li.timestamp = 500);
+        env.ledger().with_mut(|li| li.sequence_number = 500);
         let contract_id = env.register_contract(None, SubscriptionContract);
         let client = SubscriptionContractClient::new(&env, &contract_id);
 
