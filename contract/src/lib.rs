@@ -34,53 +34,121 @@ impl MyfansContract {
     pub fn init(env: Env, admin: Address, fee_bps: u32, fee_recipient: Address) {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
-        env.storage().instance().set(&DataKey::FeeRecipient, &fee_recipient);
+        env.storage()
+            .instance()
+            .set(&DataKey::FeeRecipient, &fee_recipient);
         env.storage().instance().set(&DataKey::PlanCount, &0u32);
     }
 
-    pub fn create_plan(env: Env, creator: Address, asset: Address, amount: i128, interval_days: u32) -> u32 {
+    pub fn create_plan(
+        env: Env,
+        creator: Address,
+        asset: Address,
+        amount: i128,
+        interval_days: u32,
+    ) -> u32 {
         creator.require_auth();
-        let count: u32 = env.storage().instance().get(&DataKey::PlanCount).unwrap_or(0);
+        let count: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PlanCount)
+            .unwrap_or(0);
         let plan_id = count + 1;
-        let plan = Plan { creator: creator.clone(), asset, amount, interval_days };
+        let plan = Plan {
+            creator: creator.clone(),
+            asset,
+            amount,
+            interval_days,
+        };
         env.storage().instance().set(&DataKey::Plan(plan_id), &plan);
         env.storage().instance().set(&DataKey::PlanCount, &plan_id);
-        env.events().publish((Symbol::new(&env, "plan_created"), plan_id), creator);
+        env.events()
+            .publish((Symbol::new(&env, "plan_created"), plan_id), creator);
         plan_id
     }
 
     pub fn subscribe(env: Env, fan: Address, plan_id: u32) {
         fan.require_auth();
-        let plan: Plan = env.storage().instance().get(&DataKey::Plan(plan_id)).unwrap();
+        let plan: Plan = env
+            .storage()
+            .instance()
+            .get(&DataKey::Plan(plan_id))
+            .unwrap();
         let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
-        let fee_recipient: Address = env.storage().instance().get(&DataKey::FeeRecipient).unwrap();
-        
+        let fee_recipient: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeRecipient)
+            .unwrap();
+
         let fee = (plan.amount * fee_bps as i128) / 10000;
         let creator_amount = plan.amount - fee;
-        
+
         let token_client = token::Client::new(&env, &plan.asset);
         token_client.transfer(&fan, &plan.creator, &creator_amount);
         if fee > 0 {
             token_client.transfer(&fan, &fee_recipient, &fee);
         }
-        
+
         let expiry = env.ledger().timestamp() + (plan.interval_days as u64 * 86400);
-        let sub = Subscription { fan: fan.clone(), plan_id, expiry };
-        env.storage().instance().set(&DataKey::Sub(fan.clone(), plan.creator.clone()), &sub);
-        env.events().publish((Symbol::new(&env, "subscribed"), plan_id), fan);
+        let sub = Subscription {
+            fan: fan.clone(),
+            plan_id,
+            expiry,
+        };
+        env.storage()
+            .instance()
+            .set(&DataKey::Sub(fan.clone(), plan.creator.clone()), &sub);
+        env.events()
+            .publish((Symbol::new(&env, "subscribed"), plan_id), fan);
     }
 
     pub fn is_subscriber(env: Env, fan: Address, creator: Address) -> bool {
-        if let Some(sub) = env.storage().instance().get::<DataKey, Subscription>(&DataKey::Sub(fan, creator)) {
+        if let Some(sub) = env
+            .storage()
+            .instance()
+            .get::<DataKey, Subscription>(&DataKey::Sub(fan, creator))
+        {
             sub.expiry > env.ledger().timestamp()
         } else {
             false
         }
     }
 
+    /// Alias matching the issue spec naming. Delegates to `is_subscriber`.
+    pub fn is_subscribed(env: Env, fan: Address, creator: Address) -> bool {
+        if let Some(sub) = env
+            .storage()
+            .instance()
+            .get::<DataKey, Subscription>(&DataKey::Sub(fan, creator))
+        {
+            sub.expiry > env.ledger().timestamp()
+        } else {
+            false
+        }
+    }
+
+    /// Returns Some(expiry) if subscription exists, None otherwise.
+    pub fn get_subscription_expiry(env: Env, fan: Address, creator: Address) -> Option<u64> {
+        env.storage()
+            .instance()
+            .get::<DataKey, Subscription>(&DataKey::Sub(fan, creator))
+            .map(|sub| sub.expiry)
+    }
+
+    /// Cancel a subscription. Only the fan can cancel. Panics if no subscription exists.
     pub fn cancel(env: Env, fan: Address, creator: Address) {
         fan.require_auth();
-        env.storage().instance().remove(&DataKey::Sub(fan.clone(), creator));
+        if !env
+            .storage()
+            .instance()
+            .has(&DataKey::Sub(fan.clone(), creator.clone()))
+        {
+            panic!("subscription does not exist");
+        }
+        env.storage()
+            .instance()
+            .remove(&DataKey::Sub(fan.clone(), creator));
         env.events().publish((Symbol::new(&env, "cancelled"),), fan);
     }
 }

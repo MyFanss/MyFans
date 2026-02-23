@@ -1,146 +1,328 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
+
+/// Storage keys for content access contract
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKey {
+    /// Admin address
+    Admin,
+    /// Token address for payments
+    TokenAddress,
+    /// Access record: (buyer, creator, content_id) -> true
+    Access(Address, Address, u64),
+}
 
 #[contract]
 pub struct ContentAccess;
 
 #[contractimpl]
 impl ContentAccess {
-    /// Check if buyer has access to a single content
-    pub fn has_access(env: Env, buyer: Address, creator: Address, content_id: u64) -> bool {
-        let key = (buyer.clone(), creator.clone(), content_id);
-        env.storage().instance().get(&key).unwrap_or(false)
+    /// Initialize the contract with admin and token address
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `admin` - Admin address
+    /// * `token_address` - Token contract address for payments
+    pub fn initialize(env: Env, admin: Address, token_address: Address) {
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage()
+            .instance()
+            .set(&DataKey::TokenAddress, &token_address);
     }
 
-    /// Grant access to content
-    pub fn grant_access(env: Env, buyer: Address, creator: Address, content_id: u64) {
-        let key = (buyer, creator, content_id);
-        env.storage().instance().set(&key, &true);
-    }
-
-    /// Batch check access for multiple content items
-    pub fn has_access_batch(
+    /// Unlock content for a buyer by transferring payment to creator
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `buyer` - Buyer address (must authorize)
+    /// * `creator` - Creator address (receives payment)
+    /// * `content_id` - Content ID to unlock
+    /// * `price` - Price in tokens
+    ///
+    /// # Behavior
+    /// - Buyer must authorize the transaction
+    /// - Transfers `price` tokens from buyer to creator
+    /// - Stores access record (buyer, creator, content_id) -> true
+    /// - Idempotent: duplicate unlock is a no-op (returns early if already unlocked)
+    pub fn unlock_content(
         env: Env,
         buyer: Address,
-        content_ids: Vec<(Address, u64)>,
-    ) -> Vec<bool> {
-        let mut results = Vec::new(&env);
-        
-        for item in content_ids.iter() {
-            let (creator, content_id) = item;
-            let has_access = Self::has_access(env.clone(), buyer.clone(), creator, content_id);
-            results.push_back(has_access);
+        creator: Address,
+        content_id: u64,
+        price: i128,
+    ) {
+        buyer.require_auth();
+
+        // Check if already unlocked (idempotent)
+        let access_key = DataKey::Access(buyer.clone(), creator.clone(), content_id);
+        if env.storage().instance().has(&access_key) {
+            return;
         }
-        
-        results
+
+        // Get token address
+        let token_address: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::TokenAddress)
+            .unwrap();
+
+        // Transfer tokens from buyer to creator
+        let token_client = token::Client::new(&env, &token_address);
+        token_client.transfer(&buyer, &creator, &price);
+
+        // Store access record
+        env.storage().instance().set(&access_key, &true);
+
+        // Emit event
+        env.events().publish(
+            (
+                Symbol::new(&env, "ContentUnlocked"),
+                buyer.clone(),
+                creator.clone(),
+            ),
+            (content_id, price),
+        );
+    }
+
+    /// Check if buyer has access to content
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `buyer` - Buyer address
+    /// * `creator` - Creator address
+    /// * `content_id` - Content ID
+    ///
+    /// # Returns
+    /// `true` if buyer has unlocked this content, `false` otherwise
+    pub fn has_access(env: Env, buyer: Address, creator: Address, content_id: u64) -> bool {
+        let access_key = DataKey::Access(buyer, creator, content_id);
+        env.storage().instance().get(&access_key).unwrap_or(false)
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, vec, Env};
+    use soroban_sdk::{
+        testutils::{Address as _, Events},
+        vec, Env, IntoVal,
+    };
 
-    #[test]
-    fn test_has_access_single() {
+    // Mock token contract for testing
+    #[contract]
+    pub struct MockToken;
+
+    #[contractimpl]
+    impl MockToken {
+        pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {
+            // Mock implementation - just succeed
+        }
+    }
+
+    fn setup_test() -> (Env, Address, Address, Address, Address, Address) {
         let env = Env::default();
-        let contract_id = env.register_contract(None, ContentAccess);
-        let client = ContentAccessClient::new(&env, &contract_id);
+        env.mock_all_auths();
 
+        let admin = Address::generate(&env);
         let buyer = Address::generate(&env);
         let creator = Address::generate(&env);
-        let content_id = 1;
 
-        assert!(!client.has_access(&buyer, &creator, &content_id));
+        // Register mock token contract
+        let token_id = env.register_contract(None, MockToken);
+        let token_address = token_id;
 
-        client.grant_access(&buyer, &creator, &content_id);
-        assert!(client.has_access(&buyer, &creator, &content_id));
+        // Register content-access contract
+        let contract_id = env.register_contract(None, ContentAccess);
+
+        (env, contract_id, admin, token_address, buyer, creator)
     }
 
     #[test]
-    fn test_has_access_batch_empty() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, ContentAccess);
+    fn test_initialize() {
+        let (env, contract_id, admin, token_address, _, _) = setup_test();
         let client = ContentAccessClient::new(&env, &contract_id);
 
-        let buyer = Address::generate(&env);
-        let content_ids = vec![&env];
+        client.initialize(&admin, &token_address);
 
-        let results = client.has_access_batch(&buyer, &content_ids);
-        assert_eq!(results.len(), 0);
-    }
-
-    #[test]
-    fn test_has_access_batch_single() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, ContentAccess);
-        let client = ContentAccessClient::new(&env, &contract_id);
-
+        // Verify initialization by checking storage (indirectly via has_access)
         let buyer = Address::generate(&env);
         let creator = Address::generate(&env);
-        let content_id = 1;
-
-        let content_ids = vec![&env, (creator.clone(), content_id)];
-
-        let results = client.has_access_batch(&buyer, &content_ids);
-        assert_eq!(results.len(), 1);
-        assert!(!results.get(0).unwrap());
-
-        client.grant_access(&buyer, &creator, &content_id);
-
-        let results = client.has_access_batch(&buyer, &content_ids);
-        assert_eq!(results.len(), 1);
-        assert!(results.get(0).unwrap());
+        assert!(!client.has_access(&buyer, &creator, &1));
     }
 
     #[test]
-    fn test_has_access_batch_multiple() {
+    fn test_unlock_content_works() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+
+        // Verify no access before unlock
+        assert!(!client.has_access(&buyer, &creator, &1));
+
+        // Unlock content
+        client.unlock_content(&buyer, &creator, &1, &100);
+
+        // Verify access after unlock
+        assert!(client.has_access(&buyer, &creator, &1));
+
+        let events = env.events().all();
+        assert_eq!(
+            events,
+            vec![
+                &env,
+                (
+                    contract_id.clone(),
+                    (
+                        Symbol::new(&env, "ContentUnlocked"),
+                        buyer.clone(),
+                        creator.clone()
+                    )
+                        .into_val(&env),
+                    (1u64, 100i128).into_val(&env)
+                )
+            ]
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_unlock_content_requires_buyer_auth() {
         let env = Env::default();
+        // Don't mock all auths - this should fail
+
         let contract_id = env.register_contract(None, ContentAccess);
         let client = ContentAccessClient::new(&env, &contract_id);
 
+        let admin = Address::generate(&env);
+        let token_address = Address::generate(&env);
         let buyer = Address::generate(&env);
-        let creator1 = Address::generate(&env);
+        let creator = Address::generate(&env);
+
+        client.initialize(&admin, &token_address);
+
+        // Try to unlock without auth - should panic
+        client.unlock_content(&buyer, &creator, &1, &100);
+    }
+
+    #[test]
+    fn test_duplicate_unlock_is_idempotent() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+
+        // First unlock
+        client.unlock_content(&buyer, &creator, &1, &100);
+        assert!(client.has_access(&buyer, &creator, &1));
+
+        // Second unlock (should be no-op, no error)
+        client.unlock_content(&buyer, &creator, &1, &100);
+        assert!(client.has_access(&buyer, &creator, &1));
+    }
+
+    #[test]
+    fn test_has_access_returns_false_for_non_existent() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+
+        // Check access for content that was never unlocked
+        assert!(!client.has_access(&buyer, &creator, &999));
+    }
+
+    #[test]
+    fn test_access_is_buyer_specific() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        let buyer2 = Address::generate(&env);
+
+        client.initialize(&admin, &token_address);
+
+        // Buyer1 unlocks content
+        client.unlock_content(&buyer, &creator, &1, &100);
+
+        // Verify buyer1 has access
+        assert!(client.has_access(&buyer, &creator, &1));
+
+        // Verify buyer2 does not have access
+        assert!(!client.has_access(&buyer2, &creator, &1));
+    }
+
+    #[test]
+    fn test_access_is_creator_specific() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
         let creator2 = Address::generate(&env);
 
-        client.grant_access(&buyer, &creator1, &1);
-        client.grant_access(&buyer, &creator2, &3);
+        client.initialize(&admin, &token_address);
 
-        let content_ids = vec![
-            &env,
-            (creator1.clone(), 1),
-            (creator1.clone(), 2),
-            (creator2.clone(), 3),
-            (creator2.clone(), 4),
-        ];
+        // Buyer unlocks content from creator1
+        client.unlock_content(&buyer, &creator, &1, &100);
 
-        let results = client.has_access_batch(&buyer, &content_ids);
-        
-        assert_eq!(results.len(), 4);
-        assert!(results.get(0).unwrap());   // creator1, content 1 - granted
-        assert!(!results.get(1).unwrap());  // creator1, content 2 - not granted
-        assert!(results.get(2).unwrap());   // creator2, content 3 - granted
-        assert!(!results.get(3).unwrap());  // creator2, content 4 - not granted
+        // Verify access for creator1
+        assert!(client.has_access(&buyer, &creator, &1));
+
+        // Verify no access for creator2
+        assert!(!client.has_access(&buyer, &creator2, &1));
     }
 
     #[test]
-    fn test_has_access_batch_different_buyers() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, ContentAccess);
+    fn test_access_is_content_id_specific() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
         let client = ContentAccessClient::new(&env, &contract_id);
 
-        let buyer1 = Address::generate(&env);
+        client.initialize(&admin, &token_address);
+
+        // Buyer unlocks content 1
+        client.unlock_content(&buyer, &creator, &1, &100);
+
+        // Verify access for content 1
+        assert!(client.has_access(&buyer, &creator, &1));
+
+        // Verify no access for content 2
+        assert!(!client.has_access(&buyer, &creator, &2));
+    }
+
+    #[test]
+    fn test_multiple_unlocks_different_content() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+
+        // Unlock multiple content items
+        client.unlock_content(&buyer, &creator, &1, &100);
+        client.unlock_content(&buyer, &creator, &2, &150);
+        client.unlock_content(&buyer, &creator, &3, &200);
+
+        // Verify all are accessible
+        assert!(client.has_access(&buyer, &creator, &1));
+        assert!(client.has_access(&buyer, &creator, &2));
+        assert!(client.has_access(&buyer, &creator, &3));
+    }
+
+    #[test]
+    fn test_multiple_buyers_same_content() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
         let buyer2 = Address::generate(&env);
-        let creator = Address::generate(&env);
+        let buyer3 = Address::generate(&env);
 
-        client.grant_access(&buyer1, &creator, &1);
+        client.initialize(&admin, &token_address);
 
-        let content_ids = vec![&env, (creator.clone(), 1)];
+        // Multiple buyers unlock same content
+        client.unlock_content(&buyer, &creator, &1, &100);
+        client.unlock_content(&buyer2, &creator, &1, &100);
 
-        let results1 = client.has_access_batch(&buyer1, &content_ids);
-        assert!(results1.get(0).unwrap());
-
-        let results2 = client.has_access_batch(&buyer2, &content_ids);
-        assert!(!results2.get(0).unwrap());
+        // Verify access
+        assert!(client.has_access(&buyer, &creator, &1));
+        assert!(client.has_access(&buyer2, &creator, &1));
+        assert!(!client.has_access(&buyer3, &creator, &1));
     }
 }

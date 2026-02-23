@@ -1,10 +1,19 @@
 import {
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
+  Post,
   Query,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
+import { AuthGuard } from '../auth/auth.guard';
+
+import { CurrentUser } from '../auth/current-user.decorator';
+import { User } from '../users/entities/user.entity';
 import { CreatorsService } from './creators.service';
 import { FindCreatorsQueryDto } from './dto/find-creators-query.dto';
 
@@ -13,6 +22,8 @@ export class CreatorsController {
   constructor(private readonly creatorsService: CreatorsService) {}
 
   @Get()
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(300) // 5 minutes
   findAll(@Query() query: FindCreatorsQueryDto) {
     return this.creatorsService.findAll(query);
   }
@@ -25,5 +36,17 @@ export class CreatorsController {
   @Get(':id')
   findOneById(@Param('id', ParseUUIDPipe) id: string) {
     return this.creatorsService.findOneById(id);
+  }
+
+  @Post(':id/follow')
+  @UseGuards(AuthGuard)
+  follow(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+    return this.creatorsService.follow(id, user.id);
+  }
+
+  @Delete(':id/follow')
+  @UseGuards(AuthGuard)
+  unfollow(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+    return this.creatorsService.unfollow(id, user.id);
   }
 }
