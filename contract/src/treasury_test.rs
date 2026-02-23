@@ -4,6 +4,7 @@ use crate::treasury::{Treasury, TreasuryClient};
 use soroban_sdk::{
     testutils::Address as _,
     token::{StellarAssetClient, TokenClient},
+    xdr::SorobanAuthorizationEntry,
     Address, Env,
 };
 
@@ -77,6 +78,10 @@ fn test_unauthorized_withdraw_reverts() {
 
     treasury_client.initialize(&admin, &token_address);
     treasury_client.deposit(&user, &500);
+
+    // Disable auth mocking so the next call is checked for real. Unauthorized is not admin.
+    let empty: &[SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
 
     let result = treasury_client.try_withdraw(&unauthorized, &100);
     assert!(result.is_err());
