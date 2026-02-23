@@ -1,205 +1,144 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import WalletConnect from '@/components/WalletConnect';
-import { useTransaction } from '@/hooks/useTransaction';
-import { useFormValidation, validationPatterns } from '@/hooks/useFormValidation';
-import { useToast } from '@/components/ErrorToast';
-import { ErrorFallbackCompact } from '@/components/ErrorFallback';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { CreatorCard } from '@/components/cards';
+import { CardSkeletonGrid, EmptyState, SuccessAnimation } from '@/components/ui/states';
+
+interface Creator {
+  id: string;
+  name: string;
+  username: string;
+  bio: string;
+  subscriptionPrice: number;
+  subscriberCount: number;
+}
+
+const CREATOR_DATA: Creator[] = [
+  {
+    id: 'c1',
+    name: 'Lena Nova',
+    username: 'lena.nova',
+    bio: 'Daily music snippets and behind-the-scenes studio sessions.',
+    subscriptionPrice: 8,
+    subscriberCount: 1840,
+  },
+  {
+    id: 'c2',
+    name: 'Orion Pixel',
+    username: 'orion.pixel',
+    bio: 'Concept art tutorials, raw PSD files, and process walkthroughs.',
+    subscriptionPrice: 12,
+    subscriberCount: 962,
+  },
+  {
+    id: 'c3',
+    name: 'Vera Script',
+    username: 'vera.script',
+    bio: 'Writing prompts, serialized fiction, and monthly Q&A streams.',
+    subscriptionPrice: 6,
+    subscriberCount: 1513,
+  },
+];
 
 export default function SubscribePage() {
-  const { showError, showSuccess } = useToast();
+  const [query, setQuery] = useState('');
+  const [isLoadingCreators, setIsLoadingCreators] = useState(true);
+  const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState('');
 
-  // Form validation
-  const form = useFormValidation({
-    initialValues: {
-      creator: '',
-      amount: '',
-    },
-    fields: {
-      creator: {
-        required: true,
-        pattern: validationPatterns.stellarAddress,
-        patternMessage: 'Please enter a valid Stellar address (starts with G)',
-      },
-      amount: {
-        required: true,
-        customValidator: (value) => {
-          const num = Number(value);
-          if (isNaN(num) || num <= 0) {
-            return 'Please enter a valid amount';
-          }
-          return null;
-        },
-      },
-    },
-  });
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoadingCreators(false), 1100);
+    return () => clearTimeout(timer);
+  }, []);
 
-  // Transaction handling
-  const tx = useTransaction({
-    type: 'subscription',
-    onSuccess: () => {
-      showSuccess('Subscription successful!', 'You are now subscribed to this creator.');
-      form.reset();
-    },
-    onError: (error) => {
-      showError(error);
-    },
-  });
+  useEffect(() => {
+    if (!successMessage) return;
+    const timer = setTimeout(() => setSuccessMessage(''), 2400);
+    return () => clearTimeout(timer);
+  }, [successMessage]);
 
-  const handleSubscribe = useCallback(async () => {
-    if (!form.validateAll()) {
-      return;
-    }
+  const filteredCreators = useMemo(() => {
+    const value = query.trim().toLowerCase();
+    if (!value) return CREATOR_DATA;
+    return CREATOR_DATA.filter(
+      (creator) =>
+        creator.name.toLowerCase().includes(value) ||
+        creator.username.toLowerCase().includes(value) ||
+        creator.bio.toLowerCase().includes(value),
+    );
+  }, [query]);
 
-    await tx.execute(async () => {
-      // Simulate subscription API call
-      await new Promise((resolve, reject) => {
-        setTimeout(() => {
-          // Simulate success (in real app, this would be an API call)
-          const shouldFail = Math.random() < 0.2; // 20% chance of failure for demo
-          if (shouldFail) {
-            reject(new Error('Transaction rejected by user'));
-          } else {
-            resolve({ success: true });
-          }
-        }, 1500);
-      });
-      return { success: true };
-    });
-  }, [form, tx]);
+  const handleSubscribe = async (creator: Creator) => {
+    setIsSubscribing(creator.id);
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    setIsSubscribing(null);
+    setSuccessMessage(`Subscribed to ${creator.name}`);
+  };
 
   return (
-    <div className="min-h-screen bg-white p-8 dark:bg-slate-900">
+    <div className="min-h-screen bg-slate-50 p-8">
       <header className="mb-8 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-          Subscribe to Creators
-        </h1>
-        <div className="flex items-center gap-4">
-          <ThemeToggle />
-          <WalletConnect />
-        </div>
+        <h1 className="text-2xl font-bold text-slate-900">Subscribe to Creators</h1>
+        <WalletConnect />
       </header>
 
-      <div className="mx-auto max-w-2xl">
-        <h2 className="mb-4 text-xl text-slate-700 dark:text-slate-300">
-          Find a Creator
-        </h2>
+      <div className="mx-auto max-w-5xl space-y-6">
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-slate-900">Find a Creator</h2>
+          <p className="mt-1 text-sm text-slate-600">Browse current creators and start supporting your favorites.</p>
 
-        <div className="space-y-4">
-          {/* Creator Address Input */}
-          <div>
-            <label
-              htmlFor="creator"
-              className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300"
-            >
-              Creator Stellar Address
-            </label>
-            <input
-              id="creator"
-              name="creator"
-              type="text"
-              placeholder="G..."
-              value={form.values.creator}
-              onChange={form.handleChange}
-              onBlur={() => form.handleBlur('creator')}
-              className={`w-full rounded-lg border px-4 py-3 text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:ring-2 focus:ring-primary-500/20 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${
-                form.hasFieldError('creator')
-                  ? 'border-red-300 focus:border-red-500 dark:border-red-700'
-                  : 'border-slate-300 focus:border-primary-500 dark:border-slate-600'
-              }`}
-            />
-            {form.getError('creator') && (
-              <p className="mt-1 text-sm text-red-500 dark:text-red-400">
-                {form.getError('creator')}
-              </p>
-            )}
-          </div>
+          <input
+            className="mt-4 w-full rounded border border-slate-300 p-2"
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by name, handle, or content"
+            type="text"
+            value={query}
+          />
 
-          {/* Amount Input */}
-          <div>
-            <label
-              htmlFor="amount"
-              className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300"
-            >
-              Amount (XLM)
-            </label>
-            <input
-              id="amount"
-              name="amount"
-              type="number"
-              placeholder="0.00"
-              value={form.values.amount}
-              onChange={form.handleChange}
-              onBlur={() => form.handleBlur('amount')}
-              className={`w-full rounded-lg border px-4 py-3 text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:ring-2 focus:ring-primary-500/20 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${
-                form.hasFieldError('amount')
-                  ? 'border-red-300 focus:border-red-500 dark:border-red-700'
-                  : 'border-slate-300 focus:border-primary-500 dark:border-slate-600'
-              }`}
-            />
-            {form.getError('amount') && (
-              <p className="mt-1 text-sm text-red-500 dark:text-red-400">
-                {form.getError('amount')}
-              </p>
-            )}
-          </div>
+          {successMessage ? (
+            <div className="mt-4">
+              <SuccessAnimation message={successMessage} />
+            </div>
+          ) : null}
+        </section>
 
-          {/* Transaction Error */}
-          {tx.error && (
-            <ErrorFallbackCompact
-              error={tx.error}
-              onReset={tx.reset}
-              resetLabel="Clear"
+        <section>
+          <h3 className="mb-4 text-lg font-semibold text-slate-900">Available creators</h3>
+          {isLoadingCreators ? (
+            <CardSkeletonGrid count={3} />
+          ) : filteredCreators.length === 0 ? (
+            <EmptyState
+              ctaLabel="Clear search"
+              description="Try a different keyword or clear your filter to see all creators."
+              onCtaClick={() => setQuery('')}
+              title="No creators matched your search"
             />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredCreators.map((creator) => (
+                <CreatorCard
+                  actionButton={
+                    <button
+                      className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                      disabled={isSubscribing === creator.id}
+                      onClick={() => handleSubscribe(creator)}
+                      type="button"
+                    >
+                      {isSubscribing === creator.id ? 'Subscribing...' : 'Subscribe'}
+                    </button>
+                  }
+                  bio={creator.bio}
+                  key={creator.id}
+                  name={creator.name}
+                  subscriberCount={creator.subscriberCount}
+                  subscriptionPrice={creator.subscriptionPrice}
+                  username={creator.username}
+                />
+              ))}
+            </div>
           )}
-
-          {/* Submit Button */}
-          <button
-            onClick={handleSubscribe}
-            disabled={tx.isPending || !form.values.creator || !form.values.amount}
-            className="w-full rounded-lg bg-primary-500 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-600 dark:hover:bg-primary-700"
-          >
-            {tx.isPending ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg
-                  className="h-5 w-5 animate-spin"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-                Processing...
-              </span>
-            ) : (
-              'Subscribe'
-            )}
-          </button>
-
-          {/* Retry Button (shown on failure) */}
-          {tx.isFailed && tx.error?.recoverable && (
-            <button
-              onClick={tx.retry}
-              className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-            >
-              Try Again
-            </button>
-          )}
-        </div>
+        </section>
       </div>
     </div>
   );
