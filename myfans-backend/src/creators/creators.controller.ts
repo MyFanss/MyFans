@@ -5,6 +5,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Body,
   Query,
   UseGuards,
   UseInterceptors,
@@ -16,10 +17,17 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '../users/entities/user.entity';
 import { CreatorsService } from './creators.service';
 import { FindCreatorsQueryDto } from './dto/find-creators-query.dto';
+import { OnboardCreatorDto } from './dto/onboard-creator.dto';
 
 @Controller('creators')
 export class CreatorsController {
   constructor(private readonly creatorsService: CreatorsService) {}
+
+  @Post('onboard')
+  @UseGuards(AuthGuard)
+  onboard(@Body() dto: OnboardCreatorDto, @CurrentUser() user: User) {
+    return this.creatorsService.onboard(user.id, dto);
+  }
 
   @Get()
   @UseInterceptors(CacheInterceptor)
