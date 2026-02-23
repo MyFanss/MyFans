@@ -43,7 +43,7 @@ fn test_subscribe_full_flow() {
     assert_eq!(plan_id, 1);
 
     // Subscribe calls token transfer, so it will deduct from fan
-    client.subscribe(&fan, &plan_id);
+    client.subscribe(&fan, &plan_id, &token.address);
 
     // Check balances
     // Fan paid 1000, should have 9000
@@ -74,7 +74,7 @@ fn test_subscribe_insufficient_balance_reverts() {
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
 
     // This should panic due to token transfer failure automatically mapped inside Soroban
-    client.subscribe(&fan, &plan_id);
+    client.subscribe(&fan, &plan_id, &token.address);
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn test_platform_fee_zero() {
     token_admin.mint(&fan, &10000);
 
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
-    client.subscribe(&fan, &plan_id);
+    client.subscribe(&fan, &plan_id, &token.address);
 
     // Fee is 0%. Creator gets all 1000.
     assert_eq!(token.balance(&fee_recipient), 0);
@@ -110,10 +110,105 @@ fn test_cancel_subscription() {
 
     token_admin.mint(&fan, &10000);
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
-    client.subscribe(&fan, &plan_id);
+    client.subscribe(&fan, &plan_id, &token.address);
     
     assert!(client.is_subscriber(&fan, &creator));
 
     client.cancel(&fan, &creator);
     assert!(!client.is_subscriber(&fan, &creator));
+}
+
+#[test]
+fn test_is_subscribed_false_after_expiry() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+
+    token_admin.mint(&fan, &10000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &1);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    assert!(client.is_subscriber(&fan, &creator));
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number += 17281;
+    });
+
+    assert!(!client.is_subscriber(&fan, &creator));
+}
+
+#[test]
+fn test_extend_updates_expiry() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+
+    token_admin.mint(&fan, &20000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &1);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    let initial_ledger = env.ledger().sequence();
+    let expected_expiry = initial_ledger + 17280;
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number += 10000;
+    });
+
+    assert!(client.is_subscriber(&fan, &creator));
+
+    client.extend_subscription(&fan, &creator, &17280, &token.address);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = expected_expiry + 1;
+    });
+
+    assert!(client.is_subscriber(&fan, &creator));
+}
+
+#[test]
+fn test_extend_requires_payment() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+
+    token_admin.mint(&fan, &20000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &1);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    assert_eq!(token.balance(&creator), 1000);
+
+    client.extend_subscription(&fan, &creator, &17280, &token.address);
+
+    assert_eq!(token.balance(&creator), 2000);
+    assert_eq!(token.balance(&fan), 18000);
+}
+
+#[test]
+#[should_panic(expected = "subscription expired")]
+fn test_extend_fails_if_expired() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+
+    token_admin.mint(&fan, &20000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &1);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number += 17281;
+    });
+
+    client.extend_subscription(&fan, &creator, &17280, &token.address);
 }
