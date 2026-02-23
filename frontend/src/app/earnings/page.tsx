@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ErrorFallback } from '@/components/ErrorFallback';
@@ -79,7 +79,9 @@ export default function EarningsPage() {
 
           {/* Charts Section */}
           <section className="mb-8">
-            <EarningsChart />
+            <Suspense fallback={<div className="h-80 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />}>
+              <EarningsChart />
+            </Suspense>
           </section>
 
           {/* Breakdown Section */}
