@@ -15,6 +15,9 @@ soroban-sdk = { version = "21.7.0", features = ["testutils"] }
 [workspace]
 members = [
     "contracts/content-access",
+    "contracts/content-likes",
+    "contracts/creator-deposits",
+    "contracts/creator-registry",
     "contracts/myfans-lib",
     "contracts/myfans-token",
     "contracts/subscription",
