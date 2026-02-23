@@ -20,14 +20,14 @@ fn test_initialize() {
 fn test_register_and_lookup_self() {
     let env = Env::default();
     env.mock_all_auths();
-    
+
     let contract_id = env.register_contract(None, CreatorRegistryContract);
     let client = CreatorRegistryContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let creator = Address::generate(&env);
 
     client.initialize(&admin);
-    
+
     // Register by creator themselves (caller = creator, address = creator)
     client.register_creator(&creator, &creator, &12345);
 
@@ -39,14 +39,14 @@ fn test_register_and_lookup_self() {
 fn test_register_and_lookup_admin() {
     let env = Env::default();
     env.mock_all_auths();
-    
+
     let contract_id = env.register_contract(None, CreatorRegistryContract);
     let client = CreatorRegistryContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let creator = Address::generate(&env);
 
     client.initialize(&admin);
-    
+
     // Register by admin (caller = admin, address = creator)
     client.register_creator(&admin, &creator, &54321);
 
@@ -59,7 +59,7 @@ fn test_register_and_lookup_admin() {
 fn test_unauthorized_registration() {
     let env = Env::default();
     env.mock_all_auths();
-    
+
     let contract_id = env.register_contract(None, CreatorRegistryContract);
     let client = CreatorRegistryContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -67,7 +67,7 @@ fn test_unauthorized_registration() {
     let rando = Address::generate(&env);
 
     client.initialize(&admin);
-    
+
     // Rando tries to register creator
     client.register_creator(&rando, &creator, &999);
 }
@@ -77,14 +77,14 @@ fn test_unauthorized_registration() {
 fn test_duplicate_registration_reverts() {
     let env = Env::default();
     env.mock_all_auths();
-    
+
     let contract_id = env.register_contract(None, CreatorRegistryContract);
     let client = CreatorRegistryContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let creator = Address::generate(&env);
 
     client.initialize(&admin);
-    
+
     client.register_creator(&creator, &creator, &111);
     // Should panic here
     client.register_creator(&creator, &creator, &222);

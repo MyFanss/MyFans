@@ -26,16 +26,16 @@ impl Treasury {
     pub fn withdraw(env: Env, to: Address, amount: i128) {
         let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
         admin.require_auth();
-        
+
         let token_address: Address = env.storage().instance().get(&TOKEN).unwrap();
         let token_client = token::Client::new(&env, &token_address);
         let contract_address = env.current_contract_address();
         let balance = token_client.balance(&contract_address);
-        
+
         if balance < amount {
             panic!("insufficient balance");
         }
-        
+
         token_client.transfer(&contract_address, &to, &amount);
     }
 }

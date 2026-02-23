@@ -25,10 +25,14 @@ impl CreatorRegistryContract {
     /// Register a creator with a specific creator_id
     /// Can only be called by the admin or the creator itself.
     pub fn register_creator(env: Env, caller: Address, creator_address: Address, creator_id: u64) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap_or_else(|| panic!("not initialized"));
-        
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+
         caller.require_auth();
-        
+
         if caller != admin && caller != creator_address {
             panic!("unauthorized: must be admin or the creator");
         }
