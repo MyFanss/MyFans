@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { UpdateUserDto } from './dto';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
+import { Creator } from './entities/creator.entity';
 
 @Injectable()
 export class UsersService {
