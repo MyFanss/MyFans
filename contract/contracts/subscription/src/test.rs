@@ -6,7 +6,13 @@ use soroban_sdk::{
     token, Address, Env,
 };
 
-fn setup_test() -> (Env, MyfansContractClient<'static>, Address, token::Client<'static>, token::StellarAssetClient<'static>) {
+fn setup_test() -> (
+    Env,
+    MyfansContractClient<'static>,
+    Address,
+    token::Client<'static>,
+    token::StellarAssetClient<'static>,
+) {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -28,9 +34,9 @@ fn test_subscribe_full_flow() {
     let (env, client, admin, token, token_admin) = setup_test();
 
     let fee_recipient = Address::generate(&env);
-    
+
     // fee_bps = 500 (5%)
-    client.init(&admin, &500, &fee_recipient);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
 
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
@@ -63,7 +69,7 @@ fn test_subscribe_insufficient_balance_reverts() {
     let (env, client, admin, token, token_admin) = setup_test();
 
     let fee_recipient = Address::generate(&env);
-    client.init(&admin, &500, &fee_recipient);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
 
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
@@ -82,9 +88,9 @@ fn test_platform_fee_zero() {
     let (env, client, admin, token, token_admin) = setup_test();
 
     let fee_recipient = Address::generate(&env);
-    
+
     // fee_bps = 0
-    client.init(&admin, &0, &fee_recipient);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
 
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
@@ -103,7 +109,7 @@ fn test_platform_fee_zero() {
 fn test_cancel_subscription() {
     let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
-    client.init(&admin, &500, &fee_recipient);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
 
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
@@ -111,6 +117,7 @@ fn test_cancel_subscription() {
     token_admin.mint(&fan, &10000);
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
     client.subscribe(&fan, &plan_id, &token.address);
+
     
     assert!(client.is_subscriber(&fan, &creator));
 
@@ -119,6 +126,11 @@ fn test_cancel_subscription() {
 }
 
 #[test]
+fn test_create_subscription_payment_flow() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
 fn test_is_subscribed_false_after_expiry() {
     let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
@@ -128,6 +140,25 @@ fn test_is_subscribed_false_after_expiry() {
     let fan = Address::generate(&env);
 
     token_admin.mint(&fan, &10000);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1000;
+    });
+
+    client.create_subscription(&fan, &creator, &518400);
+
+    assert_eq!(token.balance(&fan), 9000);
+    assert_eq!(token.balance(&fee_recipient), 50);
+    assert_eq!(token.balance(&creator), 950);
+}
+
+#[test]
+#[should_panic]
+fn test_create_subscription_insufficient_balance() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
     let plan_id = client.create_plan(&creator, &token.address, &1000, &1);
     client.subscribe(&fan, &plan_id, &token.address);
 
@@ -149,6 +180,21 @@ fn test_extend_updates_expiry() {
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
 
+    token_admin.mint(&fan, &500);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1000;
+    });
+
+    client.create_subscription(&fan, &creator, &518400);
+}
+
+#[test]
+fn test_create_subscription_no_fee() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
     token_admin.mint(&fan, &20000);
     let plan_id = client.create_plan(&creator, &token.address, &1000, &1);
     client.subscribe(&fan, &plan_id, &token.address);
@@ -202,6 +248,17 @@ fn test_extend_fails_if_expired() {
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
 
+    token_admin.mint(&fan, &10000);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1000;
+    });
+
+    client.create_subscription(&fan, &creator, &518400);
+
+    assert_eq!(token.balance(&fan), 9000);
+    assert_eq!(token.balance(&fee_recipient), 0);
+    assert_eq!(token.balance(&creator), 1000);
     token_admin.mint(&fan, &20000);
     let plan_id = client.create_plan(&creator, &token.address, &1000, &1);
     client.subscribe(&fan, &plan_id, &token.address);
