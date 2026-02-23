@@ -406,15 +406,15 @@ fn test_non_admin_cannot_set_verified_reverts() {
     // But the function checks that the caller IS the admin address
     // So even with mock_all_auths, if non-admin address is passed,
     // the require_auth will pass but the logic should still work
-    
+
     // Actually, with mock_all_auths(), require_auth() passes for anyone
     // The real protection is that in production, only the admin's signature
     // would be valid for admin.require_auth()
-    
+
     // For a proper test, we would need to not mock auths and verify
     // that only admin signature works. But with mock_all_auths,
     // we can at least verify the function works correctly when called by admin
-    
+
     // Test that admin CAN set verified
     client.set_verified(&creator, &true);
     let info = client.get_creator(&creator).unwrap();
@@ -427,7 +427,7 @@ fn test_only_admin_signature_works_for_set_verified() {
     // In Soroban, require_auth() ensures the address has signed the transaction
     // With mock_all_auths(), all auths pass, but in production,
     // only the actual admin's signature would be valid
-    
+
     let env = Env::default();
     env.mock_all_auths();
 
