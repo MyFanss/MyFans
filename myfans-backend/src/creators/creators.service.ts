@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
   Inject,
@@ -11,6 +12,8 @@ import type { Cache } from 'cache-manager';
 import { Creator } from './entities/creator.entity';
 import { Follow } from './entities/follow.entity';
 import { FindCreatorsQueryDto } from './dto/find-creators-query.dto';
+import { OnboardCreatorDto } from './dto/onboard-creator.dto';
+import { User } from '../users/entities/user.entity';
 
 const BIO_SNIPPET_LENGTH = 150;
 
@@ -21,6 +24,8 @@ export class CreatorsService {
     private readonly creatorRepo: Repository<Creator>,
     @InjectRepository(Follow)
     private readonly followRepo: Repository<Follow>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
 
@@ -44,6 +49,40 @@ export class CreatorsService {
     } catch (error) {
       console.error('Failed to invalidate creators cache:', error);
     }
+  }
+
+  async onboard(userId: string, dto: OnboardCreatorDto) {
+    // Check if user is already a creator
+    const existingCreator = await this.creatorRepo.findOne({
+      where: { user_id: userId },
+    });
+
+    if (existingCreator) {
+      throw new ConflictException('User is already a creator');
+    }
+
+    // Create the creator record
+    const creator = this.creatorRepo.create({
+      user_id: userId,
+      bio: dto.bio ?? null,
+      subscription_price: String(dto.subscription_price ?? 0),
+      currency: dto.currency ?? 'XLM',
+      is_verified: false,
+      followers_count: 0,
+    });
+
+    await this.creatorRepo.save(creator);
+
+    // Update user to mark as creator
+    await this.userRepo.update(userId, { is_creator: true });
+
+    // Fetch the creator with user relations for response
+    const createdCreator = await this.creatorRepo.findOne({
+      where: { id: creator.id },
+      relations: ['user'],
+    });
+
+    return this.toDetailItem(createdCreator!);
   }
 
   async findAll(query: FindCreatorsQueryDto) {

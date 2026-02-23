@@ -11,10 +11,12 @@ import { CreatorsModule } from './creators/creators.module';
 import { PostsModule } from './posts/posts.module';
 import { CommentsModule } from './comments/comments.module';
 import { ConversationsModule } from './conversations/conversations.module';
+import { LikesModule } from './likes/likes.module';
 import { Post } from './posts/entities/post.entity';
 import { Comment } from './comments/entities/comment.entity';
 import { Conversation } from './conversations/entities/conversation.entity';
 import { Message } from './conversations/entities/message.entity';
+import { Like } from './likes/entities/like.entity';
 
 @Module({
   imports: [
@@ -25,7 +27,7 @@ import { Message } from './conversations/entities/message.entity';
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_NAME || 'myfans',
-      entities: [User, Post, Comment, Conversation, Message],
+      entities: [User, Post, Comment, Conversation, Message, Like],
       synchronize: true,
     }),
     HealthModule,
@@ -34,6 +36,7 @@ import { Message } from './conversations/entities/message.entity';
     PostsModule,
     CommentsModule,
     ConversationsModule,
+    LikesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
