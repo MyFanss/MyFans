@@ -4,12 +4,15 @@ import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { UpdateUserDto } from './dto';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
+import { Creator } from './entities/creator.entity';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+     @InjectRepository(User)
+    private creatorRepository: Repository<Creator>
   ) {}
 
   async findOne(id: string): Promise<User> {
