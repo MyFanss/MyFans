@@ -21,7 +21,7 @@ export class AuthGuard implements CanActivate {
     private reflector: Reflector,
     @InjectRepository(User)
     private userRepo: Repository<User>,
-  ) {}
+  ) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -48,7 +48,7 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('User not found');
     }
 
-    request.user = user;
+    (request as any).user = user;
     return true;
   }
 
