@@ -23,6 +23,7 @@ members = [
     "contracts/myfans-token",
     "contracts/subscription",
     "contracts/test-consumer",
+    "contracts/treasury",
 ]
 
 [workspace.dependencies]
