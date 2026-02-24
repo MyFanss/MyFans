@@ -28,6 +28,7 @@ pub enum DataKey {
     AcceptedToken(Address),
     Token,
     Price,
+    Paused,
 }
 
 #[contract]
