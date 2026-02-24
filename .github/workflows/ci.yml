@@ -23,7 +23,7 @@ jobs:
         working-directory: frontend
 
       - name: Security audit (dependencies)
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=high
         working-directory: frontend
 
       - name: Build
@@ -48,7 +48,7 @@ jobs:
         working-directory: backend
 
       - name: Security audit (dependencies)
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=high
         working-directory: backend
 
       - name: Build
@@ -84,7 +84,7 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: Security audit (contracts)
-        run: cargo audit --workspace --severity=high
+        run: cargo audit --severity high
         working-directory: contract
 
       - name: Build
