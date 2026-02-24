@@ -50,6 +50,9 @@ impl MyfansContract {
         interval_days: u32,
     ) -> u32 {
         creator.require_auth();
+        let paused: bool = env.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        assert!(!paused, "contract is paused");
+        
         let count: u32 = env
             .storage()
             .instance()
@@ -71,6 +74,9 @@ impl MyfansContract {
 
     pub fn subscribe(env: Env, fan: Address, plan_id: u32) {
         fan.require_auth();
+        let paused: bool = env.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        assert!(!paused, "contract is paused");
+        
         let plan: Plan = env
             .storage()
             .instance()
@@ -141,6 +147,9 @@ impl MyfansContract {
     /// Cancel a subscription. Only the fan can cancel. Panics if no subscription exists.
     pub fn cancel(env: Env, fan: Address, creator: Address) {
         fan.require_auth();
+        let paused: bool = env.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        assert!(!paused, "contract is paused");
+        
         if !env
             .storage()
             .instance()
