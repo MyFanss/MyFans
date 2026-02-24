@@ -1,0 +1,15 @@
+## Security audit configuration for Rust dependencies
+##
+## `cargo audit` will read this file when run in the `contract` workspace.
+## To ignore a specific advisory, add it under `[advisories]` and include
+## a justification comment explaining why it is safe in this project.
+##
+## Example:
+##
+## [advisories]
+## # RUSTSEC-0000-0000: <short description>
+## # Reason: <why this is acceptable here, link to issue / PR / upstream discussion>
+## ignore = [
+##   "RUSTSEC-0000-0000",
+## ]
+
