@@ -26,6 +26,8 @@ pub enum DataKey {
     Sub(Address, Address),
     CreatorSubscriptionCount(Address),
     AcceptedToken(Address),
+    /// Contract pause status
+    Paused,
 }
 
 #[contract]
