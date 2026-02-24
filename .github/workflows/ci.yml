@@ -84,7 +84,8 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: Security audit (contracts)
-        run: cargo audit --severity high
+        # Fail on high/critical RustSec advisories as configured in contract/audit.toml.
+        run: cargo audit
         working-directory: contract
 
       - name: Build

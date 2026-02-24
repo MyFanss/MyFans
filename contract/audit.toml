@@ -1,6 +1,13 @@
 ## Security audit configuration for Rust dependencies
 ##
 ## `cargo audit` will read this file when run in the `contract` workspace.
+## CI calls `cargo audit` with no extra flags; the severity policy and any
+## exceptions are controlled here so they are explicit and reviewable.
+##
+## Fail CI on high/critical advisories only.
+[output]
+severity_threshold = "high"
+
 ## To ignore a specific advisory, add it under `[advisories]` and include
 ## a justification comment explaining why it is safe in this project.
 ##
