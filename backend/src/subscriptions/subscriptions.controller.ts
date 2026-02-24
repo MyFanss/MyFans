@@ -3,11 +3,20 @@ import { SubscriptionsService } from './subscriptions.service';
 
 @Controller('subscriptions')
 export class SubscriptionsController {
-  constructor(private subscriptionsService: SubscriptionsService) {}
+  constructor(private subscriptionsService: SubscriptionsService) { }
 
   @Get('check')
   checkSubscription(@Query('fan') fan: string, @Query('creator') creator: string) {
     return { isSubscriber: this.subscriptionsService.isSubscriber(fan, creator) };
+  }
+
+  @Get('list')
+  listSubscriptions(
+    @Query('fan') fan: string,
+    @Query('status') status?: string,
+    @Query('sort') sort?: string,
+  ) {
+    return this.subscriptionsService.listSubscriptions(fan, status, sort);
   }
 
   /**
