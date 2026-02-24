@@ -117,6 +117,21 @@
                         "val": {
                           "map": []
                         }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "string": "user_likes"
+                            },
+                            {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": []
+                        }
                       }
                     ]
                   }
