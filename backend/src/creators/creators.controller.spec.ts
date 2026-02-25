@@ -8,7 +8,6 @@ import { BadRequestException } from '@nestjs/common';
 
 describe('CreatorsController', () => {
   let controller: CreatorsController;
-  let service: CreatorsService;
 
   const mockCreatorsService = {
     searchCreators: jest.fn(),
@@ -29,7 +28,6 @@ describe('CreatorsController', () => {
     }).compile();
 
     controller = module.get<CreatorsController>(CreatorsController);
-    service = module.get<CreatorsService>(CreatorsService);
   });
 
   afterEach(() => {
@@ -43,7 +41,7 @@ describe('CreatorsController', () => {
   describe('searchCreators', () => {
     describe('GET /creators endpoint exists and is accessible', () => {
       it('should have searchCreators method', () => {
-        expect(controller.searchCreators).toBeDefined();
+        expect(controller).toHaveProperty('searchCreators');
         expect(typeof controller.searchCreators).toBe('function');
       });
     });
@@ -59,9 +57,11 @@ describe('CreatorsController', () => {
         await controller.searchCreators(searchDto);
 
         // Assert
-        expect(service.searchCreators).toHaveBeenCalledWith(searchDto);
-        expect(service.searchCreators).toHaveBeenCalledWith(
-          expect.objectContaining({ q: 'test' })
+        expect(mockCreatorsService.searchCreators).toHaveBeenCalledWith(
+          searchDto,
+        );
+        expect(mockCreatorsService.searchCreators).toHaveBeenCalledWith(
+          expect.objectContaining({ q: 'test' }),
         );
       });
 
@@ -75,8 +75,8 @@ describe('CreatorsController', () => {
         await controller.searchCreators(searchDto);
 
         // Assert
-        expect(service.searchCreators).toHaveBeenCalledWith(
-          expect.objectContaining({ page: 2 })
+        expect(mockCreatorsService.searchCreators).toHaveBeenCalledWith(
+          expect.objectContaining({ page: 2 }),
         );
       });
 
@@ -90,8 +90,8 @@ describe('CreatorsController', () => {
         await controller.searchCreators(searchDto);
 
         // Assert
-        expect(service.searchCreators).toHaveBeenCalledWith(
-          expect.objectContaining({ limit: 20 })
+        expect(mockCreatorsService.searchCreators).toHaveBeenCalledWith(
+          expect.objectContaining({ limit: 20 }),
         );
       });
 
@@ -105,7 +105,7 @@ describe('CreatorsController', () => {
         await controller.searchCreators(searchDto);
 
         // Assert
-        expect(service.searchCreators).toHaveBeenCalledWith({
+        expect(mockCreatorsService.searchCreators).toHaveBeenCalledWith({
           q: 'alice',
           page: 3,
           limit: 15,
@@ -180,7 +180,7 @@ describe('CreatorsController', () => {
 
         // Assert
         expect(result).toBeDefined();
-        expect(service.searchCreators).toHaveBeenCalled();
+        expect(mockCreatorsService.searchCreators).toHaveBeenCalled();
       });
 
       it('should return 200 status for valid request without query', async () => {
@@ -194,12 +194,16 @@ describe('CreatorsController', () => {
 
         // Assert
         expect(result).toBeDefined();
-        expect(service.searchCreators).toHaveBeenCalled();
+        expect(mockCreatorsService.searchCreators).toHaveBeenCalled();
       });
 
       it('should return 200 status for request with zero results', async () => {
         // Arrange
-        const searchDto: SearchCreatorsDto = { q: 'nonexistent', page: 1, limit: 10 };
+        const searchDto: SearchCreatorsDto = {
+          q: 'nonexistent',
+          page: 1,
+          limit: 10,
+        };
         const mockResponse = new PaginatedResponseDto([], 0, 1, 10);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
@@ -217,17 +221,21 @@ describe('CreatorsController', () => {
       it('should handle validation error for query > 100 characters', async () => {
         // Arrange
         const longQuery = 'a'.repeat(101);
-        const searchDto: SearchCreatorsDto = { q: longQuery, page: 1, limit: 10 };
-        
+        const searchDto: SearchCreatorsDto = {
+          q: longQuery,
+          page: 1,
+          limit: 10,
+        };
+
         // Note: In real scenario, validation pipe would throw BadRequestException
         // Here we simulate the service rejecting it
         mockCreatorsService.searchCreators.mockRejectedValue(
-          new BadRequestException('Query must not exceed 100 characters')
+          new BadRequestException('Query must not exceed 100 characters'),
         );
 
         // Act & Assert
         await expect(controller.searchCreators(searchDto)).rejects.toThrow(
-          BadRequestException
+          BadRequestException,
         );
       });
     });
@@ -236,42 +244,42 @@ describe('CreatorsController', () => {
       it('should handle validation error for invalid page number', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: '', page: 0, limit: 10 };
-        
+
         mockCreatorsService.searchCreators.mockRejectedValue(
-          new BadRequestException('Page must be at least 1')
+          new BadRequestException('Page must be at least 1'),
         );
 
         // Act & Assert
         await expect(controller.searchCreators(searchDto)).rejects.toThrow(
-          BadRequestException
+          BadRequestException,
         );
       });
 
       it('should handle validation error for invalid limit', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: '', page: 1, limit: 0 };
-        
+
         mockCreatorsService.searchCreators.mockRejectedValue(
-          new BadRequestException('Limit must be at least 1')
+          new BadRequestException('Limit must be at least 1'),
         );
 
         // Act & Assert
         await expect(controller.searchCreators(searchDto)).rejects.toThrow(
-          BadRequestException
+          BadRequestException,
         );
       });
 
       it('should handle validation error for limit exceeding maximum', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: '', page: 1, limit: 101 };
-        
+
         mockCreatorsService.searchCreators.mockRejectedValue(
-          new BadRequestException('Limit must not exceed 100')
+          new BadRequestException('Limit must not exceed 100'),
         );
 
         // Act & Assert
         await expect(controller.searchCreators(searchDto)).rejects.toThrow(
-          BadRequestException
+          BadRequestException,
         );
       });
     });
@@ -287,7 +295,9 @@ describe('CreatorsController', () => {
         await controller.searchCreators(searchDto);
 
         // Assert
-        expect(service.searchCreators).toHaveBeenCalledWith(searchDto);
+        expect(mockCreatorsService.searchCreators).toHaveBeenCalledWith(
+          searchDto,
+        );
       });
 
       it('should use default page when only limit is provided', async () => {
@@ -300,8 +310,8 @@ describe('CreatorsController', () => {
         await controller.searchCreators(searchDto);
 
         // Assert
-        expect(service.searchCreators).toHaveBeenCalledWith(
-          expect.objectContaining({ limit: 10 })
+        expect(mockCreatorsService.searchCreators).toHaveBeenCalledWith(
+          expect.objectContaining({ limit: 10 }),
         );
       });
 
@@ -315,8 +325,8 @@ describe('CreatorsController', () => {
         await controller.searchCreators(searchDto);
 
         // Assert
-        expect(service.searchCreators).toHaveBeenCalledWith(
-          expect.objectContaining({ page: 2 })
+        expect(mockCreatorsService.searchCreators).toHaveBeenCalledWith(
+          expect.objectContaining({ page: 2 }),
         );
       });
     });
@@ -332,8 +342,10 @@ describe('CreatorsController', () => {
         await controller.searchCreators(searchDto);
 
         // Assert
-        expect(service.searchCreators).toHaveBeenCalledTimes(1);
-        expect(service.searchCreators).toHaveBeenCalledWith(searchDto);
+        expect(mockCreatorsService.searchCreators).toHaveBeenCalledTimes(1);
+        expect(mockCreatorsService.searchCreators).toHaveBeenCalledWith(
+          searchDto,
+        );
       });
 
       it('should return the result from service.searchCreators', async () => {

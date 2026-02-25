@@ -1,15 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { SelectQueryBuilder } from 'typeorm';
 import * as fc from 'fast-check';
 import { CreatorsService } from './creators.service';
 import { User, UserRole } from '../users/entities/user.entity';
-import { Creator } from '../users/entities/creator.entity';
-import { SearchCreatorsDto } from './dto/search-creators.dto';
 
 describe('CreatorsService - Property-Based Tests', () => {
   let service: CreatorsService;
-  let usersRepository: Repository<User>;
   let mockQueryBuilder: Partial<SelectQueryBuilder<User>>;
 
   beforeEach(async () => {
@@ -39,7 +36,6 @@ describe('CreatorsService - Property-Based Tests', () => {
     }).compile();
 
     service = module.get<CreatorsService>(CreatorsService);
-    usersRepository = module.get<Repository<User>>(getRepositoryToken(User));
   });
 
   // Feature: creator-search, Property 1: Prefix matching on display name or username
@@ -54,34 +50,51 @@ describe('CreatorsService - Property-Based Tests', () => {
               username: fc.string({ minLength: 3, maxLength: 20 }),
               display_name: fc.string({ minLength: 3, maxLength: 30 }),
             }),
-            { minLength: 0, maxLength: 10 }
+            { minLength: 0, maxLength: 10 },
           ),
           async (searchQuery, creators) => {
             // Setup mock data
-            const mockUsers = creators.map(c => createMockUser(c.id, c.username, c.display_name));
-            const matchingUsers = mockUsers.filter(u => 
-              u.display_name.toLowerCase().startsWith(searchQuery.toLowerCase()) ||
-              u.username.toLowerCase().startsWith(searchQuery.toLowerCase())
+            const mockUsers = creators.map((c) =>
+              createMockUser(c.id, c.username, c.display_name),
+            );
+            const matchingUsers = mockUsers.filter(
+              (u) =>
+                u.display_name
+                  .toLowerCase()
+                  .startsWith(searchQuery.toLowerCase()) ||
+                u.username.toLowerCase().startsWith(searchQuery.toLowerCase()),
             );
 
-            (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(matchingUsers.length);
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-              entities: matchingUsers,
-              raw: matchingUsers.map(() => ({ creator_bio: 'Test bio' })),
-            });
+            (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(
+              matchingUsers.length,
+            );
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
+              {
+                entities: matchingUsers,
+                raw: matchingUsers.map(() => ({ creator_bio: 'Test bio' })),
+              },
+            );
 
             // Execute
-            const result = await service.searchCreators({ q: searchQuery, page: 1, limit: 10 });
+            const result = await service.searchCreators({
+              q: searchQuery,
+              page: 1,
+              limit: 10,
+            });
 
             // Verify all results match the prefix
-            result.data.forEach(creator => {
-              const matchesDisplayName = creator.display_name.toLowerCase().startsWith(searchQuery.toLowerCase());
-              const matchesUsername = creator.username.toLowerCase().startsWith(searchQuery.toLowerCase());
+            result.data.forEach((creator) => {
+              const matchesDisplayName = creator.display_name
+                .toLowerCase()
+                .startsWith(searchQuery.toLowerCase());
+              const matchesUsername = creator.username
+                .toLowerCase()
+                .startsWith(searchQuery.toLowerCase());
               expect(matchesDisplayName || matchesUsername).toBe(true);
             });
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
   });
@@ -98,26 +111,38 @@ describe('CreatorsService - Property-Based Tests', () => {
               createMockUser('2', 'bob', 'Bob Jones'),
             ];
 
-            (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(mockUsers.length);
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-              entities: mockUsers,
-              raw: mockUsers.map(() => ({ creator_bio: 'Bio' })),
-            });
+            (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(
+              mockUsers.length,
+            );
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
+              {
+                entities: mockUsers,
+                raw: mockUsers.map(() => ({ creator_bio: 'Bio' })),
+              },
+            );
 
             // Test with different case variations
-            const lowerResult = await service.searchCreators({ q: searchQuery.toLowerCase(), page: 1, limit: 10 });
-            const upperResult = await service.searchCreators({ q: searchQuery.toUpperCase(), page: 1, limit: 10 });
+            await service.searchCreators({
+              q: searchQuery.toLowerCase(),
+              page: 1,
+              limit: 10,
+            });
+            await service.searchCreators({
+              q: searchQuery.toUpperCase(),
+              page: 1,
+              limit: 10,
+            });
 
             // Both should call andWhere with lowercase search term
             if (searchQuery.trim()) {
               expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
                 '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
-                { search: `${searchQuery.toLowerCase().trim()}%` }
+                { search: `${searchQuery.toLowerCase().trim()}%` },
               );
             }
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
   });
@@ -134,23 +159,31 @@ describe('CreatorsService - Property-Based Tests', () => {
               createMockUser('2', 'creator2', 'Creator Two'),
             ];
 
-            (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(mockUsers.length);
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-              entities: mockUsers,
-              raw: mockUsers.map(() => ({ creator_bio: 'Bio' })),
-            });
+            (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(
+              mockUsers.length,
+            );
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
+              {
+                entities: mockUsers,
+                raw: mockUsers.map(() => ({ creator_bio: 'Bio' })),
+              },
+            );
 
             // Execute
-            await service.searchCreators({ q: searchQuery, page: 1, limit: 10 });
+            await service.searchCreators({
+              q: searchQuery,
+              page: 1,
+              limit: 10,
+            });
 
             // Verify is_creator filter is applied
             expect(mockQueryBuilder.where).toHaveBeenCalledWith(
               'user.is_creator = :isCreator',
-              { isCreator: true }
+              { isCreator: true },
             );
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
   });
@@ -164,23 +197,27 @@ describe('CreatorsService - Property-Based Tests', () => {
           fc.integer({ min: 1, max: 100 }),
           async (page, limit) => {
             const mockUsers = Array.from({ length: limit }, (_, i) =>
-              createMockUser(`${i}`, `user${i}`, `User ${i}`)
+              createMockUser(`${i}`, `user${i}`, `User ${i}`),
             );
 
             (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(200);
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-              entities: mockUsers.slice(0, limit),
-              raw: mockUsers.slice(0, limit).map(() => ({ creator_bio: 'Bio' })),
-            });
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
+              {
+                entities: mockUsers.slice(0, limit),
+                raw: mockUsers
+                  .slice(0, limit)
+                  .map(() => ({ creator_bio: 'Bio' })),
+              },
+            );
 
             // Execute
             const result = await service.searchCreators({ page, limit });
 
             // Verify
             expect(result.data.length).toBeLessThanOrEqual(limit);
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
   });
@@ -193,24 +230,33 @@ describe('CreatorsService - Property-Based Tests', () => {
           fc.option(fc.string({ maxLength: 50 }), { nil: undefined }),
           fc.integer({ min: 0, max: 100 }),
           async (searchQuery, totalCount) => {
-            const mockUsers = Array.from({ length: Math.min(totalCount, 20) }, (_, i) =>
-              createMockUser(`${i}`, `user${i}`, `User ${i}`)
+            const mockUsers = Array.from(
+              { length: Math.min(totalCount, 20) },
+              (_, i) => createMockUser(`${i}`, `user${i}`, `User ${i}`),
             );
 
-            (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(totalCount);
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-              entities: mockUsers,
-              raw: mockUsers.map(() => ({ creator_bio: 'Bio' })),
-            });
+            (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(
+              totalCount,
+            );
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
+              {
+                entities: mockUsers,
+                raw: mockUsers.map(() => ({ creator_bio: 'Bio' })),
+              },
+            );
 
             // Execute
-            const result = await service.searchCreators({ q: searchQuery, page: 1, limit: 20 });
+            const result = await service.searchCreators({
+              q: searchQuery,
+              page: 1,
+              limit: 20,
+            });
 
             // Verify
             expect(result.total).toBe(totalCount);
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
   });
@@ -224,19 +270,21 @@ describe('CreatorsService - Property-Based Tests', () => {
           fc.integer({ min: 1, max: 100 }),
           async (total, limit) => {
             (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(total);
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-              entities: [],
-              raw: [],
-            });
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
+              {
+                entities: [],
+                raw: [],
+              },
+            );
 
             // Execute
             const result = await service.searchCreators({ page: 1, limit });
 
             // Verify
             expect(result.totalPages).toBe(Math.ceil(total / limit));
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
   });
@@ -249,13 +297,19 @@ describe('CreatorsService - Property-Based Tests', () => {
           fc.option(fc.string({ maxLength: 50 }), { nil: undefined }),
           async (searchQuery) => {
             (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(0);
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-              entities: [],
-              raw: [],
-            });
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
+              {
+                entities: [],
+                raw: [],
+              },
+            );
 
             // Execute
-            const result = await service.searchCreators({ q: searchQuery, page: 1, limit: 20 });
+            const result = await service.searchCreators({
+              q: searchQuery,
+              page: 1,
+              limit: 20,
+            });
 
             // Verify structure
             expect(result).toHaveProperty('data');
@@ -268,9 +322,9 @@ describe('CreatorsService - Property-Based Tests', () => {
             expect(typeof result.page).toBe('number');
             expect(typeof result.limit).toBe('number');
             expect(typeof result.totalPages).toBe('number');
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
   });
@@ -282,25 +336,37 @@ describe('CreatorsService - Property-Based Tests', () => {
         fc.asyncProperty(
           fc.option(fc.string({ maxLength: 50 }), { nil: undefined }),
           async (searchQuery) => {
-            const mockUsers = [
-              createMockUser('1', 'testuser', 'Test User'),
-            ];
+            const mockUsers = [createMockUser('1', 'testuser', 'Test User')];
 
             (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(1);
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-              entities: mockUsers,
-              raw: [{ creator_bio: 'Test bio' }],
-            });
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
+              {
+                entities: mockUsers,
+                raw: [{ creator_bio: 'Test bio' }],
+              },
+            );
 
             // Execute
-            const result = await service.searchCreators({ q: searchQuery, page: 1, limit: 20 });
+            const result = await service.searchCreators({
+              q: searchQuery,
+              page: 1,
+              limit: 20,
+            });
 
             // Verify each result has only public fields
-            result.data.forEach(creator => {
+            result.data.forEach((creator) => {
               const keys = Object.keys(creator);
-              expect(keys).toEqual(expect.arrayContaining(['id', 'username', 'display_name', 'avatar_url', 'bio']));
+              expect(keys).toEqual(
+                expect.arrayContaining([
+                  'id',
+                  'username',
+                  'display_name',
+                  'avatar_url',
+                  'bio',
+                ]),
+              );
               expect(keys).toHaveLength(5);
-              
+
               // Verify sensitive fields are not present
               expect(creator).not.toHaveProperty('password_hash');
               expect(creator).not.toHaveProperty('email');
@@ -309,26 +375,26 @@ describe('CreatorsService - Property-Based Tests', () => {
               expect(creator).not.toHaveProperty('push_notifications');
               expect(creator).not.toHaveProperty('marketing_emails');
             });
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
   });
 
   // Feature: creator-search, Property 9: Query length validation
   describe('Property 9: Query length validation', () => {
-    it('should reject queries exceeding 100 characters', async () => {
-      await fc.assert(
-        fc.asyncProperty(
+    it('should reject queries exceeding 100 characters', () => {
+      fc.assert(
+        fc.property(
           fc.string({ minLength: 101, maxLength: 200 }),
-          async (longQuery) => {
+          (longQuery) => {
             // This test validates at the DTO level, not service level
             // The validation happens before reaching the service
             expect(longQuery.length).toBeGreaterThan(100);
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
   });
@@ -338,25 +404,33 @@ describe('CreatorsService - Property-Based Tests', () => {
     it('should accept queries with valid characters', async () => {
       await fc.assert(
         fc.asyncProperty(
-          fc.string({
-            minLength: 1,
-            maxLength: 50,
-          }).filter(s => /^[a-zA-Z0-9 _-]*$/.test(s)),
+          fc
+            .string({
+              minLength: 1,
+              maxLength: 50,
+            })
+            .filter((s) => /^[a-zA-Z0-9 _-]*$/.test(s)),
           async (validQuery) => {
             (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(0);
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-              entities: [],
-              raw: [],
-            });
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
+              {
+                entities: [],
+                raw: [],
+              },
+            );
 
             // Execute - should not throw
-            const result = await service.searchCreators({ q: validQuery, page: 1, limit: 20 });
+            const result = await service.searchCreators({
+              q: validQuery,
+              page: 1,
+              limit: 20,
+            });
 
             // Verify it executed successfully
             expect(result).toBeDefined();
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
   });
@@ -375,19 +449,28 @@ describe('CreatorsService - Property-Based Tests', () => {
             ];
 
             (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(3);
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-              entities: mockUsers,
-              raw: mockUsers.map(() => ({ creator_bio: 'Bio' })),
-            });
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
+              {
+                entities: mockUsers,
+                raw: mockUsers.map(() => ({ creator_bio: 'Bio' })),
+              },
+            );
 
             // Execute
-            await service.searchCreators({ q: searchQuery, page: 1, limit: 20 });
+            await service.searchCreators({
+              q: searchQuery,
+              page: 1,
+              limit: 20,
+            });
 
             // Verify orderBy was called with username ASC
-            expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith('user.username', 'ASC');
-          }
+            expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith(
+              'user.username',
+              'ASC',
+            );
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
   });
@@ -402,28 +485,38 @@ describe('CreatorsService - Property-Based Tests', () => {
           fc.integer({ min: 1, max: 100 }),
           async (searchQuery, page, limit) => {
             (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(0);
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-              entities: [],
-              raw: [],
-            });
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
+              {
+                entities: [],
+                raw: [],
+              },
+            );
 
             // Execute - should not throw
-            const result = await service.searchCreators({ q: searchQuery, page, limit });
+            const result = await service.searchCreators({
+              q: searchQuery,
+              page,
+              limit,
+            });
 
             // Verify successful execution
             expect(result).toBeDefined();
             expect(result.page).toBe(page);
             expect(result.limit).toBe(limit);
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
   });
 });
 
 // Helper function
-function createMockUser(id: string, username: string, display_name: string): User {
+function createMockUser(
+  id: string,
+  username: string,
+  display_name: string,
+): User {
   return {
     id,
     username,
