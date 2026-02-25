@@ -17,11 +17,13 @@ members = [
     "contracts/content-access",
     "contracts/content-likes",
     "contracts/creator-deposits",
+    "contracts/creator-earnings",
     "contracts/creator-registry",
     "contracts/myfans-lib",
     "contracts/myfans-token",
     "contracts/subscription",
     "contracts/test-consumer",
+    "contracts/treasury",
 ]
 
 [workspace.dependencies]
