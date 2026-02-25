@@ -18,3 +18,6 @@ export type { BadgeProps, BadgeVariant } from './Badge';
 
 export { StatusIndicator } from './StatusIndicator';
 export type { StatusIndicatorProps, StatusType } from './StatusIndicator';
+
+export { AvatarUpload } from './AvatarUpload';
+export type { AvatarUploadProps } from './AvatarUpload';

@@ -1,0 +1,11 @@
+import React from 'react';
+import SubscribersTable from '@/components/dashboard/SubscribersTable';
+
+export default function SubscribersPage() {
+  return (
+    <div>
+      <h1 className="text-2xl font-bold mb-6">Subscribers</h1>
+      <SubscribersTable />
+    </div>
+  );
+}

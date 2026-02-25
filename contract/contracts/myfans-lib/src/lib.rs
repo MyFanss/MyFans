@@ -31,7 +31,7 @@ pub enum ContentType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{Env, IntoVal};
+    use soroban_sdk::{Env, IntoVal, TryIntoVal};
 
     #[test]
     fn test_subscription_status_values() {
@@ -50,24 +50,24 @@ mod tests {
     #[test]
     fn test_subscription_status_serialization() {
         let env = Env::default();
-        
+
         let pending = SubscriptionStatus::Pending;
-        let val = pending.into_val(&env);
+        let val: soroban_sdk::Val = pending.into_val(&env);
         let decoded: SubscriptionStatus = val.try_into_val(&env).unwrap();
         assert_eq!(decoded, SubscriptionStatus::Pending);
 
         let active = SubscriptionStatus::Active;
-        let val = active.into_val(&env);
+        let val: soroban_sdk::Val = active.into_val(&env);
         let decoded: SubscriptionStatus = val.try_into_val(&env).unwrap();
         assert_eq!(decoded, SubscriptionStatus::Active);
 
         let cancelled = SubscriptionStatus::Cancelled;
-        let val = cancelled.into_val(&env);
+        let val: soroban_sdk::Val = cancelled.into_val(&env);
         let decoded: SubscriptionStatus = val.try_into_val(&env).unwrap();
         assert_eq!(decoded, SubscriptionStatus::Cancelled);
 
         let expired = SubscriptionStatus::Expired;
-        let val = expired.into_val(&env);
+        let val: soroban_sdk::Val = expired.into_val(&env);
         let decoded: SubscriptionStatus = val.try_into_val(&env).unwrap();
         assert_eq!(decoded, SubscriptionStatus::Expired);
     }
@@ -75,14 +75,14 @@ mod tests {
     #[test]
     fn test_content_type_serialization() {
         let env = Env::default();
-        
+
         let free = ContentType::Free;
-        let val = free.into_val(&env);
+        let val: soroban_sdk::Val = free.into_val(&env);
         let decoded: ContentType = val.try_into_val(&env).unwrap();
         assert_eq!(decoded, ContentType::Free);
 
         let paid = ContentType::Paid;
-        let val = paid.into_val(&env);
+        let val: soroban_sdk::Val = paid.into_val(&env);
         let decoded: ContentType = val.try_into_val(&env).unwrap();
         assert_eq!(decoded, ContentType::Paid);
     }
@@ -91,7 +91,7 @@ mod tests {
     fn test_enum_equality() {
         assert_eq!(SubscriptionStatus::Active, SubscriptionStatus::Active);
         assert_ne!(SubscriptionStatus::Active, SubscriptionStatus::Pending);
-        
+
         assert_eq!(ContentType::Free, ContentType::Free);
         assert_ne!(ContentType::Free, ContentType::Paid);
     }
