@@ -11,6 +11,7 @@ import {
   WithdrawalDto,
   FeeTransparencyDto,
 } from './dto/earnings-summary.dto';
+import { PaginationQueryDto, PaginatedResponseDto } from '../common/dto';
 
 @Injectable()
 export class EarningsService {
@@ -144,15 +145,21 @@ export class EarningsService {
   /**
    * Get transaction history
    */
-  async getTransactionHistory(creatorId: string, limit: number = 50, offset: number = 0): Promise<TransactionHistoryDto[]> {
-    const payments = await this.paymentsRepository.find({
+  async getTransactionHistory(
+    creatorId: string,
+    pagination: PaginationQueryDto,
+  ): Promise<PaginatedResponseDto<TransactionHistoryDto>> {
+    const { page = 1, limit = 50 } = pagination;
+    const skip = (page - 1) * limit;
+
+    const [payments, total] = await this.paymentsRepository.findAndCount({
       where: { creator_id: creatorId },
       order: { created_at: 'DESC' },
       take: limit,
-      skip: offset,
+      skip,
     });
 
-    return payments.map((p) => ({
+    const items = payments.map((p) => ({
       id: p.id,
       date: p.created_at.toISOString(),
       type: p.type as any,
@@ -163,6 +170,8 @@ export class EarningsService {
       reference_id: p.reference_id || undefined,
       tx_hash: p.tx_hash || undefined,
     }));
+
+    return new PaginatedResponseDto(items, total, page, limit);
   }
 
   /**
@@ -203,15 +212,26 @@ export class EarningsService {
   /**
    * Get withdrawal history
    */
-  async getWithdrawalHistory(creatorId: string, limit: number = 20, offset: number = 0): Promise<WithdrawalDto[]> {
-    const withdrawals = await this.withdrawalsRepository.find({
+  async getWithdrawalHistory(
+    creatorId: string,
+    pagination: PaginationQueryDto,
+  ): Promise<PaginatedResponseDto<WithdrawalDto>> {
+    const { page = 1, limit = 20 } = pagination;
+    const skip = (page - 1) * limit;
+
+    const [withdrawals, total] = await this.withdrawalsRepository.findAndCount({
       where: { user_id: creatorId },
       order: { created_at: 'DESC' },
       take: limit,
-      skip: offset,
+      skip,
     });
 
-    return withdrawals.map((w) => this.mapWithdrawalToDto(w));
+    return new PaginatedResponseDto(
+      withdrawals.map((w) => this.mapWithdrawalToDto(w)),
+      total,
+      page,
+      limit,
+    );
   }
 
   /**
