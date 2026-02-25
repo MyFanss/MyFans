@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, feat/dependency-audit-ci]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, feat/dependency-audit-ci]
 
 jobs:
   frontend:
@@ -45,6 +45,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        working-directory: backend
+
+      - name: Security audit (dependencies)
+        run: npm audit --omit=dev --audit-level=high
         working-directory: backend
 
       - name: Build
