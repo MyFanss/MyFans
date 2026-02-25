@@ -1,4 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
+import {
+  RenewalFailurePayload,
+  SUBSCRIPTION_EVENT_PUBLISHER,
+  SUBSCRIPTION_RENEWAL_FAILED,
+  SubscriptionEventPublisher,
+} from './events';
 
 /** Checkout status enum */
 export enum CheckoutStatus {
@@ -59,6 +72,7 @@ export class SubscriptionsService {
   private subscriptions: Map<string, Subscription> = new Map();
   private checkouts: Map<string, Checkout> = new Map();
   private checkoutExpiryMinutes = 15;
+  private readonly logger = new Logger(SubscriptionsService.name);
 
   // Mock platform fee (in basis points, e.g., 500 = 5%)
   private platformFeeBps = 500;
@@ -72,7 +86,11 @@ export class SubscriptionsService {
   // Mock creator profiles
   private creatorProfiles: Map<string, { name: string; description?: string }> = new Map();
 
-  constructor() {
+  constructor(
+    @Optional()
+    @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
+    private readonly subscriptionEventPublisher?: SubscriptionEventPublisher,
+  ) {
     // Set up mock creator profiles
     this.creatorProfiles.set('GAAAAAAAAAAAAAAA', { name: 'Creator 1', description: 'Premium content creator' });
     this.creatorProfiles.set('GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5', { name: 'Creator 2', description: 'Exclusive videos and photos' });
@@ -356,6 +374,7 @@ export class SubscriptionsService {
     checkout.status = isRejected ? CheckoutStatus.REJECTED : CheckoutStatus.FAILED;
     checkout.error = error;
     checkout.updatedAt = new Date();
+    this.emitRenewalFailureEvent(checkout, error);
 
     return {
       success: false,
@@ -403,5 +422,25 @@ export class SubscriptionsService {
     ];
     return plans.find(p => p.id === planId);
   }
-}
 
+  private emitRenewalFailureEvent(checkout: Checkout, reason: string): void {
+    const payload: RenewalFailurePayload = {
+      subscriptionId: checkout.id,
+      reason,
+      timestamp: new Date().toISOString(),
+      userId: checkout.fanAddress,
+    };
+
+    Promise.resolve()
+      .then(() =>
+        this.subscriptionEventPublisher?.emit(
+          SUBSCRIPTION_RENEWAL_FAILED,
+          payload,
+        ),
+      )
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Failed to emit renewal failure event: ${message}`);
+      });
+  }
+}
