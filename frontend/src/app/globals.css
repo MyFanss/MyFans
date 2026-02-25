@@ -252,8 +252,8 @@ body {
 .success-pop {
   animation: success-pop 220ms ease-out;
 }
-/* Focus visible styles */
-.focus-visible:focus-visible {
+/* Global keyboard focus visibility */
+:focus-visible {
   outline: 2px solid var(--primary-500);
   outline-offset: 2px;
 }

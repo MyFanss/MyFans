@@ -103,7 +103,7 @@ export default function SubscribersTable() {
     setSortConfig({ key, direction });
   };
 
-  const SortIcon = ({ columnKey }: { columnKey: keyof Subscriber }) => {
+  const getSortIcon = (columnKey: keyof Subscriber) => {
     if (sortConfig.key !== columnKey) return <ArrowUpDown className="w-4 h-4 text-gray-400" />;
     return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 text-emerald-500" /> : <ArrowDown className="w-4 h-4 text-emerald-500" />;
   };
@@ -185,19 +185,19 @@ export default function SubscribersTable() {
             <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-800/50 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
               <tr>
                 <th scope="col" className="px-6 py-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" onClick={() => handleSort('name')}>
-                  <div className="flex items-center gap-2">Fan <SortIcon columnKey="name" /></div>
+                  <div className="flex items-center gap-2">Fan {getSortIcon('name')}</div>
                 </th>
                 <th scope="col" className="px-6 py-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" onClick={() => handleSort('plan')}>
-                  <div className="flex items-center gap-2">Plan <SortIcon columnKey="plan" /></div>
+                  <div className="flex items-center gap-2">Plan {getSortIcon('plan')}</div>
                 </th>
                 <th scope="col" className="px-6 py-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" onClick={() => handleSort('joinDate')}>
-                  <div className="flex items-center gap-2">Dates <SortIcon columnKey="joinDate" /></div>
+                  <div className="flex items-center gap-2">Dates {getSortIcon('joinDate')}</div>
                 </th>
                 <th scope="col" className="px-6 py-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" onClick={() => handleSort('status')}>
-                  <div className="flex items-center gap-2">Status <SortIcon columnKey="status" /></div>
+                  <div className="flex items-center gap-2">Status {getSortIcon('status')}</div>
                 </th>
                 <th scope="col" className="px-6 py-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-right" onClick={() => handleSort('totalPaid')}>
-                  <div className="flex items-center justify-end gap-2">Total Paid <SortIcon columnKey="totalPaid" /></div>
+                  <div className="flex items-center justify-end gap-2">Total Paid {getSortIcon('totalPaid')}</div>
                 </th>
               </tr>
             </thead>
