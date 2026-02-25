@@ -1,8 +1,19 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  Inject,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { Creator } from './entities/creator.entity';
+import { Follow } from './entities/follow.entity';
 import { FindCreatorsQueryDto } from './dto/find-creators-query.dto';
+import { OnboardCreatorDto } from './dto/onboard-creator.dto';
+import { User } from '../users/entities/user.entity';
 
 const BIO_SNIPPET_LENGTH = 150;
 
@@ -11,7 +22,68 @@ export class CreatorsService {
   constructor(
     @InjectRepository(Creator)
     private readonly creatorRepo: Repository<Creator>,
+    @InjectRepository(Follow)
+    private readonly followRepo: Repository<Follow>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
+
+  private async invalidateCache() {
+    try {
+      const cacheAny = this.cacheManager as any;
+      const store =
+        cacheAny.store || (cacheAny.stores ? cacheAny.stores[0] : null);
+      if (store && store.client && typeof store.client.keys === 'function') {
+        const keys = await store.client.keys('*creators*');
+        if (keys.length > 0) {
+          await store.client.del(...keys);
+        }
+      } else {
+        if (typeof cacheAny.reset === 'function') {
+          await cacheAny.reset();
+        } else if (typeof cacheAny.clear === 'function') {
+          await cacheAny.clear();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to invalidate creators cache:', error);
+    }
+  }
+
+  async onboard(userId: string, dto: OnboardCreatorDto) {
+    // Check if user is already a creator
+    const existingCreator = await this.creatorRepo.findOne({
+      where: { user_id: userId },
+    });
+
+    if (existingCreator) {
+      throw new ConflictException('User is already a creator');
+    }
+
+    // Create the creator record
+    const creator = this.creatorRepo.create({
+      user_id: userId,
+      bio: dto.bio ?? null,
+      subscription_price: String(dto.subscription_price ?? 0),
+      currency: dto.currency ?? 'XLM',
+      is_verified: false,
+      followers_count: 0,
+    });
+
+    await this.creatorRepo.save(creator);
+
+    // Update user to mark as creator
+    await this.userRepo.update(userId, { is_creator: true });
+
+    // Fetch the creator with user relations for response
+    const createdCreator = await this.creatorRepo.findOne({
+      where: { id: creator.id },
+      relations: ['user'],
+    });
+
+    return this.toDetailItem(createdCreator!);
+  }
 
   async findAll(query: FindCreatorsQueryDto) {
     const { page = 1, limit = 20, is_verified, min_price, max_price } = query;
@@ -70,9 +142,59 @@ export class CreatorsService {
       .getOne();
 
     if (!creator) {
-      throw new NotFoundException(`Creator with username ${username} not found`);
+      throw new NotFoundException(
+        `Creator with username ${username} not found`,
+      );
     }
     return this.toDetailItem(creator);
+  }
+
+  async follow(creatorId: string, followerId: string) {
+    const creator = await this.creatorRepo.findOne({
+      where: { id: creatorId },
+    });
+    if (!creator) {
+      throw new NotFoundException(`Creator with id ${creatorId} not found`);
+    }
+
+    if (creator.user_id === followerId) {
+      throw new BadRequestException('You cannot follow yourself');
+    }
+
+    const existingFollow = await this.followRepo.findOne({
+      where: { creator_id: creatorId, follower_id: followerId },
+    });
+
+    if (existingFollow) {
+      return; // Idempotent
+    }
+
+    await this.followRepo.save({
+      creator_id: creatorId,
+      follower_id: followerId,
+    });
+
+    await this.creatorRepo.increment({ id: creatorId }, 'followers_count', 1);
+    await this.invalidateCache();
+  }
+
+  async unfollow(creatorId: string, followerId: string) {
+    const creator = await this.creatorRepo.findOne({
+      where: { id: creatorId },
+    });
+    if (!creator) {
+      throw new NotFoundException(`Creator with id ${creatorId} not found`);
+    }
+
+    const result = await this.followRepo.delete({
+      creator_id: creatorId,
+      follower_id: followerId,
+    });
+
+    if (result.affected && result.affected > 0) {
+      await this.creatorRepo.decrement({ id: creatorId }, 'followers_count', 1);
+      await this.invalidateCache();
+    }
   }
 
   private toListItem(creator: Creator) {
@@ -93,6 +215,7 @@ export class CreatorsService {
       is_verified: creator.is_verified,
       post_count: 0,
       subscriber_count: 0,
+      followers_count: creator.followers_count,
     };
   }
 
@@ -108,6 +231,7 @@ export class CreatorsService {
       is_verified: creator.is_verified,
       post_count: 0,
       subscriber_count: 0,
+      followers_count: creator.followers_count,
       created_at: creator.created_at,
       updated_at: creator.updated_at,
     };
