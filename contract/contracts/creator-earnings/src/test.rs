@@ -2,9 +2,9 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::Address as _,
+    testutils::{Address as _, Events},
     xdr::SorobanAuthorizationEntry,
-    Address, Env,
+    Address, Env, Symbol, TryIntoVal,
 };
 use soroban_sdk::token::{Client as TokenClient, StellarAssetClient};
 
@@ -156,4 +156,47 @@ fn test_unauthorized_withdraw_reverts() {
     // Stake unchanged
     assert_eq!(client.balance(&creator), 500);
     assert_eq!(token_client.balance(&client.address), 500);
+}
+
+#[test]
+fn withdraw_emits_event() {
+    let env = Env::default();
+
+    let (_admin, creator, depositor, client, _token_client, _) = setup(&env);
+
+    // Get the token address from storage
+    let token_address: Address = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get(&DataKey::Token)
+            .expect("token not set")
+    });
+
+    client.deposit(&depositor, &creator, &500);
+    client.withdraw(&creator, &200);
+
+    // events().all() returns Vec<(contract_addr, topics: Vec<Val>, data: Val)>
+    let events = env.events().all();
+    let withdraw_event = events.iter().find(|e| {
+        // e.1 = topics, e.2 = data
+        e.1.first().map_or(false, |t| {
+            t.try_into_val(&env).ok() == Some(Symbol::new(&env, "withdraw"))
+        })
+    });
+
+    assert!(withdraw_event.is_some(), "withdraw event not emitted");
+
+    let event = withdraw_event.unwrap();
+
+    // Assert topics: single symbol "withdraw"
+    assert_eq!(event.1.len(), 1);
+    let topic_symbol: Symbol = event.1.first().unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic_symbol, Symbol::new(&env, "withdraw"));
+
+    // Assert data: (creator, amount, token)
+    let (event_creator, event_amount, event_token): (Address, i128, Address) =
+        event.2.try_into_val(&env).unwrap();
+    assert_eq!(event_creator, creator);
+    assert_eq!(event_amount, 200);
+    assert_eq!(event_token, token_address);
 }
