@@ -26,24 +26,35 @@ const STEP_ORDER: OnboardingStep[] = [
 ];
 
 export function useOnboarding() {
-  const [state, setState] = useState<OnboardingState>({
-    currentStep: 'account-type',
-    completedSteps: [],
-    isComplete: false,
-  });
-
-  // Load state from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem(ONBOARDING_STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as OnboardingState;
-        setState(parsed);
-      } catch (error) {
-        console.error('Failed to parse onboarding state:', error);
-      }
+  const [state, setState] = useState<OnboardingState>(() => {
+    if (typeof window === 'undefined') {
+      return {
+        currentStep: 'account-type',
+        completedSteps: [],
+        isComplete: false,
+      };
     }
-  }, []);
+
+    const stored = localStorage.getItem(ONBOARDING_STORAGE_KEY);
+    if (!stored) {
+      return {
+        currentStep: 'account-type',
+        completedSteps: [],
+        isComplete: false,
+      };
+    }
+
+    try {
+      return JSON.parse(stored) as OnboardingState;
+    } catch (error) {
+      console.error('Failed to parse onboarding state:', error);
+      return {
+        currentStep: 'account-type',
+        completedSteps: [],
+        isComplete: false,
+      };
+    }
+  });
 
   // Save state to localStorage whenever it changes
   useEffect(() => {
