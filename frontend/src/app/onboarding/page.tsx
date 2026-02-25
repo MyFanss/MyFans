@@ -349,7 +349,7 @@ export default function OnboardingPage() {
             Welcome to MyFans
           </h1>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
-            Let's get your account set up
+            Let&apos;s get your account set up
           </p>
         </div>
 
