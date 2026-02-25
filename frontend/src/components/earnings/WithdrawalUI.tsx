@@ -37,8 +37,8 @@ export function WithdrawalUI({ availableBalance, currency }: WithdrawalUIProps) 
 
   const loadHistory = async () => {
     try {
-      const data = await fetchWithdrawalHistory(5);
-      setHistory(data);
+      const data = await fetchWithdrawalHistory(1, 5);
+      setHistory(data.items);
     } catch (err) {
       console.error('Failed to load withdrawal history', err);
     }
