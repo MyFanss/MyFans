@@ -138,7 +138,6 @@ pub fn deposit(env: Env, from: Address, creator: Address, amount: i128) {
         let admin = Self::get_admin(env);
 
         if caller == &admin {
-            admin.require_auth();
             return;
         }
 
@@ -147,7 +146,6 @@ pub fn deposit(env: Env, from: Address, creator: Address, amount: i128) {
             .instance()
             .has(&DataKey::AuthorizedDepositor(caller.clone()))
         {
-            caller.require_auth();
             return;
         }
 
