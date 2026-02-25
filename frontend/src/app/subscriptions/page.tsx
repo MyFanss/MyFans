@@ -13,8 +13,17 @@ import {
   type PaymentRecord,
 } from '@/lib/subscriptions';
 import { BaseCard } from '@/components/cards/BaseCard';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function SubscriptionsPage() {
+  return (
+    <ErrorBoundary>
+      <SubscriptionsContent />
+    </ErrorBoundary>
+  );
+}
+
+function SubscriptionsContent() {
   const [activeList, setActiveList] = useState<ActiveSubscription[]>(MOCK_ACTIVE);
   const [cancelTarget, setCancelTarget] = useState<ActiveSubscription | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
