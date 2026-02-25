@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  MOCK_ACTIVE,
   MOCK_HISTORY,
   MOCK_PAYMENTS,
   getCurrencySymbol,
@@ -13,6 +12,7 @@ import {
   type PaymentRecord,
 } from '@/lib/subscriptions';
 import { BaseCard } from '@/components/cards/BaseCard';
+import HistoryCardSkeleton from '@/components/ui/HistoryCardSkeleton';
 
 export default function SubscriptionsPage() {
   const [activeList, setActiveList] = useState<ActiveSubscription[]>([]);
@@ -21,8 +21,11 @@ export default function SubscriptionsPage() {
   const [cancelTarget, setCancelTarget] = useState<ActiveSubscription | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const cancelModalRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const cancelTriggerRef = useRef<HTMLElement | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     let mounted = true;
     const fetchSubscriptions = async () => {
       setIsLoading(true);
@@ -45,6 +48,59 @@ export default function SubscriptionsPage() {
     fetchSubscriptions();
     return () => { mounted = false; };
   }, [statusFilter, sortOption]);
+
+  useEffect(() => {
+    if (!cancelTarget) return;
+
+    previousFocusRef.current = document.activeElement as HTMLElement;
+    const modalElement = cancelModalRef.current;
+    const focusableSelector =
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    const focusFirstElement = () => {
+      const firstFocusable = modalElement?.querySelector<HTMLElement>(focusableSelector);
+      firstFocusable?.focus();
+    };
+
+    focusFirstElement();
+
+    const handleModalKeyDown = (event: KeyboardEvent) => {
+      if (!cancelModalRef.current) return;
+
+      if (event.key === 'Escape' && !isCancelling) {
+        setCancelTarget(null);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = Array.from(
+        cancelModalRef.current.querySelectorAll<HTMLElement>(focusableSelector),
+      );
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleModalKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleModalKeyDown);
+      cancelTriggerRef.current?.focus();
+      if (!cancelTriggerRef.current) {
+        previousFocusRef.current?.focus();
+      }
+    };
+  }, [cancelTarget, isCancelling]);
 
   const handleCancelConfirm = useCallback(async () => {
     if (!cancelTarget) return;
@@ -128,7 +184,10 @@ export default function SubscriptionsPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setCancelTarget(sub)}
+                      onClick={(event) => {
+                        cancelTriggerRef.current = event.currentTarget;
+                        setCancelTarget(sub);
+                      }}
                       className="flex-shrink-0 px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                     >
                       Cancel subscription
@@ -159,6 +218,8 @@ export default function SubscriptionsPage() {
           )}
         </section>
 
+        <HistoryCardSkeleton/>
+
         {/* Payment history */}
         <section aria-labelledby="payments-heading">
           <h2 id="payments-heading" className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
@@ -187,32 +248,34 @@ export default function SubscriptionsPage() {
           aria-modal="true"
           aria-labelledby="cancel-dialog-title"
         >
-          <BaseCard padding="lg" className="max-w-md w-full">
-            <h3 id="cancel-dialog-title" className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-              Cancel subscription?
-            </h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              You will lose access to {cancelTarget.creatorName}&apos;s {cancelTarget.planName} content at the end of your current billing period ({formatDate(cancelTarget.currentPeriodEnd)}). You can resubscribe anytime.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                type="button"
-                onClick={() => setCancelTarget(null)}
-                disabled={isCancelling}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-              >
-                Keep subscription
-              </button>
-              <button
-                type="button"
-                onClick={handleCancelConfirm}
-                disabled={isCancelling}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg disabled:opacity-50"
-              >
-                {isCancelling ? 'Cancelling…' : 'Cancel subscription'}
-              </button>
-            </div>
-          </BaseCard>
+          <div ref={cancelModalRef} tabIndex={-1} className="max-w-md w-full focus-visible:outline-none">
+            <BaseCard padding="lg">
+              <h3 id="cancel-dialog-title" className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                Cancel subscription?
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                You will lose access to {cancelTarget.creatorName}&apos;s {cancelTarget.planName} content at the end of your current billing period ({formatDate(cancelTarget.currentPeriodEnd)}). You can resubscribe anytime.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setCancelTarget(null)}
+                  disabled={isCancelling}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                >
+                  Keep subscription
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelConfirm}
+                  disabled={isCancelling}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg disabled:opacity-50"
+                >
+                  {isCancelling ? 'Cancelling…' : 'Cancel subscription'}
+                </button>
+              </div>
+            </BaseCard>
+          </div>
         </div>
       )}
     </div>

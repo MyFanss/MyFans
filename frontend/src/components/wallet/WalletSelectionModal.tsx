@@ -24,6 +24,11 @@ export function WalletSelectionModal({
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
+  const handleClose = useCallback(() => {
+    if (connectionState.status === 'connecting') return;
+    onClose();
+  }, [connectionState.status, onClose]);
+
   // Focus trap
   useEffect(() => {
     if (!isOpen) return;
@@ -72,14 +77,9 @@ export function WalletSelectionModal({
       // Restore focus
       previousFocusRef.current?.focus();
     };
-  }, [isOpen]);
+  }, [handleClose, isOpen]);
 
-  const handleClose = useCallback(() => {
-    if (connectionState.status === 'connecting') return;
-    onClose();
-  }, [connectionState.status, onClose]);
-
-  const handleWalletSelect = async (walletType: WalletType) => {
+  const handleWalletSelect = useCallback(async (walletType: WalletType) => {
     setConnectionState({ status: 'connecting', walletType });
 
     try {
@@ -101,7 +101,7 @@ export function WalletSelectionModal({
         walletType,
       });
     }
-  };
+  }, [onConnect]);
 
   const handleDisconnect = useCallback(() => {
     setConnectionState({ status: 'disconnected' });
@@ -112,7 +112,7 @@ export function WalletSelectionModal({
     if (connectionState.status === 'error' && connectionState.walletType) {
       handleWalletSelect(connectionState.walletType);
     }
-  }, [connectionState]);
+  }, [connectionState, handleWalletSelect]);
 
   if (!isOpen) return null;
 
@@ -292,7 +292,7 @@ async function connectFreighter(): Promise<string> {
     throw new Error('Window is not defined');
   }
 
-  const freighter = (window as any).freighter;
+  const freighter = (window as Window & { freighter?: FreighterApi }).freighter;
 
   if (!freighter) {
     throw new Error('Freighter wallet not found. Please install the extension.');
@@ -310,6 +310,10 @@ async function connectFreighter(): Promise<string> {
     }
     throw error;
   }
+}
+
+interface FreighterApi {
+  getPublicKey: () => Promise<string>;
 }
 
 async function connectLobstr(): Promise<string> {
