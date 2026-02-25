@@ -26,14 +26,18 @@ export function TransactionHistoryCard({ limit = 20 }: TransactionHistoryProps) 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
-        const data = await fetchTransactionHistory(limit, offset);
-        setTransactions(data);
+        const response = await fetchTransactionHistory(page, limit);
+        setTransactions(response.items);
+        setTotalPages(response.total_pages);
+        setTotal(response.total);
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load transactions');
@@ -43,7 +47,7 @@ export function TransactionHistoryCard({ limit = 20 }: TransactionHistoryProps) 
     };
 
     load();
-  }, [limit, offset]);
+  }, [limit, page]);
 
   if (loading) {
     return (
@@ -72,6 +76,9 @@ export function TransactionHistoryCard({ limit = 20 }: TransactionHistoryProps) 
       </BaseCard>
     );
   }
+
+  const startItem = (page - 1) * limit + 1;
+  const endItem = Math.min(page * limit, total);
 
   return (
     <BaseCard padding="lg" as="section" aria-labelledby="transactions-heading">
@@ -110,18 +117,18 @@ export function TransactionHistoryCard({ limit = 20 }: TransactionHistoryProps) 
       {/* Pagination */}
       <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
         <button
-          onClick={() => setOffset(Math.max(0, offset - limit))}
-          disabled={offset === 0}
+          onClick={() => setPage(Math.max(1, page - 1))}
+          disabled={page <= 1}
           className="px-3 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800"
         >
           Previous
         </button>
         <span className="text-sm text-gray-600 dark:text-gray-400">
-          Showing {offset + 1} - {offset + transactions.length}
+          Showing {startItem} - {endItem} of {total}
         </span>
         <button
-          onClick={() => setOffset(offset + limit)}
-          disabled={transactions.length < limit}
+          onClick={() => setPage(page + 1)}
+          disabled={page >= totalPages}
           className="px-3 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800"
         >
           Next
