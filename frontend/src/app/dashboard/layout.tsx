@@ -180,9 +180,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           transition-all duration-300 ease-in-out
           pt-16 lg:pt-0
           ${isCollapsed ? 'lg:ml-20' : 'lg:ml-64'}
+          min-w-0
         `}
       >
-        <div className="p-4 lg:p-8">
+        <div className="p-3 sm:p-4 lg:p-8 max-w-full overflow-x-hidden">
           {children}
         </div>
       </main>
