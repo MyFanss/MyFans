@@ -24,32 +24,9 @@ export function useWallet(): UseWalletReturn {
   });
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Check for existing connection on mount
-  useEffect(() => {
-    checkExistingConnection();
-  }, []);
-
-  // Listen for wallet disconnect events
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handleAccountChange = () => {
-      // Wallet account changed or disconnected
-      checkExistingConnection();
-    };
-
-    // Freighter specific event
-    window.addEventListener('freighter:accountChanged', handleAccountChange);
-
-    return () => {
-      window.removeEventListener('freighter:accountChanged', handleAccountChange);
-    };
-  }, []);
-
-  const checkExistingConnection = async () => {
+  const checkExistingConnection = useCallback(async () => {
     try {
-      // Check Freighter
-      const freighter = (window as any).freighter;
+      const freighter = (window as Window & { freighter?: FreighterApi }).freighter;
       if (freighter) {
         const publicKey = await freighter.getPublicKey();
         if (publicKey) {
@@ -62,11 +39,34 @@ export function useWallet(): UseWalletReturn {
           return;
         }
       }
-    } catch (error) {
+    } catch {
       // No existing connection
-      setConnectionState({ status: 'disconnected' });
     }
-  };
+    setConnectionState({ status: 'disconnected' });
+  }, []);
+
+  // Check for existing connection on mount
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void checkExistingConnection();
+  }, [checkExistingConnection]);
+
+  // Listen for wallet disconnect events
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleAccountChange = () => {
+      // Wallet account changed or disconnected
+      void checkExistingConnection();
+    };
+
+    // Freighter specific event
+    window.addEventListener('freighter:accountChanged', handleAccountChange);
+
+    return () => {
+      window.removeEventListener('freighter:accountChanged', handleAccountChange);
+    };
+  }, [checkExistingConnection]);
 
   const connect = useCallback(async (walletType: WalletType) => {
     setConnectionState({ status: 'connecting', walletType });
@@ -143,7 +143,7 @@ async function connectFreighter(): Promise<string> {
     throw new Error('Window is not defined');
   }
 
-  const freighter = (window as any).freighter;
+  const freighter = (window as Window & { freighter?: FreighterApi }).freighter;
 
   if (!freighter) {
     throw new Error('Freighter wallet not found. Please install the extension.');
@@ -169,4 +169,8 @@ async function connectLobstr(): Promise<string> {
 
 async function connectWalletConnect(): Promise<string> {
   throw new Error('WalletConnect integration coming soon');
+}
+
+interface FreighterApi {
+  getPublicKey: () => Promise<string>;
 }

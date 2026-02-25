@@ -23,10 +23,12 @@ import { EarningsChartSkeleton } from './EarningsChartSkeleton';
 const CHART_HEIGHT = 280;
 
 function usePrefersDark(): boolean {
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
   useEffect(() => {
     const m = window.matchMedia('(prefers-color-scheme: dark)');
-    setDark(m.matches);
     const fn = () => setDark(m.matches);
     m.addEventListener('change', fn);
     return () => m.removeEventListener('change', fn);
@@ -59,6 +61,7 @@ export function EarningsChart() {
   useEffect(() => {
     const urlRange = searchParams.get('range');
     if (urlRange === '7d' || urlRange === '30d' || urlRange === '90d') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRangeState(urlRange);
     }
   }, [searchParams]);
@@ -76,6 +79,7 @@ export function EarningsChart() {
   }, [range]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
