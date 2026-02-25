@@ -12,5 +12,5 @@ jest.mock('uuid', () => ({
   },
 }));
 
-// Export the mock for use in tests if needed
+// Export mock for use in tests if needed
 export { uuidv4 };
