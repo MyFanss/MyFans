@@ -76,12 +76,12 @@ export function ActivityFeed({ items }: ActivityFeedProps) {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 dark:text-white">{item.title}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{item.description}</p>
-            </div>
-            <div className="flex flex-shrink-0 items-start gap-1">
-              {item.metadata && (
-                <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{item.metadata}</span>
-              )}
-              <span className="text-xs text-gray-400 dark:text-gray-500">{formatTimeAgo(item.timestamp)}</span>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                {item.metadata && (
+                  <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{item.metadata}</span>
+                )}
+                <span className="text-xs text-gray-400 dark:text-gray-500">{formatTimeAgo(item.timestamp)}</span>
+              </div>
             </div>
           </li>
         ))}
