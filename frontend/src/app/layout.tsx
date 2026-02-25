@@ -1,5 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { ThemeProvider } from '@/contexts/ThemeContext';
+import { NoFlashScript } from '@/components/NoFlashScript';
+import { ToastProvider } from '@/components/ErrorToast';
+import NavLayout from '@/components/navigation/NavLayout';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export const metadata: Metadata = {
   title: 'MyFans - Decentralized Subscriptions',
@@ -8,8 +13,17 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <NoFlashScript />
+      </head>
+      <body>
+        <ThemeProvider>
+          <ToastProvider>
+            {children}
+          </ToastProvider>
+        </ThemeProvider>
+      </body>
     </html>
   );
 }

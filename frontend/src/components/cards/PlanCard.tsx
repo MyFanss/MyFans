@@ -47,6 +47,10 @@ export interface PlanCardProps extends Omit<BaseCardProps, 'children'> {
    * Discount percentage for yearly plans
    */
   yearlyDiscount?: number;
+  /**
+   * Currency symbol for price (default: $)
+   */
+  currencySymbol?: string;
 }
 
 /**
@@ -83,6 +87,7 @@ export const PlanCard: React.FC<PlanCardProps> = ({
   badge,
   actionButton,
   yearlyDiscount,
+  currencySymbol = '$',
   className = '',
   variant = 'default',
   ...baseProps
@@ -127,7 +132,7 @@ export const PlanCard: React.FC<PlanCardProps> = ({
       <div className="text-center mb-6">
         <div className="flex items-baseline justify-center gap-1">
           <span className="text-4xl font-bold text-gray-900 dark:text-white">
-            ${price.toFixed(2)}
+            {currencySymbol}{price.toFixed(2)}
           </span>
           <span className="text-gray-500 dark:text-gray-400">
             /{billingPeriod}
