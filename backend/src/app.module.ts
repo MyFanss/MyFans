@@ -10,6 +10,7 @@ import { HealthModule } from './health/health.module';
 import { LoggingModule } from './common/logging.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
+import { ExampleController } from './common/examples/example.controller';
 import { CreatorsModule } from './creators/creators.module';
 import { PostsModule } from './posts/posts.module';
 import { CommentsModule } from './comments/comments.module';
@@ -20,6 +21,9 @@ import { Comment } from './comments/entities/comment.entity';
 import { Conversation } from './conversations/entities/conversation.entity';
 import { Message } from './conversations/entities/message.entity';
 import { Like } from './likes/entities/like.entity';
+import { GamesModule } from './games/games.module';
+import { Game } from './games/entities/game.entity';
+import { Player } from './games/entities/player.entity';
 
 @Module({
   imports: [
@@ -30,7 +34,7 @@ import { Like } from './likes/entities/like.entity';
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_NAME || 'myfans',
-      entities: [User, Post, Comment, Conversation, Message, Like],
+      entities: [User, Post, Comment, Conversation, Message, Like, Game, Player],
       synchronize: true,
     }),
     ThrottlerModule.forRoot([
@@ -57,15 +61,10 @@ import { Like } from './likes/entities/like.entity';
     CommentsModule,
     ConversationsModule,
     LikesModule,
+    GamesModule,
   ],
-  controllers: [AppController],
-  providers: [
-    AppService,
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
-  ],
+  controllers: [AppController, ExampleController],
+  providers: [AppService],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
