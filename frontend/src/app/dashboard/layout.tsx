@@ -184,6 +184,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         `}
       >
         <div className="p-3 sm:p-4 lg:p-8 max-w-full overflow-x-hidden">
+          min-w-0 overflow-x-hidden
+        `}
+      >
+        <div className="p-3 sm:p-4 lg:p-8 max-w-full">
           {children}
         </div>
       </main>
