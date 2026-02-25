@@ -199,13 +199,16 @@ export const ContentCard: React.FC<ContentCardProps> = ({
       {...baseProps}
     >
       {/* Thumbnail */}
-      <div className="relative aspect-video bg-gray-100 dark:bg-gray-800 overflow-hidden">
+      <div className="image-skeleton-wrapper relative aspect-video overflow-hidden bg-gray-100 dark:bg-gray-800">
         {thumbnailUrl ? (
           <Image
             src={thumbnailUrl}
             alt={title}
-            fill
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
+            width={640}
+            height={360}
+            loading="lazy"
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
