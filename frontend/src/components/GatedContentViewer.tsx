@@ -145,7 +145,7 @@ export function GatedContentViewer({
                 Subscribe to Unlock
               </h3>
               <p className="text-gray-300 mb-6 max-w-md">
-                This content is available exclusively for {creator.name}'s subscribers.
+                This content is available exclusively for {creator.name}&apos;s subscribers.
                 Subscribe now to get full access.
               </p>
               

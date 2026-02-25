@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  MOCK_ACTIVE,
   MOCK_HISTORY,
   MOCK_PAYMENTS,
   getCurrencySymbol,
