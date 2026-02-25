@@ -12,6 +12,7 @@ import {
 } from '@/lib/creator-profile';
 import { PlanCard } from '@/components/cards';
 import { ContentCard } from '@/components/cards';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface PageProps {
   params: Promise<{ username: string }>;
@@ -57,86 +58,88 @@ export default async function CreatorProfilePage({ params }: PageProps) {
   const posts = getPosts(username);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <CreatorHero creator={creator} />
-      <main className="max-w-5xl mx-auto px-4 py-8 sm:px-6">
-        <section className="mb-10" aria-labelledby="plans-heading">
-          <h2 id="plans-heading" className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-            Subscription plans
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {plans.map((plan) => (
-              <PlanCard
-                key={plan.id}
-                name={plan.name}
-                price={plan.price}
-                billingPeriod={plan.billingPeriod}
-                description={plan.description}
-                features={plan.features}
-                isPopular={plan.isPopular}
-                currencySymbol={getCurrencySymbol(plan.currency)}
-                actionButton={
-                  <Link
-                    href={`/subscribe?creator=${username}&plan=${plan.id}`}
-                    className="block w-full py-2 text-center text-sm font-medium rounded-lg bg-primary-600 hover:bg-primary-700 text-white transition-colors"
-                  >
-                    Subscribe
-                  </Link>
-                }
-              />
-            ))}
-          </div>
-        </section>
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <CreatorHero creator={creator} />
+        <main className="max-w-5xl mx-auto px-4 py-8 sm:px-6">
+          <section className="mb-10" aria-labelledby="plans-heading">
+            <h2 id="plans-heading" className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+              Subscription plans
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {plans.map((plan) => (
+                <PlanCard
+                  key={plan.id}
+                  name={plan.name}
+                  price={plan.price}
+                  billingPeriod={plan.billingPeriod}
+                  description={plan.description}
+                  features={plan.features}
+                  isPopular={plan.isPopular}
+                  currencySymbol={getCurrencySymbol(plan.currency)}
+                  actionButton={
+                    <Link
+                      href={`/subscribe?creator=${username}&plan=${plan.id}`}
+                      className="block w-full py-2 text-center text-sm font-medium rounded-lg bg-primary-600 hover:bg-primary-700 text-white transition-colors"
+                    >
+                      Subscribe
+                    </Link>
+                  }
+                />
+              ))}
+            </div>
+          </section>
 
-        <section className="mb-10" aria-labelledby="preview-heading">
-          <h2 id="preview-heading" className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-            Preview
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {previewContent.map((post) => (
-              <ContentCard
-                key={post.id}
-                title={post.title}
-                type={post.type}
-                thumbnailUrl={post.thumbnailUrl}
-                description={post.excerpt}
-                publishedAt={post.publishedAt}
-                viewCount={post.viewCount}
-                likeCount={post.likeCount}
-                status="published"
-                isLocked={post.isLocked}
-                creatorName={creator.displayName}
-                creatorAvatar={creator.avatarUrl}
-              />
-            ))}
-          </div>
-        </section>
+          <section className="mb-10" aria-labelledby="preview-heading">
+            <h2 id="preview-heading" className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+              Preview
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {previewContent.map((post) => (
+                <ContentCard
+                  key={post.id}
+                  title={post.title}
+                  type={post.type}
+                  thumbnailUrl={post.thumbnailUrl}
+                  description={post.excerpt}
+                  publishedAt={post.publishedAt}
+                  viewCount={post.viewCount}
+                  likeCount={post.likeCount}
+                  status="published"
+                  isLocked={post.isLocked}
+                  creatorName={creator.displayName}
+                  creatorAvatar={creator.avatarUrl}
+                />
+              ))}
+            </div>
+          </section>
 
-        <section aria-labelledby="posts-heading">
-          <h2 id="posts-heading" className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-            Posts
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {posts.map((post) => (
-              <ContentCard
-                key={post.id}
-                title={post.title}
-                type={post.type}
-                thumbnailUrl={post.thumbnailUrl}
-                description={post.excerpt}
-                publishedAt={post.publishedAt}
-                viewCount={post.viewCount}
-                likeCount={post.likeCount}
-                status="published"
-                isLocked={post.isLocked}
-                creatorName={creator.displayName}
-                creatorAvatar={creator.avatarUrl}
-              />
-            ))}
-          </div>
-        </section>
-      </main>
-    </div>
+          <section aria-labelledby="posts-heading">
+            <h2 id="posts-heading" className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+              Posts
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {posts.map((post) => (
+                <ContentCard
+                  key={post.id}
+                  title={post.title}
+                  type={post.type}
+                  thumbnailUrl={post.thumbnailUrl}
+                  description={post.excerpt}
+                  publishedAt={post.publishedAt}
+                  viewCount={post.viewCount}
+                  likeCount={post.likeCount}
+                  status="published"
+                  isLocked={post.isLocked}
+                  creatorName={creator.displayName}
+                  creatorAvatar={creator.avatarUrl}
+                />
+              ))}
+            </div>
+          </section>
+        </main>
+      </div>
+    </ErrorBoundary>
   );
 }
 
