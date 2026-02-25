@@ -7,9 +7,11 @@ import {
   Optional,
 } from '@nestjs/common';
 import {
-  RenewalFailurePayload,
   SUBSCRIPTION_EVENT_PUBLISHER,
   SUBSCRIPTION_RENEWAL_FAILED,
+} from './events';
+import type {
+  RenewalFailurePayload,
   SubscriptionEventPublisher,
 } from './events';
 
