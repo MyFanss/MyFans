@@ -16,24 +16,43 @@ import { BaseCard } from '@/components/cards/BaseCard';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function SubscriptionsPage() {
-  return (
-    <ErrorBoundary>
-      <SubscriptionsContent />
-    </ErrorBoundary>
-  );
-}
-
-function SubscriptionsContent() {
-  const [activeList, setActiveList] = useState<ActiveSubscription[]>(MOCK_ACTIVE);
+  const [activeList, setActiveList] = useState<ActiveSubscription[]>([]);
+  const [statusFilter, setStatusFilter] = useState('active');
+  const [sortOption, setSortOption] = useState('expiry');
   const [cancelTarget, setCancelTarget] = useState<ActiveSubscription | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  React.useEffect(() => {
+    let mounted = true;
+    const fetchSubscriptions = async () => {
+      setIsLoading(true);
+      try {
+        // Hardcode a fan address for demo purposes, since auth context isn't visible here
+        const fanAddress = 'fan_demo_address';
+        const res = await fetch(`http://localhost:3001/subscriptions/list?fan=${fanAddress}&status=${statusFilter}&sort=${sortOption}`);
+        if (!res.ok) throw new Error('Failed to fetch subscriptions');
+        const data = await res.json();
+        if (mounted) {
+          setActiveList(data);
+        }
+      } catch (err) {
+        console.error(err);
+        // Fallback or show error
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+    fetchSubscriptions();
+    return () => { mounted = false; };
+  }, [statusFilter, sortOption]);
 
   const handleCancelConfirm = useCallback(async () => {
     if (!cancelTarget) return;
     setIsCancelling(true);
     try {
       // Replace with API: await cancelSubscription(cancelTarget.id);
-      setActiveList((prev) => prev.filter((s) => s.id !== cancelTarget.id));
+      setActiveList((prev: ActiveSubscription[]) => prev.filter((s: ActiveSubscription) => s.id !== cancelTarget.id));
       setCancelTarget(null);
     } finally {
       setIsCancelling(false);
@@ -47,8 +66,33 @@ function SubscriptionsContent() {
           <Link href="/" className="text-sm text-primary-600 dark:text-primary-400 hover:underline mb-2 inline-block">
             ← Back to MyFans
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My subscriptions</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Manage your active subscriptions and view history.</p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My subscriptions</h1>
+              <p className="text-gray-500 dark:text-gray-400 mt-1">Manage your active subscriptions and view history.</p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <select
+                value={statusFilter}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatusFilter(e.target.value)}
+                className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="active">Active</option>
+                <option value="expired">Expired</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+
+              <select
+                value={sortOption}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSortOption(e.target.value)}
+                className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="expiry">Sort by Expiry</option>
+                <option value="created">Sort by Created</option>
+              </select>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -58,16 +102,18 @@ function SubscriptionsContent() {
           <h2 id="active-heading" className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
             Active subscriptions
           </h2>
-          {activeList.length === 0 ? (
+          {isLoading ? (
+            <div className="text-center py-8 text-gray-500">Loading subscriptions...</div>
+          ) : activeList.length === 0 ? (
             <EmptyState
-              title="No active subscriptions"
-              description="You don’t have any active subscriptions. Subscribe to creators to support them and get access to exclusive content."
+              title="No subscriptions found"
+              description="No subscriptions match your current filters."
               actionLabel="Discover creators"
               actionHref="/"
             />
           ) : (
             <ul className="space-y-3">
-              {activeList.map((sub) => (
+              {activeList.map((sub: ActiveSubscription) => (
                 <li key={sub.id}>
                   <BaseCard padding="md" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>

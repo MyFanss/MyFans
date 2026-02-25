@@ -1,4 +1,5 @@
 import { Exclude, Expose } from 'class-transformer';
+import { CreatorProfileDto } from './creator-profile.dto';
 
 @Exclude()
 export class UserProfileDto {
@@ -16,6 +17,12 @@ export class UserProfileDto {
 
   @Expose()
   is_creator: boolean;
+
+  email_notifications: boolean;
+  push_notifications: boolean;
+  marketing_emails: boolean;
+
+  creator?: CreatorProfileDto; 
 
   @Expose()
   created_at: Date;
