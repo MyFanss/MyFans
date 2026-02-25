@@ -1,15 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { SelectQueryBuilder } from 'typeorm';
 import { CreatorsService } from './creators.service';
 import { User, UserRole } from '../users/entities/user.entity';
-import { Creator } from '../users/entities/creator.entity';
-import { SearchCreatorsDto } from './dto/search-creators.dto';
-import { PublicCreatorDto } from './dto/public-creator.dto';
 
 describe('CreatorsService', () => {
   let service: CreatorsService;
-  let usersRepository: Repository<User>;
   let mockQueryBuilder: Partial<SelectQueryBuilder<User>>;
 
   beforeEach(async () => {
@@ -40,7 +36,6 @@ describe('CreatorsService', () => {
     }).compile();
 
     service = module.get<CreatorsService>(CreatorsService);
-    usersRepository = module.get<Repository<User>>(getRepositoryToken(User));
   });
 
   it('should be defined', () => {
@@ -77,9 +72,7 @@ describe('CreatorsService', () => {
       it('should return all creators when query is undefined', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { page: 1, limit: 10 };
-        const mockUsers: User[] = [
-          createMockUser('1', 'alice', 'Alice Smith'),
-        ];
+        const mockUsers: User[] = [createMockUser('1', 'alice', 'Alice Smith')];
 
         (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(1);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
@@ -100,7 +93,11 @@ describe('CreatorsService', () => {
     describe('query with no matches returns empty data array with total = 0', () => {
       it('should return empty results when no creators match', async () => {
         // Arrange
-        const searchDto: SearchCreatorsDto = { q: 'nonexistent', page: 1, limit: 10 };
+        const searchDto: SearchCreatorsDto = {
+          q: 'nonexistent',
+          page: 1,
+          limit: 10,
+        };
 
         (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(0);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
@@ -143,7 +140,7 @@ describe('CreatorsService', () => {
         expect(result.data[1].display_name).toBe('Alice Johnson');
         expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
           '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
-          { search: 'alice%' }
+          { search: 'alice%' },
         );
       });
     });
@@ -186,7 +183,11 @@ describe('CreatorsService', () => {
         (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(3);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
           entities: mockUsers,
-          raw: [{ creator_bio: 'Bio 1' }, { creator_bio: 'Bio 2' }, { creator_bio: 'Bio 3' }],
+          raw: [
+            { creator_bio: 'Bio 1' },
+            { creator_bio: 'Bio 2' },
+            { creator_bio: 'Bio 3' },
+          ],
         });
 
         // Act
@@ -201,9 +202,7 @@ describe('CreatorsService', () => {
       it('should match uppercase query', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: 'ALICE', page: 1, limit: 10 };
-        const mockUsers: User[] = [
-          createMockUser('1', 'alice', 'Alice Smith'),
-        ];
+        const mockUsers: User[] = [createMockUser('1', 'alice', 'Alice Smith')];
 
         (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(1);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
@@ -218,16 +217,14 @@ describe('CreatorsService', () => {
         expect(result.data).toHaveLength(1);
         expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
           '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
-          { search: 'alice%' }
+          { search: 'alice%' },
         );
       });
 
       it('should match lowercase query', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: 'alice', page: 1, limit: 10 };
-        const mockUsers: User[] = [
-          createMockUser('1', 'ALICE', 'ALICE SMITH'),
-        ];
+        const mockUsers: User[] = [createMockUser('1', 'ALICE', 'ALICE SMITH')];
 
         (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(1);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
@@ -245,9 +242,7 @@ describe('CreatorsService', () => {
       it('should match mixed case query', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: 'AlIcE', page: 1, limit: 10 };
-        const mockUsers: User[] = [
-          createMockUser('1', 'alice', 'Alice Smith'),
-        ];
+        const mockUsers: User[] = [createMockUser('1', 'alice', 'Alice Smith')];
 
         (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(1);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
@@ -262,7 +257,7 @@ describe('CreatorsService', () => {
         expect(result.data).toHaveLength(1);
         expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
           '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
-          { search: 'alice%' }
+          { search: 'alice%' },
         );
       });
     });
@@ -271,9 +266,7 @@ describe('CreatorsService', () => {
       it('should return correct offset for page 2', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: '', page: 2, limit: 10 };
-        const mockUsers: User[] = [
-          createMockUser('11', 'user11', 'User 11'),
-        ];
+        const mockUsers: User[] = [createMockUser('11', 'user11', 'User 11')];
 
         (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(25);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
@@ -293,7 +286,7 @@ describe('CreatorsService', () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: '', page: 1, limit: 5 };
         const mockUsers: User[] = Array.from({ length: 5 }, (_, i) =>
-          createMockUser(`${i}`, `user${i}`, `User ${i}`)
+          createMockUser(`${i}`, `user${i}`, `User ${i}`),
         );
 
         (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(20);
@@ -314,9 +307,7 @@ describe('CreatorsService', () => {
       it('should calculate total count accurately', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: 'test', page: 1, limit: 10 };
-        const mockUsers: User[] = [
-          createMockUser('1', 'test1', 'Test User 1'),
-        ];
+        const mockUsers: User[] = [createMockUser('1', 'test1', 'Test User 1')];
 
         (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(15);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
@@ -334,9 +325,7 @@ describe('CreatorsService', () => {
       it('should calculate totalPages correctly', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: '', page: 1, limit: 10 };
-        const mockUsers: User[] = [
-          createMockUser('1', 'user1', 'User 1'),
-        ];
+        const mockUsers: User[] = [createMockUser('1', 'user1', 'User 1')];
 
         (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(25);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
@@ -372,7 +361,7 @@ describe('CreatorsService', () => {
         // Assert
         expect(mockQueryBuilder.where).toHaveBeenCalledWith(
           'user.is_creator = :isCreator',
-          { isCreator: true }
+          { isCreator: true },
         );
       });
     });
@@ -390,14 +379,21 @@ describe('CreatorsService', () => {
         (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(3);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
           entities: mockUsers,
-          raw: [{ creator_bio: 'Bio 1' }, { creator_bio: 'Bio 2' }, { creator_bio: 'Bio 3' }],
+          raw: [
+            { creator_bio: 'Bio 1' },
+            { creator_bio: 'Bio 2' },
+            { creator_bio: 'Bio 3' },
+          ],
         });
 
         // Act
         await service.searchCreators(searchDto);
 
         // Assert
-        expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith('user.username', 'ASC');
+        expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith(
+          'user.username',
+          'ASC',
+        );
       });
     });
 
@@ -405,9 +401,7 @@ describe('CreatorsService', () => {
       it('should treat whitespace-only query as empty', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: '   ', page: 1, limit: 10 };
-        const mockUsers: User[] = [
-          createMockUser('1', 'alice', 'Alice'),
-        ];
+        const mockUsers: User[] = [createMockUser('1', 'alice', 'Alice')];
 
         (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(1);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
@@ -447,7 +441,11 @@ describe('CreatorsService', () => {
 });
 
 // Helper function to create mock users
-function createMockUser(id: string, username: string, display_name: string): User {
+function createMockUser(
+  id: string,
+  username: string,
+  display_name: string,
+): User {
   return {
     id,
     username,

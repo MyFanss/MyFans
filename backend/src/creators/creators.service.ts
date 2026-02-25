@@ -6,7 +6,7 @@ import { PlanDto } from './dto/plan.dto';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
 import { User } from '../users/entities/user.entity';
-import { Creator } from '../users/entities/creator.entity';
+import { Creator } from './entities/creator.entity';
 
 export interface Plan {
   id: number;
@@ -26,8 +26,19 @@ export class CreatorsService {
     private readonly usersRepository: Repository<User>,
   ) {}
 
-  createPlan(creator: string, asset: string, amount: string, intervalDays: number): Plan {
-    const plan = { id: ++this.planCounter, creator, asset, amount, intervalDays };
+  createPlan(
+    creator: string,
+    asset: string,
+    amount: string,
+    intervalDays: number,
+  ): Plan {
+    const plan = {
+      id: ++this.planCounter,
+      creator,
+      asset,
+      amount,
+      intervalDays,
+    };
     this.plans.set(plan.id, plan);
     return plan;
   }
@@ -37,7 +48,7 @@ export class CreatorsService {
   }
 
   getCreatorPlans(creator: string): Plan[] {
-    return Array.from(this.plans.values()).filter(p => p.creator === creator);
+    return Array.from(this.plans.values()).filter((p) => p.creator === creator);
   }
 
   /**
@@ -56,7 +67,10 @@ export class CreatorsService {
   /**
    * Get creator plans with pagination
    */
-  findCreatorPlans(creator: string, pagination: PaginationDto): PaginatedResponseDto<PlanDto> {
+  findCreatorPlans(
+    creator: string,
+    pagination: PaginationDto,
+  ): PaginatedResponseDto<PlanDto> {
     const { page = 1, limit = 20 } = pagination;
     const creatorPlans = this.getCreatorPlans(creator);
     const total = creatorPlans.length;
@@ -70,7 +84,7 @@ export class CreatorsService {
    * Search creators by display name or username with pagination
    */
   async searchCreators(
-    searchDto: SearchCreatorsDto
+    searchDto: SearchCreatorsDto,
   ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
     const { q, page = 1, limit = 20 } = searchDto;
 
@@ -86,7 +100,7 @@ export class CreatorsService {
       const searchTerm = q.trim().toLowerCase();
       queryBuilder.andWhere(
         '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
-        { search: `${searchTerm}%` }
+        { search: `${searchTerm}%` },
       );
     }
 
@@ -105,8 +119,10 @@ export class CreatorsService {
 
     // Map to DTOs
     const data = results.entities.map((user, index) => {
-      const rawResult = results.raw[index];
-      const creator = rawResult.creator_bio ? { bio: rawResult.creator_bio } as Creator : undefined;
+      const rawResult = results.raw[index] as { creator_bio?: string };
+      const creator = rawResult?.creator_bio
+        ? ({ bio: rawResult.creator_bio } as Creator)
+        : undefined;
       return new PublicCreatorDto(user, creator);
     });
 

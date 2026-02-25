@@ -31,14 +31,29 @@ export class CreatorsController {
   @Post('plans')
   @ApiOperation({ summary: 'Create a new subscription plan' })
   @ApiResponse({ status: 201, description: 'Plan created successfully' })
-  createPlan(@Body() body: { creator: string; asset: string; amount: string; intervalDays: number }) {
-    return this.creatorsService.createPlan(body.creator, body.asset, body.amount, body.intervalDays);
+  createPlan(
+    @Body()
+    body: {
+      creator: string;
+      asset: string;
+      amount: string;
+      intervalDays: number;
+    },
+  ) {
+    return this.creatorsService.createPlan(
+      body.creator,
+      body.asset,
+      body.amount,
+      body.intervalDays,
+    );
   }
 
   @Get('plans')
   @ApiOperation({ summary: 'List all plans (paginated)' })
   @ApiResponse({ status: 200, description: 'Paginated plans list' })
-  getAllPlans(@Query() pagination: PaginationDto): PaginatedResponseDto<PlanDto> {
+  getAllPlans(
+    @Query() pagination: PaginationDto,
+  ): PaginatedResponseDto<PlanDto> {
     return this.creatorsService.findAllPlans(pagination);
   }
 
