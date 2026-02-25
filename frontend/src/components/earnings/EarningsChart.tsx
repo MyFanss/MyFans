@@ -113,14 +113,14 @@ export function EarningsChart() {
 
   return (
     <BaseCard className="flex flex-col" padding="lg" as="section" aria-labelledby="earnings-chart-heading">
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+      <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4">
         <h2 id="earnings-chart-heading" className="text-lg font-semibold text-gray-900 dark:text-white">
           Earnings
         </h2>
         <div
           role="tablist"
           aria-label="Time range"
-          className="flex rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 bg-gray-50 dark:bg-gray-800"
+          className="flex rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 bg-gray-50 dark:bg-gray-800 w-full sm:w-auto"
         >
           {EARNINGS_RANGE_OPTIONS.map((opt, index) => (
             <button
@@ -149,7 +149,7 @@ export function EarningsChart() {
                   setRange(EARNINGS_RANGE_OPTIONS[EARNINGS_RANGE_OPTIONS.length - 1].value);
                 }
               }}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 ${
+              className={`px-3 py-2 sm:py-1.5 text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 min-h-[44px] sm:min-h-[auto] flex-1 sm:flex-initial ${
                 range === opt.value
                   ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
                   : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
@@ -162,7 +162,7 @@ export function EarningsChart() {
       </div>
 
       <div id="earnings-chart-panel" role="tabpanel" aria-labelledby={`earnings-tab-${range}`}>
-        <div className="h-[280px] w-full" style={{ minHeight: CHART_HEIGHT }}>
+        <div className="h-[200px] sm:h-[280px] w-full overflow-hidden" style={{ minHeight: '200px' }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
