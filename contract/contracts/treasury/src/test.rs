@@ -1,9 +1,9 @@
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, MockAuth, MockAuthInvoke},
+    testutils::{Address as _, Events, MockAuth, MockAuthInvoke},
     token::{StellarAssetClient, TokenClient},
     xdr::SorobanAuthorizationEntry,
-    Address, Env, IntoVal,
+    Address, Env, IntoVal, Symbol,
 };
 
 fn create_token_contract<'a>(env: &Env, admin: &Address) -> (Address, TokenClient<'a>, StellarAssetClient<'a>) {
@@ -263,4 +263,36 @@ fn test_set_min_balance_negative_reverts() {
 
     treasury_client.initialize(&admin, &token_address);
     treasury_client.set_min_balance(&-1);
+}
+
+#[test]
+fn test_deposit_emits_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let (token_address, _, admin_client) = create_token_contract(&env, &admin);
+    admin_client.mint(&user, &1000);
+
+    let treasury_id = env.register_contract(None, Treasury);
+    let treasury_client = TreasuryClient::new(&env, &treasury_id);
+
+    treasury_client.initialize(&admin, &token_address);
+    treasury_client.deposit(&user, &500);
+
+    let events = env.events().all();
+    let deposit_event = events.iter().find(|e| {
+        e.topics.first().map_or(false, |t| {
+            t.as_val().try_into_val(&env).ok() == Some(Symbol::new(&env, "deposit"))
+        })
+    });
+
+    assert!(deposit_event.is_some());
+    let event = deposit_event.unwrap();
+    let (from, amount, token): (Address, i128, Address) = event.data.try_into_val(&env).unwrap();
+    assert_eq!(from, user);
+    assert_eq!(amount, 500);
+    assert_eq!(token, token_address);
 }
