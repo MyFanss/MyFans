@@ -13,6 +13,7 @@ import {
   type PaymentRecord,
 } from '@/lib/subscriptions';
 import { BaseCard } from '@/components/cards/BaseCard';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function SubscriptionsPage() {
   const [activeList, setActiveList] = useState<ActiveSubscription[]>([]);
