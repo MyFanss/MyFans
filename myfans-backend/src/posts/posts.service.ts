@@ -17,6 +17,7 @@ import {
 } from '../subscriptions/entities/subscription.entity';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
+import { PaginatedResponseDto } from '../common/dto';
 
 @Injectable()
 export class PostsService {
@@ -84,13 +85,7 @@ export class PostsService {
 
     const [items, total] = await qb.skip(skip).take(limit).getManyAndCount();
 
-    return {
-      items,
-      total,
-      page,
-      limit,
-      total_pages: Math.ceil(total / limit),
-    };
+    return new PaginatedResponseDto(items, total, page, limit);
   }
 
   async findOne(id: string, userId?: string) {

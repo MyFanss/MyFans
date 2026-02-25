@@ -1,28 +1,8 @@
-import {
-  IsOptional,
-  IsEnum,
-  IsNumber,
-  Min,
-  Max,
-  IsUUID,
-} from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsEnum, IsUUID } from 'class-validator';
 import { PostType } from '../entities/post.entity';
+import { PaginationQueryDto } from '../../common/dto';
 
-export class FindPostsQueryDto {
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(1)
-  page?: number = 1;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(1)
-  @Max(100)
-  limit?: number = 20;
-
+export class FindPostsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsUUID()
   creator_id?: string;
