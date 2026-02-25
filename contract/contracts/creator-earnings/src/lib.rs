@@ -113,8 +113,8 @@ pub fn deposit(env: Env, from: Address, creator: Address, amount: i128) {
             .set(&DataKey::Balance(creator.clone()), &new_balance);
 
         env.events().publish(
-            (Symbol::new(&env, "withdraw"), creator),
-            amount,
+            (Symbol::new(&env, "withdraw"),),
+            (creator, amount, token_address),
         );
     }
 
