@@ -81,6 +81,8 @@ export function GatedContentViewer({
   onShare,
 }: GatedContentViewerProps) {
   const [isLiked, setIsLiked] = useState(false);
+  const [contentImageLoaded, setContentImageLoaded] = useState<Record<string, boolean>>({});
+  const [relatedLoaded, setRelatedLoaded] = useState<Record<string, boolean>>({});
   
   // Determine if content should be locked
   const showLockedState = isGated && !isSubscribed;
@@ -200,12 +202,22 @@ export function GatedContentViewer({
           </div>
         )}
         {type === 'image' && contentUrl && (
-          <Image
-            src={contentUrl}
-            alt={title}
-            fill
-            className="object-contain"
-          />
+          <div className="image-skeleton-wrapper relative h-full w-full">
+            <Image
+              src={contentUrl}
+              alt={title}
+              width={1280}
+              height={720}
+              loading="lazy"
+              onLoad={() =>
+                setContentImageLoaded((prev) => ({ ...prev, [contentUrl]: true }))
+              }
+              className={`lazy-image h-full w-full object-contain ${
+                contentImageLoaded[contentUrl] ? 'loaded' : ''
+              }`}
+              sizes="100vw"
+            />
+          </div>
         )}
         {type === 'text' && (
           <div className="p-8 h-full overflow-auto">
@@ -358,12 +370,22 @@ export function GatedContentViewer({
                 >
                   <div className="relative aspect-video bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden mb-2">
                     {item.thumbnailUrl && (
-                      <Image
-                        src={item.thumbnailUrl}
-                        alt={item.title}
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform"
-                      />
+                      <div className="image-skeleton-wrapper relative h-full w-full">
+                        <Image
+                          src={item.thumbnailUrl}
+                          alt={item.title}
+                          width={320}
+                          height={180}
+                          loading="lazy"
+                          onLoad={() =>
+                            setRelatedLoaded((prev) => ({ ...prev, [item.id]: true }))
+                          }
+                          className={`lazy-image h-full w-full object-cover transition-transform group-hover:scale-105 ${
+                            relatedLoaded[item.id] ? 'loaded' : ''
+                          }`}
+                          sizes="(max-width: 768px) 50vw, 33vw"
+                        />
+                      </div>
                     )}
                     {/* Type badge */}
                     <div className="absolute top-2 right-2 px-2 py-1 bg-black/60 text-white text-xs rounded">
