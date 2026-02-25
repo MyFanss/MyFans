@@ -23,3 +23,6 @@ export {
 
 // Wallet hook
 export { useWallet } from './useWallet';
+
+// Onboarding hook
+export { useOnboarding } from './useOnboarding';
