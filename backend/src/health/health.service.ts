@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { SorobanRpcService, SorobanHealthStatus } from '../common/services/soroban-rpc.service';
 
 @Injectable()
 export class HealthService {
-  constructor(private dataSource: DataSource) {}
+  constructor(
+    private dataSource: DataSource,
+    private sorobanRpcService: SorobanRpcService
+  ) {}
 
   getHealth() {
     return {
@@ -25,5 +29,13 @@ export class HealthService {
     // Redis is not configured in this project folder yet.
     // Returning 'not_configured' as a placeholder.
     return { status: 'down', message: 'Redis not configured' };
+  }
+
+  async checkSorobanRpc(): Promise<SorobanHealthStatus> {
+    return this.sorobanRpcService.checkConnectivity();
+  }
+
+  async checkSorobanContract(): Promise<SorobanHealthStatus> {
+    return this.sorobanRpcService.checkKnownContract();
   }
 }
