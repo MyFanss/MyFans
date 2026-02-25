@@ -18,6 +18,9 @@ import { Comment } from './comments/entities/comment.entity';
 import { Conversation } from './conversations/entities/conversation.entity';
 import { Message } from './conversations/entities/message.entity';
 import { Like } from './likes/entities/like.entity';
+import { GamesModule } from './games/games.module';
+import { Game } from './games/entities/game.entity';
+import { Player } from './games/entities/player.entity';
 
 @Module({
   imports: [
@@ -28,7 +31,7 @@ import { Like } from './likes/entities/like.entity';
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_NAME || 'myfans',
-      entities: [User, Post, Comment, Conversation, Message, Like],
+      entities: [User, Post, Comment, Conversation, Message, Like, Game, Player],
       synchronize: true,
     }),
     HealthModule,
@@ -38,6 +41,7 @@ import { Like } from './likes/entities/like.entity';
     CommentsModule,
     ConversationsModule,
     LikesModule,
+    GamesModule,
   ],
   controllers: [AppController, ExampleController],
   providers: [AppService],
