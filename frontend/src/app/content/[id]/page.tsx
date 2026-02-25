@@ -89,7 +89,8 @@ export default function ContentPage({ params }: PageProps) {
               ) : (
                 <button
                   onClick={handleSubscribe}
-                  className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors"
+                  type="button"
+                  className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
                 >
                   Subscribe
                 </button>
