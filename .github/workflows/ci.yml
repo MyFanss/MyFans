@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, feat/dependency-audit-ci]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, feat/dependency-audit-ci]
 
 jobs:
   frontend:
@@ -20,6 +20,10 @@ jobs:
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+        working-directory: frontend
+
+      - name: Security audit (dependencies)
+        run: npm audit --omit=dev --audit-level=high
         working-directory: frontend
 
       - name: Build
@@ -41,6 +45,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        working-directory: backend
+
+      - name: Security audit (dependencies)
+        run: npm audit --omit=dev --audit-level=high
         working-directory: backend
 
       - name: Build
@@ -71,6 +79,14 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: contract
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Security audit (contracts)
+        # Fail on high/critical RustSec advisories as configured in contract/audit.toml.
+        run: cargo audit
+        working-directory: contract
 
       - name: Build
         run: cargo build --target wasm32-unknown-unknown --release

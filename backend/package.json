@@ -81,7 +81,9 @@
     ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
-    "testPathIgnorePatterns": ["\\.e2e\\.spec\\.ts$"],
+    "testPathIgnorePatterns": [
+      "\\.e2e\\.spec\\.ts$"
+    ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
@@ -90,5 +92,8 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
+  },
+  "overrides": {
+    "minimatch": ">=9.0.6"
   }
 }
