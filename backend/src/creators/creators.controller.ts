@@ -3,11 +3,30 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CreatorsService } from './creators.service';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 import { PlanDto } from './dto/plan.dto';
+import { SearchCreatorsDto } from './dto/search-creators.dto';
+import { PublicCreatorDto } from './dto/public-creator.dto';
 
 @ApiTags('creators')
 @Controller('creators')
 export class CreatorsController {
   constructor(private creatorsService: CreatorsService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Search creators by display name or username' })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated list of creators matching search query',
+    type: PaginatedResponseDto<PublicCreatorDto>,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid query parameters',
+  })
+  searchCreators(
+    @Query() searchDto: SearchCreatorsDto,
+  ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
+    return this.creatorsService.searchCreators(searchDto);
+  }
 
   @Post('plans')
   @ApiOperation({ summary: 'Create a new subscription plan' })
