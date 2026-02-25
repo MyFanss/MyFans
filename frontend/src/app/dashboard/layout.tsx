@@ -58,7 +58,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <header className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 z-50 flex items-center px-4">
         <button
           onClick={() => setIsMobileOpen(!isMobileOpen)}
-          className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
           aria-label={isMobileOpen ? 'Close menu' : 'Open menu'}
           aria-expanded={isMobileOpen}
         >
@@ -178,11 +178,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <main
         className={`
           transition-all duration-300 ease-in-out
-          pt-16 lg:pt-0
+          pt-16 lg:pt-0 min-w-0
           ${isCollapsed ? 'lg:ml-20' : 'lg:ml-64'}
         `}
       >
-        <div className="p-4 lg:p-8">
+        <div className="p-3 sm:p-4 lg:p-8 max-w-full overflow-x-hidden">
           {children}
         </div>
       </main>
