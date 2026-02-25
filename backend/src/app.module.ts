@@ -34,7 +34,16 @@ import { Player } from './games/entities/player.entity';
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_NAME || 'myfans',
-      entities: [User, Post, Comment, Conversation, Message, Like, Game, Player],
+      entities: [
+        User,
+        Post,
+        Comment,
+        Conversation,
+        Message,
+        Like,
+        Game,
+        Player,
+      ],
       synchronize: true,
     }),
     ThrottlerModule.forRoot([
@@ -64,7 +73,13 @@ import { Player } from './games/entities/player.entity';
     GamesModule,
   ],
   controllers: [AppController, ExampleController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
