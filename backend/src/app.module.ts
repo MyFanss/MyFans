@@ -4,6 +4,10 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { User } from './users/entities/user.entity';
 import { UsersModule } from './users/users.module';
+import { AuthModule } from './auth/auth.module';
+import { CreatorsModule } from './creators/creators.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 
 @Module({
   imports: [
@@ -19,6 +23,10 @@ import { UsersModule } from './users/users.module';
       autoLoadEntities: true,
     }),
     UsersModule,
+    AuthModule,
+    CreatorsModule,
+    SubscriptionsModule,
+    FeatureFlagsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
