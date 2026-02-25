@@ -62,17 +62,17 @@ export function DashboardHome({ onCreatePlan, onUploadContent }: DashboardHomePr
 
   if (state === 'loading') {
     return (
-      <div className="grid gap-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" role="status" aria-label="Loading metrics">
+      <div className="grid gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4" role="status" aria-label="Loading metrics">
           <MetricCardSkeleton />
           <MetricCardSkeleton />
           <MetricCardSkeleton />
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+          <div className="lg:col-span-2 order-2 lg:order-1">
             <ActivityFeedSkeleton />
           </div>
-          <div>
+          <div className="order-1 lg:order-2">
             <QuickActions
               actions={[
                 { id: 'plan', label: 'Create plan', description: 'New subscription plan', onClick: onCreatePlan ?? (() => {}), icon: <PlanIcon /> },
@@ -90,8 +90,8 @@ export function DashboardHome({ onCreatePlan, onUploadContent }: DashboardHomePr
   const { metrics, recentActivity } = data;
 
   return (
-    <div className="grid gap-6">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div className="grid gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         <MetricCard
           title="Total subscribers"
           value={metrics.totalSubscribers}
@@ -118,11 +118,11 @@ export function DashboardHome({ onCreatePlan, onUploadContent }: DashboardHomePr
           icon={<SubscriptionIcon />}
         />
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+        <div className="lg:col-span-2 order-2 lg:order-1">
           <ActivityFeed items={recentActivity} />
         </div>
-        <div>
+        <div className="order-1 lg:order-2">
           <QuickActions
             actions={[
               { id: 'plan', label: 'Create plan', description: 'New subscription plan', onClick: onCreatePlan ?? (() => {}), icon: <PlanIcon /> },
