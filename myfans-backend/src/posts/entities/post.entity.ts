@@ -3,6 +3,7 @@ import {
   BeforeUpdate,
   Column,
   CreateDateColumn,
+  DeleteDateColumn,
   Entity,
   Index,
   JoinColumn,
@@ -67,6 +68,12 @@ export class Post {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updated_at!: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  deleted_at!: Date | null;
+
+  @Column({ name: 'deleted_by', type: 'varchar', length: 36, nullable: true })
+  deleted_by!: string | null;
 
   @BeforeInsert()
   @BeforeUpdate()

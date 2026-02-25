@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -28,29 +28,21 @@ const navItems = [
 const STORAGE_KEY = 'creator-dashboard-sidebar-collapsed';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(STORAGE_KEY) === 'true';
+  });
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const pathname = usePathname();
-
-  // Load collapse state from localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored !== null) {
-      setIsCollapsed(stored === 'true');
-    }
-  }, []);
 
   // Persist collapse state
   const toggleCollapse = () => {
     const newState = !isCollapsed;
     setIsCollapsed(newState);
-    localStorage.setItem(STORAGE_KEY, String(newState));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, String(newState));
+    }
   };
-
-  // Close mobile menu when route changes
-  useEffect(() => {
-    setIsMobileOpen(false);
-  }, [pathname]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -155,6 +147,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <li key={item.href}>
                   <Link
                     href={item.href}
+                    onClick={() => setIsMobileOpen(false)}
                     className={`
                       flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors
                       ${isActive 
@@ -180,9 +173,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           transition-all duration-300 ease-in-out
           pt-16 lg:pt-0 min-w-0
           ${isCollapsed ? 'lg:ml-20' : 'lg:ml-64'}
+          min-w-0 overflow-x-hidden
         `}
       >
         <div className="p-3 sm:p-4 lg:p-8 max-w-full overflow-x-hidden">
+        <div className="p-3 sm:p-4 lg:p-8 max-w-full">
           {children}
         </div>
       </main>
