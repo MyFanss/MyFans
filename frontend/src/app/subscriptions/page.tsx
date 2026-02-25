@@ -13,6 +13,7 @@ import {
   type PaymentRecord,
 } from '@/lib/subscriptions';
 import { BaseCard } from '@/components/cards/BaseCard';
+import HistoryCardSkeleton from '@/components/ui/HistoryCardSkeleton';
 
 export default function SubscriptionsPage() {
   const [activeList, setActiveList] = useState<ActiveSubscription[]>([]);
@@ -158,6 +159,8 @@ export default function SubscriptionsPage() {
             </ul>
           )}
         </section>
+
+        <HistoryCardSkeleton/>
 
         {/* Payment history */}
         <section aria-labelledby="payments-heading">
