@@ -56,7 +56,7 @@ export function WalletModalDemo() {
             Instructions
           </h2>
           <ul className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
-            <li>• Click "Connect Wallet" to open the modal</li>
+            <li>• Click &quot;Connect Wallet&quot; to open the modal</li>
             <li>• Select a wallet option (Freighter, Lobstr, or WalletConnect)</li>
             <li>• Approve the connection in your wallet</li>
             <li>• View connected state with address and network</li>
