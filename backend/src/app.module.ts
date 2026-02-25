@@ -7,6 +7,7 @@ import { HealthModule } from './health/health.module';
 import { LoggingModule } from './common/logging.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
+import { ExampleController } from './common/examples/example.controller';
 import { CreatorsModule } from './creators/creators.module';
 import { PostsModule } from './posts/posts.module';
 import { CommentsModule } from './comments/comments.module';
@@ -42,7 +43,7 @@ import { Player } from './games/entities/player.entity';
     LikesModule,
     GamesModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, ExampleController],
   providers: [AppService],
 })
 export class AppModule {

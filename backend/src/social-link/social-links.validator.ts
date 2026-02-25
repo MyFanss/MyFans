@@ -5,6 +5,46 @@ import {
   ValidatorConstraintInterface,
 } from 'class-validator';
 
+// ─── Domain Allowlist ────────────────────────────────────────────────────────
+
+/**
+ * Only URLs with these domains (or subdomains thereof) are accepted
+ * for social link fields that use URL-based validation.
+ */
+export const ALLOWED_DOMAINS: readonly string[] = [
+  'twitter.com',
+  'instagram.com',
+  'linkedin.com',
+];
+
+/**
+ * Checks whether a given hostname matches one of the allowed domains,
+ * including subdomains (e.g. www.twitter.com → twitter.com ✓).
+ */
+function hostnameMatchesAllowlist(hostname: string): boolean {
+  const lower = hostname.toLowerCase();
+  return ALLOWED_DOMAINS.some(
+    (domain) => lower === domain || lower.endsWith(`.${domain}`),
+  );
+}
+
+/**
+ * Standalone utility – usable in the service layer for an extra guard
+ * before persisting. Returns `true` if the URL's domain is allowed,
+ * `false` otherwise. Returns `true` for null/undefined/empty (optional).
+ */
+export function isAllowedDomain(url: string | null | undefined): boolean {
+  if (url === null || url === undefined || url === '') return true;
+  if (typeof url !== 'string') return false;
+
+  try {
+    const parsed = new URL(url);
+    return hostnameMatchesAllowlist(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 // ─── Sanitized HTTPS URL validator ───────────────────────────────────────────
 
 @ValidatorConstraint({ name: 'isSafeUrl', async: false })
@@ -35,6 +75,41 @@ export function IsSafeUrl(options?: ValidationOptions) {
       options,
       constraints: [],
       validator: IsSafeUrlConstraint,
+    });
+  };
+}
+
+// ─── Domain allowlist validator ──────────────────────────────────────────────
+
+@ValidatorConstraint({ name: 'isAllowedDomain', async: false })
+export class IsAllowedDomainConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown): boolean {
+    if (value === null || value === undefined || value === '') return true; // optional field
+
+    if (typeof value !== 'string') return false;
+
+    try {
+      const url = new URL(value);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+      return hostnameMatchesAllowlist(url.hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  defaultMessage(): string {
+    return `URL domain is not allowed. Allowed domains: ${ALLOWED_DOMAINS.join(', ')}`;
+  }
+}
+
+export function IsAllowedDomain(options?: ValidationOptions) {
+  return function (object: object, propertyName: string) {
+    registerDecorator({
+      target: object.constructor,
+      propertyName,
+      options,
+      constraints: [],
+      validator: IsAllowedDomainConstraint,
     });
   };
 }
