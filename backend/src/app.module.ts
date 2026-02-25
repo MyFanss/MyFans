@@ -1,3 +1,4 @@
+
 import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
@@ -21,6 +22,8 @@ import { Like } from './likes/entities/like.entity';
 import { GamesModule } from './games/games.module';
 import { Game } from './games/entities/game.entity';
 import { Player } from './games/entities/player.entity';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -34,6 +37,12 @@ import { Player } from './games/entities/player.entity';
       entities: [User, Post, Comment, Conversation, Message, Like, Game, Player],
       synchronize: true,
     }),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60,
+        limit: 10,
+      },
+    ]),
     HealthModule,
     LoggingModule,
     CreatorsModule,
@@ -44,7 +53,10 @@ import { Player } from './games/entities/player.entity';
     GamesModule,
   ],
   controllers: [AppController, ExampleController],
-  providers: [AppService],
+  providers: [
+    AppService,
+ 
+  ],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
@@ -53,3 +65,4 @@ export class AppModule {
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }
 }
+
