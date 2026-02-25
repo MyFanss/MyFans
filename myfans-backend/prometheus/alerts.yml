@@ -1,0 +1,47 @@
+# Prometheus alerting rules for myfans-backend.
+# Use with Prometheus 2.x (e.g. prometheus.yml: rule_files: ['alerts.yml']).
+# No PII in these rules; labels use method, route, status only.
+
+groups:
+  - name: myfans-backend
+    rules:
+      # High error rate: > 5% of requests in 5m window are 5xx
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m])) by (app)
+          /
+          sum(rate(http_requests_total[5m])) by (app)
+          > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API error rate (5xx)"
+          description: "Error rate is above 5% for {{ $labels.app }} over the last 5 minutes."
+
+      # High latency: p99 > 2s for 5m
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, app)
+          ) > 2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API latency (p99 > 2s)"
+          description: "p99 request duration for {{ $labels.app }} is above 2 seconds."
+
+      # RPC errors (when RPC metrics are used)
+      - alert: RpcHighErrorRate
+        expr: |
+          sum(rate(rpc_call_errors_total[5m])) by (operation, app)
+          /
+          sum(rate(rpc_calls_total[5m])) by (operation, app)
+          > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High RPC error rate"
+          description: "RPC operation {{ $labels.operation }} has >10% errors."

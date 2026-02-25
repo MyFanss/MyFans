@@ -1,5 +1,7 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, Address, Env, Map, Symbol};
+use soroban_sdk::{contract, contractimpl, Address, Env, Map, Symbol, Vec};
+
+const MAX_PAGE_LIMIT: u32 = 100;
 
 #[contract]
 pub struct ContentLikes;
@@ -44,6 +46,16 @@ impl ContentLikes {
             env.storage()
                 .instance()
                 .set(&count_key, &(current_count + 1));
+
+            // Maintain user_likes index for list_likes_by_user
+            let user_likes_key = ("user_likes", user.clone());
+            let mut list: Vec<u32> = env
+                .storage()
+                .instance()
+                .get(&user_likes_key)
+                .unwrap_or_else(|| Vec::new(&env));
+            list.push_back(content_id);
+            env.storage().instance().set(&user_likes_key, &list);
 
             // Publish event
             env.events()
@@ -93,6 +105,22 @@ impl ContentLikes {
                 .set(&count_key, &(current_count - 1));
         }
 
+        // Maintain user_likes index: remove content_id from user's list
+        let user_likes_key = ("user_likes", user.clone());
+        let list: Vec<u32> = env
+            .storage()
+            .instance()
+            .get(&user_likes_key)
+            .unwrap_or_else(|| Vec::new(&env));
+        let mut new_list = Vec::new(&env);
+        for i in 0..list.len() {
+            let id = list.get(i).unwrap();
+            if id != content_id {
+                new_list.push_back(id);
+            }
+        }
+        env.storage().instance().set(&user_likes_key, &new_list);
+
         // Publish event
         env.events()
             .publish((Symbol::new(&env, "unliked"), content_id), user);
@@ -129,6 +157,44 @@ impl ContentLikes {
             .unwrap_or_else(|| Map::new(&env));
 
         likes.get(user).is_some()
+    }
+
+    /// List content IDs liked by a user with pagination (bounded iteration).
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `user` - Address of the user
+    /// * `cursor` - Index to start from (0 for first page)
+    /// * `limit` - Max number of items to return (capped at MAX_PAGE_LIMIT)
+    ///
+    /// # Returns
+    /// (page of content_ids, has_more)
+    pub fn list_likes_by_user(
+        env: Env,
+        user: Address,
+        cursor: u32,
+        limit: u32,
+    ) -> (Vec<u32>, bool) {
+        let limit = core::cmp::min(limit, MAX_PAGE_LIMIT);
+        let user_likes_key = ("user_likes", user);
+        let list: Vec<u32> = env
+            .storage()
+            .instance()
+            .get(&user_likes_key)
+            .unwrap_or_else(|| Vec::new(&env));
+
+        let len = list.len();
+        if cursor >= len || limit == 0 {
+            return (Vec::new(&env), false);
+        }
+
+        let end = core::cmp::min(cursor + limit, len);
+        let mut page = Vec::new(&env);
+        for i in cursor..end {
+            page.push_back(list.get(i).unwrap());
+        }
+        let has_more = end < len;
+        (page, has_more)
     }
 }
 
@@ -300,5 +366,56 @@ mod test {
         // Query content that was never liked
         assert_eq!(client.like_count(&content_id), 0);
         assert!(!client.has_liked(&user, &content_id));
+    }
+
+    #[test]
+    fn test_list_likes_by_user_empty() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+
+        let (page, has_more) = client.list_likes_by_user(&user, &0, &10);
+        assert_eq!(page.len(), 0);
+        assert!(!has_more);
+    }
+
+    #[test]
+    fn test_list_likes_by_user_one_page() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        client.like(&user, &1u32);
+        client.like(&user, &2u32);
+        client.like(&user, &3u32);
+
+        let (page, has_more) = client.list_likes_by_user(&user, &0, &10);
+        assert_eq!(page.len(), 3);
+        assert_eq!(page.get(0).unwrap(), 1);
+        assert_eq!(page.get(1).unwrap(), 2);
+        assert_eq!(page.get(2).unwrap(), 3);
+        assert!(!has_more);
+    }
+
+    #[test]
+    fn test_list_likes_by_user_over_limit_clamped() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        client.like(&user, &1u32);
+        client.like(&user, &2u32);
+
+        // Request limit > MAX_PAGE_LIMIT (100); contract clamps to 100, we get 2 items
+        let (page, has_more) = client.list_likes_by_user(&user, &0, &1000);
+        assert_eq!(page.len(), 2);
+        assert!(!has_more);
     }
 }

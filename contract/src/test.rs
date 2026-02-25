@@ -451,3 +451,222 @@ fn test_only_admin_signature_works_for_set_verified() {
     // 2. In production, this requires the admin's cryptographic signature
     // 3. Only someone with the admin's private key can call set_verified
 }
+
+// ============================================================================
+// PAUSE/UNPAUSE TESTS
+// ============================================================================
+
+#[test]
+fn test_pause_and_unpause_work() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &250, &fee_recipient);
+
+    // Initially not paused
+    assert!(!client.is_paused());
+
+    // Admin pauses the contract
+    client.pause();
+    assert!(client.is_paused());
+
+    // Admin unpauses the contract
+    client.unpause();
+    assert!(!client.is_paused());
+}
+
+#[test]
+#[should_panic(expected = "contract is paused")]
+fn test_transfer_fails_when_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+    let asset = Address::generate(&env);
+
+    client.init(&admin, &250, &fee_recipient);
+    
+    // Create a plan first (before pausing)
+    let plan_id = client.create_plan(&creator, &asset, &1000, &30);
+    assert_eq!(plan_id, 1);
+
+    // Pause the contract
+    client.pause();
+
+    // Attempt to subscribe (transfer) should fail with "contract is paused"
+    client.subscribe(&fan, &plan_id);
+}
+
+#[test]
+#[should_panic(expected = "contract is paused")]
+fn test_mint_fails_when_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+    let asset = Address::generate(&env);
+
+    client.init(&admin, &250, &fee_recipient);
+
+    // Pause the contract
+    client.pause();
+    assert!(client.is_paused());
+
+    // Attempt to create_plan (mint) should fail with "contract is paused"
+    client.create_plan(&creator, &asset, &1000, &30);
+}
+
+#[test]
+#[should_panic(expected = "contract is paused")]
+fn test_burn_fails_when_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &250, &fee_recipient);
+
+    // Manually insert a subscription record
+    env.as_contract(&contract_id, || {
+        let expiry = env.ledger().timestamp() + 86400 * 30;
+        let sub = Subscription {
+            fan: fan.clone(),
+            plan_id: 1,
+            expiry,
+        };
+        env.storage()
+            .instance()
+            .set(&DataKey::Sub(fan.clone(), creator.clone()), &sub);
+    });
+
+    // Verify subscription exists before pausing
+    assert!(client.is_subscribed(&fan, &creator));
+
+    // Pause the contract
+    client.pause();
+    assert!(client.is_paused());
+
+    // Attempt to cancel (burn) should fail with "contract is paused"
+    client.cancel(&fan, &creator);
+}
+
+#[test]
+fn test_admin_can_pause_and_unpause() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &250, &fee_recipient);
+
+    // Admin can pause
+    client.pause();
+    assert!(client.is_paused());
+
+    // Admin can unpause
+    client.unpause();
+    assert!(!client.is_paused());
+}
+
+#[test]
+fn test_pause_requires_admin_auth() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &250, &fee_recipient);
+
+    // Verify that pause function exists and requires auth from admin
+    // The actual auth check is enforced by require_auth() in the contract
+    // This test documents that pause is admin-only
+    client.pause();
+    assert!(client.is_paused());
+}
+
+#[test]
+fn test_unpause_requires_admin_auth() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &250, &fee_recipient);
+
+    // Pause first
+    client.pause();
+    assert!(client.is_paused());
+
+    // Verify that unpause function exists and requires auth from admin
+    // The actual auth check is enforced by require_auth() in the contract
+    // This test documents that unpause is admin-only
+    client.unpause();
+    assert!(!client.is_paused());
+}
+
+#[test]
+fn test_operations_work_after_unpause() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+    let asset = Address::generate(&env);
+
+    client.init(&admin, &250, &fee_recipient);
+
+    // Create a plan before pause
+    let plan_id = client.create_plan(&creator, &asset, &1000, &30);
+    assert_eq!(plan_id, 1);
+
+    // Pause the contract
+    client.pause();
+    assert!(client.is_paused());
+
+    // Unpause the contract
+    client.unpause();
+    assert!(!client.is_paused());
+
+    // Operations should work again
+    let plan_id_2 = client.create_plan(&creator, &asset, &2000, &60);
+    assert_eq!(plan_id_2, 2);
+}

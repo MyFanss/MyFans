@@ -31,4 +31,22 @@ export class HealthController {
         }
         return res.status(200).json(health);
     }
+
+    @Get('soroban')
+    async getSorobanHealth(@Res() res: Response) {
+        const health = await this.healthService.checkSorobanRpc();
+        if (health.status === 'down') {
+            return res.status(503).json(health);
+        }
+        return res.status(200).json(health);
+    }
+
+    @Get('soroban-contract')
+    async getSorobanContractHealth(@Res() res: Response) {
+        const health = await this.healthService.checkSorobanContract();
+        if (health.status === 'down') {
+            return res.status(503).json(health);
+        }
+        return res.status(200).json(health);
+    }
 }
