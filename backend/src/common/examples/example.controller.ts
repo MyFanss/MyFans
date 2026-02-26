@@ -3,7 +3,7 @@ import { LoggerService } from '../services/logger.service';
 import { RequestContextService } from '../services/request-context.service';
 import type { Request } from 'express';
 
-@Controller('example')
+@Controller({ path: 'example', version: '1' })
 export class ExampleController {
     constructor(
         private readonly logger: LoggerService,

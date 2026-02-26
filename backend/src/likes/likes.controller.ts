@@ -20,7 +20,7 @@ import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
 
 @ApiTags('likes')
-@Controller('posts')
+@Controller({ path: 'posts', version: '1' })
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class LikesController {
