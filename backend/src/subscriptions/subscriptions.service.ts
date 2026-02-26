@@ -14,6 +14,8 @@ import type {
   RenewalFailurePayload,
   SubscriptionEventPublisher,
 } from './events';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { PaginatedResponseDto } from '../common/dto';
 
 /** Checkout status enum */
 export enum CheckoutStatus {
@@ -123,7 +125,7 @@ export class SubscriptionsService {
     return this.subscriptions.get(this.getKey(fan, creator));
   }
 
-  listSubscriptions(fan: string, status?: string, sort?: string) {
+  listSubscriptions(fan: string, status?: string, sort?: string, page: number = 1, limit: number = 20) {
     // Convert map values to array for the given fan
     let userSubs = Array.from(this.subscriptions.values()).filter(sub => sub.fan === fan);
 
@@ -167,7 +169,12 @@ export class SubscriptionsService {
       results.sort((a, b) => new Date(a.currentPeriodEnd).getTime() - new Date(b.currentPeriodEnd).getTime());
     }
 
-    return results;
+    // Apply pagination
+    const total = results.length;
+    const skip = (page - 1) * limit;
+    const paginatedResults = results.slice(skip, skip + limit);
+
+    return new PaginatedResponseDto(paginatedResults, total, page, limit);
   }
 
   // ==================== Checkout Methods ====================
