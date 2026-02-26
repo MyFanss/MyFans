@@ -14,7 +14,6 @@ import type {
   RenewalFailurePayload,
   SubscriptionEventPublisher,
 } from './events';
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PaginatedResponseDto } from '../common/dto';
 
 /** Checkout status enum */
