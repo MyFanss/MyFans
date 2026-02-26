@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { OnboardingProgress, type OnboardingStep } from '@/components/onboarding';
+import { useEffect, useRef, useState } from 'react';
+import { OnboardingProgress } from '@/components/onboarding';
 import { useOnboarding } from '@/hooks';
 import AccountType from '@/components/AccountType';
 import { Input } from '@/components/ui/Input';
@@ -24,6 +24,20 @@ export default function OnboardingPage() {
     username: '',
     bio: '',
   });
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const completionHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    if (!isComplete) {
+      stepHeadingRef.current?.focus();
+    }
+  }, [currentStep, isComplete]);
+
+  useEffect(() => {
+    if (isComplete) {
+      completionHeadingRef.current?.focus();
+    }
+  }, [isComplete]);
 
   const handleAccountTypeSelect = (type: 'creator' | 'fan' | 'both') => {
     setAccountType(type);
@@ -55,7 +69,11 @@ export default function OnboardingPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+              <h2
+                ref={stepHeadingRef}
+                tabIndex={-1}
+                className="text-2xl font-bold text-gray-900 focus-visible:outline-none dark:text-white"
+              >
                 Choose Your Account Type
               </h2>
               <p className="mt-2 text-gray-600 dark:text-gray-400">
@@ -147,7 +165,11 @@ export default function OnboardingPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+              <h2
+                ref={stepHeadingRef}
+                tabIndex={-1}
+                className="text-2xl font-bold text-gray-900 focus-visible:outline-none dark:text-white"
+              >
                 Set Up Your Profile
               </h2>
               <p className="mt-2 text-gray-600 dark:text-gray-400">
@@ -207,7 +229,11 @@ export default function OnboardingPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+              <h2
+                ref={stepHeadingRef}
+                tabIndex={-1}
+                className="text-2xl font-bold text-gray-900 focus-visible:outline-none dark:text-white"
+              >
                 Connect Your Social Links
               </h2>
               <p className="mt-2 text-gray-600 dark:text-gray-400">
@@ -240,7 +266,11 @@ export default function OnboardingPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+              <h2
+                ref={stepHeadingRef}
+                tabIndex={-1}
+                className="text-2xl font-bold text-gray-900 focus-visible:outline-none dark:text-white"
+              >
                 Verify Your Account
               </h2>
               <p className="mt-2 text-gray-600 dark:text-gray-400">
@@ -314,7 +344,11 @@ export default function OnboardingPage() {
                 />
               </svg>
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            <h1
+              ref={completionHeadingRef}
+              tabIndex={-1}
+              className="text-3xl font-bold text-gray-900 focus-visible:outline-none dark:text-white"
+            >
               Welcome to MyFans!
             </h1>
             <p className="mt-2 text-gray-600 dark:text-gray-400">
@@ -349,7 +383,7 @@ export default function OnboardingPage() {
             Welcome to MyFans
           </h1>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
-            Let's get your account set up
+            Let&apos;s get your account set up
           </p>
         </div>
 

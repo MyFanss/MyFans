@@ -1,5 +1,8 @@
 import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard } from './auth/throttler.guard';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { User } from './users/entities/user.entity';
@@ -18,6 +21,9 @@ import { Comment } from './comments/entities/comment.entity';
 import { Conversation } from './conversations/entities/conversation.entity';
 import { Message } from './conversations/entities/message.entity';
 import { Like } from './likes/entities/like.entity';
+import { GamesModule } from './games/games.module';
+import { Game } from './games/entities/game.entity';
+import { Player } from './games/entities/player.entity';
 
 @Module({
   imports: [
@@ -28,9 +34,35 @@ import { Like } from './likes/entities/like.entity';
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_NAME || 'myfans',
-      entities: [User, Post, Comment, Conversation, Message, Like],
+      entities: [
+        User,
+        Post,
+        Comment,
+        Conversation,
+        Message,
+        Like,
+        Game,
+        Player,
+      ],
       synchronize: true,
     }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'short',
+        ttl: 1000,
+        limit: 10,
+      },
+      {
+        name: 'medium',
+        ttl: 10000,
+        limit: 50,
+      },
+      {
+        name: 'long',
+        ttl: 60000,
+        limit: 200,
+      },
+    ]),
     HealthModule,
     LoggingModule,
     CreatorsModule,
@@ -38,9 +70,16 @@ import { Like } from './likes/entities/like.entity';
     CommentsModule,
     ConversationsModule,
     LikesModule,
+    GamesModule,
   ],
   controllers: [AppController, ExampleController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
