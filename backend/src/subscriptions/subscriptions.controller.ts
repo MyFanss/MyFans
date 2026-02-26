@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
 
-@Controller('subscriptions')
+@Controller({ path: 'subscriptions', version: '1' })
 export class SubscriptionsController {
   constructor(private subscriptionsService: SubscriptionsService) { }
 

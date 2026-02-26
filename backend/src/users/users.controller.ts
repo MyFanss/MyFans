@@ -14,11 +14,13 @@ import { UpdateUserDto, UserProfileDto } from './dto';
 import { plainToInstance } from 'class-transformer';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
 import { AuthGuard } from 'src/utils/auth.guard';
+import { User } from './entities/user.entity';
 
-@Controller('users')
+@Controller({ path: 'users', version: '1' })
 @UseInterceptors(ClassSerializerInterceptor)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
 
   @UseGuards(AuthGuard)
   @Get('me')

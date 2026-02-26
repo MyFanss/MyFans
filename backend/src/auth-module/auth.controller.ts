@@ -1,4 +1,4 @@
 import { Controller } from '@nestjs/common';
 
-@Controller('auth')
+@Controller({ path: 'auth', version: '1' })
 export class AuthController {}
