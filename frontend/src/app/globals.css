@@ -359,6 +359,20 @@ body {
   animation: spin 1s linear infinite;
 }
 
+/* Lazy image placeholder + fade-in */
+.image-skeleton-wrapper {
+  background-color: var(--skeleton-bg);
+}
+
+.lazy-image {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.lazy-image.loaded {
+  opacity: 1;
+}
+
 /* Chart theme variables (for charting libraries) */
 .chart-theme {
   --chart-grid: var(--surface-200);
@@ -386,5 +400,10 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .lazy-image {
+    transition: none;
+    opacity: 1;
   }
 }

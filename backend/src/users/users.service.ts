@@ -15,6 +15,7 @@ export class UsersService {
     private creatorRepository: Repository<Creator>
   ) {}
 
+
   async findOne(id: string): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id } });
     if (!user) {
