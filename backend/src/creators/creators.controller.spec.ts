@@ -38,6 +38,7 @@ describe('CreatorsController', () => {
     expect(controller).toBeDefined();
   });
 
+
   describe('searchCreators', () => {
     describe('GET /creators endpoint exists and is accessible', () => {
       it('should have searchCreators method', () => {
