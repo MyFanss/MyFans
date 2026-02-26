@@ -2,7 +2,7 @@ import { Controller, Get, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { HealthService } from './health.service';
 
-@Controller('health')
+@Controller({ path: 'health', version: '1' })
 export class HealthController {
     constructor(private readonly healthService: HealthService) { }
 
