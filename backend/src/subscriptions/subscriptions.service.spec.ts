@@ -70,13 +70,14 @@ describe('SubscriptionsService', () => {
         reason: 'transaction reverted',
       }),
     );
-
-  beforeEach(() => {
-    service = new SubscriptionsService();
   });
 
   describe('listSubscriptions', () => {
     const fan = 'GAAAAAAAAAAAAAAA';
+
+    beforeEach(() => {
+      service = new SubscriptionsService();
+    });
 
     it('should return empty paginated response when fan has no subscriptions', () => {
       const result = service.listSubscriptions(fan);
