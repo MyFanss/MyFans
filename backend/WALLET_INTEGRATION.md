@@ -90,15 +90,15 @@ The `wallet_address` column will be auto-created on next app start with:
 
 ```bash
 # Set wallet address
-curl -X PATCH http://localhost:3000/users/me \
+curl -X PATCH http://localhost:3000/v1/users/me \
   -H "Content-Type: application/json" \
   -d '{"wallet_address": "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"}'
 
 # Get user profile
-curl http://localhost:3000/users/me
+curl http://localhost:3000/v1/users/me
 
 # Invalid format (returns 400)
-curl -X PATCH http://localhost:3000/users/me \
+curl -X PATCH http://localhost:3000/v1/users/me \
   -H "Content-Type: application/json" \
   -d '{"wallet_address": "invalid"}'
 ```

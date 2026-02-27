@@ -2,7 +2,7 @@ import { Controller, Post, Param, Body, HttpCode, HttpStatus } from '@nestjs/com
 import { GamesService } from './games.service';
 import { JoinGameDto } from './dto/join-game.dto';
 
-@Controller('games')
+@Controller({ path: 'games', version: '1' })
 export class GamesController {
   constructor(private readonly gamesService: GamesService) {}
 

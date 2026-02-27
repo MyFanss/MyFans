@@ -25,8 +25,7 @@ import { Like } from './likes/entities/like.entity';
 import { GamesModule } from './games/games.module';
 import { Game } from './games/entities/game.entity';
 import { Player } from './games/entities/player.entity';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
+import { Creator } from './creators/entities/creator.entity';
 
 @Module({
   imports: [
@@ -39,6 +38,7 @@ import { APP_GUARD } from '@nestjs/core';
       database: process.env.DB_NAME || 'myfans',
       entities: [
         User,
+        Creator,
         Post,
         Comment,
         Conversation,

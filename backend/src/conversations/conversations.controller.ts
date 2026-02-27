@@ -15,7 +15,7 @@ import { ConversationDto, MessageDto, CreateConversationDto, SendMessageDto } fr
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 
 @ApiTags('conversations')
-@Controller('conversations')
+@Controller({ path: 'conversations', version: '1' })
 @UseInterceptors(ClassSerializerInterceptor)
 export class ConversationsController {
   constructor(private readonly conversationsService: ConversationsService) {}
