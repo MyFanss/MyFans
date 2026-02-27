@@ -106,12 +106,20 @@ export async function fetchEarningsBreakdown(days: number = 30): Promise<Earning
   return fetchApi(`/earnings/breakdown?days=${days}`);
 }
 
-export async function fetchTransactionHistory(limit: number = 50, offset: number = 0): Promise<Transaction[]> {
-  return fetchApi(`/earnings/transactions?limit=${limit}&offset=${offset}`);
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
 }
 
-export async function fetchWithdrawalHistory(limit: number = 20, offset: number = 0): Promise<Withdrawal[]> {
-  return fetchApi(`/earnings/withdrawals?limit=${limit}&offset=${offset}`);
+export async function fetchTransactionHistory(page: number = 1, limit: number = 50): Promise<PaginatedResponse<Transaction>> {
+  return fetchApi(`/earnings/transactions?page=${page}&limit=${limit}`);
+}
+
+export async function fetchWithdrawalHistory(page: number = 1, limit: number = 20): Promise<PaginatedResponse<Withdrawal>> {
+  return fetchApi(`/earnings/withdrawals?page=${page}&limit=${limit}`);
 }
 
 export async function requestWithdrawal(data: {

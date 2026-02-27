@@ -7,7 +7,7 @@ import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
 
 @ApiTags('creators')
-@Controller('creators')
+@Controller({ path: 'creators', version: '1' })
 export class CreatorsController {
   constructor(private creatorsService: CreatorsService) {}
 
