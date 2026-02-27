@@ -100,7 +100,10 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "unmockedModulePathPatterns": [
+      "supertest"
+    ]
   },
   "overrides": {
     "minimatch": ">=9.0.6"
