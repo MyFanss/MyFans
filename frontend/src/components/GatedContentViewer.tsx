@@ -81,6 +81,8 @@ export function GatedContentViewer({
   onShare,
 }: GatedContentViewerProps) {
   const [isLiked, setIsLiked] = useState(false);
+  const [contentImageLoaded, setContentImageLoaded] = useState<Record<string, boolean>>({});
+  const [relatedLoaded, setRelatedLoaded] = useState<Record<string, boolean>>({});
   
   // Determine if content should be locked
   const showLockedState = isGated && !isSubscribed;
@@ -145,13 +147,14 @@ export function GatedContentViewer({
                 Subscribe to Unlock
               </h3>
               <p className="text-gray-300 mb-6 max-w-md">
-                This content is available exclusively for {creator.name}'s subscribers.
+                This content is available exclusively for {creator.name}&apos;s subscribers.
                 Subscribe now to get full access.
               </p>
               
               <button
                 onClick={onSubscribe}
-                className="px-8 py-3 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-lg transition-colors"
+                type="button"
+                className="px-8 py-3 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
               >
                 Subscribe to {creator.name}
               </button>
@@ -199,12 +202,22 @@ export function GatedContentViewer({
           </div>
         )}
         {type === 'image' && contentUrl && (
-          <Image
-            src={contentUrl}
-            alt={title}
-            fill
-            className="object-contain"
-          />
+          <div className="image-skeleton-wrapper relative h-full w-full">
+            <Image
+              src={contentUrl}
+              alt={title}
+              width={1280}
+              height={720}
+              loading="lazy"
+              onLoad={() =>
+                setContentImageLoaded((prev) => ({ ...prev, [contentUrl]: true }))
+              }
+              className={`lazy-image h-full w-full object-contain ${
+                contentImageLoaded[contentUrl] ? 'loaded' : ''
+              }`}
+              sizes="100vw"
+            />
+          </div>
         )}
         {type === 'text' && (
           <div className="p-8 h-full overflow-auto">
@@ -268,10 +281,11 @@ export function GatedContentViewer({
         <div className="flex items-center gap-4 mb-6">
           <button
             onClick={handleLike}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+            type="button"
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
               isLiked 
-                ? 'bg-red-100 text-red-600 dark:bg-red-900/30' 
-                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 hover:bg-gray-200'
+                ? 'bg-red-100 text-red-600 focus-visible:outline-red-600 dark:bg-red-900/30' 
+                : 'bg-gray-100 text-gray-600 focus-visible:outline-primary-500 dark:bg-gray-800 hover:bg-gray-200'
             }`}
           >
             <svg className="w-5 h-5" fill={isLiked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
@@ -282,7 +296,8 @@ export function GatedContentViewer({
           
           <button
             onClick={onShare}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 rounded-lg hover:bg-gray-200 transition-colors"
+            type="button"
+            className="flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-gray-600 transition-colors hover:bg-gray-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:bg-gray-800 dark:text-gray-300"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
@@ -320,7 +335,8 @@ export function GatedContentViewer({
           {!isSubscribed && (
             <button
               onClick={onSubscribe}
-              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors"
+              type="button"
+              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
             >
               Subscribe
             </button>
@@ -354,12 +370,22 @@ export function GatedContentViewer({
                 >
                   <div className="relative aspect-video bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden mb-2">
                     {item.thumbnailUrl && (
-                      <Image
-                        src={item.thumbnailUrl}
-                        alt={item.title}
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform"
-                      />
+                      <div className="image-skeleton-wrapper relative h-full w-full">
+                        <Image
+                          src={item.thumbnailUrl}
+                          alt={item.title}
+                          width={320}
+                          height={180}
+                          loading="lazy"
+                          onLoad={() =>
+                            setRelatedLoaded((prev) => ({ ...prev, [item.id]: true }))
+                          }
+                          className={`lazy-image h-full w-full object-cover transition-transform group-hover:scale-105 ${
+                            relatedLoaded[item.id] ? 'loaded' : ''
+                          }`}
+                          sizes="(max-width: 768px) 50vw, 33vw"
+                        />
+                      </div>
                     )}
                     {/* Type badge */}
                     <div className="absolute top-2 right-2 px-2 py-1 bg-black/60 text-white text-xs rounded">

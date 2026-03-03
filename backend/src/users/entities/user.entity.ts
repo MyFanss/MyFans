@@ -5,7 +5,10 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  OneToOne,
+  JoinColumn,
 } from 'typeorm';
+import { Creator } from '../../creators/entities/creator.entity';
 
 export enum UserRole {
   USER = 'user',
@@ -53,6 +56,10 @@ export class User {
 
   @Column({ default: false })
   is_creator: boolean;
+
+  @OneToOne(() => Creator, (creator) => creator.user, { nullable: true })
+  @JoinColumn({ name: 'id' })
+  creator?: Creator;
 
   @CreateDateColumn()
   created_at: Date;
