@@ -1,5 +1,9 @@
+
 import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard } from './auth/throttler.guard';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { User } from './users/entities/user.entity';
@@ -21,6 +25,7 @@ import { Like } from './likes/entities/like.entity';
 import { GamesModule } from './games/games.module';
 import { Game } from './games/entities/game.entity';
 import { Player } from './games/entities/player.entity';
+import { Creator } from './creators/entities/creator.entity';
 
 @Module({
   imports: [
@@ -31,9 +36,36 @@ import { Player } from './games/entities/player.entity';
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_NAME || 'myfans',
-      entities: [User, Post, Comment, Conversation, Message, Like, Game, Player],
+      entities: [
+        User,
+        Creator,
+        Post,
+        Comment,
+        Conversation,
+        Message,
+        Like,
+        Game,
+        Player,
+      ],
       synchronize: true,
     }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'short',
+        ttl: 1000,
+        limit: 10,
+      },
+      {
+        name: 'medium',
+        ttl: 10000,
+        limit: 50,
+      },
+      {
+        name: 'long',
+        ttl: 60000,
+        limit: 200,
+      },
+    ]),
     HealthModule,
     LoggingModule,
     CreatorsModule,
@@ -44,7 +76,13 @@ import { Player } from './games/entities/player.entity';
     GamesModule,
   ],
   controllers: [AppController, ExampleController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
@@ -53,3 +91,4 @@ export class AppModule {
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }
 }
+
