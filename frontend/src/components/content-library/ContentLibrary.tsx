@@ -489,9 +489,16 @@ function ListRow({
         className="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
         aria-label={`Select ${item.title}`}
       />
-      <div className="flex-shrink-0 w-24 h-14 rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-400 dark:text-gray-500 overflow-hidden">
+      <div className="image-skeleton-wrapper flex-shrink-0 w-24 h-14 rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-400 dark:text-gray-500 overflow-hidden">
         {item.thumbnailUrl ? (
-          <img src={item.thumbnailUrl} alt="" className="w-full h-full object-cover" />
+          <img
+            src={item.thumbnailUrl}
+            alt=""
+            width={96}
+            height={56}
+            loading="lazy"
+            className="w-full h-full object-cover"
+          />
         ) : (
           <span className="text-xs">{item.type}</span>
         )}
