@@ -5,8 +5,10 @@ type Role = "creator" | "fan";
 
 const sharedSections: SettingsNavItem[] = [
   { id: "profile", label: "Profile" },
+  { id: "social", label: "Social Links" },
   { id: "wallet", label: "Wallet" },
   { id: "notifications", label: "Notifications" },
+  { id: "appearance", label: "Appearance" },
   { id: "account", label: "Account" },
 ];
 

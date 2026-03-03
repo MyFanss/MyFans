@@ -7,4 +7,11 @@ export default () => ({
     password: process.env.DB_PASSWORD ?? 'postgres',
     database: process.env.DB_DATABASE ?? 'myfans',
   },
+  redis: {
+    url: process.env.REDIS_URL ?? 'redis://localhost:6379',
+  },
+  cache: {
+    creators_ttl: parseInt(process.env.CACHE_TTL_CREATORS ?? '300', 10),
+    posts_ttl: parseInt(process.env.CACHE_TTL_POSTS ?? '120', 10),
+  },
 });
