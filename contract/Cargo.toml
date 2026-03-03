@@ -29,6 +29,19 @@ members = [
 [workspace.dependencies]
 soroban-sdk = "21.7.0"
 
+[workspace]
+resolver = "2"
+members = [
+    ".",
+    "contracts/content-access",
+    "contracts/creator-registry",
+    "contracts/earnings",
+    "contracts/myfans-lib",
+    "contracts/myfans-token",
+    "contracts/subscription",
+    "contracts/test-consumer",
+]
+
 [profile.release]
 opt-level = "z"
 overflow-checks = true
