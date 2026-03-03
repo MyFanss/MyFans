@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -28,29 +28,33 @@ const navItems = [
 const STORAGE_KEY = 'creator-dashboard-sidebar-collapsed';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem(STORAGE_KEY) === 'true';
-  });
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const pathname = usePathname();
 
-  // Persist collapse state
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored !== null) {
+      setIsCollapsed(stored === 'true');
+    }
+  }, []);
+
   const toggleCollapse = () => {
     const newState = !isCollapsed;
     setIsCollapsed(newState);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, String(newState));
-    }
+    localStorage.setItem(STORAGE_KEY, String(newState));
   };
+
+  useEffect(() => {
+    setIsMobileOpen(false);
+  }, [pathname]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Mobile Header */}
       <header className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 z-50 flex items-center px-4">
         <button
           onClick={() => setIsMobileOpen(!isMobileOpen)}
-          className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
           aria-label={isMobileOpen ? 'Close menu' : 'Open menu'}
           aria-expanded={isMobileOpen}
         >
@@ -59,7 +63,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <h1 className="ml-3 text-lg font-semibold">Creator Dashboard</h1>
       </header>
 
-      {/* Mobile Overlay */}
       {isMobileOpen && (
         <div
           className="lg:hidden fixed inset-0 bg-black/50 z-40 mt-16"
@@ -68,7 +71,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         />
       )}
 
-      {/* Sidebar - Desktop & Tablet */}
       <aside
         className={`
           fixed top-0 left-0 h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 z-40
@@ -79,7 +81,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         aria-label="Creator dashboard navigation"
       >
         <div className="flex flex-col h-full">
-          {/* Logo */}
           <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-800">
             {!isCollapsed && (
               <h1 className="text-xl font-bold text-sky-500">MyFans</h1>
@@ -94,7 +95,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </button>
           </div>
 
-          {/* Navigation */}
           <nav className="flex-1 p-3 overflow-y-auto" role="navigation">
             <ul className="space-y-1">
               {navItems.map((item) => {
@@ -127,7 +127,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      {/* Mobile Drawer */}
       <aside
         className={`
           lg:hidden fixed top-16 left-0 h-[calc(100%-4rem)] w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 z-40
@@ -147,7 +146,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <li key={item.href}>
                   <Link
                     href={item.href}
-                    onClick={() => setIsMobileOpen(false)}
                     className={`
                       flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors
                       ${isActive 
@@ -167,16 +165,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
       </aside>
 
-      {/* Main Content */}
       <main
         className={`
           transition-all duration-300 ease-in-out
-          pt-16 lg:pt-0
+          pt-16 lg:pt-0 min-w-0
           ${isCollapsed ? 'lg:ml-20' : 'lg:ml-64'}
-          min-w-0 overflow-x-hidden
         `}
       >
-        <div className="p-3 sm:p-4 lg:p-8 max-w-full">
+        <div className="p-3 sm:p-4 lg:p-8 max-w-full overflow-x-hidden">
           {children}
         </div>
       </main>
