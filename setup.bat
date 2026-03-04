@@ -42,8 +42,8 @@ echo.
 echo ✅ Setup complete!
 echo.
 echo 📝 Next steps:
-echo 1. Deploy contracts to testnet
-echo 2. Update contract IDs in .env files
-echo 3. Start PostgreSQL database
+echo 1. Contract (build and test): cd contract ^&^& cargo build --release --target wasm32-unknown-unknown ^&^& cargo test
+echo 2. Deploy contracts to testnet
+echo 3. Update contract IDs in .env files
 echo 4. Run: cd backend ^&^& npm run start:dev
 echo 5. Run: cd frontend ^&^& npm run dev
