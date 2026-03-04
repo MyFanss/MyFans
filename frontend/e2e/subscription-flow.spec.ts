@@ -1,8 +1,16 @@
 import { test, expect } from '@playwright/test';
 
+// Helper: open wallet modal from homepage and connect via mock Freighter
+async function connectWalletFromHome(page: import('@playwright/test').Page) {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Get Started/i }).click();
+  await page.getByRole('button', { name: /Freighter/i }).waitFor({ state: 'visible', timeout: 5000 });
+  await page.getByRole('button', { name: /Freighter/i }).click();
+  await expect(page.locator('text=/GTEST.*/')).toBeVisible({ timeout: 10000 });
+}
+
 // Mock wallet for testing
 test.beforeEach(async ({ page }) => {
-  // Mock Freighter wallet
   await page.addInitScript(() => {
     (window as any).freighter = {
       getPublicKey: async () => 'GTEST1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
@@ -13,12 +21,8 @@ test.beforeEach(async ({ page }) => {
 
 test.describe('Critical User Flow: Connect → Subscribe → Unlock', () => {
   test('should complete full subscription flow', async ({ page }) => {
-    // Step 1: Connect Wallet
-    await page.goto('/');
-    await page.click('text=Connect Wallet');
-    
-    // Verify wallet connected
-    await expect(page.locator('text=/GTEST.*/')).toBeVisible({ timeout: 5000 });
+    // Step 1: Connect Wallet (homepage: Get Started → Freighter)
+    await connectWalletFromHome(page);
     
     // Step 2: Navigate to creator
     await page.goto('/creators');
@@ -49,9 +53,8 @@ test.describe('Critical User Flow: Connect → Subscribe → Unlock', () => {
   });
 
   test('should show subscription status in dashboard', async ({ page }) => {
-    await page.goto('/');
-    await page.click('text=Connect Wallet');
-    
+    await connectWalletFromHome(page);
+
     // Navigate to subscriptions
     await page.goto('/subscriptions');
     
@@ -71,9 +74,11 @@ test.describe('Critical User Flow: Connect → Subscribe → Unlock', () => {
     });
 
     await page.goto('/');
-    await page.click('text=Connect Wallet');
-    
+    await page.getByRole('button', { name: /Get Started/i }).click();
+    await page.getByRole('button', { name: /Freighter/i }).waitFor({ state: 'visible', timeout: 5000 });
+    await page.getByRole('button', { name: /Freighter/i }).click();
+
     // Verify error message
-    await expect(page.locator('text=/rejected/i')).toBeVisible();
+    await expect(page.locator('text=/rejected/i')).toBeVisible({ timeout: 10000 });
   });
 });
