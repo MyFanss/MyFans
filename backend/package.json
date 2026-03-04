@@ -106,6 +106,7 @@
     ]
   },
   "overrides": {
-    "minimatch": ">=9.0.6"
+    "minimatch": ">=9.0.6",
+    "multer": ">=2.1.0"
   }
 }
