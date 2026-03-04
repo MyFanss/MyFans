@@ -16,7 +16,7 @@ describe('SocialLinkController', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
-        ThrottlerModule.forRoot([{ ttl: 60, limit: 5 }]),
+        ThrottlerModule.forRoot([{ ttl: 60000, limit: 5 }]),
       ],
       controllers: [SocialLinkController],
       providers: [
