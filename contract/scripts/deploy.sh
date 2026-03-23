@@ -148,7 +148,8 @@ deploy_contract() {
   local wasm_name="${package//-/_}.wasm"
   local wasm_path
 
-  wasm_path="$(find "$ROOT_DIR/target" -type f -path "*/release/$wasm_name" | head -n1 || true)"
+  # Avoid pipefail/SIGPIPE issues from `find | head` under `set -euo pipefail`.
+  wasm_path="$(find "$ROOT_DIR/target" -type f -path "*/release/$wasm_name" -print -quit)"
   if [[ -z "$wasm_path" ]]; then
     echo "Unable to locate wasm for package '$package' after build." >&2
     exit 1
