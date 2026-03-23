@@ -135,7 +135,12 @@ export default function CheckoutPage() {
           onComplete={(result) => {
             console.log("Checkout completed:", result);
             if (result.success) {
-              window.location.href = "/pending";
+              const destination = new URL("/pending", window.location.origin);
+              destination.searchParams.set("checkoutId", result.checkoutId);
+              if (result.txHash) {
+                destination.searchParams.set("txHash", result.txHash);
+              }
+              window.location.href = destination.toString();
             }
           }}
           onCancel={() => {

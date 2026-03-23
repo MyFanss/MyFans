@@ -6,7 +6,6 @@ import {
   getFullCheckoutData,
   validateBalance as apiValidateBalance,
   confirmSubscription as apiConfirmSubscription,
-  failCheckout as apiFailCheckout,
   CheckoutResponse,
   PlanSummary,
   PriceBreakdown,
@@ -17,6 +16,7 @@ import {
 } from "@/lib/checkout";
 import { useTransaction } from "@/hooks/useTransaction";
 import { useToast } from "@/components/ErrorToast";
+import { createTrackedTransaction, getExplorerUrl } from "@/lib/transaction-history";
 
 import PlanSummaryComponent from "./PlanSummary";
 import PriceBreakdownComponent from "./PriceBreakdown";
@@ -77,7 +77,7 @@ export default function CheckoutFlow({
   const tx = useTransaction({
     type: "subscription",
     amount: priceBreakdown ? parseFloat(priceBreakdown.total) : undefined,
-    onSuccess: (result) => {
+    onSuccess: () => {
       showSuccess(
         "Transaction successful!",
         "You are now subscribed to this creator."
@@ -187,6 +187,10 @@ export default function CheckoutFlow({
     if (!checkoutId) return;
 
     await tx.execute(async () => {
+      const txHash = `tx_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 11)}`;
+
       // Simulate transaction submission
       // In real app, this would use Freighter wallet to sign and submit
       await new Promise((resolve, reject) => {
@@ -195,43 +199,38 @@ export default function CheckoutFlow({
           if (shouldFail) {
             reject(new Error("Transaction rejected by user"));
           } else {
-            const txHash = `tx_${Date.now()}_${Math.random()
-              .toString(36)
-              .substr(2, 9)}`;
             resolve(txHash);
           }
         }, 2000);
       });
 
       // Confirm with backend
-      const result = await apiConfirmSubscription(checkoutId);
-      setCheckoutResult(result);
+      const result = await apiConfirmSubscription(checkoutId, txHash);
+      const trackedTransaction = createTrackedTransaction({
+        checkoutId,
+        txHash,
+        type: "subscription",
+        description: planSummary
+          ? `Subscription to ${planSummary.creatorName}${planSummary.name ? ` • ${planSummary.name}` : ""}`
+          : "Subscription payment",
+        amount: priceBreakdown?.total ?? checkout?.total ?? "0",
+        currency: priceBreakdown?.currency ?? selectedAsset?.code ?? "XLM",
+        creatorName: planSummary?.creatorName,
+        planName: planSummary?.name,
+      });
+
+      const nextResult = {
+        ...result,
+        txHash,
+        explorerUrl: result.explorerUrl || getExplorerUrl(txHash),
+      };
+
+      setCheckoutResult(nextResult);
       setCurrentStep("result");
-      onComplete?.(result);
-      return result;
+      onComplete?.(nextResult);
+      return { ...nextResult, trackedTransaction };
     });
-  }, [checkoutId, tx, onComplete]);
-
-  // Handle failure
-  const handleFail = useCallback(
-    async (errorMessage: string, isRejected: boolean = false) => {
-      if (!checkoutId) return;
-
-      try {
-        const result = await apiFailCheckout(
-          checkoutId,
-          errorMessage,
-          isRejected
-        );
-        setCheckoutResult(result);
-        setCurrentStep("result");
-        onComplete?.(result);
-      } catch (err) {
-        console.error("Failed to record failure:", err);
-      }
-    },
-    [checkoutId, onComplete]
-  );
+  }, [checkoutId, tx, onComplete, planSummary, priceBreakdown, checkout, selectedAsset]);
 
   // Handle retry
   const handleRetry = useCallback(() => {
