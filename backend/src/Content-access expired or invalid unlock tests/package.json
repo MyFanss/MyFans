@@ -1,0 +1,13 @@
+{
+  "name": "content-access-contract",
+  "version": "1.0.0",
+  "description": "Content access control with purchase validation",
+  "scripts": {
+    "test": "hardhat test",
+    "compile": "hardhat compile"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.19.0"
+  }
+}

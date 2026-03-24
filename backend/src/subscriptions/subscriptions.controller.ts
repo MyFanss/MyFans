@@ -1,13 +1,25 @@
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
+import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 
-@Controller('subscriptions')
+@Controller({ path: 'subscriptions', version: '1' })
 export class SubscriptionsController {
-  constructor(private subscriptionsService: SubscriptionsService) {}
+  constructor(private subscriptionsService: SubscriptionsService) { }
 
   @Get('check')
   checkSubscription(@Query('fan') fan: string, @Query('creator') creator: string) {
     return { isSubscriber: this.subscriptionsService.isSubscriber(fan, creator) };
+  }
+
+  @Get('list')
+  listSubscriptions(@Query() query: ListSubscriptionsQueryDto) {
+    return this.subscriptionsService.listSubscriptions(
+      query.fan,
+      query.status,
+      query.sort,
+      query.page,
+      query.limit,
+    );
   }
 
   /**

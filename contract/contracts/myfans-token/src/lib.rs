@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String};
 
 /// Storage keys for the token contract
 #[contracttype]
@@ -10,6 +10,36 @@ pub enum DataKey {
     Symbol,
     Decimals,
     TotalSupply,
+    Balance(Address),
+    Allowance(AllowanceValueKey),
+}
+
+/// Key for allowance storage (from, spender)
+#[contracttype]
+#[derive(Clone)]
+pub struct AllowanceValueKey {
+    pub from: Address,
+    pub spender: Address,
+}
+
+/// Stored allowance data
+#[contracttype]
+#[derive(Clone)]
+pub struct AllowanceData {
+    pub amount: i128,
+    pub expiration_ledger: u32,
+}
+
+/// Token contract errors (codes 1–3 match test expectations)
+#[contracterror]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Error {
+    InsufficientBalance = 1,   // transfer: not enough balance
+    InsufficientAllowance = 2, // transfer_from: allowance too low
+    AllowanceExpired = 3,      // transfer_from: allowance expired
+    InvalidAmount = 4,
+    InvalidExpiration = 5,
+    NoAllowance = 6,
 }
 
 #[contract]
@@ -202,6 +232,29 @@ impl MyFansToken {
         write_balance(&env, to.clone(), balance + amount);
 
         env.events().publish((symbol_short!("mint"), to), amount);
+    }
+
+    /// Get balance for an address (view function)
+    pub fn balance(env: Env, id: Address) -> i128 {
+        read_balance(&env, id)
+    }
+
+    /// Transfer tokens from caller to another address. Caller must authorize.
+    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), Error> {
+        from.require_auth();
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+        let balance_from = read_balance(&env, from.clone());
+        if balance_from < amount {
+            return Err(Error::InsufficientBalance);
+        }
+        write_balance(&env, from.clone(), balance_from - amount);
+        let balance_to = read_balance(&env, to.clone());
+        write_balance(&env, to.clone(), balance_to + amount);
+        env.events()
+            .publish((symbol_short!("transfer"), from, to), amount);
+        Ok(())
     }
 }
 

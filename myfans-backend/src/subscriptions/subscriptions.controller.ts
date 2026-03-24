@@ -14,6 +14,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '../users/entities/user.entity';
 import { FanSummaryQueryDto } from './dto/fan-summary-query.dto';
 import { SubscribeDto } from './dto/subscribe.dto';
+import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 import { SubscriptionsService } from './subscriptions.service';
 
 @Controller('subscriptions')
@@ -21,12 +22,12 @@ import { SubscriptionsService } from './subscriptions.service';
 export class SubscriptionsController {
   constructor(private readonly subscriptionsService: SubscriptionsService) {}
 
-  @Get('fan/summary')
-  getFanSummary(
+  @Get()
+  listSubscriptions(
     @CurrentUser() user: User,
-    @Query() query: FanSummaryQueryDto,
+    @Query() query: ListSubscriptionsQueryDto,
   ) {
-    return this.subscriptionsService.getFanSummary(user.id, query);
+    return this.subscriptionsService.listSubscriptions(user.id, query);
   }
 
   @Post()

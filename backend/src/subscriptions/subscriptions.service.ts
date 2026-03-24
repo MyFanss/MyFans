@@ -1,4 +1,20 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
+import {
+  SUBSCRIPTION_EVENT_PUBLISHER,
+  SUBSCRIPTION_RENEWAL_FAILED,
+} from './events';
+import type {
+  RenewalFailurePayload,
+  SubscriptionEventPublisher,
+} from './events';
+import { PaginatedResponseDto } from '../common/dto';
 
 /** Checkout status enum */
 export enum CheckoutStatus {
@@ -10,10 +26,13 @@ export enum CheckoutStatus {
 }
 
 interface Subscription {
+  id: string;
   fan: string;
   creator: string;
   planId: number;
   expiry: number;
+  status: 'active' | 'expired' | 'cancelled';
+  createdAt: Date;
 }
 
 interface Checkout {
@@ -56,10 +75,11 @@ export class SubscriptionsService {
   private subscriptions: Map<string, Subscription> = new Map();
   private checkouts: Map<string, Checkout> = new Map();
   private checkoutExpiryMinutes = 15;
-  
+  private readonly logger = new Logger(SubscriptionsService.name);
+
   // Mock platform fee (in basis points, e.g., 500 = 5%)
   private platformFeeBps = 500;
-  
+
   // Mock supported assets
   private supportedAssets: { code: string; issuer?: string; isNative: boolean }[] = [
     { code: 'XLM', isNative: true },
@@ -69,7 +89,11 @@ export class SubscriptionsService {
   // Mock creator profiles
   private creatorProfiles: Map<string, { name: string; description?: string }> = new Map();
 
-  constructor() {
+  constructor(
+    @Optional()
+    @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
+    private readonly subscriptionEventPublisher?: SubscriptionEventPublisher,
+  ) {
     // Set up mock creator profiles
     this.creatorProfiles.set('GAAAAAAAAAAAAAAA', { name: 'Creator 1', description: 'Premium content creator' });
     this.creatorProfiles.set('GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5', { name: 'Creator 2', description: 'Exclusive videos and photos' });
@@ -80,7 +104,15 @@ export class SubscriptionsService {
   }
 
   addSubscription(fan: string, creator: string, planId: number, expiry: number) {
-    this.subscriptions.set(this.getKey(fan, creator), { fan, creator, planId, expiry });
+    this.subscriptions.set(this.getKey(fan, creator), {
+      id: generateId(),
+      fan,
+      creator,
+      planId,
+      expiry,
+      status: 'active',
+      createdAt: new Date()
+    });
   }
 
   isSubscriber(fan: string, creator: string): boolean {
@@ -90,6 +122,58 @@ export class SubscriptionsService {
 
   getSubscription(fan: string, creator: string): Subscription | undefined {
     return this.subscriptions.get(this.getKey(fan, creator));
+  }
+
+  listSubscriptions(fan: string, status?: string, sort?: string, page: number = 1, limit: number = 20) {
+    // Convert map values to array for the given fan
+    let userSubs = Array.from(this.subscriptions.values()).filter(sub => sub.fan === fan);
+
+    // Update statuses dynamically before returning just in case expiry has passed silently
+    const nowSecs = Date.now() / 1000;
+    userSubs.forEach(sub => {
+      if (sub.status === 'active' && sub.expiry <= nowSecs) {
+        sub.status = 'expired';
+      }
+    });
+
+    // Apply status filter
+    if (status) {
+      userSubs = userSubs.filter(sub => sub.status === status);
+    }
+
+    // Map to include creator info and formatted details
+    let results = userSubs.map(sub => {
+      const plan = this.getPlanMock(sub.planId);
+      const creatorProfile = this.creatorProfiles.get(sub.creator);
+
+      return {
+        id: sub.id,
+        creatorId: sub.creator,
+        creatorName: creatorProfile?.name || 'Unknown Creator',
+        creatorUsername: sub.creator.substring(0, 8), // Mock username
+        planName: plan ? `${this.getIntervalText(plan.intervalDays)} Subscription` : 'Subscription',
+        price: plan ? parseFloat(plan.amount) : 0,
+        currency: plan ? plan.asset.split(':')[0] : 'XLM',
+        interval: plan && plan.intervalDays === 30 ? 'month' : plan && plan.intervalDays === 365 ? 'year' : 'month',
+        currentPeriodEnd: new Date(sub.expiry * 1000).toISOString(),
+        status: sub.status,
+        createdAt: sub.createdAt.toISOString(),
+      };
+    });
+
+    // Apply sorting
+    if (sort === 'created') { // default to desc for created
+      results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } else { // default to expiry asc
+      results.sort((a, b) => new Date(a.currentPeriodEnd).getTime() - new Date(b.currentPeriodEnd).getTime());
+    }
+
+    // Apply pagination
+    const total = results.length;
+    const skip = (page - 1) * limit;
+    const paginatedResults = results.slice(skip, skip + limit);
+
+    return new PaginatedResponseDto(paginatedResults, total, page, limit);
   }
 
   // ==================== Checkout Methods ====================
@@ -276,7 +360,7 @@ export class SubscriptionsService {
     const explorerUrl = `https://stellar.expert/explorer/testnet/tx/${checkout.txHash}`;
 
     // Create subscription
-    this.addSubscription(checkout.fanAddress, checkout.creatorAddress, checkout.planId, 
+    this.addSubscription(checkout.fanAddress, checkout.creatorAddress, checkout.planId,
       Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60); // 30 days
 
     return {
@@ -298,6 +382,7 @@ export class SubscriptionsService {
     checkout.status = isRejected ? CheckoutStatus.REJECTED : CheckoutStatus.FAILED;
     checkout.error = error;
     checkout.updatedAt = new Date();
+    this.emitRenewalFailureEvent(checkout, error);
 
     return {
       success: false,
@@ -345,5 +430,25 @@ export class SubscriptionsService {
     ];
     return plans.find(p => p.id === planId);
   }
-}
 
+  private emitRenewalFailureEvent(checkout: Checkout, reason: string): void {
+    const payload: RenewalFailurePayload = {
+      subscriptionId: checkout.id,
+      reason,
+      timestamp: new Date().toISOString(),
+      userId: checkout.fanAddress,
+    };
+
+    Promise.resolve()
+      .then(() =>
+        this.subscriptionEventPublisher?.emit(
+          SUBSCRIPTION_RENEWAL_FAILED,
+          payload,
+        ),
+      )
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Failed to emit renewal failure event: ${message}`);
+      });
+  }
+}

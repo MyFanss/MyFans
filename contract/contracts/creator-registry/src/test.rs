@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, Env};
 
 #[test]
 fn test_initialize() {
@@ -20,14 +20,14 @@ fn test_initialize() {
 fn test_register_and_lookup_self() {
     let env = Env::default();
     env.mock_all_auths();
-    
+
     let contract_id = env.register_contract(None, CreatorRegistryContract);
     let client = CreatorRegistryContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let creator = Address::generate(&env);
 
     client.initialize(&admin);
-    
+
     // Register by creator themselves (caller = creator, address = creator)
     client.register_creator(&creator, &creator, &12345);
 
@@ -39,14 +39,14 @@ fn test_register_and_lookup_self() {
 fn test_register_and_lookup_admin() {
     let env = Env::default();
     env.mock_all_auths();
-    
+
     let contract_id = env.register_contract(None, CreatorRegistryContract);
     let client = CreatorRegistryContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let creator = Address::generate(&env);
 
     client.initialize(&admin);
-    
+
     // Register by admin (caller = admin, address = creator)
     client.register_creator(&admin, &creator, &54321);
 
@@ -59,7 +59,7 @@ fn test_register_and_lookup_admin() {
 fn test_unauthorized_registration() {
     let env = Env::default();
     env.mock_all_auths();
-    
+
     let contract_id = env.register_contract(None, CreatorRegistryContract);
     let client = CreatorRegistryContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -67,7 +67,7 @@ fn test_unauthorized_registration() {
     let rando = Address::generate(&env);
 
     client.initialize(&admin);
-    
+
     // Rando tries to register creator
     client.register_creator(&rando, &creator, &999);
 }
@@ -77,15 +77,61 @@ fn test_unauthorized_registration() {
 fn test_duplicate_registration_reverts() {
     let env = Env::default();
     env.mock_all_auths();
-    
+
     let contract_id = env.register_contract(None, CreatorRegistryContract);
     let client = CreatorRegistryContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let creator = Address::generate(&env);
 
     client.initialize(&admin);
-    
+
+    env.ledger().with_mut(|li| li.sequence_number = 1000);
     client.register_creator(&creator, &creator, &111);
-    // Should panic here
+    // Advance past rate limit window so second attempt hits "already registered"
+    env.ledger().with_mut(|li| li.sequence_number = 1015);
     client.register_creator(&creator, &creator, &222);
+}
+
+#[test]
+#[should_panic(expected = "rate limit")]
+fn test_rate_limit_same_caller_within_window_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator1 = Address::generate(&env);
+    let creator2 = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    client.register_creator(&admin, &creator1, &111);
+    // Same caller (admin), different creator, but within rate limit window -> must fail
+    client.register_creator(&admin, &creator2, &222);
+}
+
+#[test]
+fn test_rate_limit_after_window_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator1 = Address::generate(&env);
+    let creator2 = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    client.register_creator(&admin, &creator1, &111);
+    assert_eq!(client.get_creator_id(&creator1), Some(111));
+
+    // Advance past rate limit window (10 ledgers)
+    env.ledger().with_mut(|li| li.sequence_number = 111);
+    client.register_creator(&admin, &creator2, &222);
+    assert_eq!(client.get_creator_id(&creator1), Some(111));
+    assert_eq!(client.get_creator_id(&creator2), Some(222));
 }

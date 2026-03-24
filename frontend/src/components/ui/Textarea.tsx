@@ -18,7 +18,8 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
   { label, error, hint, id: idProp, className = '', ...props },
   ref
 ) {
-  const id = idProp ?? `textarea-${React.useId()}`;
+  const generatedId = React.useId();
+  const id = idProp ?? `textarea-${generatedId}`;
   const errorId = error ? `${id}-error` : undefined;
   const hintId = hint ? `${id}-hint` : undefined;
 
