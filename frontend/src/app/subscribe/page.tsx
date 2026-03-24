@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import WalletConnect from '@/components/WalletConnect';
 import { CreatorCard } from '@/components/cards';
-import { CardSkeletonGrid, EmptyState, SuccessAnimation } from '@/components/ui/states';
+import { CardSkeletonGrid, EmptyState } from '@/components/ui/states';
+import { useToast } from '@/contexts/ToastContext';
 
 interface Creator {
   id: string;
@@ -42,21 +43,15 @@ const CREATOR_DATA: Creator[] = [
 ];
 
 export default function SubscribePage() {
+  const { showLoading, showSuccess, showError, dismiss } = useToast();
   const [query, setQuery] = useState('');
   const [isLoadingCreators, setIsLoadingCreators] = useState(true);
   const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoadingCreators(false), 1100);
     return () => clearTimeout(timer);
   }, []);
-
-  useEffect(() => {
-    if (!successMessage) return;
-    const timer = setTimeout(() => setSuccessMessage(''), 2400);
-    return () => clearTimeout(timer);
-  }, [successMessage]);
 
   const filteredCreators = useMemo(() => {
     const value = query.trim().toLowerCase();
@@ -71,9 +66,19 @@ export default function SubscribePage() {
 
   const handleSubscribe = async (creator: Creator) => {
     setIsSubscribing(creator.id);
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    setIsSubscribing(null);
-    setSuccessMessage(`Subscribed to ${creator.name}`);
+    const loadingToastId = showLoading(`Subscribing to ${creator.name}...`);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      showSuccess(`Subscribed to ${creator.name}`, 'You now have access to their subscriber content.');
+    } catch {
+      showError('TX_FAILED', {
+        message: `Could not subscribe to ${creator.name}`,
+        description: 'Please try again.',
+      });
+    } finally {
+      dismiss(loadingToastId);
+      setIsSubscribing(null);
+    }
   };
 
   return (
@@ -100,11 +105,6 @@ export default function SubscribePage() {
             value={query}
           />
 
-          {successMessage ? (
-            <div className="mt-4">
-              <SuccessAnimation message={successMessage} />
-            </div>
-          ) : null}
         </section>
 
         <section>
