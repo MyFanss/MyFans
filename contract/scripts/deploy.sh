@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -E
+
+on_error() {
+  local exit_code=$?
+  echo "[deploy] failed at line ${BASH_LINENO[0]}: ${BASH_COMMAND}" >&2
+  exit "$exit_code"
+}
+trap on_error ERR
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STELLAR_STATE_DIR="${STELLAR_STATE_DIR:-$ROOT_DIR/.stellar}"
@@ -155,9 +163,9 @@ deploy_contract() {
     exit 1
   fi
 
-  echo "[deploy] deploying $package"
+  echo "[deploy] deploying $package" >&2
   local contract_id
-  contract_id="$("${STELLAR[@]}" -q contract deploy \
+  contract_id="$("${STELLAR[@]}" contract deploy \
     --wasm "$wasm_path" \
     --source-account "$SOURCE_ACCOUNT" \
     --network "$NETWORK" \
@@ -171,7 +179,7 @@ invoke_contract() {
   local contract_id="$1"
   shift
 
-  "${STELLAR[@]}" -q contract invoke \
+  "${STELLAR[@]}" contract invoke \
     --id "$contract_id" \
     --source-account "$SOURCE_ACCOUNT" \
     --network "$NETWORK" \
@@ -184,7 +192,7 @@ invoke_contract_view() {
   local contract_id="$1"
   shift
 
-  "${STELLAR[@]}" -q contract invoke \
+  "${STELLAR[@]}" contract invoke \
     --id "$contract_id" \
     --source-account "$SOURCE_ACCOUNT" \
     --network "$NETWORK" \
