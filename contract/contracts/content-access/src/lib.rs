@@ -102,6 +102,30 @@ impl ContentAccess {
         let access_key = DataKey::Access(buyer, creator, content_id);
         env.storage().instance().get(&access_key).unwrap_or(false)
     }
+
+    /// Get the price for (creator, content_id). Returns None if not set.
+    pub fn get_content_price(env: Env, creator: Address, content_id: u64) -> Option<i128> {
+        let key = DataKey::ContentPrice(creator, content_id);
+        env.storage().instance().get(&key)
+    }
+
+    /// Set the price for a creator's content. Creator must authorize.
+    pub fn set_content_price(env: Env, creator: Address, content_id: u64, price: i128) {
+        creator.require_auth();
+        let key = DataKey::ContentPrice(creator, content_id);
+        env.storage().instance().set(&key, &price);
+    }
+
+    /// Set a new admin address. Current admin must authorize.
+    pub fn set_admin(env: Env, new_admin: Address) {
+        let current_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+        current_admin.require_auth();
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+    }
 }
 
 #[cfg(test)]

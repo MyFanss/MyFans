@@ -9,13 +9,13 @@ export class SocialLinkController {
   constructor(private readonly socialLinksService: SocialLinksService) {}
 
   @Post()
-  @Throttle({ default: { limit: 5, ttl: 60 } })
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   create(@Body() socialLinksDto: SocialLinksDto) {
     return this.socialLinksService.extractUpdatePayload(socialLinksDto);
   }
 
   @Patch(':id')
-  @Throttle({ default: { limit: 5, ttl: 60 } })
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   update(@Param('id') id: string, @Body() socialLinksDto: SocialLinksDto) {
     return this.socialLinksService.extractUpdatePayload(socialLinksDto);
   }

@@ -53,8 +53,9 @@ jobs:
         working-directory: backend
         run: |
           npm run start:dev &
-          npx wait-on http://localhost:3001/health -t 30000
+          npx wait-on http://localhost:3001/v1/health -t 60000
         env:
+          PORT: 3001
           DB_HOST: localhost
           DB_PORT: 5432
           DB_USER: postgres
