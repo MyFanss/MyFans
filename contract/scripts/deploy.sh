@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -E
+
+on_error() {
+  local exit_code=$?
+  echo "[deploy] failed at line ${BASH_LINENO[0]}: ${BASH_COMMAND}" >&2
+  exit "$exit_code"
+}
+trap on_error ERR
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STELLAR_STATE_DIR="${STELLAR_STATE_DIR:-$ROOT_DIR/.stellar}"
@@ -148,15 +156,16 @@ deploy_contract() {
   local wasm_name="${package//-/_}.wasm"
   local wasm_path
 
-  wasm_path="$(find "$ROOT_DIR/target" -type f -path "*/release/$wasm_name" | head -n1 || true)"
+  # Avoid pipefail/SIGPIPE issues from `find | head` under `set -euo pipefail`.
+  wasm_path="$(find "$ROOT_DIR/target" -type f -path "*/release/$wasm_name" -print -quit)"
   if [[ -z "$wasm_path" ]]; then
     echo "Unable to locate wasm for package '$package' after build." >&2
     exit 1
   fi
 
-  echo "[deploy] deploying $package"
+  echo "[deploy] deploying $package" >&2
   local contract_id
-  contract_id="$("${STELLAR[@]}" -q contract deploy \
+  contract_id="$("${STELLAR[@]}" contract deploy \
     --wasm "$wasm_path" \
     --source-account "$SOURCE_ACCOUNT" \
     --network "$NETWORK" \
@@ -170,7 +179,7 @@ invoke_contract() {
   local contract_id="$1"
   shift
 
-  "${STELLAR[@]}" -q contract invoke \
+  "${STELLAR[@]}" contract invoke \
     --id "$contract_id" \
     --source-account "$SOURCE_ACCOUNT" \
     --network "$NETWORK" \
@@ -183,7 +192,7 @@ invoke_contract_view() {
   local contract_id="$1"
   shift
 
-  "${STELLAR[@]}" -q contract invoke \
+  "${STELLAR[@]}" contract invoke \
     --id "$contract_id" \
     --source-account "$SOURCE_ACCOUNT" \
     --network "$NETWORK" \
@@ -199,15 +208,29 @@ SUBSCRIPTION_ID="$(deploy_contract "subscription")"
 CONTENT_ACCESS_ID="$(deploy_contract "content-access")"
 EARNINGS_ID="$(deploy_contract "earnings")"
 
-# Initialize contracts that expose admin-based views.
-invoke_contract "$CREATOR_REGISTRY_ID" init --admin "$SOURCE_PUBLIC_KEY" >/dev/null
-invoke_contract "$SUBSCRIPTION_ID" init --admin "$SOURCE_PUBLIC_KEY" --fee-bps 0 --fee-recipient "$SOURCE_PUBLIC_KEY" >/dev/null
+# Initialize deployed contracts using their actual contract interfaces.
+invoke_contract "$TOKEN_ID" initialize \
+  --admin "$SOURCE_PUBLIC_KEY" \
+  --name "MyFans Token" \
+  --symbol "MFAN" \
+  --decimals 7 \
+  --initial-supply 0 >/dev/null
+invoke_contract "$CREATOR_REGISTRY_ID" initialize --admin "$SOURCE_PUBLIC_KEY" >/dev/null
+invoke_contract "$SUBSCRIPTION_ID" init \
+  --admin "$SOURCE_PUBLIC_KEY" \
+  --fee-bps 0 \
+  --fee-recipient "$SOURCE_PUBLIC_KEY" \
+  --token "$TOKEN_ID" \
+  --price 10000000 >/dev/null
+invoke_contract "$CONTENT_ACCESS_ID" initialize \
+  --admin "$SOURCE_PUBLIC_KEY" \
+  --token-address "$TOKEN_ID" >/dev/null
 invoke_contract "$EARNINGS_ID" init --admin "$SOURCE_PUBLIC_KEY" >/dev/null
 
-# Verify each deployed contract responds.
-TOKEN_VERIFY="$(invoke_contract_view "$TOKEN_ID" version)"
-CREATOR_REGISTRY_VERIFY="$(invoke_contract_view "$CREATOR_REGISTRY_ID" admin)"
-SUBSCRIPTION_VERIFY="$(invoke_contract_view "$SUBSCRIPTION_ID" admin)"
+# Verify each deployed contract responds with a known view method.
+TOKEN_VERIFY="$(invoke_contract_view "$TOKEN_ID" admin)"
+CREATOR_REGISTRY_VERIFY="$(invoke_contract_view "$CREATOR_REGISTRY_ID" get-creator-id --address "$SOURCE_PUBLIC_KEY")"
+SUBSCRIPTION_VERIFY="$(invoke_contract_view "$SUBSCRIPTION_ID" is-paused)"
 CONTENT_ACCESS_VERIFY="$(invoke_contract_view "$CONTENT_ACCESS_ID" has-access --buyer "$SOURCE_PUBLIC_KEY" --creator "$SOURCE_PUBLIC_KEY" --content-id 1)"
 EARNINGS_VERIFY="$(invoke_contract_view "$EARNINGS_ID" admin)"
 
@@ -228,9 +251,9 @@ cat > "$OUTPUT_JSON" <<JSON
     "earnings": "$EARNINGS_ID"
   },
   "verification": {
-    "tokenVersion": "$TOKEN_VERIFY",
-    "creatorRegistryAdmin": "$CREATOR_REGISTRY_VERIFY",
-    "subscriptionsAdmin": "$SUBSCRIPTION_VERIFY",
+    "tokenAdmin": "$TOKEN_VERIFY",
+    "creatorRegistryLookup": "$CREATOR_REGISTRY_VERIFY",
+    "subscriptionsPaused": "$SUBSCRIPTION_VERIFY",
     "contentAccessHasAccess": "$CONTENT_ACCESS_VERIFY",
     "earningsAdmin": "$EARNINGS_VERIFY"
   }
