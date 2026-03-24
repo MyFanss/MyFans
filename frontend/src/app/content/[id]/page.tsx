@@ -73,6 +73,14 @@ export default function ContentPage({ params }: PageProps) {
     // In real app, open share dialog
   };
 
+  const handleCheckAccess = async (): Promise<boolean> => {
+    // Simulate API delay
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    
+    // For demo purposes, we'll return the current isSubscribed state
+    return isSubscribed;
+  };
+
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
       {/* Navigation placeholder */}
@@ -115,6 +123,7 @@ export default function ContentPage({ params }: PageProps) {
           creator={content.creator}
           metadata={content.metadata}
           relatedContent={content.relatedContent}
+          onCheckAccess={handleCheckAccess}
           onSubscribe={handleSubscribe}
           onLike={handleLike}
           onShare={handleShare}
