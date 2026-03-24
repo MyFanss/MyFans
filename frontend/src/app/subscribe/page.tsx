@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import WalletConnect from '@/components/WalletConnect';
+import { BookmarkButton } from '@/components/BookmarkButton';
 import { CreatorCard } from '@/components/cards';
 import { CardSkeletonGrid, EmptyState, SuccessAnimation } from '@/components/ui/states';
 
@@ -130,6 +131,7 @@ export default function SubscribePage() {
                   }
                   bio={creator.bio}
                   key={creator.id}
+                  headerAccessory={<BookmarkButton creatorId={creator.id} />}
                   name={creator.name}
                   subscriberCount={creator.subscriberCount}
                   subscriptionPrice={creator.subscriptionPrice}
