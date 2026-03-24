@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { OnboardingProgress } from '@/components/onboarding';
 import { useOnboarding } from '@/hooks';
+import { useToast } from '@/contexts/ToastContext';
 import AccountType from '@/components/AccountType';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { SocialLinksForm } from '@/components/settings/social-links-form';
 
 export default function OnboardingPage() {
+  const { showSuccess, showInfo, showError } = useToast();
   const {
     currentStep,
     completedSteps,
@@ -46,21 +48,25 @@ export default function OnboardingPage() {
   const handleAccountTypeContinue = () => {
     if (accountType) {
       completeStep('account-type');
+      showSuccess('Account type selected', `You are joining as a ${accountType}.`);
     }
   };
 
   const handleProfileSave = () => {
     if (profileData.displayName && profileData.username) {
       completeStep('profile');
+      showSuccess('Profile updated', 'Your display name and username have been set.');
     }
   };
 
   const handleSocialLinksSave = () => {
     completeStep('social-links');
+    showInfo('Social links saved', 'You can always update these later in settings.');
   };
 
   const handleVerificationComplete = () => {
     completeStep('verification');
+    showSuccess('Wallet verified', 'Your account is now securely linked to your Stellar wallet.');
   };
 
   const renderStepContent = () => {
