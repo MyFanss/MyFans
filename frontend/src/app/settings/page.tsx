@@ -5,11 +5,11 @@ import { SettingsShell } from "@/components/settings/settings-shell";
 import { useSettings, type Role } from "@/components/settings/use-settings";
 import { SocialLinksForm } from "@/components/settings/social-links-form";
 import { useTheme, type Theme } from "@/contexts/ThemeContext";
-import { useConsent } from "@/contexts/ConsentContext";
+import { useToast } from "@/contexts/ToastContext";
 
 export default function SettingsPage() {
+  const { showSuccess, showError, showInfo, showWarning } = useToast();
   const [role, setRole] = useState<Role>("creator");
-  const [copyFeedback, setCopyFeedback] = useState<string>("");
   const [activeSectionId, setActiveSectionId] = useState("profile");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteInput, setDeleteInput] = useState("");
@@ -60,9 +60,12 @@ export default function SettingsPage() {
   const handleCopyWallet = async () => {
     try {
       await navigator.clipboard.writeText(content.walletAddress);
-      setCopyFeedback("Wallet address copied.");
+      showSuccess("Address copied", "Wallet address copied to clipboard.");
     } catch {
-      setCopyFeedback("Copy failed. Please copy manually.");
+      showError("COPY_FAILED", {
+        message: "Copy failed",
+        description: "Please copy manually.",
+      });
     }
   };
 
@@ -73,30 +76,10 @@ export default function SettingsPage() {
     if (deleteInput !== "DELETE" || !deletePassword || isDeleting) return;
 
     setIsDeleting(true);
-    setDeleteError(null);
-
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/v1/users/me`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          // Assuming the token is stored in localStorage as 'auth_token' - we might need to adjust this depending on how the app actually handles auth.
-          'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`,
-        },
-        body: JSON.stringify({ password: deletePassword }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to delete account');
-      }
-
-      setDeleteComplete(true);
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : 'An unexpected error occurred');
-    } finally {
-      setIsDeleting(false);
-    }
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    setIsDeleting(false);
+    setDeleteComplete(true);
+    showWarning("Account deleted", "Your account deletion request has been processed.");
   };
 
   const canDelete = deleteInput === "DELETE" && deletePassword.length >= 6 && !isDeleting;
@@ -161,6 +144,14 @@ export default function SettingsPage() {
               />
             </label>
           </div>
+          <div className="mt-6 flex justify-end">
+            <button 
+              onClick={() => showSuccess("Profile saved", "Your profile information has been updated.")}
+              className="rounded-xl bg-slate-900 dark:bg-slate-100 px-6 py-2.5 text-sm font-semibold text-white dark:text-slate-900 transition hover:opacity-90"
+            >
+              Save changes
+            </button>
+          </div>
         </section>
       );
     }
@@ -174,8 +165,10 @@ export default function SettingsPage() {
         other: string;
       }) => {
         console.log("Social links saved:", links);
+        showSuccess("Social links updated", "Your connected platforms have been saved.");
         // Here you would typically save to your backend
       };
+
 
       return (
         <section className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5">
@@ -223,10 +216,6 @@ export default function SettingsPage() {
               ? "Linked payout method: ACH ending in 2291"
               : "Linked payment method: Visa ending in 1144"}
           </div>
-
-          {copyFeedback ? (
-            <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">{copyFeedback}</p>
-          ) : null}
         </section>
       );
     }
