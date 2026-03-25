@@ -5,15 +5,17 @@ import { User } from './entities/user.entity';
 import { UpdateUserDto } from './dto';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
 import { Creator } from './entities/creator.entity';
+import * as bcrypt from 'bcrypt';
+
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
-     @InjectRepository(User)
+    @InjectRepository(User)
     private creatorRepository: Repository<Creator>
-  ) {}
+  ) { }
 
 
   async findOne(id: string): Promise<User> {
@@ -30,7 +32,7 @@ export class UsersService {
     return this.usersRepository.save(user);
   }
 
-   async findById(id: string): Promise<User> {
+  async findById(id: string): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id } });
 
     if (!user) {
@@ -46,7 +48,7 @@ export class UsersService {
   ) {
     const user = await this.findById(userId);
 
-    
+
     Object.assign(user, dto);
 
     await this.usersRepository.save(user);
@@ -60,4 +62,19 @@ export class UsersService {
       },
     };
   }
+
+  async validatePassword(userId: string, password: string): Promise<boolean> {
+    const user = await this.usersRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'password_hash'],
+    });
+    if (!user) return false;
+    return bcrypt.compare(password, user.password_hash);
+  }
+
+  async remove(userId: string): Promise<void> {
+    const user = await this.findOne(userId);
+    await this.usersRepository.softDelete(user.id);
+  }
 }
+

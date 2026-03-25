@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { connectWallet } from '@/lib/wallet';
-import { useToast } from '@/components/ErrorToast';
+import { useToast } from '@/contexts/ToastContext';
 import { useTransaction } from '@/hooks/useTransaction';
 import type { AppError } from '@/types/errors';
 
@@ -20,7 +20,7 @@ export default function WalletConnect({
   const [address, setAddress] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
 
   const handleConnect = useCallback(async () => {
     setIsConnecting(true);
@@ -31,6 +31,7 @@ export default function WalletConnect({
       if (addr) {
         setAddress(addr);
         onConnect?.(addr);
+        showSuccess('Wallet connected', 'Your wallet is ready for subscriptions.');
       } else {
         // User rejected or wallet not found - error already shown by connectWallet
         setError(null);
@@ -51,13 +52,14 @@ export default function WalletConnect({
     } finally {
       setIsConnecting(false);
     }
-  }, [onConnect, showError]);
+  }, [onConnect, showError, showSuccess]);
 
   const handleDisconnect = useCallback(() => {
     setAddress(null);
     setError(null);
     onDisconnect?.();
-  }, [onDisconnect]);
+    showSuccess('Wallet disconnected');
+  }, [onDisconnect, showSuccess]);
 
   const handleRetry = useCallback(() => {
     setError(null);

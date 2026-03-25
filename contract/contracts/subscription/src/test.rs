@@ -3,7 +3,9 @@
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    token, xdr::ScAddress, Address, Env, TryFromVal,
+    token,
+    xdr::ScAddress,
+    Address, Env, TryFromVal,
 };
 
 fn setup_test() -> (
@@ -118,7 +120,6 @@ fn test_cancel_subscription() {
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
     client.subscribe(&fan, &plan_id, &token.address);
 
-    
     assert!(client.is_subscriber(&fan, &creator));
 
     client.cancel(&fan, &creator);
@@ -350,7 +351,10 @@ fn test_cancel_after_snapshot_restore() {
 
     env2.register_contract(Some(&contract_id2), MyfansContract);
     let client2 = MyfansContractClient::new(&env2, &contract_id2);
-    assert!(client2.is_subscriber(&fan2, &creator2), "state matches after restore");
+    assert!(
+        client2.is_subscriber(&fan2, &creator2),
+        "state matches after restore"
+    );
 
     client2.cancel(&fan2, &creator2);
     assert!(
