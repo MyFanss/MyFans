@@ -7,6 +7,7 @@ import {
   type AppError,
   type ErrorCode,
 } from '@/types/errors';
+import * as logger from '@/lib/logger';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -76,13 +77,17 @@ export class ErrorBoundary extends Component<
 
     this.setState({ error: appError });
 
+    logger.logError({
+      message: `ErrorBoundary caught: ${error.message}`,
+      context: {
+        code: appError.code,
+        componentStack: errorInfo.componentStack ?? undefined,
+      },
+      error,
+    });
+
     // Call custom error handler
     onError?.(appError, errorInfo);
-
-    // Log to console in development
-    if (process.env.NODE_ENV === 'development') {
-      console.error('ErrorBoundary caught an error:', error, errorInfo);
-    }
   }
 
   handleReset = (): void => {
@@ -101,9 +106,13 @@ export class ErrorBoundary extends Component<
         return fallback;
       }
 
+      const displayError = showReset
+        ? error
+        : { ...error, actions: undefined };
+
       return (
         <ErrorFallback
-          error={error}
+          error={displayError}
           onReset={showReset ? this.handleReset : undefined}
           resetLabel={resetLabel}
         />
