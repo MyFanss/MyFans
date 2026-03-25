@@ -1,20 +1,8 @@
-import { IsOptional, IsBoolean, IsNumber, Min, Max } from 'class-validator';
+import { IsOptional, IsBoolean, IsNumber, Min } from 'class-validator';
 import { Type } from 'class-transformer';
+import { PaginationQueryDto } from '../../common/dto';
 
-export class FindCreatorsQueryDto {
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(1)
-  page?: number = 1;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(1)
-  @Max(100)
-  limit?: number = 20;
-
+export class FindCreatorsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @Type(() => Boolean)
   @IsBoolean()
