@@ -497,7 +497,7 @@ fn test_transfer_fails_when_paused() {
     let asset = Address::generate(&env);
 
     client.init(&admin, &250, &fee_recipient);
-    
+
     // Create a plan first (before pausing)
     let plan_id = client.create_plan(&creator, &asset, &1000, &30);
     assert_eq!(plan_id, 1);

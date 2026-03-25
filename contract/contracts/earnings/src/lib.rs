@@ -47,3 +47,5 @@ impl Earnings {
             .unwrap_or(0)
     }
 }
+
+mod test;
