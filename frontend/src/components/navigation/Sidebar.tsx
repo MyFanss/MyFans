@@ -8,6 +8,7 @@ const navItems = [
   { href: '/creators', label: 'Creators', icon: '👥' },
   { href: '/subscribe', label: 'Subscribe', icon: '⭐' },
   { href: '/dashboard', label: 'Dashboard', icon: '📊' },
+  { href: '/notifications', label: 'Notifications', icon: '🔔' },
 ];
 
 export default function Sidebar({ isOpen }: { isOpen: boolean }) {
