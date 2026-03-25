@@ -9,10 +9,12 @@ import { Repository } from 'typeorm';
 import { Creator } from '../creators/entities/creator.entity';
 import { User } from '../users/entities/user.entity';
 import { SubscribeDto } from './dto/subscribe.dto';
+import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 import {
   Subscription,
   SubscriptionStatus,
 } from './entities/subscription.entity';
+import { PaginatedResponseDto } from '../common/dto';
 
 const SUBSCRIPTION_DAYS = 30;
 
@@ -67,6 +69,32 @@ export class SubscriptionsService {
     });
 
     return this.subscriptionRepo.save(subscription);
+  }
+
+  async listSubscriptions(
+    fanId: string,
+    query: ListSubscriptionsQueryDto,
+  ): Promise<PaginatedResponseDto<Subscription>> {
+    const { page = 1, limit = 20, status } = query;
+    const skip = (page - 1) * limit;
+
+    const qb = this.subscriptionRepo
+      .createQueryBuilder('subscription')
+      .leftJoinAndSelect('subscription.creator', 'creator')
+      .leftJoinAndSelect('creator.user', 'creatorUser')
+      .where('subscription.fan = :fanId', { fanId })
+      .orderBy('subscription.created_at', 'DESC');
+
+    if (status) {
+      qb.andWhere('subscription.status = :status', { status });
+    }
+
+    const [subscriptions, total] = await qb
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    return new PaginatedResponseDto(subscriptions, total, page, limit);
   }
 
   async cancel(subscriptionId: string, userId: string) {
