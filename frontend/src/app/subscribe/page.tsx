@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import WalletConnect from '@/components/WalletConnect';
 import { BookmarkButton } from '@/components/BookmarkButton';
+import { FeatureGate } from '@/components/FeatureGate';
 import { CreatorCard } from '@/components/cards';
 import { CardSkeletonGrid, EmptyState, SuccessAnimation } from '@/components/ui/states';
+import { FeatureFlag } from '@/lib/feature-flags';
 
 interface Creator {
   id: string;
@@ -131,7 +133,11 @@ export default function SubscribePage() {
                   }
                   bio={creator.bio}
                   key={creator.id}
-                  headerAccessory={<BookmarkButton creatorId={creator.id} />}
+                  headerAccessory={
+                    <FeatureGate flag={FeatureFlag.BOOKMARKS}>
+                      <BookmarkButton creatorId={creator.id} />
+                    </FeatureGate>
+                  }
                   name={creator.name}
                   subscriberCount={creator.subscriberCount}
                   subscriptionPrice={creator.subscriptionPrice}
