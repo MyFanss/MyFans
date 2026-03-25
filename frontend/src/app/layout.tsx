@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { NoFlashScript } from '@/components/NoFlashScript';
-import { ToastProvider } from '@/components/ErrorToast';
+import { ToastProvider } from '@/contexts/ToastContext';
+import { ToastContainer } from '@/components/ui/Toast';
 import NavLayout from '@/components/navigation/NavLayout';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
@@ -26,6 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <ToastProvider>
             {children}
+            <ToastContainer />
           </ToastProvider>
         </ThemeProvider>
       </body>

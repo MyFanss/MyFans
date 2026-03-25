@@ -5,7 +5,7 @@ import { AvatarUpload } from "@/components/ui/AvatarUpload";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Badge } from "@/components/ui/Badge";
-import { useToast } from "@/components/ErrorToast";
+import { useToast } from "@/contexts/ToastContext";
 
 // Mock data types
 interface SocialLinks {
