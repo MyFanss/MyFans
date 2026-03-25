@@ -2,6 +2,15 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { WalletType, WalletConnectionState } from '@/types/wallet';
+import {
+  saveWalletSession,
+  loadWalletSession,
+  clearWalletSession,
+  sessionToConnectionState,
+  isSessionStale,
+  saveRefreshedSession,
+  type WalletSessionData,
+} from '@/lib/wallet-session';
 
 interface UseWalletReturn {
   connectionState: WalletConnectionState;
@@ -26,6 +35,39 @@ export function useWallet(): UseWalletReturn {
 
   const checkExistingConnection = useCallback(async () => {
     try {
+      // First try to restore from persisted session
+      const savedSession = loadWalletSession();
+      if (savedSession) {
+        // Validate session is still valid by checking current wallet state
+        const freighter = (window as Window & { freighter?: FreighterApi }).freighter;
+        if (freighter) {
+          try {
+            const currentAddress = await freighter.getPublicKey();
+            // If current address matches saved session, restore it
+            if (currentAddress === savedSession.address) {
+              const connectionState = sessionToConnectionState(savedSession);
+              setConnectionState(connectionState);
+              
+              // Refresh session if it's stale
+              if (isSessionStale(savedSession)) {
+                saveRefreshedSession(savedSession);
+              }
+              return;
+            } else {
+              // Address mismatch, clear stale session
+              clearWalletSession();
+            }
+          } catch {
+            // Wallet disconnected, clear session
+            clearWalletSession();
+          }
+        } else {
+          // Wallet not available, clear session
+          clearWalletSession();
+        }
+      }
+      
+      // Check for existing wallet connection without session
       const freighter = (window as Window & { freighter?: FreighterApi }).freighter;
       if (freighter) {
         const publicKey = await freighter.getPublicKey();
@@ -73,9 +115,17 @@ export function useWallet(): UseWalletReturn {
 
     try {
       const address = await connectToWallet(walletType);
+      const newConnectionState = {
+        status: 'connected' as const,
+        address,
+        walletType,
+        network: 'Stellar Mainnet',
+      };
 
-      setConnectionState({
-        status: 'connected',
+      setConnectionState(newConnectionState);
+      
+      // Save session data for persistence
+      saveWalletSession({
         address,
         walletType,
         network: 'Stellar Mainnet',
@@ -93,6 +143,8 @@ export function useWallet(): UseWalletReturn {
 
   const disconnect = useCallback(() => {
     setConnectionState({ status: 'disconnected' });
+    // Clear persisted session on disconnect
+    clearWalletSession();
   }, []);
 
   const openModal = useCallback(() => {

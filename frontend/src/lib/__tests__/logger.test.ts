@@ -2,15 +2,16 @@
  * Tests for secure logger redaction
  */
 
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { logger } from '../logger';
 
 describe('Logger Redaction', () => {
-  let consoleLog: jest.SpyInstance;
-  let consoleError: jest.SpyInstance;
+  let consoleLog: vi.SpyInstance;
+  let consoleError: vi.SpyInstance;
 
   beforeEach(() => {
-    consoleLog = jest.spyOn(console, 'log').mockImplementation();
-    consoleError = jest.spyOn(console, 'error').mockImplementation();
+    consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
+    consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
