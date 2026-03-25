@@ -46,6 +46,9 @@ export class Creator {
   @Column({ name: 'is_verified', default: false })
   is_verified!: boolean;
 
+  @Column({ name: 'followers_count', default: 0 })
+  followers_count!: number;
+
   @CreateDateColumn({ name: 'created_at' })
   created_at!: Date;
 
