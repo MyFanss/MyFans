@@ -2,6 +2,7 @@
  * Creator profile data for public fan-facing page.
  * Replace with API calls when backend is ready.
  */
+import { unstable_cache } from 'next/cache';
 
 export interface CreatorProfile {
   id: string;
@@ -535,18 +536,33 @@ export function getCreatorByUsername(username: string): CreatorProfile | null {
   return MOCK_CREATORS_MAP[key] ?? null;
 }
 
-export function getCreatorPlans(username: string): CreatorPlan[] {
-  const key = username.toLowerCase();
-  return MOCK_PLANS[key] ?? MOCK_PLANS.jane;
-}
+/**
+ * Cached async accessors — Next.js deduplicates and caches these per request.
+ */
+export const getCreatorPlans = unstable_cache(
+  async (username: string): Promise<CreatorPlan[]> => {
+    const key = username.toLowerCase();
+    return MOCK_PLANS[key] ?? MOCK_PLANS.jane;
+  },
+  ['creator-plans'],
+  { revalidate: 60, tags: ['creator-plans'] },
+);
 
-export function getPreviewContent(_username: string): CreatorPost[] {
-  return MOCK_PREVIEW;
-}
+export const getPreviewContent = unstable_cache(
+  async (_username: string): Promise<CreatorPost[]> => {
+    return MOCK_PREVIEW;
+  },
+  ['creator-preview'],
+  { revalidate: 60, tags: ['creator-preview'] },
+);
 
-export function getPosts(_username: string): CreatorPost[] {
-  return MOCK_POSTS;
-}
+export const getPosts = unstable_cache(
+  async (_username: string): Promise<CreatorPost[]> => {
+    return MOCK_POSTS;
+  },
+  ['creator-posts'],
+  { revalidate: 60, tags: ['creator-posts'] },
+);
 
 export function getCurrencySymbol(currency: string): string {
   const map: Record<string, string> = { USD: "$", EUR: "€", GBP: "£" };

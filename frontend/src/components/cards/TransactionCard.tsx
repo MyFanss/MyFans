@@ -1,5 +1,6 @@
 import React from 'react';
 import { BaseCard, BaseCardProps } from './BaseCard';
+import { formatCurrency as formatCurrencyUtil, formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/lib/formatting';
 
 export type TransactionType = 'subscription' | 'tip' | 'purchase' | 'withdrawal' | 'refund' | 'payout';
 export type TransactionStatus = 'completed' | 'pending' | 'failed' | 'cancelled';
@@ -91,23 +92,16 @@ export const TransactionCard: React.FC<TransactionCardProps> = ({
   ...baseProps
 }) => {
   const formatCurrency = (value: number): string => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-    }).format(value);
+    return formatCurrencyUtil(value, currency);
   };
 
   const formatDate = (d: Date | string): string => {
-    const dateObj = typeof d === 'string' ? new Date(d) : d;
-    return dateObj.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+    return formatDateUtil(d, 'medium');
   };
 
   const formatTime = (d: Date | string): string => {
-    const dateObj = typeof d === 'string' ? new Date(d) : d;
+    return formatTimeUtil(d);
+  };
     return dateObj.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
