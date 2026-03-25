@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "module": "commonjs",
+    "strict": true,
+    "esModuleInterop": true,
+    "types": ["node", "@playwright/test"]
+  },
+  "include": ["./**/*.ts"]
+}

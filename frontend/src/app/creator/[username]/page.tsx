@@ -27,6 +27,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const title = `${creator.displayName} (@${creator.username}) | MyFans`;
   const description = creator.bio || `Subscribe to ${creator.displayName} on MyFans`;
   const url = `https://myfans.app/creator/${creator.username}`;
+  const images = creator.avatarUrl ? [{ url: creator.avatarUrl, alt: creator.displayName }] : [];
   return {
     title,
     description,
@@ -36,11 +37,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       url,
       siteName: 'MyFans',
       type: 'profile',
+      images,
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
+      images: images.map((i) => i.url),
     },
     alternates: { canonical: url },
   };
