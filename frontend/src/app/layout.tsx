@@ -3,7 +3,10 @@ import './globals.css';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { FavoritesProvider } from '@/hooks/useFavorites';
 import { NoFlashScript } from '@/components/NoFlashScript';
-import { ToastProvider } from '@/components/ErrorToast';
+import { ToastProvider } from '@/contexts/ToastContext';
+import { ToastContainer } from '@/components/ui/Toast';
+import NavLayout from '@/components/navigation/NavLayout';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export const metadata: Metadata = {
   title: 'MyFans - Decentralized Subscriptions',
@@ -23,9 +26,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <ThemeProvider>
-          <FavoritesProvider>
-            <ToastProvider>{children}</ToastProvider>
-          </FavoritesProvider>
+          <ToastProvider>
+            {children}
+            <ToastContainer />
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

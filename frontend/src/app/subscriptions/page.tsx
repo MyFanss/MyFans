@@ -13,13 +13,16 @@ import {
 } from '@/lib/subscriptions';
 import { BaseCard } from '@/components/cards/BaseCard';
 import HistoryCardSkeleton from '@/components/ui/HistoryCardSkeleton';
+import { useToast } from '@/contexts/ToastContext';
 
 export default function SubscriptionsPage() {
+  const { showInfo, showSuccess, showError, showLoading, dismiss } = useToast();
   const [activeList, setActiveList] = useState<ActiveSubscription[]>([]);
   const [statusFilter, setStatusFilter] = useState('active');
   const [sortOption, setSortOption] = useState('expiry');
   const [cancelTarget, setCancelTarget] = useState<ActiveSubscription | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [renewingId, setRenewingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const cancelModalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -40,14 +43,17 @@ export default function SubscriptionsPage() {
         }
       } catch (err) {
         console.error(err);
-        // Fallback or show error
+        showError('NETWORK_ERROR', {
+          message: 'Could not load subscriptions',
+          description: 'Please refresh and try again.',
+        });
       } finally {
         if (mounted) setIsLoading(false);
       }
     };
     fetchSubscriptions();
     return () => { mounted = false; };
-  }, [statusFilter, sortOption]);
+  }, [showError, sortOption, statusFilter]);
 
   useEffect(() => {
     if (!cancelTarget) return;
@@ -105,14 +111,39 @@ export default function SubscriptionsPage() {
   const handleCancelConfirm = useCallback(async () => {
     if (!cancelTarget) return;
     setIsCancelling(true);
+    const loadingToastId = showLoading(`Cancelling ${cancelTarget.creatorName}...`);
     try {
       // Replace with API: await cancelSubscription(cancelTarget.id);
       setActiveList((prev: ActiveSubscription[]) => prev.filter((s: ActiveSubscription) => s.id !== cancelTarget.id));
       setCancelTarget(null);
+      showInfo('Subscription cancelled', `Access remains active until ${formatDate(cancelTarget.currentPeriodEnd)}.`);
+    } catch {
+      showError('TX_FAILED', {
+        message: 'Could not cancel subscription',
+        description: 'Please try again.',
+      });
     } finally {
+      dismiss(loadingToastId);
       setIsCancelling(false);
     }
-  }, [cancelTarget]);
+  }, [cancelTarget, dismiss, showError, showInfo, showLoading]);
+
+  const handleRenew = useCallback(async (item: SubscriptionHistoryItem) => {
+    setRenewingId(item.id);
+    const loadingToastId = showLoading(`Renewing ${item.creatorName}...`);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      showSuccess('Subscription renewed', `${item.creatorName} ${item.planName} is active again.`);
+    } catch {
+      showError('TX_FAILED', {
+        message: 'Could not renew subscription',
+        description: 'Please try again.',
+      });
+    } finally {
+      dismiss(loadingToastId);
+      setRenewingId(null);
+    }
+  }, [dismiss, showError, showLoading, showSuccess]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -212,7 +243,12 @@ export default function SubscriptionsPage() {
           ) : (
             <ul className="space-y-3">
               {MOCK_HISTORY.map((item) => (
-                <HistoryCard key={item.id} item={item} />
+                <HistoryCard
+                  key={item.id}
+                  item={item}
+                  isRenewing={renewingId === item.id}
+                  onRenew={handleRenew}
+                />
               ))}
             </ul>
           )}
@@ -314,7 +350,15 @@ function EmptyState({
   );
 }
 
-function HistoryCard({ item }: { item: SubscriptionHistoryItem }) {
+function HistoryCard({
+  item,
+  isRenewing,
+  onRenew,
+}: {
+  item: SubscriptionHistoryItem;
+  isRenewing: boolean;
+  onRenew: (item: SubscriptionHistoryItem) => Promise<void>;
+}) {
   return (
     <BaseCard padding="md">
       <p className="font-medium text-gray-900 dark:text-white">
@@ -326,6 +370,16 @@ function HistoryCard({ item }: { item: SubscriptionHistoryItem }) {
       {item.cancelReason && (
         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{item.cancelReason}</p>
       )}
+      <button
+        type="button"
+        onClick={() => {
+          void onRenew(item);
+        }}
+        disabled={isRenewing}
+        className="mt-3 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {isRenewing ? 'Renewing...' : 'Renew subscription'}
+      </button>
     </BaseCard>
   );
 }
