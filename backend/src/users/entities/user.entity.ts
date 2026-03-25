@@ -37,15 +37,53 @@ export class User {
   @Column({ nullable: true })
   avatar_url: string;
 
-// ✅ Notification Preferences
+  // ── Notification channel preferences ──────────────────────────────────
   @Column({ type: 'boolean', default: true })
   email_notifications: boolean;
 
-   @Column({ type: 'boolean', default: false })
+  @Column({ type: 'boolean', default: false })
   push_notifications: boolean;
 
   @Column({ type: 'boolean', default: false })
   marketing_emails: boolean;
+
+  // ── Per-event toggles: email ───────────────────────────────────────────
+  @Column({ type: 'boolean', default: true })
+  email_new_subscriber: boolean;
+
+  @Column({ type: 'boolean', default: true })
+  email_subscription_renewal: boolean;
+
+  @Column({ type: 'boolean', default: true })
+  email_new_comment: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  email_new_like: boolean;
+
+  @Column({ type: 'boolean', default: true })
+  email_new_message: boolean;
+
+  @Column({ type: 'boolean', default: true })
+  email_payout: boolean;
+
+  // ── Per-event toggles: push ────────────────────────────────────────────
+  @Column({ type: 'boolean', default: true })
+  push_new_subscriber: boolean;
+
+  @Column({ type: 'boolean', default: true })
+  push_subscription_renewal: boolean;
+
+  @Column({ type: 'boolean', default: true })
+  push_new_comment: boolean;
+
+  @Column({ type: 'boolean', default: true })
+  push_new_like: boolean;
+
+  @Column({ type: 'boolean', default: true })
+  push_new_message: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  push_payout: boolean;
 
   @Column({
     type: 'enum',

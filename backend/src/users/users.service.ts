@@ -45,18 +45,30 @@ export class UsersService {
     dto: UpdateNotificationsDto,
   ) {
     const user = await this.findById(userId);
-
-    
     Object.assign(user, dto);
-
     await this.usersRepository.save(user);
 
     return {
       message: 'Notification preferences updated successfully',
       preferences: {
+        // channels
         email_notifications: user.email_notifications,
         push_notifications: user.push_notifications,
         marketing_emails: user.marketing_emails,
+        // per-event email
+        email_new_subscriber: user.email_new_subscriber,
+        email_subscription_renewal: user.email_subscription_renewal,
+        email_new_comment: user.email_new_comment,
+        email_new_like: user.email_new_like,
+        email_new_message: user.email_new_message,
+        email_payout: user.email_payout,
+        // per-event push
+        push_new_subscriber: user.push_new_subscriber,
+        push_subscription_renewal: user.push_subscription_renewal,
+        push_new_comment: user.push_new_comment,
+        push_new_like: user.push_new_like,
+        push_new_message: user.push_new_message,
+        push_payout: user.push_payout,
       },
     };
   }
