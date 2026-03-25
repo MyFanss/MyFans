@@ -2,8 +2,10 @@ import { Module } from '@nestjs/common';
 import { SubscriptionsController } from './subscriptions.controller';
 import { SUBSCRIPTION_EVENT_PUBLISHER } from './events';
 import { SubscriptionsService } from './subscriptions.service';
+import { EventsModule } from '../events/events.module';
 
 @Module({
+  imports: [EventsModule],
   controllers: [SubscriptionsController],
   providers: [
     SubscriptionsService,

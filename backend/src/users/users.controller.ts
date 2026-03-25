@@ -10,24 +10,26 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { UpdateUserDto, UserProfileDto } from './dto';
+import { UpdateUserDto, UserProfileDto, DeleteAccountDto } from './dto';
 import { plainToInstance } from 'class-transformer';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
 import { AuthGuard } from 'src/utils/auth.guard';
 import { User } from './entities/user.entity';
+import { Delete, HttpCode, HttpStatus, UnauthorizedException } from '@nestjs/common';
+
 
 @Controller({ path: 'users', version: '1' })
 @UseInterceptors(ClassSerializerInterceptor)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
 
   @UseGuards(AuthGuard)
   @Get('me')
   async getMe(@Req() req): Promise<UserProfileDto> {
-    
+
     const userId = req.user.id;
-    if(!userId) {
+    if (!userId) {
       throw new Error('User ID not found in request');
     }
     const user = await this.usersService.findOne(userId);
@@ -41,7 +43,7 @@ export class UsersController {
     const user = await this.usersService.update(userId, updateUserDto);
     return plainToInstance(UserProfileDto, user);
   }
-   @Patch('me/notifications')
+  @Patch('me/notifications')
   async updateNotifications(
     @Req() req,
     @Body() dto: UpdateNotificationsDto,
@@ -52,5 +54,16 @@ export class UsersController {
     );
   }
 
-  
+  @UseGuards(AuthGuard)
+  @Delete('me')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeMe(@Req() req, @Body() deleteAccountDto: DeleteAccountDto): Promise<void> {
+    const userId = req.user.id;
+    const isValid = await this.usersService.validatePassword(userId, deleteAccountDto.password);
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid password');
+    }
+    await this.usersService.remove(userId);
+  }
 }
+
