@@ -24,6 +24,7 @@ import AssetSelectorComponent from "./AssetSelector";
 import WalletBalanceComponent from "./WalletBalance";
 import TransactionPreviewComponent from "./TransactionPreview";
 import CheckoutResultDisplay from "./CheckoutResult";
+import TxFailureRecovery from "./TxFailureRecovery";
 
 export type CheckoutStep = "select" | "preview" | "confirm" | "result";
 
@@ -422,13 +423,15 @@ export default function CheckoutFlow({
 
             <TransactionPreviewComponent preview={transactionPreview} />
 
-            {/* Transaction error */}
+            {/* Transaction error with guided recovery */}
             {tx.error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
-                <p className="text-sm text-red-700 dark:text-red-300">
-                  {tx.error.message}
-                </p>
-              </div>
+              <TxFailureRecovery
+                error={tx.error}
+                onRetry={() => tx.retry()}
+                onDismiss={() => { tx.reset(); setCurrentStep('preview'); }}
+                retryCount={tx.retryCount}
+                maxRetries={3}
+              />
             )}
 
             <div className="flex gap-3">
