@@ -25,4 +25,4 @@ function logError(payload) {
   }
 }
 
-module.exports = { logError };
+module.exports = { logError, __esModule: true };
