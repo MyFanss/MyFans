@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { WalletOption } from './WalletOption';
 import { ConnectedWalletView } from './ConnectedWalletView';
 import type { WalletType, WalletConnectionState } from '@/types/wallet';
+import { useToast } from '@/contexts/ToastContext';
 
 interface WalletSelectionModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ export function WalletSelectionModal({
   onConnect,
   onDisconnect,
 }: WalletSelectionModalProps) {
+  const { showLoading, showSuccess, showError, dismiss } = useToast();
   const [connectionState, setConnectionState] = useState<WalletConnectionState>({
     status: 'disconnected',
   });
@@ -81,10 +83,11 @@ export function WalletSelectionModal({
 
   const handleWalletSelect = useCallback(async (walletType: WalletType) => {
     setConnectionState({ status: 'connecting', walletType });
+    const loadingToastId = showLoading(`Connecting ${walletType} wallet...`, 'Approve the connection in your wallet app.');
 
     try {
       const address = await connectToWallet(walletType);
-      
+      dismiss(loadingToastId);
       setConnectionState({
         status: 'connected',
         address,
@@ -93,15 +96,21 @@ export function WalletSelectionModal({
       });
 
       onConnect?.(address, walletType);
+      showSuccess('Wallet connected', `${walletType} wallet is ready.`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to connect';
+      dismiss(loadingToastId);
       setConnectionState({
         status: 'error',
         error: errorMessage,
         walletType,
       });
+      showError('WALLET_CONNECTION_FAILED', {
+        message: 'Wallet connection failed',
+        description: errorMessage,
+      });
     }
-  }, [onConnect]);
+  }, [dismiss, onConnect, showError, showLoading, showSuccess]);
 
   const handleDisconnect = useCallback(() => {
     setConnectionState({ status: 'disconnected' });

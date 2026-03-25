@@ -16,7 +16,7 @@ import {
   CheckoutResult,
 } from "@/lib/checkout";
 import { useTransaction } from "@/hooks/useTransaction";
-import { useToast } from "@/components/ErrorToast";
+import { useToast } from "@/contexts/ToastContext";
 
 import PlanSummaryComponent from "./PlanSummary";
 import PriceBreakdownComponent from "./PriceBreakdown";
