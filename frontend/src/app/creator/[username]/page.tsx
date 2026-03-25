@@ -1,8 +1,10 @@
+import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
+  getAllCreators,
   getCreatorByUsername,
   getCreatorPlans,
   getPreviewContent,
@@ -10,9 +12,25 @@ import {
   getCurrencySymbol,
   type CreatorProfile,
 } from '@/lib/creator-profile';
+import { BookmarkButton } from '@/components/BookmarkButton';
 import { PlanCard } from '@/components/cards';
 import { ContentCard } from '@/components/cards';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+
+/**
+ * ISR: Regenerate creator pages at most once per minute.
+ * Zero-cost for repeat visits within that window.
+ */
+export const revalidate = 60;
+
+/**
+ * Pre-render all known creator pages at build time (SSG).
+ * Eliminates cold SSR for every visitor.
+ */
+export async function generateStaticParams() {
+  const creators = getAllCreators();
+  return creators.map((c) => ({ username: c.username }));
+}
 
 interface PageProps {
   params: Promise<{ username: string }>;
@@ -21,29 +39,20 @@ interface PageProps {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { username } = await params;
   const creator = getCreatorByUsername(username);
+  
   if (!creator) {
-    return { title: 'Creator Not Found' };
+    return {
+      title: 'Creator Not Found | MyFans',
+      description: 'The creator you are looking for does not exist or has been removed.',
+      robots: {
+        index: false,
+        follow: false,
+      },
+    };
   }
-  const title = `${creator.displayName} (@${creator.username}) | MyFans`;
-  const description = creator.bio || `Subscribe to ${creator.displayName} on MyFans`;
-  const url = `https://myfans.app/creator/${creator.username}`;
-  return {
-    title,
-    description,
-    openGraph: {
-      title,
-      description,
-      url,
-      siteName: 'MyFans',
-      type: 'profile',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-    },
-    alternates: { canonical: url },
-  };
+
+  const plans = getCreatorPlans(username);
+  return createCreatorMetadata(creator, plans, getCurrencySymbol);
 }
 
 export default async function CreatorProfilePage({ params }: PageProps) {
@@ -53,15 +62,21 @@ export default async function CreatorProfilePage({ params }: PageProps) {
     notFound();
   }
 
-  const plans = getCreatorPlans(username);
-  const previewContent = getPreviewContent(username);
-  const posts = getPosts(username);
+  /**
+   * Critical-path data fetched in parallel.
+   * Plans and preview are above-the-fold; posts stream separately.
+   */
+  const [plans, previewContent] = await Promise.all([
+    getCreatorPlans(username),
+    getPreviewContent(username),
+  ]);
 
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <CreatorHero creator={creator} />
         <main className="max-w-5xl mx-auto px-4 py-8 sm:px-6">
+          {/* Plans — critical path, rendered immediately */}
           <section className="mb-10" aria-labelledby="plans-heading">
             <h2 id="plans-heading" className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
               Subscription plans
@@ -90,6 +105,7 @@ export default async function CreatorProfilePage({ params }: PageProps) {
             </div>
           </section>
 
+          {/* Preview — critical path, rendered immediately */}
           <section className="mb-10" aria-labelledby="preview-heading">
             <h2 id="preview-heading" className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
               Preview
@@ -114,32 +130,63 @@ export default async function CreatorProfilePage({ params }: PageProps) {
             </div>
           </section>
 
+          {/* Posts — below the fold; streamed independently via Suspense */}
           <section aria-labelledby="posts-heading">
             <h2 id="posts-heading" className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
               Posts
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {posts.map((post) => (
-                <ContentCard
-                  key={post.id}
-                  title={post.title}
-                  type={post.type}
-                  thumbnailUrl={post.thumbnailUrl}
-                  description={post.excerpt}
-                  publishedAt={post.publishedAt}
-                  viewCount={post.viewCount}
-                  likeCount={post.likeCount}
-                  status="published"
-                  isLocked={post.isLocked}
-                  creatorName={creator.displayName}
-                  creatorAvatar={creator.avatarUrl}
-                />
-              ))}
-            </div>
+            <Suspense fallback={<PostsSkeleton />}>
+              <PostsSection username={username} creator={creator} />
+            </Suspense>
           </section>
         </main>
       </div>
     </ErrorBoundary>
+  );
+}
+
+/** Async server component — streams independently of the critical path */
+async function PostsSection({
+  username,
+  creator,
+}: {
+  username: string;
+  creator: CreatorProfile;
+}) {
+  const posts = await getPosts(username);
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {posts.map((post) => (
+        <ContentCard
+          key={post.id}
+          title={post.title}
+          type={post.type}
+          thumbnailUrl={post.thumbnailUrl}
+          description={post.excerpt}
+          publishedAt={post.publishedAt}
+          viewCount={post.viewCount}
+          likeCount={post.likeCount}
+          status="published"
+          isLocked={post.isLocked}
+          creatorName={creator.displayName}
+          creatorAvatar={creator.avatarUrl}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Skeleton fallback rendered while PostsSection streams in */
+function PostsSkeleton() {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-pulse">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div
+          key={i}
+          className="rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 h-40"
+        />
+      ))}
+    </div>
   );
 }
 
@@ -151,40 +198,52 @@ function CreatorHero({ creator }: { creator: CreatorProfile }) {
         <div className="flex flex-col sm:flex-row sm:items-end gap-4">
           <div className="flex-shrink-0 w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-white dark:border-gray-900 bg-gray-200 dark:bg-gray-700 overflow-hidden flex items-center justify-center">
             {creator.avatarUrl ? (
-              <Image src={creator.avatarUrl} alt="" width={128} height={128} className="w-full h-full object-cover" />
+              <Image
+                src={creator.avatarUrl}
+                alt=""
+                width={128}
+                height={128}
+                className="w-full h-full object-cover"
+                priority
+              />
             ) : (
               <span className="text-3xl sm:text-4xl font-bold text-gray-500 dark:text-gray-400">
                 {creator.displayName.charAt(0)}
               </span>
             )}
           </div>
-          <div className="pb-1 flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-              {creator.displayName}
-            </h1>
-            <p className="text-gray-500 dark:text-gray-400">@{creator.username}</p>
-            <p className="mt-2 text-sm font-medium text-gray-600 dark:text-gray-300">
-              {creator.subscriberCount.toLocaleString()} subscribers
-            </p>
-            {creator.bio && (
-              <p className="mt-2 text-gray-600 dark:text-gray-300 max-w-2xl">{creator.bio}</p>
-            )}
-            {creator.socialLinks.length > 0 && (
-              <ul className="mt-3 flex flex-wrap gap-3" aria-label="Social links">
-                {creator.socialLinks.map((link) => (
-                  <li key={link.platform}>
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
-                    >
-                      {link.label ?? link.platform}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <div className="pb-1 flex-1 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+                {creator.displayName}
+              </h1>
+              <p className="text-gray-500 dark:text-gray-400">@{creator.username}</p>
+              <p className="mt-2 text-sm font-medium text-gray-600 dark:text-gray-300">
+                {creator.subscriberCount.toLocaleString()} subscribers
+              </p>
+              {creator.bio && (
+                <p className="mt-2 text-gray-600 dark:text-gray-300 max-w-2xl">{creator.bio}</p>
+              )}
+              {creator.socialLinks.length > 0 && (
+                <ul className="mt-3 flex flex-wrap gap-3" aria-label="Social links">
+                  {creator.socialLinks.map((link) => (
+                    <li key={link.platform}>
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+                      >
+                        {link.label ?? link.platform}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="flex-shrink-0">
+              <BookmarkButton creatorId={creator.id} showLabel className="shadow-sm shadow-black/5" />
+            </div>
           </div>
         </div>
       </div>
