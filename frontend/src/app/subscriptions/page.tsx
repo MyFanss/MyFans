@@ -5,12 +5,11 @@ import Link from 'next/link';
 import {
   MOCK_HISTORY,
   MOCK_PAYMENTS,
-  getCurrencySymbol,
-  formatDate,
   type ActiveSubscription,
   type SubscriptionHistoryItem,
   type PaymentRecord,
 } from '@/lib/subscriptions';
+import { formatCurrency, formatDate } from '@/lib/formatting';
 import { BaseCard } from '@/components/cards/BaseCard';
 import HistoryCardSkeleton from '@/components/ui/HistoryCardSkeleton';
 import { useToast } from '@/contexts/ToastContext';
@@ -262,7 +261,7 @@ export default function SubscriptionsPage() {
                         <span className="text-gray-500 dark:text-gray-400 font-normal"> · {sub.planName}</span>
                       </p>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                        {getCurrencySymbol(sub.currency)}{sub.price.toFixed(2)}/{sub.interval} · Renews {formatDate(sub.currentPeriodEnd)}
+                        {formatCurrency(sub.price, sub.currency)}/{sub.interval} · Renews {formatDate(sub.currentPeriodEnd)}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -483,7 +482,7 @@ function HistoryCard({
         {item.creatorName} · {item.planName}
       </p>
       <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-        {getCurrencySymbol(item.currency)}{item.price.toFixed(2)} · {formatDate(item.startedAt)} – {formatDate(item.endedAt)}
+        {formatCurrency(item.price, item.currency)} · {formatDate(item.startedAt)} – {formatDate(item.endedAt)}
       </p>
       {item.cancelReason && (
         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{item.cancelReason}</p>
@@ -517,7 +516,7 @@ function PaymentCard({ payment }: { payment: PaymentRecord }) {
       </div>
       <div className="flex items-center gap-2 sm:gap-4">
         <span className="font-medium text-gray-900 dark:text-white">
-          {getCurrencySymbol(payment.currency)}{payment.amount.toFixed(2)}
+          {formatCurrency(payment.amount, payment.currency)}
         </span>
         <span className={`text-sm capitalize ${statusColor}`}>{payment.status}</span>
       </div>
