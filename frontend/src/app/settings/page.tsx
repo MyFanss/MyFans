@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { SettingsShell } from "@/components/settings/settings-shell";
 import { useSettings, type Role } from "@/components/settings/use-settings";
 import { SocialLinksForm } from "@/components/settings/social-links-form";
@@ -20,6 +20,9 @@ export default function SettingsPage() {
   const { navItems } = useSettings(role);
   const { theme, preference, setTheme } = useTheme();
   const { consent, setConsent } = useConsent();
+  const deleteModalRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const deleteTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   const content = useMemo(
     () =>
@@ -92,6 +95,84 @@ export default function SettingsPage() {
     setDeleteComplete(false);
     setDeleteError(null);
   };
+
+  // Prevent background scroll when modal is open
+  useEffect(() => {
+    if (!showDeleteModal) return;
+
+    const originalOverflow = document.body.style.overflow;
+    const originalPaddingRight = document.body.style.paddingRight;
+
+    // Check if scrollbar is present
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    document.body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.paddingRight = originalPaddingRight;
+    };
+  }, [showDeleteModal]);
+
+  // Focus trap and keyboard handling for delete modal
+  useEffect(() => {
+    if (!showDeleteModal) return;
+
+    previousFocusRef.current = document.activeElement as HTMLElement;
+    const modalElement = deleteModalRef.current;
+
+    const focusableSelector =
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    const focusFirstElement = () => {
+      const firstFocusable = modalElement?.querySelector<HTMLElement>(focusableSelector);
+      firstFocusable?.focus();
+    };
+
+    // Focus first element after a brief delay
+    const focusTimeout = setTimeout(focusFirstElement, 10);
+
+    const handleModalKeyDown = (event: KeyboardEvent) => {
+      if (!deleteModalRef.current) return;
+
+      if (event.key === 'Escape' && !isDeleting) {
+        closeDeleteModal();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = Array.from(
+        deleteModalRef.current.querySelectorAll<HTMLElement>(focusableSelector),
+      );
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleModalKeyDown);
+
+    return () => {
+      clearTimeout(focusTimeout);
+      document.removeEventListener('keydown', handleModalKeyDown);
+      deleteTriggerRef.current?.focus();
+      if (!deleteTriggerRef.current) {
+        previousFocusRef.current?.focus();
+      }
+    };
+  }, [showDeleteModal, isDeleting]);
 
   const themeOptions: { value: Theme; label: string; icon: string }[] = [
     { value: 'light', label: 'Light', icon: '☀️' },
@@ -351,6 +432,7 @@ export default function SettingsPage() {
               className="mt-4 w-full rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 sm:w-auto"
               onClick={() => setShowDeleteModal(true)}
               type="button"
+              ref={deleteTriggerRef}
             >
               Delete account
             </button>
@@ -516,44 +598,69 @@ export default function SettingsPage() {
 
       {/* Delete confirmation modal */}
       {showDeleteModal ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 dark:bg-black/60 p-4 sm:items-center">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-800 p-4 shadow-xl sm:p-5">
+        <div 
+          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 dark:bg-black/60 p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-modal-title"
+          aria-describedby="delete-modal-description"
+        >
+          <div 
+            ref={deleteModalRef}
+            tabIndex={-1}
+            className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-800 p-4 shadow-xl sm:p-5 focus:outline-none"
+          >
             {!deleteComplete ? (
               <>
-                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
+                <h3 
+                  id="delete-modal-title"
+                  className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg"
+                >
                   Confirm account deletion
                 </h3>
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                  This action is <strong>irreversible</strong>. You will lose access to:
-                </p>
-                <ul className="mt-2 list-disc pl-5 text-sm text-slate-600 dark:text-slate-400">
-                  <li>Your public profile and bio</li>
-                  <li>Subscription history and analytics</li>
-                  <li>Any unreleased content drafts</li>
-                  {role === "fan" && <li>Followed creators and saved content</li>}
-                  {role === "creator" && <li>Creator payout history and unwithdrawn funds</li>}
-                </ul>
-                <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
-                  To proceed, type <strong>DELETE</strong> and enter your password.
-                </p>
+                <div id="delete-modal-description">
+                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                    This action is <strong>irreversible</strong>. You will lose access to:
+                  </p>
+                  <ul className="mt-2 list-disc pl-5 text-sm text-slate-600 dark:text-slate-400">
+                    <li>Your public profile and bio</li>
+                    <li>Subscription history and analytics</li>
+                    <li>Any unreleased content drafts</li>
+                    {role === "fan" && <li>Followed creators and saved content</li>}
+                    {role === "creator" && <li>Creator payout history and unwithdrawn funds</li>}
+                  </ul>
+                  <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
+                    To proceed, type <strong>DELETE</strong> and enter your password.
+                  </p>
+                </div>
 
                 <form className="mt-4 space-y-3" onSubmit={handleDeleteAccount}>
+                  <label htmlFor="delete-confirmation-input" className="sr-only">
+                    Type DELETE to confirm
+                  </label>
                   <input
+                    id="delete-confirmation-input"
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-600"
                     onChange={(e) => setDeleteInput(e.target.value)}
                     placeholder="Type DELETE"
                     type="text"
                     value={deleteInput}
+                    aria-required="true"
                   />
+                  <label htmlFor="delete-password-input" className="sr-only">
+                    Enter your password
+                  </label>
                   <input
+                    id="delete-password-input"
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-600"
                     onChange={(e) => setDeletePassword(e.target.value)}
                     placeholder="Enter your password"
                     type="password"
                     value={deletePassword}
+                    aria-required="true"
                   />
                   {deleteError && (
-                    <p className="text-sm text-rose-600 dark:text-rose-400">{deleteError}</p>
+                    <p className="text-sm text-rose-600 dark:text-rose-400" role="alert">{deleteError}</p>
                   )}
                   <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                     <button
@@ -567,6 +674,7 @@ export default function SettingsPage() {
                       className="w-full rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:bg-rose-300 sm:w-auto"
                       disabled={!canDelete}
                       type="submit"
+                      aria-disabled={!canDelete}
                     >
                       {isDeleting ? "Deleting..." : "Delete"}
                     </button>
@@ -575,8 +683,8 @@ export default function SettingsPage() {
               </>
             ) : (
               <div className="py-2 text-center">
-                <p className="text-3xl">Goodbye</p>
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                <p className="text-3xl" aria-hidden="true">👋</p>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400" role="status">
                   Your deletion request has been successfully submitted.
                 </p>
                 <button

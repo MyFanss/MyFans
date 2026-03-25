@@ -31,6 +31,27 @@ export function WalletSelectionModal({
     onClose();
   }, [connectionState.status, onClose]);
 
+  // Prevent background scroll
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const originalOverflow = document.body.style.overflow;
+    const originalPaddingRight = document.body.style.paddingRight;
+
+    // Check if scrollbar is present
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    document.body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.paddingRight = originalPaddingRight;
+    };
+  }, [isOpen]);
+
   // Focus trap
   useEffect(() => {
     if (!isOpen) return;
@@ -38,8 +59,10 @@ export function WalletSelectionModal({
     // Store previously focused element
     previousFocusRef.current = document.activeElement as HTMLElement;
 
-    // Focus modal
-    modalRef.current?.focus();
+    // Focus modal after a brief delay to ensure it's rendered
+    const focusTimeout = setTimeout(() => {
+      modalRef.current?.focus();
+    }, 10);
 
     // Handle Tab key for focus trap
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -75,6 +98,7 @@ export function WalletSelectionModal({
     document.addEventListener('keydown', handleKeyDown);
 
     return () => {
+      clearTimeout(focusTimeout);
       document.removeEventListener('keydown', handleKeyDown);
       // Restore focus
       previousFocusRef.current?.focus();
