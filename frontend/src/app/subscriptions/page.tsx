@@ -63,6 +63,16 @@ export default function SubscriptionsPage() {
     const target = cancelTarget || renewTarget;
     if (!target) return;
 
+    // Prevent background scroll
+    const originalOverflow = document.body.style.overflow;
+    const originalPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    document.body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
     previousFocusRef.current = document.activeElement as HTMLElement;
     const modalRef = cancelTarget ? cancelModalRef : renewModalRef;
     const modalElement = modalRef.current;
@@ -75,7 +85,8 @@ export default function SubscriptionsPage() {
       firstFocusable?.focus();
     };
 
-    focusFirstElement();
+    // Focus first element after a brief delay
+    const focusTimeout = setTimeout(focusFirstElement, 10);
 
     const handleModalKeyDown = (event: KeyboardEvent) => {
       if (!modalRef.current) return;
@@ -108,6 +119,7 @@ export default function SubscriptionsPage() {
     document.addEventListener('keydown', handleModalKeyDown);
 
     return () => {
+      clearTimeout(focusTimeout);
       document.removeEventListener('keydown', handleModalKeyDown);
       modalTriggerRef.current?.focus();
       if (!modalTriggerRef.current) {
@@ -334,13 +346,18 @@ export default function SubscriptionsPage() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="cancel-dialog-title"
+          aria-describedby="cancel-dialog-description"
         >
-          <div ref={cancelModalRef} tabIndex={-1} className="max-w-md w-full focus-visible:outline-none">
+          <div 
+            ref={cancelModalRef} 
+            tabIndex={-1} 
+            className="max-w-md w-full focus:outline-none"
+          >
             <BaseCard padding="lg">
               <h3 id="cancel-dialog-title" className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                 Cancel subscription?
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              <p id="cancel-dialog-description" className="text-sm text-gray-500 dark:text-gray-400 mb-4">
                 You will lose access to {cancelTarget.creatorName}&apos;s {cancelTarget.planName} content at the end of your current billing period ({formatDate(cancelTarget.currentPeriodEnd)}). You can resubscribe anytime.
               </p>
               <div className="flex gap-3 justify-end">
@@ -349,6 +366,7 @@ export default function SubscriptionsPage() {
                   onClick={() => setCancelTarget(null)}
                   disabled={isCancelling}
                   className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                  aria-disabled={isCancelling}
                 >
                   Keep subscription
                 </button>
@@ -357,6 +375,7 @@ export default function SubscriptionsPage() {
                   onClick={handleCancelConfirm}
                   disabled={isCancelling}
                   className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg disabled:opacity-50"
+                  aria-disabled={isCancelling}
                 >
                   {isCancelling ? 'Cancelling…' : 'Cancel subscription'}
                 </button>
