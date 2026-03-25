@@ -1,48 +1,58 @@
-import { logError } from '@/lib/logger';
+/**
+ * Tests for secure logger redaction
+ */
 
-describe('logError', () => {
-  let consoleSpy: jest.SpyInstance;
+import { logger } from '../logger';
+
+describe('Logger Redaction', () => {
+  let consoleLog: jest.SpyInstance;
+  let consoleError: jest.SpyInstance;
 
   beforeEach(() => {
-    consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    process.env.NODE_ENV = 'development';
+    consoleLog = jest.spyOn(console, 'log').mockImplementation();
+    consoleError = jest.spyOn(console, 'error').mockImplementation();
   });
 
   afterEach(() => {
-    consoleSpy.mockRestore();
-    process.env.NODE_ENV = 'test';
+    consoleLog.mockRestore();
+    consoleError.mockRestore();
   });
 
-  it('logs a JSON entry with the provided correlationId', () => {
-    logError({ message: 'test error', correlationId: 'corr-123' });
-    expect(consoleSpy).toHaveBeenCalledTimes(1);
-    const [prefix, json] = consoleSpy.mock.calls[0];
-    expect(prefix).toBe('[MyFans]');
-    const parsed = JSON.parse(json);
-    expect(parsed.correlationId).toBe('corr-123');
-    expect(parsed.message).toBe('test error');
-    expect(parsed.level).toBe('error');
-    expect(parsed.timestamp).toBeDefined();
+  it('redacts tokens', () => {
+    logger.info('Auth', { token: 'secret_token_12345678' });
+    expect(consoleLog).toHaveBeenCalledWith('[INFO] Auth', expect.objectContaining({
+      token: 'secr...5678'
+    }));
   });
 
-  it('generates a session correlationId when none is provided', () => {
-    logError({ message: 'no corr id' });
-    const [, json] = consoleSpy.mock.calls[0];
-    const parsed = JSON.parse(json);
-    expect(parsed.correlationId).toBeTruthy();
-    expect(typeof parsed.correlationId).toBe('string');
+  it('redacts wallet addresses', () => {
+    logger.info('Wallet', { address: 'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H' });
+    expect(consoleLog).toHaveBeenCalledWith('[INFO] Wallet', expect.objectContaining({
+      address: 'GBRP...OX2H'
+    }));
   });
 
-  it('includes context when provided', () => {
-    logError({ message: 'ctx test', correlationId: 'x', context: { segment: 'dashboard' } });
-    const [, json] = consoleSpy.mock.calls[0];
-    const parsed = JSON.parse(json);
-    expect(parsed.context).toEqual({ segment: 'dashboard' });
+  it('redacts emails', () => {
+    logger.info('User', { email: 'user@example.com' });
+    expect(consoleLog).toHaveBeenCalledWith('[INFO] User', expect.objectContaining({
+      email: 'us***@example.com'
+    }));
   });
 
-  it('does not log in test environment', () => {
-    process.env.NODE_ENV = 'test';
-    logError({ message: 'silent' });
-    expect(consoleSpy).not.toHaveBeenCalled();
+  it('redacts private keys', () => {
+    logger.error('Key error', { privateKey: 'SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' });
+    expect(consoleError).toHaveBeenCalledWith('[ERROR] Key error', expect.objectContaining({
+      privateKey: expect.stringContaining('...')
+    }));
+  });
+
+  it('redacts nested objects', () => {
+    logger.info('Nested', { user: { email: 'test@test.com', token: 'abc123xyz' } });
+    expect(consoleLog).toHaveBeenCalledWith('[INFO] Nested', expect.objectContaining({
+      user: expect.objectContaining({
+        email: expect.stringContaining('***'),
+        token: expect.stringContaining('...')
+      })
+    }));
   });
 });

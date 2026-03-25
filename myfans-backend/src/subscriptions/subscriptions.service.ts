@@ -11,10 +11,12 @@ import { User } from '../users/entities/user.entity';
 import { FanSummaryQueryDto } from './dto/fan-summary-query.dto';
 import { FanSummaryDto } from './dto/fan-summary.dto';
 import { SubscribeDto } from './dto/subscribe.dto';
+import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 import {
   Subscription,
   SubscriptionStatus,
 } from './entities/subscription.entity';
+import { PaginatedResponseDto } from '../common/dto';
 
 const SUBSCRIPTION_DAYS = 30;
 
@@ -71,41 +73,30 @@ export class SubscriptionsService {
     return this.subscriptionRepo.save(subscription);
   }
 
-  async getFanSummary(fanId: string, query: FanSummaryQueryDto): Promise<FanSummaryDto> {
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+  async listSubscriptions(
+    fanId: string,
+    query: ListSubscriptionsQueryDto,
+  ): Promise<PaginatedResponseDto<Subscription>> {
+    const { page = 1, limit = 20, status } = query;
     const skip = (page - 1) * limit;
 
-    const [subscriptions, total] = await this.subscriptionRepo
-      .createQueryBuilder('sub')
-      .leftJoinAndSelect('sub.creator', 'creator')
-      .leftJoinAndSelect('creator.user', 'user')
-      .where('sub.fan_id = :fanId', { fanId })
-      .andWhere('sub.status = :status', { status: SubscriptionStatus.ACTIVE })
-      .orderBy('sub.expires_at', 'ASC')
+    const qb = this.subscriptionRepo
+      .createQueryBuilder('subscription')
+      .leftJoinAndSelect('subscription.creator', 'creator')
+      .leftJoinAndSelect('creator.user', 'creatorUser')
+      .where('subscription.fan = :fanId', { fanId })
+      .orderBy('subscription.created_at', 'DESC');
+
+    if (status) {
+      qb.andWhere('subscription.status = :status', { status });
+    }
+
+    const [subscriptions, total] = await qb
       .skip(skip)
       .take(limit)
       .getManyAndCount();
 
-    const items = subscriptions.map((sub) => ({
-      subscription_id: sub.id,
-      creator_id: sub.creator.id,
-      creator_username: sub.creator.user?.username ?? null,
-      creator_display_name: sub.creator.user?.display_name ?? null,
-      plan_id: sub.plan_id,
-      started_at: sub.started_at,
-      expires_at: sub.expires_at,
-      renew_date: sub.expires_at,
-    }));
-
-    return {
-      total_active: total,
-      items,
-      total,
-      page,
-      limit,
-      total_pages: Math.ceil(total / limit),
-    };
+    return new PaginatedResponseDto(subscriptions, total, page, limit);
   }
 
   async cancel(subscriptionId: string, userId: string) {

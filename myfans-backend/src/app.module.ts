@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import configuration from './config/configuration';
 import { validate } from './config/env.validation';
+import { MetricsModule } from './metrics/metrics.module';
 import { UsersModule } from './users/users.module';
 import { CreatorsModule } from './creators/creators.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
@@ -18,6 +19,7 @@ import { redisStore } from 'cache-manager-redis-yet';
 
 @Module({
   imports: [
+    MetricsModule,
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
