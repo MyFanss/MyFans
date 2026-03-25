@@ -170,4 +170,117 @@ describe('SubscriptionsController (e2e)', () => {
         expect(res.body.status).toBe(SubscriptionStatus.CANCELLED);
       });
   });
+
+  describe('GET /subscriptions/fan/summary', () => {
+    it('returns 401 without auth', () => {
+      return request(app.getHttpServer())
+        .get('/subscriptions/fan/summary')
+        .expect(401);
+    });
+
+    it('returns empty summary when fan has no active subscriptions', () => {
+      return request(app.getHttpServer())
+        .get('/subscriptions/fan/summary')
+        .set('X-User-Id', fan.id)
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.total_active).toBe(0);
+          expect(res.body.items).toHaveLength(0);
+          expect(res.body.total).toBe(0);
+          expect(res.body.page).toBe(1);
+          expect(res.body.limit).toBe(20);
+          expect(res.body.total_pages).toBe(0);
+        });
+    });
+
+    it('returns active subscription with correct shape and renew_date', async () => {
+      await request(app.getHttpServer())
+        .post('/subscriptions')
+        .set('X-User-Id', fan.id)
+        .send({ creator_id: creator.id })
+        .expect(201);
+
+      return request(app.getHttpServer())
+        .get('/subscriptions/fan/summary')
+        .set('X-User-Id', fan.id)
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.total_active).toBe(1);
+          expect(res.body.items).toHaveLength(1);
+          expect(res.body.total_pages).toBe(1);
+
+          const item = res.body.items[0];
+          expect(item).toHaveProperty('subscription_id');
+          expect(item.creator_id).toBe(creator.id);
+          expect(item.creator_username).toBe('creator');
+          expect(item).toHaveProperty('started_at');
+          expect(item).toHaveProperty('expires_at');
+          expect(item.renew_date).toBe(item.expires_at);
+        });
+    });
+
+    it('does not include cancelled subscriptions in summary', async () => {
+      const createRes = await request(app.getHttpServer())
+        .post('/subscriptions')
+        .set('X-User-Id', fan.id)
+        .send({ creator_id: creator.id })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .delete(`/subscriptions/${createRes.body.id}`)
+        .set('X-User-Id', fan.id)
+        .expect(200);
+
+      return request(app.getHttpServer())
+        .get('/subscriptions/fan/summary')
+        .set('X-User-Id', fan.id)
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.total_active).toBe(0);
+          expect(res.body.items).toHaveLength(0);
+        });
+    });
+
+    it('respects pagination query params', async () => {
+      await request(app.getHttpServer())
+        .post('/subscriptions')
+        .set('X-User-Id', fan.id)
+        .send({ creator_id: creator.id })
+        .expect(201);
+
+      return request(app.getHttpServer())
+        .get('/subscriptions/fan/summary?page=1&limit=5')
+        .set('X-User-Id', fan.id)
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.page).toBe(1);
+          expect(res.body.limit).toBe(5);
+          expect(res.body.total_pages).toBe(1);
+        });
+    });
+
+    it('returns empty items on page beyond total', async () => {
+      await request(app.getHttpServer())
+        .post('/subscriptions')
+        .set('X-User-Id', fan.id)
+        .send({ creator_id: creator.id })
+        .expect(201);
+
+      return request(app.getHttpServer())
+        .get('/subscriptions/fan/summary?page=99&limit=20')
+        .set('X-User-Id', fan.id)
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.items).toHaveLength(0);
+          expect(res.body.total_active).toBe(1);
+        });
+    });
+
+    it('rejects invalid pagination params with 400', () => {
+      return request(app.getHttpServer())
+        .get('/subscriptions/fan/summary?page=0&limit=200')
+        .set('X-User-Id', fan.id)
+        .expect(400);
+    });
+  });
 });
