@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { SettingsShell } from "@/components/settings/settings-shell";
 import { useSettings, type Role } from "@/components/settings/use-settings";
 import { SocialLinksForm } from "@/components/settings/social-links-form";
+import { NotificationPreferencesForm } from "@/components/settings/NotificationPreferencesForm";
 import { useTheme, type Theme } from "@/contexts/ThemeContext";
 
 export default function SettingsPage() {
@@ -211,24 +212,10 @@ export default function SettingsPage() {
             Notifications
           </h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Choose which updates you receive in email, push, and in-app
-            channels.
+            Choose which updates you receive and on which channels.
           </p>
-
-          <div className="mt-4 space-y-3">
-            {content.notifications.map((item) => (
-              <label
-                className="flex w-full items-center justify-between gap-4 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-3 text-sm text-slate-700 dark:text-slate-300"
-                key={item}
-              >
-                <span>{item}</span>
-                <input
-                  className="h-4 w-4 shrink-0 accent-slate-900 dark:accent-slate-100"
-                  defaultChecked
-                  type="checkbox"
-                />
-              </label>
-            ))}
+          <div className="mt-5">
+            <NotificationPreferencesForm />
           </div>
         </section>
       );

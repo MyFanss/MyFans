@@ -41,7 +41,30 @@ export class UsersController {
     const user = await this.usersService.update(userId, updateUserDto);
     return plainToInstance(UserProfileDto, user);
   }
-   @Patch('me/notifications')
+  @UseGuards(AuthGuard)
+  @Get('me/notifications')
+  async getNotifications(@Req() req) {
+    const user = await this.usersService.findOne(req.user.id);
+    return {
+      email_notifications: user.email_notifications,
+      push_notifications: user.push_notifications,
+      marketing_emails: user.marketing_emails,
+      email_new_subscriber: user.email_new_subscriber,
+      email_subscription_renewal: user.email_subscription_renewal,
+      email_new_comment: user.email_new_comment,
+      email_new_like: user.email_new_like,
+      email_new_message: user.email_new_message,
+      email_payout: user.email_payout,
+      push_new_subscriber: user.push_new_subscriber,
+      push_subscription_renewal: user.push_subscription_renewal,
+      push_new_comment: user.push_new_comment,
+      push_new_like: user.push_new_like,
+      push_new_message: user.push_new_message,
+      push_payout: user.push_payout,
+    };
+  }
+
+  @Patch('me/notifications')
   async updateNotifications(
     @Req() req,
     @Body() dto: UpdateNotificationsDto,
