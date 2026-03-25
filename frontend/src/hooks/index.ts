@@ -26,3 +26,10 @@ export { useWallet } from './useWallet';
 
 // Onboarding hook
 export { useOnboarding } from './useOnboarding';
+
+// Content actions hook (optimistic updates)
+export {
+  useContentActions,
+  type ContentMeta,
+  type ContentActionsState,
+} from './useContentActions';

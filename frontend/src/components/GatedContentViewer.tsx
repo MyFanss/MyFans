@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
+import { useContentActions } from '@/hooks/useContentActions';
 
 export type ContentType = 'image' | 'video' | 'audio' | 'text' | 'live';
 
@@ -48,8 +49,8 @@ export interface GatedContentViewerProps {
   }>;
   /** Callback when user clicks subscribe */
   onSubscribe?: () => void;
-  /** Callback when user likes content */
-  onLike?: () => void;
+  /** Callback when user likes content — receives new liked state, should return a promise */
+  onLike?: (liked: boolean) => Promise<void>;
   /** Callback when user shares content */
   onShare?: () => void;
 }
@@ -80,17 +81,20 @@ export function GatedContentViewer({
   onLike,
   onShare,
 }: GatedContentViewerProps) {
-  const [isLiked, setIsLiked] = useState(false);
+  const { state: actions, toggleLike, clearError } = useContentActions(
+    {
+      likeCount: metadata?.likeCount ?? 0,
+      commentCount: metadata?.commentCount ?? 0,
+      isLiked: false,
+    },
+    { onLike },
+  );
+
   const [contentImageLoaded, setContentImageLoaded] = useState<Record<string, boolean>>({});
   const [relatedLoaded, setRelatedLoaded] = useState<Record<string, boolean>>({});
-  
+
   // Determine if content should be locked
   const showLockedState = isGated && !isSubscribed;
-  
-  const handleLike = () => {
-    setIsLiked(!isLiked);
-    onLike?.();
-  };
 
   const formatDate = (date?: Date | string) => {
     if (!date) return '';
@@ -280,20 +284,27 @@ export function GatedContentViewer({
         {/* Action Buttons */}
         <div className="flex items-center gap-4 mb-6">
           <button
-            onClick={handleLike}
+            onClick={toggleLike}
             type="button"
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
-              isLiked 
-                ? 'bg-red-100 text-red-600 focus-visible:outline-red-600 dark:bg-red-900/30' 
+            disabled={actions.isPending}
+            aria-label={actions.isLiked ? 'Unlike' : 'Like'}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 disabled:cursor-not-allowed ${
+              actions.isLiked
+                ? 'bg-red-100 text-red-600 focus-visible:outline-red-600 dark:bg-red-900/30'
                 : 'bg-gray-100 text-gray-600 focus-visible:outline-primary-500 dark:bg-gray-800 hover:bg-gray-200'
             }`}
           >
-            <svg className="w-5 h-5" fill={isLiked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              className={`w-5 h-5 ${actions.isPending ? 'animate-pulse' : ''}`}
+              fill={actions.isLiked ? 'currentColor' : 'none'}
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
             </svg>
-            {formatCount((metadata?.likeCount || 0) + (isLiked ? 1 : 0))}
+            {formatCount(actions.likeCount)}
           </button>
-          
+
           <button
             onClick={onShare}
             type="button"
@@ -305,6 +316,14 @@ export function GatedContentViewer({
             Share
           </button>
         </div>
+
+        {/* Error banner — shown on rollback */}
+        {actions.error && (
+          <div role="alert" className="flex items-center justify-between mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+            <span>{actions.error}</span>
+            <button onClick={clearError} type="button" aria-label="Dismiss" className="ml-4 text-red-500 hover:text-red-700">✕</button>
+          </div>
+        )}
 
         {/* Creator Card */}
         <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg mb-6">
