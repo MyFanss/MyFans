@@ -77,10 +77,12 @@ impl ContentAccess {
         // Store access record
         env.storage().instance().set(&access_key, &true);
 
-        // Emit event
+        // Emit structured unlock event:
+        //   topics : (symbol "content_unlocked", buyer, creator)
+        //   data   : (content_id, amount)
         env.events().publish(
             (
-                Symbol::new(&env, "ContentUnlocked"),
+                Symbol::new(&env, "content_unlocked"),
                 buyer.clone(),
                 creator.clone(),
             ),
@@ -133,7 +135,7 @@ mod test {
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Events},
-        vec, Env, IntoVal,
+        vec, Address, Env, IntoVal, Symbol, TryIntoVal,
     };
 
     // Mock token contract for testing
@@ -205,7 +207,7 @@ mod test {
                 (
                     contract_id.clone(),
                     (
-                        Symbol::new(&env, "ContentUnlocked"),
+                        Symbol::new(&env, "content_unlocked"),
                         buyer.clone(),
                         creator.clone()
                     )
@@ -407,5 +409,89 @@ mod test {
 
         client.initialize(&admin, &token_address);
         client.initialize(&admin, &token_address);
+    }
+
+    // ── #295 – detailed unlock event fields ──────────────────────────────────
+
+    /// Verifies every field of the content_unlocked event individually:
+    ///   topics[0] = Symbol "content_unlocked"
+    ///   topics[1] = buyer  (Address)
+    ///   topics[2] = creator (Address)
+    ///   data      = (content_id: u64, amount: i128)
+    #[test]
+    fn test_unlock_event_fields() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &42, &750);
+        client.unlock_content(&buyer, &creator, &42);
+
+        let all_events = env.events().all();
+
+        // Find the content_unlocked event by its first topic symbol.
+        let unlock_event = all_events.iter().find(|e| {
+            e.1.first().is_some_and(|t| {
+                t.try_into_val(&env).ok() == Some(Symbol::new(&env, "content_unlocked"))
+            })
+        });
+
+        assert!(unlock_event.is_some(), "content_unlocked event not emitted");
+        let event = unlock_event.unwrap();
+
+        // ── topics ────────────────────────────────────────────────────────────
+        assert_eq!(event.1.len(), 3, "expected 3 topics: (name, buyer, creator)");
+
+        let topic_name: Symbol = event.1.get(0).unwrap().try_into_val(&env).unwrap();
+        assert_eq!(topic_name, Symbol::new(&env, "content_unlocked"));
+
+        let event_buyer: Address = event.1.get(1).unwrap().try_into_val(&env).unwrap();
+        assert_eq!(event_buyer, buyer, "buyer mismatch in topics");
+
+        let event_creator: Address = event.1.get(2).unwrap().try_into_val(&env).unwrap();
+        assert_eq!(event_creator, creator, "creator mismatch in topics");
+
+        // ── data: (content_id, amount) ────────────────────────────────────────
+        let (event_content_id, event_amount): (u64, i128) =
+            event.2.try_into_val(&env).unwrap();
+        assert_eq!(event_content_id, 42u64, "content_id mismatch in data");
+        assert_eq!(event_amount, 750i128, "amount mismatch in data");
+    }
+
+    /// Duplicate unlock emits no second event (idempotent early-return).
+    #[test]
+    fn test_duplicate_unlock_emits_no_second_event() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &1, &100);
+
+        client.unlock_content(&buyer, &creator, &1);
+        let count_after_first = env
+            .events()
+            .all()
+            .iter()
+            .filter(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, "content_unlocked"))
+                })
+            })
+            .count();
+
+        client.unlock_content(&buyer, &creator, &1); // idempotent – no-op
+        let count_after_second = env
+            .events()
+            .all()
+            .iter()
+            .filter(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, "content_unlocked"))
+                })
+            })
+            .count();
+
+        assert_eq!(count_after_first, 1);
+        assert_eq!(count_after_second, 1, "duplicate unlock must not emit a second event");
     }
 }
