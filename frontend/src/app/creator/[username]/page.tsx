@@ -39,29 +39,20 @@ interface PageProps {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { username } = await params;
   const creator = getCreatorByUsername(username);
+  
   if (!creator) {
-    return { title: 'Creator Not Found' };
+    return {
+      title: 'Creator Not Found | MyFans',
+      description: 'The creator you are looking for does not exist or has been removed.',
+      robots: {
+        index: false,
+        follow: false,
+      },
+    };
   }
-  const title = `${creator.displayName} (@${creator.username}) | MyFans`;
-  const description = creator.bio || `Subscribe to ${creator.displayName} on MyFans`;
-  const url = `https://myfans.app/creator/${creator.username}`;
-  return {
-    title,
-    description,
-    openGraph: {
-      title,
-      description,
-      url,
-      siteName: 'MyFans',
-      type: 'profile',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-    },
-    alternates: { canonical: url },
-  };
+
+  const plans = getCreatorPlans(username);
+  return createCreatorMetadata(creator, plans, getCurrencySymbol);
 }
 
 export default async function CreatorProfilePage({ params }: PageProps) {
