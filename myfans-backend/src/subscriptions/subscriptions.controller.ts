@@ -12,6 +12,7 @@ import {
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '../users/entities/user.entity';
+import { FanSummaryQueryDto } from './dto/fan-summary-query.dto';
 import { SubscribeDto } from './dto/subscribe.dto';
 import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 import { SubscriptionsService } from './subscriptions.service';

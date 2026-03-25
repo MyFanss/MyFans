@@ -7,6 +7,7 @@ import {
   type AppError,
   type ErrorCode,
 } from '@/types/errors';
+import * as logger from '@/lib/logger';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -27,6 +28,8 @@ interface ErrorBoundaryProps {
 interface ErrorBoundaryState {
   hasError: boolean;
   error: AppError | null;
+  resetCount: number;
+  renderChildren: boolean;
 }
 
 /**
@@ -51,16 +54,15 @@ export class ErrorBoundary extends Component<
 > {
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, resetCount: 0, renderChildren: true };
   }
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
     const appError = createAppError('UNKNOWN_ERROR', {
       message: error.message,
       cause: error,
     });
-
-    return { hasError: true, error: appError };
+    return { hasError: true, error: appError, renderChildren: false };
   }
 
   override componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
@@ -69,48 +71,68 @@ export class ErrorBoundary extends Component<
     const appError = createAppError(errorCode ?? 'UNKNOWN_ERROR', {
       message: error.message,
       cause: error,
-      context: {
-        componentStack: errorInfo.componentStack,
-      },
+      context: { componentStack: errorInfo.componentStack },
     });
 
-    this.setState({ error: appError });
+    this.setState({ hasError: true, error: appError, renderChildren: false });
 
-    // Call custom error handler
+    logger.logError({
+      message: `ErrorBoundary caught: ${error.message}`,
+      context: {
+        code: appError.code,
+        componentStack: errorInfo.componentStack ?? undefined,
+      },
+      error,
+    });
+
     onError?.(appError, errorInfo);
+  }
 
-    // Log to console in development
-    if (process.env.NODE_ENV === 'development') {
-      console.error('ErrorBoundary caught an error:', error, errorInfo);
+  override componentDidUpdate(prevProps: ErrorBoundaryProps, prevState: ErrorBoundaryState): void {
+    // Auto-reset when children change after an error (e.g. parent rerenders with fixed props)
+    if (
+      this.state.hasError &&
+      prevState.hasError &&
+      prevProps.children !== this.props.children
+    ) {
+      this.setState({ hasError: false, error: null, renderChildren: true });
+    }
+    // Re-enable children rendering after reset clears the error
+    if (prevState.hasError && !this.state.hasError && !this.state.renderChildren) {
+      this.setState({ renderChildren: true });
     }
   }
 
   handleReset = (): void => {
     const { onReset } = this.props;
-    this.setState({ hasError: false, error: null });
+    this.setState((s) => ({
+      hasError: false,
+      error: null,
+      resetCount: s.resetCount + 1,
+      renderChildren: false,
+    }));
     onReset?.();
   };
 
   override render(): ReactNode {
     const { children, fallback, showReset = true, resetLabel } = this.props;
-    const { hasError, error } = this.state;
+    const { hasError, error, renderChildren } = this.state;
 
     if (hasError && error) {
-      // Use custom fallback if provided
-      if (fallback) {
-        return fallback;
-      }
+      if (fallback) return fallback;
+
+      const displayError = showReset ? error : { ...error, actions: undefined };
 
       return (
         <ErrorFallback
-          error={error}
+          error={displayError}
           onReset={showReset ? this.handleReset : undefined}
           resetLabel={resetLabel}
         />
       );
     }
 
-    return children;
+    return renderChildren ? children : null;
   }
 }
 

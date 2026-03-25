@@ -8,6 +8,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Creator } from '../creators/entities/creator.entity';
 import { User } from '../users/entities/user.entity';
+import { FanSummaryQueryDto } from './dto/fan-summary-query.dto';
+import { FanSummaryDto } from './dto/fan-summary.dto';
 import { SubscribeDto } from './dto/subscribe.dto';
 import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 import {
