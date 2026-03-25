@@ -12,6 +12,7 @@ import {
   getCurrencySymbol,
   type CreatorProfile,
 } from '@/lib/creator-profile';
+import { BookmarkButton } from '@/components/BookmarkButton';
 import { PlanCard } from '@/components/cards';
 import { ContentCard } from '@/components/cards';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -220,33 +221,38 @@ function CreatorHero({ creator }: { creator: CreatorProfile }) {
               </span>
             )}
           </div>
-          <div className="pb-1 flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-              {creator.displayName}
-            </h1>
-            <p className="text-gray-500 dark:text-gray-400">@{creator.username}</p>
-            <p className="mt-2 text-sm font-medium text-gray-600 dark:text-gray-300">
-              {creator.subscriberCount.toLocaleString()} subscribers
-            </p>
-            {creator.bio && (
-              <p className="mt-2 text-gray-600 dark:text-gray-300 max-w-2xl">{creator.bio}</p>
-            )}
-            {creator.socialLinks.length > 0 && (
-              <ul className="mt-3 flex flex-wrap gap-3" aria-label="Social links">
-                {creator.socialLinks.map((link) => (
-                  <li key={link.platform}>
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
-                    >
-                      {link.label ?? link.platform}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <div className="pb-1 flex-1 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+                {creator.displayName}
+              </h1>
+              <p className="text-gray-500 dark:text-gray-400">@{creator.username}</p>
+              <p className="mt-2 text-sm font-medium text-gray-600 dark:text-gray-300">
+                {creator.subscriberCount.toLocaleString()} subscribers
+              </p>
+              {creator.bio && (
+                <p className="mt-2 text-gray-600 dark:text-gray-300 max-w-2xl">{creator.bio}</p>
+              )}
+              {creator.socialLinks.length > 0 && (
+                <ul className="mt-3 flex flex-wrap gap-3" aria-label="Social links">
+                  {creator.socialLinks.map((link) => (
+                    <li key={link.platform}>
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+                      >
+                        {link.label ?? link.platform}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="flex-shrink-0">
+              <BookmarkButton creatorId={creator.id} showLabel className="shadow-sm shadow-black/5" />
+            </div>
           </div>
         </div>
       </div>
