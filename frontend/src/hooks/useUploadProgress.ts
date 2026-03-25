@@ -7,7 +7,7 @@ interface UploadProgress {
 }
 
 export function useUploadProgress() {
-  const progressRef = useRef<(progress: UploadProgress) => void>();
+  const progressRef = useRef<(progress: UploadProgress) => void>(undefined);
 
   const uploadWithProgress = useCallback(
     async (file: File, onProgress?: (progress: UploadProgress) => void): Promise<void> => {
