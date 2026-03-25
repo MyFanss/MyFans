@@ -5,6 +5,7 @@ import { SettingsShell } from "@/components/settings/settings-shell";
 import { useSettings, type Role } from "@/components/settings/use-settings";
 import { SocialLinksForm } from "@/components/settings/social-links-form";
 import { useTheme, type Theme } from "@/contexts/ThemeContext";
+import { useConsent } from "@/contexts/ConsentContext";
 
 export default function SettingsPage() {
   const [role, setRole] = useState<Role>("creator");
@@ -18,6 +19,7 @@ export default function SettingsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const { navItems } = useSettings(role);
   const { theme, preference, setTheme } = useTheme();
+  const { consent, setConsent } = useConsent();
 
   const content = useMemo(
     () =>
@@ -325,6 +327,31 @@ export default function SettingsPage() {
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             Security, access, and account lifecycle controls.
           </p>
+
+          <div className="mt-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/20 p-4">
+            <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200">
+              Privacy and Data
+            </h3>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              Manage your telemetry and analytics consent preferences.
+            </p>
+            <div className="mt-4 flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Enhance experience with telemetry
+              </span>
+              <button
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors ${consent ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-600'}`}
+                onClick={() => setConsent(!consent)}
+                role="switch"
+                aria-checked={consent ?? false}
+              >
+                <span className="sr-only">Toggle telemetry consent</span>
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${consent ? 'translate-x-6' : 'translate-x-1'}`}
+                />
+              </button>
+            </div>
+          </div>
 
           <div className="mt-5 rounded-2xl border border-rose-200 dark:border-rose-800/50 bg-rose-50 dark:bg-rose-900/20 p-4">
             <h3 className="text-base font-semibold text-rose-800 dark:text-rose-400">
