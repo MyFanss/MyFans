@@ -7,6 +7,7 @@ import {
   Index,
   OneToOne,
   JoinColumn,
+  DeleteDateColumn,
 } from 'typeorm';
 import { Creator } from '../../creators/entities/creator.entity';
 
@@ -104,4 +105,7 @@ export class User {
 
   @UpdateDateColumn()
   updated_at: Date;
+  
+  @DeleteDateColumn()
+  deleted_at: Date;
 }
