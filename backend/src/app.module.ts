@@ -26,6 +26,8 @@ import { GamesModule } from './games/games.module';
 import { Game } from './games/entities/game.entity';
 import { Player } from './games/entities/player.entity';
 import { Creator } from './creators/entities/creator.entity';
+import { NotificationsModule } from './notifications/notifications.module';
+import { Notification } from './notifications/entities/notification.entity';
 
 @Module({
   imports: [
@@ -46,6 +48,7 @@ import { Creator } from './creators/entities/creator.entity';
         Like,
         Game,
         Player,
+        Notification,
       ],
       synchronize: true,
     }),
@@ -74,6 +77,7 @@ import { Creator } from './creators/entities/creator.entity';
     ConversationsModule,
     LikesModule,
     GamesModule,
+    NotificationsModule,
   ],
   controllers: [AppController, ExampleController],
   providers: [
