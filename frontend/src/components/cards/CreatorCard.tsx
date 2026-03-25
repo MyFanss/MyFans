@@ -40,6 +40,10 @@ export interface CreatorCardProps extends Omit<BaseCardProps, 'children'> {
    */
   actionButton?: React.ReactNode;
   /**
+   * Optional accessory shown in the card header.
+   */
+  headerAccessory?: React.ReactNode;
+  /**
    * Location string
    */
   location?: string;
@@ -75,6 +79,7 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
   isVerified = false,
   categories = [],
   actionButton,
+  headerAccessory,
   location,
   className = '',
   ...baseProps
@@ -138,6 +143,7 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
             </p>
           )}
         </div>
+        {headerAccessory ? <div className="flex-shrink-0">{headerAccessory}</div> : null}
       </div>
 
       {/* Bio */}
