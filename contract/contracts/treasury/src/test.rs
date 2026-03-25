@@ -6,8 +6,13 @@ use soroban_sdk::{
     Address, Env, IntoVal, Symbol,
 };
 
-fn create_token_contract<'a>(env: &Env, admin: &Address) -> (Address, TokenClient<'a>, StellarAssetClient<'a>) {
-    let contract_address = env.register_stellar_asset_contract_v2(admin.clone()).address();
+fn create_token_contract<'a>(
+    env: &Env,
+    admin: &Address,
+) -> (Address, TokenClient<'a>, StellarAssetClient<'a>) {
+    let contract_address = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let token_client = TokenClient::new(env, &contract_address);
     let admin_client = StellarAssetClient::new(env, &contract_address);
     (contract_address, token_client, admin_client)
@@ -20,7 +25,7 @@ fn test_deposit_and_withdraw() {
 
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
-    
+
     let (token_address, token_client, admin_client) = create_token_contract(&env, &admin);
     admin_client.mint(&user, &1000);
 
