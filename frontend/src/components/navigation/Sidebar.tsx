@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ThemeToggle } from './../../components/ThemeToggle';
+import NetworkStatus from './NetworkStatus';
 
 const navItems = [
   { href: '/', label: 'Home', icon: '🏠' },
@@ -28,6 +29,9 @@ export default function Sidebar({ isOpen }: { isOpen: boolean }) {
             </Link>
           ))}
         </nav>
+        <div className="px-4 py-2 opacity-80">
+          <NetworkStatus />
+        </div>
         <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between">
           <span className="text-sm text-gray-500 dark:text-gray-400">Theme</span>
           <ThemeToggle />
