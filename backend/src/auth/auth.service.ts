@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class AuthService {
-  validateStellarAddress(address: string): boolean {
-    return address.startsWith('G') && address.length === 56;
+  validateStellarAddress(address: string | undefined): boolean {
+    return typeof address === 'string' && address.startsWith('G') && address.length === 56;
   }
 
   async createSession(stellarAddress: string) {

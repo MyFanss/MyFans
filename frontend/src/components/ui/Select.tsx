@@ -26,7 +26,8 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
   { label, options, placeholder, error, hint, id: idProp, className = '', ...props },
   ref
 ) {
-  const id = idProp ?? `select-${React.useId()}`;
+  const generatedId = React.useId();
+  const id = idProp ?? `select-${generatedId}`;
   const errorId = error ? `${id}-error` : undefined;
   const hintId = hint ? `${id}-hint` : undefined;
 
