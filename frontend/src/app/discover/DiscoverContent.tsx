@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { BookmarkButton } from "@/components/BookmarkButton";
 import { CreatorCard } from "@/components/cards";
 import {
   CATEGORIES,
@@ -271,6 +272,7 @@ function DiscoverContentInner() {
               isVerified={creator.isVerified}
               categories={creator.categories}
               location={creator.location}
+              headerAccessory={<BookmarkButton creatorId={creator.id} />}
               actionButton={
                 <a
                   href={`/creator/${creator.username}`}

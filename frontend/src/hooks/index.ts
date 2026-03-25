@@ -27,8 +27,5 @@ export { useWallet } from './useWallet';
 // Onboarding hook
 export { useOnboarding } from './useOnboarding';
 
-// Image upload hook
-export { useImageUpload } from './useImageUpload';
-
-// Upload progress hook
-export { useUploadProgress } from './useUploadProgress';
+// Favorites hook
+export { FavoritesProvider, useFavorites } from './useFavorites';

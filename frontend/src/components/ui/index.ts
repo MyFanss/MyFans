@@ -22,5 +22,5 @@ export type { StatusIndicatorProps, StatusType } from './StatusIndicator';
 export { AvatarUpload } from './AvatarUpload';
 export type { AvatarUploadProps } from './AvatarUpload';
 
-export { ImageUpload } from './ImageUpload';
-export type { ImageUploadProps } from './ImageUpload';
+export { ToastContainer } from './Toast';
+export type { ToastContainerProps } from './Toast';
