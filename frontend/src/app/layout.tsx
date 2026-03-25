@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { FavoritesProvider } from '@/hooks/useFavorites';
 import { NoFlashScript } from '@/components/NoFlashScript';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { ToastContainer } from '@/components/ui/Toast';
