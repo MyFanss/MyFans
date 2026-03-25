@@ -59,8 +59,8 @@ export interface GatedContentViewerProps {
   onCheckAccess?: () => Promise<boolean>;
   /** Callback when user clicks subscribe */
   onSubscribe?: () => void;
-  /** Callback when user likes content */
-  onLike?: () => void;
+  /** Callback when user likes content — receives new liked state, should return a promise */
+  onLike?: (liked: boolean) => Promise<void>;
   /** Callback when user shares content */
   onShare?: () => void;
 }
