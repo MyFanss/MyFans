@@ -26,3 +26,6 @@ export { useWallet } from './useWallet';
 
 // Onboarding hook
 export { useOnboarding } from './useOnboarding';
+
+// Favorites hook
+export { FavoritesProvider, useFavorites } from './useFavorites';

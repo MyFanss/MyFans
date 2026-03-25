@@ -4,8 +4,9 @@ use crate::treasury::{Treasury, TreasuryClient};
 use soroban_sdk::{
     testutils::{Address as _, MockAuth, MockAuthInvoke},
     token::{StellarAssetClient, TokenClient},
+    vec,
     xdr::SorobanAuthorizationEntry,
-    vec, Address, Env, IntoVal,
+    Address, Env, IntoVal,
 };
 
 fn create_token_contract<'a>(
@@ -124,7 +125,11 @@ fn test_treasury_auth_requirements_mock_auths() {
     let init_invoke = MockAuthInvoke {
         contract: &treasury_id,
         fn_name: "initialize",
-        args: vec![&env, admin.clone().into_val(&env), token_address.clone().into_val(&env)],
+        args: vec![
+            &env,
+            admin.clone().into_val(&env),
+            token_address.clone().into_val(&env),
+        ],
         sub_invokes: &[],
     };
     let init_auth = MockAuth {
@@ -139,13 +144,22 @@ fn test_treasury_auth_requirements_mock_auths() {
     let transfer_invoke = MockAuthInvoke {
         contract: &token_address,
         fn_name: "transfer",
-        args: vec![&env, user.clone().into_val(&env), treasury_id.clone().into_val(&env), deposit_amount.into_val(&env)],
+        args: vec![
+            &env,
+            user.clone().into_val(&env),
+            treasury_id.clone().into_val(&env),
+            deposit_amount.into_val(&env),
+        ],
         sub_invokes: &[],
     };
     let deposit_invoke = MockAuthInvoke {
         contract: &treasury_id,
         fn_name: "deposit",
-        args: vec![&env, user.clone().into_val(&env), deposit_amount.into_val(&env)],
+        args: vec![
+            &env,
+            user.clone().into_val(&env),
+            deposit_amount.into_val(&env),
+        ],
         sub_invokes: &[transfer_invoke],
     };
     let deposit_auth = MockAuth {
