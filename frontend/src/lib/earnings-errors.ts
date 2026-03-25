@@ -1,10 +1,10 @@
-import { createAppError, type AppError } from '@/types/errors';
+import { createAppError, type AppError, type ErrorCode } from '@/types/errors';
 
 export class EarningsError extends Error {
   constructor(
     public code: string,
     message: string,
-    public details?: Record<string, any>,
+    public details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'EarningsError';
@@ -13,9 +13,8 @@ export class EarningsError extends Error {
 
 export function handleEarningsError(error: unknown): AppError {
   if (error instanceof EarningsError) {
-    // Map custom error codes to valid ErrorCode types
-    const validCode = error.code as any;
-    return createAppError(validCode === 'EARNINGS_ERROR' ? 'INTERNAL_ERROR' : validCode, {
+    const normalizedCode = toErrorCode(error.code);
+    return createAppError(normalizedCode, {
       message: error.message,
       severity: 'error',
     });
@@ -56,6 +55,46 @@ export function handleEarningsError(error: unknown): AppError {
     message: 'An unknown error occurred',
     severity: 'error',
   });
+}
+
+const VALID_ERROR_CODES = new Set<ErrorCode>([
+  'TX_FAILED',
+  'TX_REJECTED',
+  'TX_TIMEOUT',
+  'INSUFFICIENT_BALANCE',
+  'INSUFFICIENT_FUNDS',
+  'INVALID_AMOUNT',
+  'NETWORK_FEE_ERROR',
+  'NETWORK_ERROR',
+  'NETWORK_TIMEOUT',
+  'RPC_ERROR',
+  'CONNECTION_LOST',
+  'OFFLINE',
+  'WALLET_NOT_FOUND',
+  'WALLET_NOT_CONNECTED',
+  'WALLET_CONNECTION_FAILED',
+  'WALLET_SIGNATURE_FAILED',
+  'VALIDATION_ERROR',
+  'REQUIRED_FIELD',
+  'INVALID_FORMAT',
+  'INVALID_EMAIL',
+  'INVALID_ADDRESS',
+  'PASSWORD_MISMATCH',
+  'FIELD_TOO_SHORT',
+  'FIELD_TOO_LONG',
+  'UNAUTHORIZED',
+  'SESSION_EXPIRED',
+  'FORBIDDEN',
+  'NOT_FOUND',
+  'INTERNAL_ERROR',
+  'SERVICE_UNAVAILABLE',
+  'RATE_LIMITED',
+  'UNKNOWN_ERROR',
+]);
+
+function toErrorCode(code: string): ErrorCode {
+  if (code === 'EARNINGS_ERROR') return 'INTERNAL_ERROR';
+  return VALID_ERROR_CODES.has(code as ErrorCode) ? (code as ErrorCode) : 'INTERNAL_ERROR';
 }
 
 export const EARNINGS_ERROR_MESSAGES: Record<string, string> = {
