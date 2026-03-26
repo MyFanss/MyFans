@@ -59,9 +59,12 @@ jobs:
           DB_HOST: localhost
           DB_PORT: 5432
           DB_USER: postgres
-          DB_PASSWORD: postgres
+          # DB_PASSWORD comes from the postgres service container (ephemeral, test-only)
+          DB_PASSWORD: ${{ secrets.E2E_DB_PASSWORD || 'postgres' }}
           DB_NAME: myfans
-          JWT_SECRET: test-secret
+          # JWT_SECRET for E2E is a test-only value stored as a GitHub Secret.
+          # It is never shared with production and rotated independently.
+          JWT_SECRET: ${{ secrets.E2E_JWT_SECRET }}
 
       - name: Run E2E tests
         working-directory: frontend
