@@ -23,6 +23,6 @@ export class PublicCreatorDto {
     this.display_name = user.display_name;
     this.username = user.username;
     this.avatar_url = user.avatar_url;
-    this.bio = creator?.bio || null;
+    this.bio = creator?.bio ?? null;
   }
 }
