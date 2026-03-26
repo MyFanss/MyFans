@@ -141,10 +141,7 @@ export function GatedContentViewer({
       } catch (err) {
         setInternalStatus('error');
         setInternalError(err instanceof Error ? err.message : 'Failed to verify access');
-        showError('ACCESS_DENIED', {
-          message: 'Access check failed',
-          description: 'Could not verify your subscription status.',
-        });
+        showError('ACCESS_DENIED');
       }
     };
 
