@@ -19,7 +19,7 @@ export default function Sidebar({ isOpen }: { isOpen: boolean }) {
       </div>
       <nav style={{ padding: '0 1rem' }}>
         {navItems.map(item => (
-          <Link key={item.href} href={item.href} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', marginBottom: '0.5rem', minHeight: '44px', backgroundColor: pathname === item.href ? '#e0f2fe' : 'transparent' }}>
+          <Link key={item.href} href={item.href} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', marginBottom: '0.5rem', minHeight: '44px', backgroundColor: pathname === item.href ? '#e0f2fe' : 'transparent' }} aria-current={pathname === item.href ? 'page' : undefined}>
             <span style={{ fontSize: '1.25rem' }}>{item.icon}</span>
             <span>{item.label}</span>
           </Link>
