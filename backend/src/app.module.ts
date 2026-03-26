@@ -1,25 +1,31 @@
-
 import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { ThrottlerModule } from '@nestjs/throttler';
-import { ThrottlerGuard } from './auth/throttler.guard';
 import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { User } from './users/entities/user.entity';
 import { HealthModule } from './health/health.module';
 import { LoggingModule } from './common/logging.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
-import { ExampleController } from './common/examples/example.controller';
 import { CreatorsModule } from './creators/creators.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
-import { HealthModule } from './health/health.module';
+import { WebhookModule } from './webhook/webhook.module';
+import { ThrottlerGuard } from './auth/throttler.guard';
 
 @Module({
-  imports: [AuthModule, CreatorsModule, SubscriptionsModule, HealthModule],
+  imports: [
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    LoggingModule,
+    HealthModule,
+    CreatorsModule,
+    SubscriptionsModule,
+    WebhookModule,
+  ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
@@ -28,4 +34,3 @@ export class AppModule {
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }
 }
-
