@@ -3,7 +3,7 @@ use soroban_sdk::{
     testutils::{Address as _, Events, MockAuth, MockAuthInvoke},
     token::{StellarAssetClient, TokenClient},
     xdr::SorobanAuthorizationEntry,
-    Address, Env, IntoVal, Symbol,
+    Address, Env, IntoVal, Symbol, TryIntoVal,
 };
 
 fn create_token_contract<'a>(
@@ -289,14 +289,13 @@ fn test_deposit_emits_event() {
 
     let events = env.events().all();
     let deposit_event = events.iter().find(|e| {
-        e.topics.first().map_or(false, |t| {
-            t.as_val().try_into_val(&env).ok() == Some(Symbol::new(&env, "deposit"))
-        })
+        e.1.first()
+            .is_some_and(|t| t.try_into_val(&env).ok() == Some(Symbol::new(&env, "deposit")))
     });
 
     assert!(deposit_event.is_some());
     let event = deposit_event.unwrap();
-    let (from, amount, token): (Address, i128, Address) = event.data.try_into_val(&env).unwrap();
+    let (from, amount, token): (Address, i128, Address) = event.2.try_into_val(&env).unwrap();
     assert_eq!(from, user);
     assert_eq!(amount, 500);
     assert_eq!(token, token_address);

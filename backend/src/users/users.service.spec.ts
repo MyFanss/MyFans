@@ -6,8 +6,8 @@ import { NotFoundException } from '@nestjs/common';
 
 const mockBcryptCompare = jest.fn();
 jest.mock('bcrypt', () => ({
-    ...jest.requireActual('bcrypt'),
-    compare: (...args: unknown[]) => mockBcryptCompare(...args),
+  ...jest.requireActual('bcrypt'),
+  compare: (...args: unknown[]) => mockBcryptCompare(...args),
 }));
 
 describe('UsersService', () => {
