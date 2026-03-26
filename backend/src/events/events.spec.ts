@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { InProcessEventBus } from './in-process-event-bus';
 import { EventBus } from './event-bus';
 import { AuthService } from '../auth/auth.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CreatorsService } from '../creators/creators.service';
+import { User } from '../users/entities/user.entity';
 import {
   UserLoggedInEvent,
   SubscriptionCreatedEvent,
@@ -133,6 +135,10 @@ describe('CreatorsService events', () => {
       providers: [
         CreatorsService,
         { provide: EventBus, useClass: InProcessEventBus },
+        {
+          provide: getRepositoryToken(User),
+          useValue: { createQueryBuilder: jest.fn() },
+        },
       ],
     }).compile();
 

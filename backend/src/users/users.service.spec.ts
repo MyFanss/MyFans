@@ -2,8 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { UsersService } from './users.service';
 import { User } from './entities/user.entity';
-import * as bcrypt from 'bcrypt';
 import { NotFoundException } from '@nestjs/common';
+
+const mockBcryptCompare = jest.fn();
+jest.mock('bcrypt', () => ({
+    ...jest.requireActual('bcrypt'),
+    compare: (...args: unknown[]) => mockBcryptCompare(...args),
+}));
 
 describe('UsersService', () => {
     let service: UsersService;
@@ -47,7 +52,7 @@ describe('UsersService', () => {
     describe('validatePassword', () => {
         it('should return true for valid password', async () => {
             repository.findOne.mockResolvedValue(mockUser);
-            jest.spyOn(bcrypt, 'compare').mockImplementation(() => Promise.resolve(true));
+            mockBcryptCompare.mockResolvedValue(true);
 
             const result = await service.validatePassword('user-id', 'correct_password');
             expect(result).toBe(true);
@@ -59,7 +64,7 @@ describe('UsersService', () => {
 
         it('should return false for invalid password', async () => {
             repository.findOne.mockResolvedValue(mockUser);
-            jest.spyOn(bcrypt, 'compare').mockImplementation(() => Promise.resolve(false));
+            mockBcryptCompare.mockResolvedValue(false);
 
             const result = await service.validatePassword('user-id', 'wrong_password');
             expect(result).toBe(false);
