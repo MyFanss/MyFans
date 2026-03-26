@@ -161,7 +161,9 @@ impl MyFansToken {
             expiration_ledger,
         };
 
+        // Store and extend TTL for temporary storage
         env.storage().temporary().set(&key, &data);
+        env.storage().temporary().extend_ttl(&key, 100, 100);
 
         env.events()
             .publish((symbol_short!("approve"), from, spender), amount);
@@ -230,10 +232,42 @@ impl MyFansToken {
     }
 
     pub fn mint(env: Env, to: Address, amount: i128) {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+
         let balance = read_balance(&env, to.clone());
         write_balance(&env, to.clone(), balance + amount);
 
+        let total: i128 = env.storage()
+            .instance()
+            .get(&DataKey::TotalSupply)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalSupply, &(total + amount));
+
         env.events().publish((symbol_short!("mint"), to), amount);
+    }
+
+    pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), Error> {
+        from.require_auth();
+        let balance = read_balance(&env, from.clone());
+        if balance < amount {
+            return Err(Error::InsufficientBalance);
+        }
+
+        write_balance(&env, from.clone(), balance - amount);
+
+        let total: i128 = env.storage()
+            .instance()
+            .get(&DataKey::TotalSupply)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalSupply, &(total - amount));
+
+        env.events().publish((symbol_short!("burn"), from), amount);
+        Ok(())
     }
 
     /// Get balance for an address (view function)
@@ -268,6 +302,7 @@ fn read_balance(env: &Env, id: Address) -> i128 {
 fn write_balance(env: &Env, id: Address, amount: i128) {
     let key = DataKey::Balance(id);
     env.storage().persistent().set(&key, &amount);
+    env.storage().persistent().extend_ttl(&key, 100, 100);
 }
 
 #[cfg(test)]
