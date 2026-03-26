@@ -6,6 +6,7 @@ import {
   getFeatureFlags,
   isFeatureEnabled,
   loadFeatureFlags,
+  refreshFeatureFlags,
   resetFeatureFlagsForTests,
   setFeatureFlagOverride,
 } from '@/lib/feature-flags';
@@ -82,5 +83,35 @@ describe('feature-flags', () => {
     await loadFeatureFlags();
 
     expect(isFeatureEnabled(FeatureFlag.BOOKMARKS)).toBe(true);
+  });
+
+  it('refreshes remote flags so runtime toggles can change without a redeploy', async () => {
+    vi.stubEnv('NEXT_PUBLIC_FEATURE_FLAGS_URL', 'https://flags.example.com/flags.json');
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          flags: {
+            [FeatureFlag.BOOKMARKS]: false,
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          flags: {
+            [FeatureFlag.BOOKMARKS]: true,
+          },
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(loadFeatureFlags()).resolves.toEqual(defaultFeatureFlags);
+    await expect(refreshFeatureFlags()).resolves.toEqual({
+      ...defaultFeatureFlags,
+      [FeatureFlag.BOOKMARKS]: true,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

@@ -16,6 +16,8 @@ Resolution order for each flag:
 3. `localStorage` override `flags:<flag-name>` when local overrides are allowed
 4. Default `false`
 
+When `NEXT_PUBLIC_FEATURE_FLAGS_URL` is configured, the client re-fetches the remote document every 60 seconds so feature changes can roll out without a redeploy or page reload.
+
 ## Current Flags
 
 | Flag key | Purpose | Default |

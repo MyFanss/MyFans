@@ -3,9 +3,11 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   FEATURE_FLAGS_UPDATED_EVENT,
+  FEATURE_FLAGS_REFRESH_INTERVAL_MS,
   defaultFeatureFlags,
   getFeatureFlags,
   loadFeatureFlags,
+  refreshFeatureFlags,
   type FeatureFlagSnapshot,
 } from '@/lib/feature-flags';
 
@@ -40,6 +42,17 @@ export function FeatureFlagsProvider({ children }: { children: React.ReactNode }
 
     void initializeFlags();
 
+    const refreshFlags = async () => {
+      const nextFlags = await refreshFeatureFlags();
+
+      if (!isActive) {
+        return;
+      }
+
+      setFlags(nextFlags);
+      setIsReady(true);
+    };
+
     const handleStorage = (event: StorageEvent) => {
       if (!shouldRefreshFromStorage(event.key)) {
         return;
@@ -52,11 +65,16 @@ export function FeatureFlagsProvider({ children }: { children: React.ReactNode }
       setFlags(getFeatureFlags());
     };
 
+    const refreshInterval = window.setInterval(() => {
+      void refreshFlags();
+    }, FEATURE_FLAGS_REFRESH_INTERVAL_MS);
+
     window.addEventListener('storage', handleStorage);
     window.addEventListener(FEATURE_FLAGS_UPDATED_EVENT, handleFeatureFlagsUpdated);
 
     return () => {
       isActive = false;
+      window.clearInterval(refreshInterval);
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener(FEATURE_FLAGS_UPDATED_EVENT, handleFeatureFlagsUpdated);
     };
