@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Headers } from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
 import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 
@@ -34,6 +34,7 @@ export class SubscriptionsController {
       assetCode?: string;
       assetIssuer?: string;
     },
+    @Headers('x-network') requestNetwork?: string,
   ) {
     const checkout = this.subscriptionsService.createCheckout(
       body.fanAddress,
@@ -41,6 +42,7 @@ export class SubscriptionsController {
       body.planId,
       body.assetCode,
       body.assetIssuer,
+      requestNetwork,
     );
 
     return {
