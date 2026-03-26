@@ -107,6 +107,10 @@ export class SubscriptionsService {
     @Optional()
     @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
     private readonly subscriptionEventPublisher?: SubscriptionEventPublisher,
+    @Optional()
+    private readonly jobLogger?: JobLoggerService,
+    @Optional()
+    private readonly eventBus?: EventBus,
   ) {
     this.creatorProfiles.set('GAAAAAAAAAAAAAAA', {
       name: 'Creator 1',
@@ -192,6 +196,7 @@ export class SubscriptionsService {
         sub.status = 'expired';
       }
     });
+    if (status) userSubs = userSubs.filter(sub => sub.status === status);
 
     if (status) {
       userSubs = userSubs.filter((sub) => sub.status === status);
@@ -200,7 +205,6 @@ export class SubscriptionsService {
     let results = userSubs.map((sub) => {
       const plan = this.getPlanMock(sub.planId);
       const creatorProfile = this.creatorProfiles.get(sub.creator);
-
       return {
         id: sub.id,
         creatorId: sub.creator,
@@ -237,9 +241,7 @@ export class SubscriptionsService {
     }
 
     const total = results.length;
-    const skip = (page - 1) * limit;
-    const paginatedResults = results.slice(skip, skip + limit);
-
+    const paginatedResults = results.slice((page - 1) * limit, page * limit);
     return new PaginatedResponseDto(paginatedResults, total, page, limit);
   }
 
@@ -247,16 +249,14 @@ export class SubscriptionsService {
     fanAddress: string,
     creatorAddress: string,
     planId: number,
-    assetCode: string = 'XLM',
+    assetCode = 'XLM',
     assetIssuer?: string,
     requestNetwork?: string,
   ): Checkout {
     this.assertNetworkMatch(requestNetwork);
 
     const plan = this.getPlanMock(planId);
-    if (!plan) {
-      throw new NotFoundException('Plan not found');
-    }
+    if (!plan) throw new NotFoundException('Plan not found');
 
     const amount = plan.amount;
     const fee = this.calculateFee(amount);
@@ -279,7 +279,6 @@ export class SubscriptionsService {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-
     this.checkouts.set(checkout.id, checkout);
     return checkout;
   }
@@ -294,16 +293,12 @@ export class SubscriptionsService {
       checkout.status = CheckoutStatus.EXPIRED;
       throw new BadRequestException('Checkout session has expired');
     }
-
     return checkout;
   }
 
   getPlanSummary(planId: number) {
     const plan = this.getPlanMock(planId);
-    if (!plan) {
-      throw new NotFoundException('Plan not found');
-    }
-
+    if (!plan) throw new NotFoundException('Plan not found');
     const creatorProfile = this.creatorProfiles.get(plan.creator);
     const intervalText = this.getIntervalText(plan.intervalDays);
 
@@ -327,7 +322,6 @@ export class SubscriptionsService {
 
   getPriceBreakdown(checkoutId: string) {
     const checkout = this.getCheckout(checkoutId);
-
     return {
       subtotal: checkout.amount,
       platformFee: checkout.fee,
@@ -345,16 +339,8 @@ export class SubscriptionsService {
     const balance = this.getMockBalance(fanAddress, assetCode);
     const balanceNum = parseFloat(balance);
     const requiredNum = parseFloat(requiredAmount);
-
-    if (balanceNum >= requiredNum) {
-      return { valid: true, balance };
-    }
-
-    return {
-      valid: false,
-      balance,
-      shortfall: (requiredNum - balanceNum).toFixed(7),
-    };
+    if (balanceNum >= requiredNum) return { valid: true, balance };
+    return { valid: false, balance, shortfall: (requiredNum - balanceNum).toFixed(7) };
   }
 
   getWalletStatus(fanAddress: string) {
@@ -367,7 +353,12 @@ export class SubscriptionsService {
 
     return {
       address: fanAddress,
-      balances,
+      balances: this.supportedAssets.map(asset => ({
+        code: asset.code,
+        issuer: asset.issuer,
+        balance: this.getMockBalance(fanAddress, asset.code),
+        isNative: asset.isNative,
+      })),
       isConnected: !!fanAddress,
     };
   }
@@ -375,15 +366,11 @@ export class SubscriptionsService {
   getTransactionPreview(checkoutId: string) {
     const checkout = this.getCheckout(checkoutId);
     const creatorProfile = this.creatorProfiles.get(checkout.creatorAddress);
-
     return {
       checkoutId: checkout.id,
       from: checkout.fanAddress,
       to: checkout.creatorAddress,
-      asset: {
-        code: checkout.assetCode,
-        issuer: checkout.assetIssuer,
-      },
+      asset: { code: checkout.assetCode, issuer: checkout.assetIssuer },
       amount: checkout.amount,
       fee: checkout.fee,
       total: checkout.total,
@@ -430,7 +417,7 @@ export class SubscriptionsService {
     checkout.error = error;
     checkout.updatedAt = new Date();
     this.emitRenewalFailureEvent(checkout, error);
-
+    job?.done(new Error(error));
     return {
       success: false,
       checkoutId: checkout.id,
@@ -443,9 +430,7 @@ export class SubscriptionsService {
   }
 
   private calculateFee(amount: string): string {
-    const amountNum = parseFloat(amount);
-    const feeNum = (amountNum * this.platformFeeBps) / 10000;
-    return feeNum.toFixed(7);
+    return ((parseFloat(amount) * this.platformFeeBps) / 10000).toFixed(7);
   }
 
   private getIntervalText(days: number): string {
@@ -498,14 +483,8 @@ export class SubscriptionsService {
       timestamp: new Date().toISOString(),
       userId: checkout.fanAddress,
     };
-
     Promise.resolve()
-      .then(() =>
-        this.subscriptionEventPublisher?.emit(
-          SUBSCRIPTION_RENEWAL_FAILED,
-          payload,
-        ),
-      )
+      .then(() => this.subscriptionEventPublisher?.emit(SUBSCRIPTION_RENEWAL_FAILED, payload))
       .catch((error: unknown) => {
         const message =
           error instanceof Error ? error.message : String(error);

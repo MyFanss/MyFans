@@ -35,7 +35,7 @@ export class CreatorsService {
   }
 
   getCreatorPlans(creator: string): Plan[] {
-    return Array.from(this.plans.values()).filter((p) => p.creator === creator);
+    return Array.from(this.plans.values()).filter(p => p.creator === creator);
   }
 
   findAllPlans(pagination: PaginationDto): PaginatedResponseDto<Plan> {

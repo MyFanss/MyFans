@@ -12,7 +12,7 @@ export class AuthController {
     if (!this.authService.validateStellarAddress(body?.address ?? '')) {
       throw new BadRequestException('Invalid Stellar address');
     }
-    return this.authService.createSession(body.address!);
+    return this.authService.createSession(address);
   }
 
   @Post('register')
@@ -21,6 +21,6 @@ export class AuthController {
     if (!this.authService.validateStellarAddress(body?.address ?? '')) {
       throw new BadRequestException('Invalid Stellar address');
     }
-    return this.authService.createSession(body.address!);
+    return this.authService.createSession(address);
   }
 }

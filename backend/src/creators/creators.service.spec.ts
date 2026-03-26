@@ -35,6 +35,10 @@ describe('CreatorsService', () => {
             createQueryBuilder: jest.fn(() => mockQueryBuilder),
           },
         },
+        {
+          provide: EventBus,
+          useValue: { publish: jest.fn() },
+        },
       ],
     }).compile();
 
