@@ -34,34 +34,41 @@ function sign(secret: string, payload: string): string {
   return createHmac('sha256', secret).update(payload).digest('hex');
 }
 
-switch (command) {
-  case 'rotate': {
-    const [newSecret, cutoffMsStr] = args;
-    if (!newSecret) {
-      console.error('Usage: rotate <newSecret> [cutoffMs]');
-      process.exit(1);
+async function main(): Promise<void> {
+  switch (command) {
+    case 'rotate': {
+      const [newSecret, cutoffMsStr] = args;
+      if (!newSecret) {
+        console.error('Usage: rotate <newSecret> [cutoffMs]');
+        process.exit(1);
+      }
+      const body: { newSecret: string; cutoffMs?: number } = { newSecret };
+      if (cutoffMsStr) body.cutoffMs = parseInt(cutoffMsStr, 10);
+      await post('/webhook/rotate', body);
+      break;
     }
-    const body: { newSecret: string; cutoffMs?: number } = { newSecret };
-    if (cutoffMsStr) body.cutoffMs = parseInt(cutoffMsStr, 10);
-    await post('/webhook/rotate', body);
-    break;
-  }
 
-  case 'expire-previous':
-    await post('/webhook/expire-previous', {});
-    break;
+    case 'expire-previous':
+      await post('/webhook/expire-previous', {});
+      break;
 
-  case 'sign': {
-    const [secret, payload] = args;
-    if (!secret || !payload) {
-      console.error('Usage: sign <secret> <payload>');
-      process.exit(1);
+    case 'sign': {
+      const [secret, payload] = args;
+      if (!secret || !payload) {
+        console.error('Usage: sign <secret> <payload>');
+        process.exit(1);
+      }
+      console.log(sign(secret, payload));
+      break;
     }
-    console.log(sign(secret, payload));
-    break;
-  }
 
-  default:
-    console.error('Commands: rotate | expire-previous | sign');
-    process.exit(1);
+    default:
+      console.error('Commands: rotate | expire-previous | sign');
+      process.exit(1);
+  }
 }
+
+main().catch((err: unknown) => {
+  console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
+});
