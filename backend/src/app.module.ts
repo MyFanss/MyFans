@@ -13,7 +13,6 @@ import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { ExampleController } from './common/examples/example.controller';
 import { CreatorsModule } from './creators/creators.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
-import { SubscriptionReconcilerModule } from './subscriptions/subscription-reconciler.module';
 import { PostsModule } from './posts/posts.module';
 import { CommentsModule } from './comments/comments.module';
 import { ConversationsModule } from './conversations/conversations.module';
@@ -49,7 +48,6 @@ import { Creator } from './creators/entities/creator.entity';
     LoggingModule,
     CreatorsModule,
     SubscriptionsModule,
-    SubscriptionReconcilerModule,
     PostsModule,
     CommentsModule,
     ConversationsModule,
