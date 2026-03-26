@@ -65,10 +65,24 @@ jobs:
       - name: Run unit tests
         run: npm test
         working-directory: backend
+        env:
+          JWT_SECRET: ci-test-secret
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: myfans
 
       - name: Run E2E tests
         run: npm run test:e2e
         working-directory: backend
+        env:
+          JWT_SECRET: ci-test-secret
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: myfans
 
   contracts:
     name: Contracts
