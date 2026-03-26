@@ -9,8 +9,8 @@ const RATE_LIMIT_LEDGERS: u32 = 10;
 #[derive(Clone)]
 pub enum DataKey {
     Admin,
-    Creator(Address),           // maps creator address -> creator_id (u64)
-    LastRegLedger(Address),    // last ledger when this caller did a registration
+    Creator(Address),       // maps creator address -> creator_id (u64)
+    LastRegLedger(Address), // last ledger when this caller did a registration
 }
 
 #[contract]
@@ -46,7 +46,10 @@ impl CreatorRegistryContract {
         let last_key = DataKey::LastRegLedger(caller.clone());
         if let Some(last) = env.storage().persistent().get::<DataKey, u32>(&last_key) {
             if current < last.saturating_add(RATE_LIMIT_LEDGERS) {
-                panic!("rate limit: one registration per {} ledgers", RATE_LIMIT_LEDGERS);
+                panic!(
+                    "rate limit: one registration per {} ledgers",
+                    RATE_LIMIT_LEDGERS
+                );
             }
         }
 
