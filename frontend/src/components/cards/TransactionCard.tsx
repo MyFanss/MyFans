@@ -102,11 +102,6 @@ export const TransactionCard: React.FC<TransactionCardProps> = ({
   const formatTime = (d: Date | string): string => {
     return formatTimeUtil(d);
   };
-    return dateObj.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
 
   const getTypeInfo = (): { label: string; icon: React.ReactNode; color: string } => {
     switch (type) {
