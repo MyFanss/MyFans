@@ -18,7 +18,7 @@ import { RefreshTokenDto, LogoutDto, TokenResponseDto } from './refresh-token.dt
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 @ApiTags('auth')
-@Controller('auth')
+@Controller({ path: 'auth', version: '1' })
 export class AuthController {
   constructor(private readonly refreshTokenService: RefreshTokenService) { }
 

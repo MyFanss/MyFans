@@ -16,7 +16,7 @@ import { PostDto, CreatePostDto, UpdatePostDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 
 @ApiTags('posts')
-@Controller('posts')
+@Controller({ path: 'posts', version: '1' })
 @UseInterceptors(ClassSerializerInterceptor)
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}

@@ -14,6 +14,7 @@ import { Follow } from './entities/follow.entity';
 import { FindCreatorsQueryDto } from './dto/find-creators-query.dto';
 import { OnboardCreatorDto } from './dto/onboard-creator.dto';
 import { User } from '../users/entities/user.entity';
+import { PaginatedResponseDto } from '../common/dto';
 
 const BIO_SNIPPET_LENGTH = 150;
 
@@ -113,13 +114,7 @@ export class CreatorsService {
 
     const items = creators.map((c) => this.toListItem(c));
 
-    return {
-      items,
-      total,
-      page,
-      limit,
-      total_pages: Math.ceil(total / limit),
-    };
+    return new PaginatedResponseDto(items, total, page, limit);
   }
 
   async findOneById(id: string) {

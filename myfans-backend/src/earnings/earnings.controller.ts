@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Query, UseGuards, Req } from '@nestjs/comm
 import { EarningsService } from './earnings.service';
 import { WithdrawalRequestDto } from './dto/earnings-summary.dto';
 import { AuthGuard } from '../auth/auth.guard';
+import { PaginationQueryDto } from '../common/dto';
 
 @Controller('earnings')
 @UseGuards(AuthGuard)
@@ -28,28 +29,26 @@ export class EarningsController {
 
   @Get('transactions')
   async getTransactions(
-    @Query('limit') limit: string = '50',
-    @Query('offset') offset: string = '0',
+    @Query() query: PaginationQueryDto,
     @Req() req: any,
   ) {
     const creatorId = req.user?.id;
     if (!creatorId) {
       throw new Error('Unauthorized');
     }
-    return this.earningsService.getTransactionHistory(creatorId, parseInt(limit, 10), parseInt(offset, 10));
+    return this.earningsService.getTransactionHistory(creatorId, query);
   }
 
   @Get('withdrawals')
   async getWithdrawals(
-    @Query('limit') limit: string = '20',
-    @Query('offset') offset: string = '0',
+    @Query() query: PaginationQueryDto,
     @Req() req: any,
   ) {
     const creatorId = req.user?.id;
     if (!creatorId) {
       throw new Error('Unauthorized');
     }
-    return this.earningsService.getWithdrawalHistory(creatorId, parseInt(limit, 10), parseInt(offset, 10));
+    return this.earningsService.getWithdrawalHistory(creatorId, query);
   }
 
   @Post('withdraw')

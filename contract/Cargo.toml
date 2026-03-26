@@ -13,12 +13,15 @@ soroban-sdk = "21.7.0"
 soroban-sdk = { version = "21.7.0", features = ["testutils"] }
 
 [workspace]
+resolver = "2"
 members = [
+    ".",
     "contracts/content-access",
     "contracts/content-likes",
     "contracts/creator-deposits",
     "contracts/creator-earnings",
     "contracts/creator-registry",
+    "contracts/earnings",
     "contracts/myfans-lib",
     "contracts/myfans-token",
     "contracts/subscription",
