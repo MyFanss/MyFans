@@ -3,6 +3,7 @@ import './globals.css';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext';
 import { FavoritesProvider } from '@/hooks/useFavorites';
+import { ConsentProvider } from '@/contexts/ConsentContext';
 import { NoFlashScript } from '@/components/NoFlashScript';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { ToastContainer } from '@/components/ui/Toast';
@@ -69,15 +70,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <ThemeProvider>
-          <FeatureFlagsProvider>
+          <ConsentProvider>
             <FavoritesProvider>
-              <ToastProvider>{children}</ToastProvider>
+              <ToastProvider>
+                {children}
+                <ToastContainer />
+              </ToastProvider>
             </FavoritesProvider>
-          </FeatureFlagsProvider>
-          <ToastProvider>
-            {children}
-            <ToastContainer />
-          </ToastProvider>
+          </ConsentProvider>
         </ThemeProvider>
       </body>
     </html>

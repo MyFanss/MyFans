@@ -12,7 +12,7 @@ import {
   getCurrencySymbol,
   type CreatorProfile,
 } from '@/lib/creator-profile';
-import { FeatureFlag } from '@/lib/feature-flags';
+import { createCreatorMetadata } from '@/lib/metadata';
 import { BookmarkButton } from '@/components/BookmarkButton';
 import { FeatureGate } from '@/components/FeatureGate';
 import { PlanCard } from '@/components/cards';
@@ -53,7 +53,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   }
 
-  const plans = getCreatorPlans(username);
+  const plans = await getCreatorPlans(username);
   return createCreatorMetadata(creator, plans, getCurrencySymbol);
 }
 

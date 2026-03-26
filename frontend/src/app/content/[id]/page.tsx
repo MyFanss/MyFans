@@ -64,7 +64,7 @@ export default function ContentPage({ params }: PageProps) {
     setIsSubscribed(true);
   };
 
-  const handleLike = () => {
+  const handleLike = async (_liked: boolean): Promise<void> => {
     console.log('Liked content:', content.id);
   };
 
