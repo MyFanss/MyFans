@@ -1,6 +1,29 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
 import { EventBus } from '../events/event-bus';
 import { SubscriptionCreatedEvent, SubscriptionExpiredEvent } from '../events/domain-events';
+import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
+
+const SUBSCRIPTION_EVENT_PUBLISHER = 'SUBSCRIPTION_EVENT_PUBLISHER';
+const SUBSCRIPTION_RENEWAL_FAILED = 'subscription.renewal.failed';
+
+interface SubscriptionEventPublisher {
+  emit(event: string, payload: unknown): Promise<void>;
+}
+
+interface RenewalFailurePayload {
+  subscriptionId: string;
+  reason: string;
+  timestamp: string;
+  userId: string;
+}
+
+enum CheckoutStatus {
+  PENDING = 'pending',
+  COMPLETED = 'completed',
+  EXPIRED = 'expired',
+  FAILED = 'failed',
+  REJECTED = 'rejected',
+}
 
 interface Subscription {
   id: string;
@@ -67,6 +90,7 @@ export class SubscriptionsService {
   private creatorProfiles: Map<string, { name: string; description?: string }> = new Map();
 
   constructor(
+    private readonly eventBus: EventBus,
     @Optional()
     @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
     private readonly subscriptionEventPublisher?: SubscriptionEventPublisher,
@@ -75,8 +99,6 @@ export class SubscriptionsService {
     this.creatorProfiles.set('GAAAAAAAAAAAAAAA', { name: 'Creator 1', description: 'Premium content creator' });
     this.creatorProfiles.set('GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5', { name: 'Creator 2', description: 'Exclusive videos and photos' });
   }
-
-  constructor(private readonly eventBus: EventBus) {}
 
   private getKey(fan: string, creator: string): string {
     return `${fan}:${creator}`;
