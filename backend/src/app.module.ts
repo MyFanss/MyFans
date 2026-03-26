@@ -14,7 +14,7 @@ import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { ExampleController } from './common/examples/example.controller';
 import { CreatorsModule } from './creators/creators.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
-import { HealthModule } from './health/health.module';
+import { AuthModule } from './auth-module/auth.module';
 
 @Module({
   imports: [AuthModule, CreatorsModule, SubscriptionsModule, HealthModule],

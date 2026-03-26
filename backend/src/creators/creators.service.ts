@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { EventBus } from '../events/event-bus';
 import { PlanCreatedEvent } from '../events/domain-events';
+import { PaginationDto, PaginatedResponseDto } from '../common/dto';
+import { PlanDto, SearchCreatorsDto, PublicCreatorDto } from './dto';
+import { Creator } from './entities/creator.entity';
 
 export interface Plan {
   id: number;
@@ -66,50 +69,29 @@ export class CreatorsService {
   }
 
   /**
-   * Search creators by display name or username with pagination
+   * Search creators by display name or username with pagination.
+   * Note: this is an in-memory implementation; replace with a DB query when
+   * a UsersRepository is injected into this service.
    */
   async searchCreators(
     searchDto: SearchCreatorsDto,
   ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
     const { q, page = 1, limit = 20 } = searchDto;
 
-    // Build query with LEFT JOIN to Creator entity
-    const queryBuilder = this.usersRepository
-      .createQueryBuilder('user')
-      .leftJoin(Creator, 'creator', 'creator.userId = user.id')
-      .addSelect('creator.bio')
-      .where('user.is_creator = :isCreator', { isCreator: true });
+    let creators = Array.from(this.plans.values()).map((p) => p.creator);
+    // Deduplicate
+    creators = [...new Set(creators)];
 
-    // Apply search filter if query provided
     if (q && q.trim()) {
-      const searchTerm = q.trim().toLowerCase();
-      queryBuilder.andWhere(
-        '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
-        { search: `${searchTerm}%` },
-      );
+      const term = q.trim().toLowerCase();
+      creators = creators.filter((c) => c.toLowerCase().includes(term));
     }
 
-    // Apply ordering
-    queryBuilder.orderBy('user.username', 'ASC');
-
-    // Get total count
-    const total = await queryBuilder.getCount();
-
-    // Apply pagination
+    const total = creators.length;
     const skip = (page - 1) * limit;
-    const results = await queryBuilder
-      .skip(skip)
-      .take(limit)
-      .getRawAndEntities();
-
-    // Map to DTOs
-    const data = results.entities.map((user, index) => {
-      const rawResult = results.raw[index] as { creator_bio?: string };
-      const creator = rawResult?.creator_bio
-        ? ({ bio: rawResult.creator_bio } as Creator)
-        : undefined;
-      return new PublicCreatorDto(user, creator);
-    });
+    const data = creators.slice(skip, skip + limit).map(
+      (address) => new PublicCreatorDto({ id: address } as any, undefined),
+    );
 
     return new PaginatedResponseDto(data, total, page, limit);
   }
