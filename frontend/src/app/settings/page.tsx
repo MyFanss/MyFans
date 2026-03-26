@@ -6,6 +6,7 @@ import { useSettings, type Role } from "@/components/settings/use-settings";
 import { SocialLinksForm } from "@/components/settings/social-links-form";
 import { NotificationPreferencesForm } from "@/components/settings/NotificationPreferencesForm";
 import { useTheme, type Theme } from "@/contexts/ThemeContext";
+import { useConsent } from "@/contexts/ConsentContext";
 import { useToast } from "@/contexts/ToastContext";
 
 export default function SettingsPage() {
