@@ -12,6 +12,15 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
 
+  // Enable versioning (URI versioning like /v1/...)
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: '1',
+  });
+
+  // Global validation pipe
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
   const probeService = app.get(StartupProbeService);
 
   // DB probe — uses TypeORM DataSource if available
