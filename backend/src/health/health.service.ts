@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { SorobanRpcService, SorobanHealthStatus } from '../common/services/soroban-rpc.service';
+import { QueueMetricsService, QueueSnapshot } from '../common/services/queue-metrics.service';
 
 @Injectable()
 export class HealthService {
   constructor(
     private dataSource: DataSource,
-    private sorobanRpcService: SorobanRpcService
+    private sorobanRpcService: SorobanRpcService,
+    private queueMetrics: QueueMetricsService,
   ) {}
 
   getHealth() {
@@ -26,8 +28,6 @@ export class HealthService {
   }
 
   async checkRedis() {
-    // Redis is not configured in this project folder yet.
-    // Returning 'not_configured' as a placeholder.
     return { status: 'down', message: 'Redis not configured' };
   }
 
@@ -37,5 +37,12 @@ export class HealthService {
 
   async checkSorobanContract(): Promise<SorobanHealthStatus> {
     return this.sorobanRpcService.checkKnownContract();
+  }
+
+  getQueueMetrics(): { timestamp: string; queues: QueueSnapshot } {
+    return {
+      timestamp: new Date().toISOString(),
+      queues: this.queueMetrics.snapshot(),
+    };
   }
 }
