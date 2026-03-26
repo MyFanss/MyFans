@@ -7,8 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "vitest run"
-    "lint": "eslint",
+    "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug"
@@ -35,9 +34,8 @@
     "eslint-config-next": "16.1.6",
     "jsdom": "^26.1.0",
     "tailwindcss": "^4",
-    "typescript": "^5",
+    "typescript": "5.9.3",
     "vitest": "^3.2.4"
-    "typescript": "5.9.3"
   },
   "overrides": {
     "ajv": "^6.12.6",
