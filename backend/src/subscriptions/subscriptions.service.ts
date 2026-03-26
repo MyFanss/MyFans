@@ -15,6 +15,7 @@ import type {
   SubscriptionEventPublisher,
 } from './events';
 import { PaginatedResponseDto } from '../common/dto';
+import { JobLoggerService } from '../common/services/job-logger.service';
 
 /** Checkout status enum */
 export enum CheckoutStatus {
@@ -93,6 +94,8 @@ export class SubscriptionsService {
     @Optional()
     @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
     private readonly subscriptionEventPublisher?: SubscriptionEventPublisher,
+    @Optional()
+    private readonly jobLogger?: JobLoggerService,
   ) {
     // Set up mock creator profiles
     this.creatorProfiles.set('GAAAAAAAAAAAAAAA', { name: 'Creator 1', description: 'Premium content creator' });
@@ -350,27 +353,35 @@ export class SubscriptionsService {
    */
   confirmSubscription(checkoutId: string, txHash?: string) {
     const checkout = this.getCheckout(checkoutId);
+    const job = this.jobLogger?.start({
+      queue: 'subscriptions',
+      jobName: 'confirm-subscription',
+      jobId: checkoutId,
+    });
 
-    // Update checkout status
-    checkout.status = CheckoutStatus.COMPLETED;
-    checkout.txHash = txHash || `tx_${Date.now()}`;
-    checkout.updatedAt = new Date();
+    try {
+      checkout.status = CheckoutStatus.COMPLETED;
+      checkout.txHash = txHash || `tx_${Date.now()}`;
+      checkout.updatedAt = new Date();
 
-    // Generate explorer URL
-    const explorerUrl = `https://stellar.expert/explorer/testnet/tx/${checkout.txHash}`;
+      const explorerUrl = `https://stellar.expert/explorer/testnet/tx/${checkout.txHash}`;
 
-    // Create subscription
-    this.addSubscription(checkout.fanAddress, checkout.creatorAddress, checkout.planId,
-      Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60); // 30 days
+      this.addSubscription(checkout.fanAddress, checkout.creatorAddress, checkout.planId,
+        Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60);
 
-    return {
-      success: true,
-      checkoutId: checkout.id,
-      status: checkout.status,
-      txHash: checkout.txHash,
-      explorerUrl,
-      message: 'Subscription created successfully!',
-    };
+      job?.done();
+      return {
+        success: true,
+        checkoutId: checkout.id,
+        status: checkout.status,
+        txHash: checkout.txHash,
+        explorerUrl,
+        message: 'Subscription created successfully!',
+      };
+    } catch (err) {
+      job?.done(err instanceof Error ? err : new Error(String(err)));
+      throw err;
+    }
   }
 
   /**
@@ -378,11 +389,18 @@ export class SubscriptionsService {
    */
   failCheckout(checkoutId: string, error: string, isRejected: boolean = false) {
     const checkout = this.getCheckout(checkoutId);
+    const job = this.jobLogger?.start({
+      queue: 'subscriptions',
+      jobName: 'fail-checkout',
+      jobId: checkoutId,
+    });
 
     checkout.status = isRejected ? CheckoutStatus.REJECTED : CheckoutStatus.FAILED;
     checkout.error = error;
     checkout.updatedAt = new Date();
     this.emitRenewalFailureEvent(checkout, error);
+
+    job?.done(new Error(error));
 
     return {
       success: false,
