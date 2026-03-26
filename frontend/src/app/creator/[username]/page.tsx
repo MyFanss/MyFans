@@ -52,7 +52,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   }
 
-  const plans = getCreatorPlans(username);
+  const plans = await getCreatorPlans(username);
   return createCreatorMetadata(creator, plans, getCurrencySymbol);
 }
 
