@@ -1,4 +1,4 @@
-import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
+﻿import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 
@@ -9,18 +9,18 @@ export class AuthController {
   @Post('login')
   @Throttle({ auth: { limit: 5, ttl: 60000 } })
   async login(@Body() body: { address?: string }) {
-    if (!body?.address || !this.authService.validateStellarAddress(body.address)) {
+    if (!this.authService.validateStellarAddress(body?.address ?? '')) {
       throw new BadRequestException('Invalid Stellar address');
     }
-    return this.authService.createSession(body.address);
+    return this.authService.createSession(address);
   }
 
   @Post('register')
   @Throttle({ auth: { limit: 5, ttl: 60000 } })
   async register(@Body() body: { address?: string }) {
-    if (!body?.address || !this.authService.validateStellarAddress(body.address)) {
+    if (!this.authService.validateStellarAddress(body?.address ?? '')) {
       throw new BadRequestException('Invalid Stellar address');
     }
-    return this.authService.createSession(body.address);
+    return this.authService.createSession(address);
   }
 }
