@@ -17,7 +17,7 @@ interface RenewalFailurePayload {
   userId: string;
 }
 
-enum CheckoutStatus {
+export enum CheckoutStatus {
   PENDING = 'pending',
   COMPLETED = 'completed',
   EXPIRED = 'expired',
@@ -105,7 +105,15 @@ export class SubscriptionsService {
   }
 
   addSubscription(fan: string, creator: string, planId: number, expiry: number) {
-    this.subscriptions.set(this.getKey(fan, creator), { fan, creator, planId, expiry });
+    this.subscriptions.set(this.getKey(fan, creator), {
+      id: generateId(),
+      fan,
+      creator,
+      planId,
+      expiry,
+      status: 'active',
+      createdAt: new Date(),
+    });
 
     this.eventBus.publish(
       new SubscriptionCreatedEvent(fan, creator, planId, expiry),
