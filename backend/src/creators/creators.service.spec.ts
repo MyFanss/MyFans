@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { SelectQueryBuilder } from 'typeorm';
 import { CreatorsService } from './creators.service';
 import { User, UserRole } from '../users/entities/user.entity';
+import { EventBus } from '../events/event-bus';
 
 describe('CreatorsService', () => {
   let service: CreatorsService;
@@ -31,6 +32,10 @@ describe('CreatorsService', () => {
           useValue: {
             createQueryBuilder: jest.fn(() => mockQueryBuilder),
           },
+        },
+        {
+          provide: EventBus,
+          useValue: { publish: jest.fn() },
         },
       ],
     }).compile();

@@ -13,7 +13,7 @@ import { UsersService } from './users.service';
 import { UpdateUserDto, UserProfileDto, DeleteAccountDto } from './dto';
 import { plainToInstance } from 'class-transformer';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
-import { AuthGuard } from 'src/utils/auth.guard';
+import { AuthGuard } from '../utils/auth.guard';
 import { User } from './entities/user.entity';
 import { Delete, HttpCode, HttpStatus, UnauthorizedException } from '@nestjs/common';
 
