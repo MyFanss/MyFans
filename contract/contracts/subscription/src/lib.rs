@@ -132,8 +132,14 @@ impl MyfansContract {
             .instance()
             .set(&DataKey::Sub(fan.clone(), plan.creator.clone()), &sub);
         // topics: (name, fan, creator)  data: plan_id
-        env.events()
-            .publish((Symbol::new(&env, "subscribed"), fan.clone(), plan.creator.clone()), plan_id);
+        env.events().publish(
+            (
+                Symbol::new(&env, "subscribed"),
+                fan.clone(),
+                plan.creator.clone(),
+            ),
+            plan_id,
+        );
     }
 
     pub fn is_subscriber(env: Env, fan: Address, creator: Address) -> bool {
@@ -201,8 +207,10 @@ impl MyfansContract {
             .set(&DataKey::Sub(fan.clone(), creator.clone()), &updated_sub);
 
         // topics: (name, fan, creator)  data: plan_id
-        env.events()
-            .publish((Symbol::new(&env, "extended"), fan.clone(), creator), sub.plan_id);
+        env.events().publish(
+            (Symbol::new(&env, "extended"), fan.clone(), creator),
+            sub.plan_id,
+        );
     }
 
     pub fn cancel(env: Env, fan: Address, creator: Address) {
@@ -262,13 +270,16 @@ impl MyfansContract {
             .unwrap_or(0);
 
         current_count += 1;
-        env.storage()
-            .instance()
-            .set(&DataKey::CreatorSubscriptionCount(creator.clone()), &current_count);
+        env.storage().instance().set(
+            &DataKey::CreatorSubscriptionCount(creator.clone()),
+            &current_count,
+        );
 
         // topics: (name, fan, creator)  data: 0u32 (direct sub — no plan)
-        env.events()
-            .publish((Symbol::new(&env, "subscribed"), fan.clone(), creator), 0u32);
+        env.events().publish(
+            (Symbol::new(&env, "subscribed"), fan.clone(), creator),
+            0u32,
+        );
     }
 
     /// Pause the contract (admin only)

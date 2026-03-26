@@ -330,11 +330,17 @@ fn test_subscription_state_after_snapshot_restore() {
 // ── #311 – event topic standardization ───────────────────────────────────────
 
 /// Helper: find the first event whose first topic matches `name`.
-fn find_event(env: &Env, name: &str) -> Option<(Address, soroban_sdk::Vec<soroban_sdk::Val>, soroban_sdk::Val)> {
+fn find_event(
+    env: &Env,
+    name: &str,
+) -> Option<(
+    Address,
+    soroban_sdk::Vec<soroban_sdk::Val>,
+    soroban_sdk::Val,
+)> {
     env.events().all().iter().find(|e| {
-        e.1.first().is_some_and(|t| {
-            t.try_into_val(env).ok() == Some(Symbol::new(env, name))
-        })
+        e.1.first()
+            .is_some_and(|t| t.try_into_val(env).ok() == Some(Symbol::new(env, name)))
     })
 }
 
@@ -457,7 +463,8 @@ fn test_create_subscription_emits_subscribed_event() {
     env.ledger().with_mut(|li| li.sequence_number = 1000);
     client.create_subscription(&fan, &creator, &518400);
 
-    let ev = find_event(&env, "subscribed").expect("subscribed event not emitted by create_subscription");
+    let ev = find_event(&env, "subscribed")
+        .expect("subscribed event not emitted by create_subscription");
 
     assert_eq!(ev.1.len(), 3, "expected 3 topics: (name, fan, creator)");
     let t_fan: Address = ev.1.get(1).unwrap().try_into_val(&env).unwrap();
