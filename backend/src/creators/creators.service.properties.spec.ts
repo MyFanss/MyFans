@@ -34,6 +34,10 @@ describe('CreatorsService - Property-Based Tests', () => {
             createQueryBuilder: jest.fn(() => mockQueryBuilder),
           },
         },
+        {
+          provide: EventBus,
+          useValue: { publish: jest.fn() },
+        },
       ],
     }).compile();
 

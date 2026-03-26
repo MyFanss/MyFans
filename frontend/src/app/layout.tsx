@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { FavoritesProvider } from '@/hooks/useFavorites';
+import { ConsentProvider } from '@/contexts/ConsentContext';
 import { NoFlashScript } from '@/components/NoFlashScript';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { ToastContainer } from '@/components/ui/Toast';
@@ -68,10 +69,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <ThemeProvider>
-          <ToastProvider>
-            {children}
-            <ToastContainer />
-          </ToastProvider>
+          <ConsentProvider>
+            <FavoritesProvider>
+              <ToastProvider>
+                {children}
+                <ToastContainer />
+              </ToastProvider>
+            </FavoritesProvider>
+          </ConsentProvider>
         </ThemeProvider>
       </body>
     </html>
