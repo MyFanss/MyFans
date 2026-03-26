@@ -1,5 +1,4 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { StartupProbeService } from './health/startup-probe.service';
 import { getDataSourceToken } from '@nestjs/typeorm';

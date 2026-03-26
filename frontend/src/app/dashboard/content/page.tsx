@@ -1,10 +1,10 @@
 'use client';
 
-import { useImageUpload } from '@/hooks/useImageUpload';
+import { useFileUpload } from '@/hooks/useFileUpload';
 import { FileUpload } from '@/components/ui';
 
 export default function ContentPage() {
-  const { upload } = useImageUpload({ endpoint: '/api/content/upload' });
+  const { upload } = useFileUpload({ endpoint: '/api/content/upload' });
 
   return (
     <div className="max-w-full">
@@ -12,10 +12,11 @@ export default function ContentPage() {
       <div className="bg-white dark:bg-gray-900 p-4 sm:p-6 rounded-lg border border-gray-200 dark:border-gray-800 space-y-6">
         <FileUpload
           label="Upload Content"
-          onUpload={upload}
+          onFiles={(files) => { if (files[0]) upload(files[0], new AbortController().signal); }}
           hint="JPG, PNG, or WebP • Max 10MB"
         />
       </div>
     </div>
   );
 }
+
