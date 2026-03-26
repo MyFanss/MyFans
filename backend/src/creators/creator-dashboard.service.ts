@@ -8,6 +8,16 @@ import {
   TimeWindow,
 } from './dto/creator-dashboard.dto';
 
+interface SubscriptionRecord {
+  id: string;
+  fan: string;
+  creator: string;
+  planId: number;
+  expiry: number;
+  status: string;
+  createdAt: Date;
+}
+
 const CACHE_TTL_MS = 60_000; // 1 minute
 
 interface CacheEntry {
@@ -59,7 +69,7 @@ export class CreatorDashboardService {
     window: TimeWindow | 'custom',
     _query: DashboardQueryDto,
   ): CreatorDashboardDto {
-    const allSubs = this.subscriptions.getAllSubscriptionsInternal();
+    const allSubs = this.subscriptions.getAllSubscriptionsInternal() as SubscriptionRecord[];
     const creatorSubs = allSubs.filter(s => s.creator === creatorAddress);
     const nowSecs = Math.floor(Date.now() / 1000);
     const fromSecs = Math.floor(from.getTime() / 1000);
