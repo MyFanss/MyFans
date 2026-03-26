@@ -129,7 +129,7 @@ export class SubscriptionReconcilerService {
         }
       }
 
-      if (record.action === 'none') return record;
+      if (record.action === 'none' || record.action === 'skipped') return record;
 
       if (!dryRun) {
         this.applyRepair(sub.fan, sub.creator, record.action, record.chainExpiry);
