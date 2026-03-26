@@ -2,6 +2,12 @@
 
 Smart contracts and deployment automation for MyFans on Stellar/Soroban.
 
+## Authorization matrix
+
+Use [`AUTH_MATRIX.md`](./AUTH_MATRIX.md) for method-by-method signer requirements, including valid/invalid invocation examples for each public method in deployed contracts.
+
+When any contract interface or auth rule changes, update `AUTH_MATRIX.md` in the same PR.
+
 ## Contracts deployed by script
 
 1. `myfans-token`
