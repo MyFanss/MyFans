@@ -1,7 +1,12 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext';
-import { FeatureFlag, resetFeatureFlagsForTests, setFeatureFlagOverride } from '@/lib/feature-flags';
+import {
+  FeatureFlag,
+  FEATURE_FLAGS_REFRESH_INTERVAL_MS,
+  resetFeatureFlagsForTests,
+  setFeatureFlagOverride,
+} from '@/lib/feature-flags';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -12,6 +17,7 @@ describe('useFeatureFlag', () => {
   beforeEach(() => {
     resetFeatureFlagsForTests();
     window.localStorage.clear();
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -87,5 +93,46 @@ describe('useFeatureFlag', () => {
     await waitFor(() => {
       expect(result.current).toBe(true);
     });
+  });
+
+  it('refreshes remote flags on an interval so runtime rollouts update without a reload', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('NEXT_PUBLIC_FEATURE_FLAGS_URL', 'https://flags.example.com/flags.json');
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          flags: {
+            [FeatureFlag.BOOKMARKS]: false,
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          flags: {
+            [FeatureFlag.BOOKMARKS]: true,
+          },
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useFeatureFlag(FeatureFlag.BOOKMARKS), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current).toBe(false);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FEATURE_FLAGS_REFRESH_INTERVAL_MS);
+    });
+
+    expect(result.current).toBe(true);
+
+    vi.useRealTimers();
   });
 });

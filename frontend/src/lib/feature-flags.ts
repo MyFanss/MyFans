@@ -18,6 +18,7 @@ const FEATURE_FLAG_OVERRIDES_ENV_KEY = 'NEXT_PUBLIC_FEATURE_FLAG_OVERRIDES';
 const FEATURE_FLAGS_URL_ENV_KEY = 'NEXT_PUBLIC_FEATURE_FLAGS_URL';
 const LOCAL_STORAGE_PREFIX = 'flags:';
 export const FEATURE_FLAGS_UPDATED_EVENT = 'feature-flags:updated';
+export const FEATURE_FLAGS_REFRESH_INTERVAL_MS = 60_000;
 
 export const featureFlagDefinitions: Record<FeatureFlag, FeatureFlagDefinition> = {
   [FeatureFlag.BOOKMARKS]: {
@@ -131,17 +132,18 @@ export function isFeatureEnabled(flag: FeatureFlag): boolean {
   return getFeatureFlags()[flag] ?? false;
 }
 
-export async function fetchRemoteFlags(): Promise<FeatureFlagOverrides> {
-  if (remoteFlagsPromise) {
-    return remoteFlagsPromise;
+export async function fetchRemoteFlags(forceRefresh = false): Promise<FeatureFlagOverrides> {
+  if (forceRefresh) {
+    remoteFlagsPromise = null;
   }
 
-  remoteFlagsPromise = (async () => {
-    const url = getRemoteFlagsUrl();
+  if (!remoteFlagsPromise) {
+    remoteFlagsPromise = (async () => {
+      const url = getRemoteFlagsUrl();
 
-    if (!url) {
-      return {};
-    }
+      if (!url) {
+        return {};
+      }
 
     try {
       const response = await fetch(url, { cache: 'no-store' });
@@ -162,14 +164,19 @@ export async function fetchRemoteFlags(): Promise<FeatureFlagOverrides> {
       logFeatureFlagWarning('Feature flags are unavailable. Falling back to safe defaults.', error);
       return {};
     }
-  })();
+    })();
+  }
 
   return remoteFlagsPromise;
 }
 
-export async function loadFeatureFlags(): Promise<FeatureFlagSnapshot> {
-  cachedRemoteFlags = await fetchRemoteFlags();
+export async function loadFeatureFlags(forceRefresh = false): Promise<FeatureFlagSnapshot> {
+  cachedRemoteFlags = await fetchRemoteFlags(forceRefresh);
   return getFeatureFlags();
+}
+
+export async function refreshFeatureFlags(): Promise<FeatureFlagSnapshot> {
+  return loadFeatureFlags(true);
 }
 
 export function setFeatureFlagOverride(flag: FeatureFlag, value: boolean) {
