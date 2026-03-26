@@ -1,4 +1,6 @@
 import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard } from './auth/throttler.guard';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
@@ -9,23 +11,19 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { CreatorsModule } from './creators/creators.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
-import { WebhookModule } from './webhook/webhook.module';
-import { ThrottlerGuard } from './auth/throttler.guard';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    ThrottlerModule.forRoot([{ name: 'auth', ttl: 60000, limit: 5 }]),
     LoggingModule,
-    HealthModule,
+    AuthModule,
     CreatorsModule,
     SubscriptionsModule,
-    WebhookModule,
+    HealthModule,
   ],
-  controllers: [AppController],
-  providers: [
-    AppService,
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
-  ],
+  controllers: [AppController, ExampleController],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {

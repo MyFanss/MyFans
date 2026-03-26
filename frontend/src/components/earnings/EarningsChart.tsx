@@ -189,7 +189,7 @@ export function EarningsChart() {
                   borderRadius: '8px',
                 }}
                 labelStyle={{ color: isDark ? '#9ca3af' : '#6b7280' }}
-                formatter={(value: number | undefined) => [`$${value != null ? value.toFixed(2) : '0.00'}`, 'Earnings']}
+                formatter={(value) => [`$${typeof value === 'number' ? value.toFixed(2) : '0.00'}`, 'Earnings']}
                 labelFormatter={(label) => label}
               />
               <Bar dataKey="earnings" fill={chartColors.bar} radius={[4, 4, 0, 0]} name="Earnings" />
