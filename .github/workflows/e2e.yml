@@ -64,7 +64,7 @@ jobs:
           DB_NAME: myfans
           # JWT_SECRET for E2E is a test-only value stored as a GitHub Secret.
           # It is never shared with production and rotated independently.
-          JWT_SECRET: ${{ secrets.E2E_JWT_SECRET }}
+          JWT_SECRET: ${{ secrets.E2E_JWT_SECRET || 'test-secret-value-for-ci-only' }}
 
       - name: Run E2E tests
         working-directory: frontend
