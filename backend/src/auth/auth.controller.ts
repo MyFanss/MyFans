@@ -9,18 +9,20 @@ export class AuthController {
   @Post('login')
   @Throttle({ auth: { limit: 5, ttl: 60000 } })
   async login(@Body() body: { address?: string }) {
-    if (!this.authService.validateStellarAddress(body?.address)) {
+    const { address } = body;
+    if (!address || !this.authService.validateStellarAddress(address)) {
       throw new BadRequestException('Invalid Stellar address');
     }
-    return this.authService.createSession(body.address!);
+    return this.authService.createSession(address);
   }
 
   @Post('register')
   @Throttle({ auth: { limit: 5, ttl: 60000 } })
   async register(@Body() body: { address?: string }) {
-    if (!this.authService.validateStellarAddress(body?.address)) {
+    const { address } = body;
+    if (!address || !this.authService.validateStellarAddress(address)) {
       throw new BadRequestException('Invalid Stellar address');
     }
-    return this.authService.createSession(body.address!);
+    return this.authService.createSession(address);
   }
 }
