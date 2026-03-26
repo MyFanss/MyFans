@@ -3,7 +3,7 @@ import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerGuard } from './auth/throttler.guard';
-import { APP_GUARD } from '@nestjs/core';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { User } from './users/entities/user.entity';
@@ -17,7 +17,16 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { AuthModule } from './auth-module/auth.module';
 
 @Module({
-  imports: [AuthModule, CreatorsModule, SubscriptionsModule, HealthModule],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env.local', '.env'],
+    }),
+    AuthModule,
+    CreatorsModule,
+    SubscriptionsModule,
+    HealthModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
