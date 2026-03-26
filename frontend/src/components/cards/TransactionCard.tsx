@@ -1,3 +1,4 @@
+'use client';
 import React from 'react';
 import { BaseCard, BaseCardProps } from './BaseCard';
 import { formatCurrency as formatCurrencyUtil, formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/lib/formatting';
@@ -269,3 +270,5 @@ export const TransactionCard: React.FC<TransactionCardProps> = ({
 };
 
 export default TransactionCard;
+
+
