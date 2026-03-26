@@ -1,6 +1,14 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { EventBus } from '../events/event-bus';
 import { PlanCreatedEvent } from '../events/domain-events';
+import { PaginationDto, PaginatedResponseDto } from '../common/dto';
+import { PlanDto } from './dto/plan.dto';
+import { SearchCreatorsDto } from './dto/search-creators.dto';
+import { PublicCreatorDto } from './dto/public-creator.dto';
+import { Creator } from './entities/creator.entity';
+import { User } from '../users/entities/user.entity';
 
 export interface Plan {
   id: number;
@@ -15,7 +23,11 @@ export class CreatorsService {
   private plans: Map<number, Plan> = new Map();
   private planCounter = 0;
 
-  constructor(private readonly eventBus: EventBus) {}
+  constructor(
+    private readonly eventBus: EventBus,
+    @InjectRepository(User)
+    private readonly usersRepository: Repository<User>,
+  ) {}
 
   createPlan(creator: string, asset: string, amount: string, intervalDays: number): Plan {
     const plan = { id: ++this.planCounter, creator, asset, amount, intervalDays };

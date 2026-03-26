@@ -4,28 +4,39 @@ import {
   SUBSCRIPTION_RENEWAL_FAILED,
   SubscriptionEventPublisher,
 } from './events';
-import { SubscriptionsService } from './subscriptions.service';
+import { SubscriptionsService, SERVER_NETWORK } from './subscriptions.service';
+import { EventBus } from '../events/event-bus';
+
+function makeEventBus(): EventBus {
+  return { publish: jest.fn() } as unknown as EventBus;
+}
+
+async function buildService(
+  eventPublisher?: jest.Mocked<SubscriptionEventPublisher>,
+): Promise<SubscriptionsService> {
+  const providers: object[] = [
+    SubscriptionsService,
+    { provide: EventBus, useValue: makeEventBus() },
+  ];
+  if (eventPublisher) {
+    providers.push({
+      provide: SUBSCRIPTION_EVENT_PUBLISHER,
+      useValue: eventPublisher,
+    });
+  }
+  const module: TestingModule = await Test.createTestingModule({
+    providers,
+  }).compile();
+  return module.get<SubscriptionsService>(SubscriptionsService);
+}
 
 describe('SubscriptionsService', () => {
   let service: SubscriptionsService;
   let eventPublisher: jest.Mocked<SubscriptionEventPublisher>;
 
   beforeEach(async () => {
-    eventPublisher = {
-      emit: jest.fn(),
-    };
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        SubscriptionsService,
-        {
-          provide: SUBSCRIPTION_EVENT_PUBLISHER,
-          useValue: eventPublisher,
-        },
-      ],
-    }).compile();
-
-    service = module.get<SubscriptionsService>(SubscriptionsService);
+    eventPublisher = { emit: jest.fn() };
+    service = await buildService(eventPublisher);
   });
 
   it('emits renewal_failed event when checkout failure is recorded', async () => {
@@ -75,10 +86,6 @@ describe('SubscriptionsService', () => {
   describe('listSubscriptions', () => {
     const fan = 'GAAAAAAAAAAAAAAA';
 
-    beforeEach(() => {
-      service = new SubscriptionsService();
-    });
-
     it('should return empty paginated response when fan has no subscriptions', () => {
       const result = service.listSubscriptions(fan);
 
@@ -90,7 +97,8 @@ describe('SubscriptionsService', () => {
     });
 
     it('should return all subscriptions in a single page', () => {
-      const creator = 'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5';
+      const creator =
+        'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5';
       const expiry = Math.floor(Date.now() / 1000) + 86400;
       service.addSubscription(fan, creator, 1, expiry);
 
@@ -105,12 +113,10 @@ describe('SubscriptionsService', () => {
 
     it('should paginate results across multiple pages', () => {
       const expiry = Math.floor(Date.now() / 1000) + 86400;
-      // Add 3 subscriptions to different creators
       service.addSubscription(fan, 'CREATOR_A_XXXXXXX', 1, expiry);
       service.addSubscription(fan, 'CREATOR_B_XXXXXXX', 1, expiry + 100);
       service.addSubscription(fan, 'CREATOR_C_XXXXXXX', 1, expiry + 200);
 
-      // Page 1 with limit 2
       const page1 = service.listSubscriptions(fan, undefined, undefined, 1, 2);
       expect(page1.data).toHaveLength(2);
       expect(page1.total).toBe(3);
@@ -118,7 +124,6 @@ describe('SubscriptionsService', () => {
       expect(page1.limit).toBe(2);
       expect(page1.totalPages).toBe(2);
 
-      // Page 2 with limit 2
       const page2 = service.listSubscriptions(fan, undefined, undefined, 2, 2);
       expect(page2.data).toHaveLength(1);
       expect(page2.total).toBe(3);
@@ -130,7 +135,7 @@ describe('SubscriptionsService', () => {
       const expiry = Math.floor(Date.now() / 1000) + 86400;
       const pastExpiry = Math.floor(Date.now() / 1000) - 86400;
       service.addSubscription(fan, 'CREATOR_A_XXXXXXX', 1, expiry);
-      service.addSubscription(fan, 'CREATOR_B_XXXXXXX', 1, pastExpiry); // will be expired
+      service.addSubscription(fan, 'CREATOR_B_XXXXXXX', 1, pastExpiry);
 
       const activeOnly = service.listSubscriptions(fan, 'active');
       expect(activeOnly.data).toHaveLength(1);
@@ -145,11 +150,75 @@ describe('SubscriptionsService', () => {
       const expiry = Math.floor(Date.now() / 1000) + 86400;
       service.addSubscription(fan, 'CREATOR_A_XXXXXXX', 1, expiry);
 
-      const result = service.listSubscriptions(fan, undefined, undefined, 5, 20);
+      const result = service.listSubscriptions(
+        fan,
+        undefined,
+        undefined,
+        5,
+        20,
+      );
       expect(result.data).toEqual([]);
       expect(result.total).toBe(1);
       expect(result.page).toBe(5);
       expect(result.totalPages).toBe(1);
+    });
+  });
+
+  describe('assertNetworkMatch (network mismatch detection)', () => {
+    it('does not throw when requestNetwork matches server network', () => {
+      expect(() => service.assertNetworkMatch(SERVER_NETWORK)).not.toThrow();
+    });
+
+    it('does not throw when requestNetwork is undefined', () => {
+      expect(() => service.assertNetworkMatch(undefined)).not.toThrow();
+    });
+
+    it('throws NETWORK_MISMATCH error when networks differ', () => {
+      const wrongNetwork =
+        SERVER_NETWORK === 'testnet' ? 'mainnet' : 'testnet';
+      expect(() => service.assertNetworkMatch(wrongNetwork)).toThrow();
+    });
+
+    it('error response includes expectedNetwork and currentNetwork', () => {
+      const wrongNetwork =
+        SERVER_NETWORK === 'testnet' ? 'mainnet' : 'testnet';
+      try {
+        service.assertNetworkMatch(wrongNetwork);
+        fail('Expected an error to be thrown');
+      } catch (err: unknown) {
+        const body = (err as { response: Record<string, string> }).response;
+        expect(body.error).toBe('NETWORK_MISMATCH');
+        expect(body.expectedNetwork).toBe(SERVER_NETWORK);
+        expect(body.currentNetwork).toBe(wrongNetwork);
+      }
+    });
+
+    it('createCheckout throws NETWORK_MISMATCH when networks differ', () => {
+      const wrongNetwork =
+        SERVER_NETWORK === 'testnet' ? 'mainnet' : 'testnet';
+      expect(() =>
+        service.createCheckout(
+          'GFANADDRESS111111111111111111111111111111111111111111111111',
+          'GAAAAAAAAAAAAAAA',
+          1,
+          'XLM',
+          undefined,
+          wrongNetwork,
+        ),
+      ).toThrow();
+    });
+
+    it('createCheckout succeeds when network matches', () => {
+      expect(() =>
+        service.createCheckout(
+          'GFANADDRESS111111111111111111111111111111111111111111111111',
+          'GAAAAAAAAAAAAAAA',
+          1,
+          'XLM',
+          undefined,
+          SERVER_NETWORK,
+        ),
+      ).not.toThrow();
     });
   });
 });
