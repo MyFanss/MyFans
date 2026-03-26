@@ -46,7 +46,7 @@ impl Treasury {
         let token_address: Address = env.storage().instance().get(&TOKEN).unwrap();
         let contract_address = env.current_contract_address();
         token::Client::new(&env, &token_address).transfer(&from, &contract_address, &amount);
-        
+
         env.events().publish(
             (Symbol::new(&env, "deposit"),),
             (from, amount, token_address),

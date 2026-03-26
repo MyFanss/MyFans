@@ -1,30 +1,6 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  Logger,
-  NotFoundException,
-  Optional,
-} from '@nestjs/common';
-import {
-  SUBSCRIPTION_EVENT_PUBLISHER,
-  SUBSCRIPTION_RENEWAL_FAILED,
-} from './events';
-import type {
-  RenewalFailurePayload,
-  SubscriptionEventPublisher,
-} from './events';
-import { PaginatedResponseDto } from '../common/dto';
-import { JobLoggerService } from '../common/services/job-logger.service';
-
-/** Checkout status enum */
-export enum CheckoutStatus {
-  PENDING = 'pending',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
-  REJECTED = 'rejected',
-  EXPIRED = 'expired',
-}
+import { Injectable } from '@nestjs/common';
+import { EventBus } from '../events/event-bus';
+import { SubscriptionCreatedEvent, SubscriptionExpiredEvent } from '../events/domain-events';
 
 interface Subscription {
   id: string;
@@ -102,20 +78,26 @@ export class SubscriptionsService {
     this.creatorProfiles.set('GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5', { name: 'Creator 2', description: 'Exclusive videos and photos' });
   }
 
+  constructor(private readonly eventBus: EventBus) {}
+
   private getKey(fan: string, creator: string): string {
     return `${fan}:${creator}`;
   }
 
   addSubscription(fan: string, creator: string, planId: number, expiry: number) {
-    this.subscriptions.set(this.getKey(fan, creator), {
-      id: generateId(),
-      fan,
-      creator,
-      planId,
-      expiry,
-      status: 'active',
-      createdAt: new Date()
-    });
+    this.subscriptions.set(this.getKey(fan, creator), { fan, creator, planId, expiry });
+
+    this.eventBus.publish(
+      new SubscriptionCreatedEvent(fan, creator, planId, expiry),
+    );
+  }
+
+  expireSubscription(fan: string, creator: string) {
+    this.subscriptions.delete(this.getKey(fan, creator));
+
+    this.eventBus.publish(
+      new SubscriptionExpiredEvent(fan, creator),
+    );
   }
 
   isSubscriber(fan: string, creator: string): boolean {

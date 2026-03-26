@@ -1,12 +1,8 @@
 import { Module } from '@nestjs/common';
-import { HealthController } from './health.controller';
-import { HealthService } from './health.service';
-import { SorobanRpcService } from '../common/services/soroban-rpc.service';
-import { LoggingModule } from '../common/logging.module';
+import { StartupProbeService } from './startup-probe.service';
 
 @Module({
-    imports: [LoggingModule],
-    controllers: [HealthController],
-    providers: [HealthService, SorobanRpcService],
+  providers: [StartupProbeService],
+  exports: [StartupProbeService],
 })
-export class HealthModule { }
+export class HealthModule {}
