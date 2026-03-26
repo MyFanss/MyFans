@@ -123,6 +123,17 @@ export class SubscriptionsService {
     this.eventBus?.publish(new SubscriptionExpiredEvent(fan, creator));
   }
 
+  /** Used by reconciler for full-scan access */
+  getAllSubscriptionsInternal(): { id: string; fan: string; creator: string; expiry: number; status: string }[] {
+    return Array.from(this.subscriptions.values()).map(s => ({
+      id: s.id,
+      fan: s.fan,
+      creator: s.creator,
+      expiry: s.expiry,
+      status: s.status,
+    }));
+  }
+
   isSubscriber(fan: string, creator: string): boolean {
     const sub = this.subscriptions.get(this.getKey(fan, creator));
     return sub ? sub.expiry > Date.now() / 1000 : false;
