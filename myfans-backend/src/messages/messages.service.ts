@@ -8,6 +8,7 @@ import { Repository, IsNull } from 'typeorm';
 import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
 import { User } from '../users/entities/user.entity';
+import { PaginatedResponseDto } from '../common/dto';
 
 @Injectable()
 export class MessagesService {
@@ -107,7 +108,7 @@ export class MessagesService {
     conversationId: string,
     page: number = 1,
     limit: number = 20,
-  ): Promise<{ messages: Message[]; total: number }> {
+  ): Promise<PaginatedResponseDto<Message>> {
     const [messages, total] = await this.messageRepository.findAndCount({
       where: { conversation_id: conversationId },
       order: { created_at: 'DESC' },
@@ -116,10 +117,12 @@ export class MessagesService {
       relations: ['sender'],
     });
 
-    return {
-      messages: messages.reverse(), // Return in chronological order
+    return new PaginatedResponseDto(
+      messages.reverse(), // Return in chronological order
       total,
-    };
+      page,
+      limit,
+    );
   }
 
   async markAsRead(conversationId: string, userId: string): Promise<void> {
@@ -133,11 +136,19 @@ export class MessagesService {
       .execute();
   }
 
-  async listConversations(userId: string): Promise<any[]> {
-    const conversations = await this.conversationRepository.find({
+  async listConversations(
+    userId: string,
+    pagination: { page?: number; limit?: number } = {},
+  ): Promise<PaginatedResponseDto<any>> {
+    const { page = 1, limit = 20 } = pagination;
+    const skip = (page - 1) * limit;
+
+    const [conversations, total] = await this.conversationRepository.findAndCount({
       where: [{ participant_1_id: userId }, { participant_2_id: userId }],
       relations: ['participant_1', 'participant_2'],
       order: { updated_at: 'DESC' },
+      skip,
+      take: limit,
     });
 
     const results = await Promise.all(
@@ -166,7 +177,7 @@ export class MessagesService {
       }),
     );
 
-    return results;
+    return new PaginatedResponseDto(results, total, page, limit);
   }
 
   async getLastMessage(conversationId: string): Promise<Message | null> {

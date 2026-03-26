@@ -21,13 +21,13 @@ export function QuickActions({ actions }: QuickActionsProps) {
       <h2 id="quick-actions-heading" className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
         Quick actions
       </h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3">
         {actions.map((action) => (
           <button
             key={action.id}
             type="button"
             onClick={action.onClick}
-            className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left"
+            className="flex items-center gap-3 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left min-h-[60px] touch-manipulation"
           >
             <span className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 flex items-center justify-center">
               {action.icon}

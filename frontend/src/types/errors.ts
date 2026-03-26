@@ -6,6 +6,8 @@
 export type ErrorCode =
   // Transaction errors
   | 'TX_FAILED'
+  | 'TX_BUILD_FAILED'
+  | 'TX_SUBMIT_FAILED'
   | 'TX_REJECTED'
   | 'TX_TIMEOUT'
   | 'INSUFFICIENT_BALANCE'
@@ -158,6 +160,28 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
     TX_FAILED: {
       message: 'Transaction failed',
       description: 'Your transaction could not be completed. Please try again.',
+      severity: 'error',
+      category: 'transaction',
+      recoverable: true,
+      actions: [
+        { label: 'Try again', type: 'retry', primary: true },
+        { label: 'Go back', type: 'back' },
+      ],
+    },
+    TX_BUILD_FAILED: {
+      message: 'Transaction build failed',
+      description: 'Could not build the transaction. Please try again.',
+      severity: 'error',
+      category: 'transaction',
+      recoverable: true,
+      actions: [
+        { label: 'Try again', type: 'retry', primary: true },
+        { label: 'Go back', type: 'back' },
+      ],
+    },
+    TX_SUBMIT_FAILED: {
+      message: 'Transaction submit failed',
+      description: 'Could not submit the transaction to the network.',
       severity: 'error',
       category: 'transaction',
       recoverable: true,
