@@ -67,7 +67,7 @@ export default function SettingsPage() {
       await navigator.clipboard.writeText(content.walletAddress);
       showSuccess("Address copied", "Wallet address copied to clipboard.");
     } catch {
-      showError("COPY_FAILED", {
+      showError("UNKNOWN_ERROR", {
         message: "Copy failed",
         description: "Please copy manually.",
       });
