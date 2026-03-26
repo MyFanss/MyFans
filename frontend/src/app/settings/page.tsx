@@ -19,6 +19,7 @@ export default function SettingsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteComplete, setDeleteComplete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState("");
   const { navItems } = useSettings(role);
   const { theme, preference, setTheme } = useTheme();
   const { consent, setConsent } = useConsent();
