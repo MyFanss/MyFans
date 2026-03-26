@@ -86,8 +86,9 @@ impl MyfansContract {
         };
         env.storage().instance().set(&DataKey::Plan(plan_id), &plan);
         env.storage().instance().set(&DataKey::PlanCount, &plan_id);
+        // topics: (name, creator)  data: plan_id
         env.events()
-            .publish((Symbol::new(&env, "plan_created"), plan_id), creator);
+            .publish((Symbol::new(&env, "plan_created"), creator), plan_id);
         plan_id
     }
 
@@ -130,8 +131,15 @@ impl MyfansContract {
         env.storage()
             .instance()
             .set(&DataKey::Sub(fan.clone(), plan.creator.clone()), &sub);
-        env.events()
-            .publish((Symbol::new(&env, "subscribed"), plan_id), fan);
+        // topics: (name, fan, creator)  data: plan_id
+        env.events().publish(
+            (
+                Symbol::new(&env, "subscribed"),
+                fan.clone(),
+                plan.creator.clone(),
+            ),
+            plan_id,
+        );
     }
 
     pub fn is_subscriber(env: Env, fan: Address, creator: Address) -> bool {
@@ -196,10 +204,13 @@ impl MyfansContract {
 
         env.storage()
             .instance()
-            .set(&DataKey::Sub(fan.clone(), creator), &updated_sub);
+            .set(&DataKey::Sub(fan.clone(), creator.clone()), &updated_sub);
 
-        env.events()
-            .publish((Symbol::new(&env, "extended"), sub.plan_id), fan);
+        // topics: (name, fan, creator)  data: plan_id
+        env.events().publish(
+            (Symbol::new(&env, "extended"), fan.clone(), creator),
+            sub.plan_id,
+        );
     }
 
     pub fn cancel(env: Env, fan: Address, creator: Address) {
@@ -213,8 +224,10 @@ impl MyfansContract {
 
         env.storage()
             .instance()
-            .remove(&DataKey::Sub(fan.clone(), creator));
-        env.events().publish((Symbol::new(&env, "cancelled"),), fan);
+            .remove(&DataKey::Sub(fan.clone(), creator.clone()));
+        // topics: (name, fan, creator)  data: true
+        env.events()
+            .publish((Symbol::new(&env, "cancelled"), fan.clone(), creator), true);
     }
 
     pub fn create_subscription(env: Env, fan: Address, creator: Address, duration_ledgers: u32) {
@@ -257,9 +270,16 @@ impl MyfansContract {
             .unwrap_or(0);
 
         current_count += 1;
-        env.storage()
-            .instance()
-            .set(&DataKey::CreatorSubscriptionCount(creator), &current_count);
+        env.storage().instance().set(
+            &DataKey::CreatorSubscriptionCount(creator.clone()),
+            &current_count,
+        );
+
+        // topics: (name, fan, creator)  data: 0u32 (direct sub — no plan)
+        env.events().publish(
+            (Symbol::new(&env, "subscribed"), fan.clone(), creator),
+            0u32,
+        );
     }
 
     /// Pause the contract (admin only)
