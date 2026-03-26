@@ -4,6 +4,7 @@ import React, { useState, useCallback } from 'react';
 import { BaseCard } from '@/components/cards';
 import { PlanCard } from '@/components/cards/PlanCard';
 import { useToast } from '@/contexts/ToastContext';
+import { errorToastWithCause } from '@/lib/error-copy';
 import {
   validatePlanForm,
   getCurrencySymbol,
@@ -69,10 +70,7 @@ export function SubscriptionPlanForm({
       setStatus('draft');
       showSuccess('Draft saved', 'Your subscription plan has been saved as a draft.');
     } catch (err) {
-      showError('SAVE_FAILED', {
-        message: 'Could not save draft',
-        description: err instanceof Error ? err.message : 'Please try again.',
-      });
+      showError('SAVE_FAILED', errorToastWithCause('SAVE_FAILED', err));
     } finally {
       setIsSubmitting(false);
     }
@@ -88,10 +86,7 @@ export function SubscriptionPlanForm({
       setStatus('on-chain');
       showSuccess('Plan published', 'Your subscription plan is now live on the Stellar network.');
     } catch (err) {
-      showError('PUBLISH_FAILED', {
-        message: 'Could not publish plan',
-        description: err instanceof Error ? err.message : 'Please try again.',
-      });
+      showError('PUBLISH_FAILED', errorToastWithCause('PUBLISH_FAILED', err));
     } finally {
       setIsSubmitting(false);
     }

@@ -164,9 +164,7 @@ export default function ProfilePage() {
   // Handle save
   const handleSave = useCallback(async () => {
     if (!validateForm()) {
-      showError("VALIDATION_ERROR", {
-        message: "Please fix the errors before saving",
-      });
+      showError("VALIDATION_ERROR");
       return;
     }
 
@@ -176,9 +174,7 @@ export default function ProfilePage() {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       showSuccess("Profile saved successfully!");
     } catch {
-      showError("UNKNOWN_ERROR", {
-        message: "Failed to save profile",
-      });
+      showError("INTERNAL_ERROR");
     } finally {
       setIsSaving(false);
     }
@@ -207,7 +203,7 @@ export default function ProfilePage() {
       await navigator.clipboard.writeText(wallet.address);
       showSuccess("Address copied to clipboard!");
     } catch {
-      showError("UNKNOWN_ERROR", { message: "Failed to copy address" });
+      showError("COPY_FAILED");
     }
   }, [wallet.address, showSuccess, showError]);
 
