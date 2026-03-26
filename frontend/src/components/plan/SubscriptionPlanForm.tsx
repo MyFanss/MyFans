@@ -69,7 +69,7 @@ export function SubscriptionPlanForm({
       setStatus('draft');
       showSuccess('Draft saved', 'Your subscription plan has been saved as a draft.');
     } catch (err) {
-      showError('SAVE_FAILED', {
+      showError('INTERNAL_ERROR', {
         message: 'Could not save draft',
         description: err instanceof Error ? err.message : 'Please try again.',
       });
@@ -88,7 +88,7 @@ export function SubscriptionPlanForm({
       setStatus('on-chain');
       showSuccess('Plan published', 'Your subscription plan is now live on the Stellar network.');
     } catch (err) {
-      showError('PUBLISH_FAILED', {
+      showError('INTERNAL_ERROR', {
         message: 'Could not publish plan',
         description: err instanceof Error ? err.message : 'Please try again.',
       });
