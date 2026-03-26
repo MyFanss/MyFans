@@ -12,6 +12,7 @@ import {
   getCurrencySymbol,
   type CreatorProfile,
 } from '@/lib/creator-profile';
+import { createCreatorMetadata } from '@/lib/metadata';
 import { BookmarkButton } from '@/components/BookmarkButton';
 import { PlanCard } from '@/components/cards';
 import { ContentCard } from '@/components/cards';
