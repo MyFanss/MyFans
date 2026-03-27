@@ -41,6 +41,8 @@ export default function AssetSelector({ walletStatus, selectedAsset, onSelectAss
                 ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-500/20 dark:border-primary-400 dark:bg-primary-900/20'
                 : 'border-slate-200 hover:border-slate-300 dark:border-slate-600 dark:hover:border-slate-500'
             }`}
+            aria-label={`Select ${asset.code} asset with balance ${formatBalance(asset.balance)}${selectedAsset?.code === asset.code && selectedAsset?.issuer === asset.issuer ? ' (currently selected)' : ''}`}
+            aria-pressed={selectedAsset?.code === asset.code && selectedAsset?.issuer === asset.issuer}
           >
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700">
