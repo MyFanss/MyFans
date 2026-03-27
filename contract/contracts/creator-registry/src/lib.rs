@@ -6,11 +6,19 @@ use soroban_sdk::{contract, contractimpl, contracttype, Address, Env};
 const RATE_LIMIT_LEDGERS: u32 = 10;
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Admin,
-    Creator(Address),       // maps creator address -> creator_id (u64)
+    Creator(Address), // maps creator address -> creator_id (u64)
+    // Canonical storage name: `registration_ledger`.
+    // Keep the legacy `LastRegLedger` variant to preserve deployed key serialization.
     LastRegLedger(Address), // last ledger when this caller did a registration
+}
+
+impl DataKey {
+    fn registration_ledger(address: Address) -> Self {
+        Self::LastRegLedger(address)
+    }
 }
 
 #[contract]
@@ -43,7 +51,7 @@ impl CreatorRegistryContract {
         }
 
         let current = env.ledger().sequence();
-        let last_key = DataKey::LastRegLedger(caller.clone());
+        let last_key = DataKey::registration_ledger(caller.clone());
         if let Some(last) = env.storage().persistent().get::<DataKey, u32>(&last_key) {
             if current < last.saturating_add(RATE_LIMIT_LEDGERS) {
                 panic!(
