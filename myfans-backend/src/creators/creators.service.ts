@@ -13,6 +13,7 @@ import { Creator } from './entities/creator.entity';
 import { Follow } from './entities/follow.entity';
 import { FindCreatorsQueryDto } from './dto/find-creators-query.dto';
 import { OnboardCreatorDto } from './dto/onboard-creator.dto';
+import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 import { User } from '../users/entities/user.entity';
 import { PaginatedResponseDto } from '../common/dto';
 
@@ -84,6 +85,35 @@ export class CreatorsService {
     });
 
     return this.toDetailItem(createdCreator!);
+  }
+
+  async updateMyProfile(userId: string, dto: UpdateCreatorProfileDto) {
+    const creator = await this.creatorRepo.findOne({
+      where: { user_id: userId },
+      relations: ['user'],
+    });
+    if (!creator) {
+      throw new NotFoundException('Creator profile not found');
+    }
+
+    const patch: Partial<Creator> = {};
+    if (dto.bio !== undefined) patch.bio = dto.bio;
+    if (dto.subscription_price !== undefined) {
+      patch.subscription_price = String(dto.subscription_price);
+    }
+    if (dto.currency !== undefined) patch.currency = dto.currency;
+    if (dto.banner_url !== undefined) patch.banner_url = dto.banner_url;
+
+    if (Object.keys(patch).length > 0) {
+      await this.creatorRepo.update(creator.id, patch);
+      await this.invalidateCache();
+    }
+
+    const updated = await this.creatorRepo.findOne({
+      where: { user_id: userId },
+      relations: ['user'],
+    });
+    return this.toDetailItem(updated!);
   }
 
   async findAll(query: FindCreatorsQueryDto) {
@@ -221,6 +251,7 @@ export class CreatorsService {
       display_name: creator.user?.display_name ?? null,
       avatar_url: creator.user?.avatar_url ?? null,
       bio: creator.bio ?? null,
+      banner_url: creator.banner_url ?? null,
       subscription_price: creator.subscription_price,
       currency: creator.currency,
       is_verified: creator.is_verified,
