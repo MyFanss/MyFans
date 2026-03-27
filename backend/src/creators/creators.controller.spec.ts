@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CreatorsController } from './creators.controller';
 import { CreatorsService } from './creators.service';
+import { CreatorDashboardService } from './creator-dashboard.service';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { PaginatedResponseDto } from '../common/dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
@@ -23,6 +24,10 @@ describe('CreatorsController', () => {
         {
           provide: CreatorsService,
           useValue: mockCreatorsService,
+        },
+        {
+          provide: CreatorDashboardService,
+          useValue: { getDashboard: jest.fn() },
         },
       ],
     }).compile();
