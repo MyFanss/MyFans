@@ -44,6 +44,28 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
+## Database Seeding
+
+To populate the database with mock data for development and testing:
+
+```bash
+# Seed the database with deterministic test data
+$ npm run seed
+```
+
+The seed script creates:
+
+- 2 fan users (fan1@example.com, fan2@example.com)
+- 2 creator users (creator1@example.com, creator2@example.com)
+- 3 posts (2 public, 1 premium)
+- 3 comments
+- 3 likes
+- 4 notifications
+
+All users have the password: `password123`
+
+The script is idempotent and can be run multiple times safely.
+
 ## Run tests
 
 ```bash
