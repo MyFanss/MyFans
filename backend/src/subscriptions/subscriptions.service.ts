@@ -20,6 +20,8 @@ import {
   RenewalFailurePayload,
 } from './events';
 import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
+import { isStellarAccountAddress } from '../common/utils/stellar-address';
+import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
 
 export enum CheckoutStatus {
   PENDING = 'pending',
@@ -107,10 +109,7 @@ export class SubscriptionsService {
     @Optional()
     @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
     private readonly subscriptionEventPublisher?: SubscriptionEventPublisher,
-    @Optional()
-    private readonly jobLogger?: JobLoggerService,
-    @Optional()
-    private readonly eventBus?: EventBus,
+    private readonly chainReader: SubscriptionChainReaderService,
   ) {
     this.creatorProfiles.set('GAAAAAAAAAAAAAAA', {
       name: 'Creator 1',
@@ -177,6 +176,82 @@ export class SubscriptionsService {
 
   getSubscription(fan: string, creator: string): Subscription | undefined {
     return this.subscriptions.get(this.getKey(fan, creator));
+  }
+
+  /**
+   * Fan–creator subscription state: in-memory index used by checkout flows, plus
+   * optional on-chain `is_subscriber` when a subscription contract id is configured
+   * (`CONTRACT_ID_SUBSCRIPTION` or `CONTRACT_ID_MYFANS`).
+   */
+  async getFanCreatorSubscriptionState(fan: string, creator: string) {
+    if (fan === creator) {
+      throw new BadRequestException(
+        'creator must be different from the authenticated fan address',
+      );
+    }
+    if (!isStellarAccountAddress(creator)) {
+      throw new BadRequestException('creator must be a valid Stellar G-address');
+    }
+
+    const active = this.isSubscriber(fan, creator);
+    const sub = this.getSubscription(fan, creator);
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    let indexedStatus: 'none' | 'active' | 'expired' = 'none';
+    let indexed: {
+      subscriptionId: string;
+      planId: number;
+      status: Subscription['status'];
+      expiresAt: string;
+      expiresAtUnix: number;
+      createdAt: string;
+    } | null = null;
+
+    if (sub) {
+      if (sub.status === 'cancelled') {
+        indexedStatus = 'expired';
+      } else if (sub.expiry > nowSec && sub.status === 'active') {
+        indexedStatus = 'active';
+      } else {
+        indexedStatus = 'expired';
+      }
+      indexed = {
+        subscriptionId: sub.id,
+        planId: sub.planId,
+        status: sub.status,
+        expiresAt: new Date(sub.expiry * 1000).toISOString(),
+        expiresAtUnix: sub.expiry,
+        createdAt: sub.createdAt.toISOString(),
+      };
+    }
+
+    const contractId = this.chainReader.getConfiguredContractId();
+    let chain: {
+      configured: boolean;
+      isSubscriber: boolean | null;
+      error?: string;
+    };
+    if (!contractId) {
+      chain = { configured: false, isSubscriber: null };
+    } else {
+      const r = await this.chainReader.readIsSubscriber(
+        contractId,
+        fan,
+        creator,
+      );
+      chain = r.ok
+        ? { configured: true, isSubscriber: r.isSubscriber }
+        : { configured: true, isSubscriber: null, error: r.error };
+    }
+
+    return {
+      fan,
+      creator,
+      active,
+      indexedStatus,
+      indexed,
+      chain,
+    };
   }
 
   listSubscriptions(
@@ -417,7 +492,6 @@ export class SubscriptionsService {
     checkout.error = error;
     checkout.updatedAt = new Date();
     this.emitRenewalFailureEvent(checkout, error);
-    job?.done(new Error(error));
     return {
       success: false,
       checkoutId: checkout.id,
