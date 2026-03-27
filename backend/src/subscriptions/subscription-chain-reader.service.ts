@@ -9,6 +9,7 @@ import {
   scValToNative,
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
+import { CircuitOpenError, withRetry } from '../common/utils/rpc-retry';
 
 export type ChainReadResult =
   | { ok: true; isSubscriber: boolean }
@@ -83,7 +84,15 @@ export class SubscriptionChainReaderService {
         .setTimeout(30)
         .build();
 
-      const sim = await server.simulateTransaction(tx);
+      const sim = await withRetry(
+        'soroban-rpc',
+        () => server.simulateTransaction(tx),
+        {
+          isPermanentError: (e) =>
+            e instanceof CircuitOpenError ||
+            (e instanceof Error && /invalid contract|not found/i.test(e.message)),
+        },
+      );
 
       if (Api.isSimulationError(sim)) {
         return { ok: false, error: sim.error };
