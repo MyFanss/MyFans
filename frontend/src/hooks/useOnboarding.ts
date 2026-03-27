@@ -1,14 +1,20 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { OnboardingStep } from '@/components/onboarding';
+import type { OnboardingIntent, OnboardingStep } from '@/lib/onboarding-types';
 
-const ONBOARDING_STORAGE_KEY = 'myfans_onboarding_state';
+export const ONBOARDING_STORAGE_KEY = 'myfans_onboarding_state';
+export const ONBOARDING_PROFILE_DRAFT_KEY = 'myfans_onboarding_profile_draft';
+
+export type { OnboardingIntent };
 
 export interface OnboardingState {
   currentStep: OnboardingStep;
   completedSteps: OnboardingStep[];
+  skippedSteps: OnboardingStep[];
   isComplete: boolean;
+  onboardingIntent: OnboardingIntent;
+  savedAt: string | null;
 }
 
 interface OnboardingData {
@@ -18,74 +24,136 @@ interface OnboardingData {
   verificationComplete?: boolean;
 }
 
-const STEP_ORDER: OnboardingStep[] = [
+export const STEP_ORDER: OnboardingStep[] = [
   'account-type',
   'profile',
   'social-links',
   'verification',
 ];
 
+/** Exported for tests — true when every step is completed or skipped. */
+export function isFlowFinished(
+  completed: OnboardingStep[],
+  skipped: OnboardingStep[],
+): boolean {
+  return STEP_ORDER.every(
+    (s) => completed.includes(s) || skipped.includes(s),
+  );
+}
+
+function nextCurrentStep(
+  prevStep: OnboardingStep,
+  handledStep: OnboardingStep,
+): OnboardingStep {
+  const handledIdx = STEP_ORDER.indexOf(handledStep);
+  const prevIdx = STEP_ORDER.indexOf(prevStep);
+  if (handledIdx !== prevIdx) {
+    return prevStep;
+  }
+  const ni = prevIdx + 1;
+  if (ni < STEP_ORDER.length) {
+    return STEP_ORDER[ni];
+  }
+  return prevStep;
+}
+
+function parseStoredState(raw: string | null): OnboardingState {
+  if (!raw) {
+    return {
+      currentStep: 'account-type',
+      completedSteps: [],
+      skippedSteps: [],
+      isComplete: false,
+      onboardingIntent: null,
+      savedAt: null,
+    };
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<OnboardingState>;
+    const completedSteps = parsed.completedSteps ?? [];
+    const skippedSteps = parsed.skippedSteps ?? [];
+    const isComplete =
+      parsed.isComplete === true ||
+      isFlowFinished(completedSteps, skippedSteps);
+    return {
+      currentStep: parsed.currentStep ?? 'account-type',
+      completedSteps,
+      skippedSteps,
+      isComplete,
+      onboardingIntent: parsed.onboardingIntent ?? null,
+      savedAt: parsed.savedAt ?? null,
+    };
+  } catch {
+    return parseStoredState(null);
+  }
+}
+
 export function useOnboarding() {
   const [state, setState] = useState<OnboardingState>(() => {
     if (typeof window === 'undefined') {
-      return {
-        currentStep: 'account-type',
-        completedSteps: [],
-        isComplete: false,
-      };
+      return parseStoredState(null);
     }
-
-    const stored = localStorage.getItem(ONBOARDING_STORAGE_KEY);
-    if (!stored) {
-      return {
-        currentStep: 'account-type',
-        completedSteps: [],
-        isComplete: false,
-      };
-    }
-
-    try {
-      return JSON.parse(stored) as OnboardingState;
-    } catch (error) {
-      console.error('Failed to parse onboarding state:', error);
-      return {
-        currentStep: 'account-type',
-        completedSteps: [],
-        isComplete: false,
-      };
-    }
+    return parseStoredState(localStorage.getItem(ONBOARDING_STORAGE_KEY));
   });
 
-  // Save state to localStorage whenever it changes
   useEffect(() => {
-    localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(state));
+    const next: OnboardingState = {
+      ...state,
+      savedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(next));
   }, [state]);
 
   const completeStep = useCallback((step: OnboardingStep) => {
     setState((prev) => {
-      // Don't add if already completed
       if (prev.completedSteps.includes(step)) {
         return prev;
       }
-
-      const newCompletedSteps = [...prev.completedSteps, step];
-      const currentStepIndex = STEP_ORDER.indexOf(prev.currentStep);
-      const completedStepIndex = STEP_ORDER.indexOf(step);
-
-      // Move to next step if we completed the current step
-      let nextStep = prev.currentStep;
-      if (completedStepIndex === currentStepIndex) {
-        const nextStepIndex = currentStepIndex + 1;
-        if (nextStepIndex < STEP_ORDER.length) {
-          nextStep = STEP_ORDER[nextStepIndex];
-        }
-      }
-
-      const isComplete = newCompletedSteps.length === STEP_ORDER.length;
-
+      const completedSteps = [...prev.completedSteps, step];
+      const currentStep = nextCurrentStep(prev.currentStep, step);
+      const isComplete = isFlowFinished(completedSteps, prev.skippedSteps);
       return {
-        currentStep: nextStep,
-        completedSteps: newCompletedSteps,
+        ...prev,
+        completedSteps,
+        currentStep,
+        isComplete,
+      };
+    });
+  }, []);
+
+  const skipStep = useCallback((step: OnboardingStep) => {
+    setState((prev) => {
+      if (prev.skippedSteps.includes(step) || prev.completedSteps.includes(step)) {
+        return prev;
+      }
+      const skippedSteps = [...prev.skippedSteps, step];
+      const currentStep = nextCurrentStep(prev.currentStep, step);
+      const isComplete = isFlowFinished(prev.completedSteps, skippedSteps);
+      return {
+        ...prev,
+        skippedSteps,
+        currentStep,
+        isComplete,
+      };
+    });
+  }, []);
+
+  const skipCurrentStep = useCallback(() => {
+    setState((prev) => {
+      const step = prev.currentStep;
+      if (prev.skippedSteps.includes(step) || prev.completedSteps.includes(step)) {
+        return prev;
+      }
+      const skippedSteps = [...prev.skippedSteps, step];
+      const curIdx = STEP_ORDER.indexOf(step);
+      const ni = curIdx + 1;
+      const currentStep =
+        ni < STEP_ORDER.length ? STEP_ORDER[ni] : step;
+      const isComplete = isFlowFinished(prev.completedSteps, skippedSteps);
+      return {
+        ...prev,
+        skippedSteps,
+        currentStep,
         isComplete,
       };
     });
@@ -98,40 +166,57 @@ export function useOnboarding() {
     }));
   }, []);
 
-  const resetOnboarding = useCallback(() => {
-    setState({
-      currentStep: 'account-type',
-      completedSteps: [],
-      isComplete: false,
-    });
-    localStorage.removeItem(ONBOARDING_STORAGE_KEY);
+  const setOnboardingIntent = useCallback((intent: OnboardingIntent) => {
+    setState((prev) => ({ ...prev, onboardingIntent: intent }));
   }, []);
 
-  // Check if data is saved to mark steps as complete
-  const checkAndUpdateProgress = useCallback((data: OnboardingData) => {
-    const stepsToComplete: OnboardingStep[] = [];
+  const resetOnboarding = useCallback(() => {
+    const empty = parseStoredState(null);
+    setState(empty);
+    localStorage.removeItem(ONBOARDING_STORAGE_KEY);
+    localStorage.removeItem(ONBOARDING_PROFILE_DRAFT_KEY);
+  }, []);
 
-    if (data.accountType) {
-      stepsToComplete.push('account-type');
-    }
-    if (data.profileComplete) {
-      stepsToComplete.push('profile');
-    }
-    if (data.socialLinksComplete) {
-      stepsToComplete.push('social-links');
-    }
-    if (data.verificationComplete) {
-      stepsToComplete.push('verification');
-    }
+  const checkAndUpdateProgress = useCallback(
+    (data: OnboardingData) => {
+      const stepsToComplete: OnboardingStep[] = [];
 
-    stepsToComplete.forEach((step) => completeStep(step));
-  }, [completeStep]);
+      if (data.accountType) {
+        stepsToComplete.push('account-type');
+      }
+      if (data.profileComplete) {
+        stepsToComplete.push('profile');
+      }
+      if (data.socialLinksComplete) {
+        stepsToComplete.push('social-links');
+      }
+      if (data.verificationComplete) {
+        stepsToComplete.push('verification');
+      }
+
+      stepsToComplete.forEach((step) => completeStep(step));
+    },
+    [completeStep],
+  );
+
+  const progressCount =
+    state.completedSteps.length + state.skippedSteps.length;
+  const canResume =
+    !state.isComplete &&
+    progressCount > 0 &&
+    progressCount < STEP_ORDER.length;
 
   return {
     ...state,
     completeStep,
+    skipStep,
+    skipCurrentStep,
     goToStep,
+    setOnboardingIntent,
     resetOnboarding,
     checkAndUpdateProgress,
+    progressCount,
+    canResume,
+    totalSteps: STEP_ORDER.length,
   };
 }
