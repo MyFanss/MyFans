@@ -550,6 +550,13 @@ export class SubscriptionsService {
     return plans.find((p) => p.id === planId);
   }
 
+  /** Returns completed checkouts for analytics aggregation. */
+  getCompletedPayments(): Checkout[] {
+    return Array.from(this.checkouts.values()).filter(
+      (c) => c.status === CheckoutStatus.COMPLETED,
+    );
+  }
+
   private emitRenewalFailureEvent(checkout: Checkout, reason: string): void {
     const payload: RenewalFailurePayload = {
       subscriptionId: checkout.id,
