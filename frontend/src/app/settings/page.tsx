@@ -5,6 +5,7 @@ import { SettingsShell } from "@/components/settings/settings-shell";
 import { useSettings, type Role } from "@/components/settings/use-settings";
 import { NotificationPreferencesForm } from "@/components/settings/NotificationPreferencesForm";
 import { useTheme, type Theme } from "@/contexts/ThemeContext";
+import { useConsent } from "@/contexts/ConsentContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useConsent } from "@/contexts/ConsentContext";
 import { ProfileSettingsPanel } from "@/components/settings/profile-settings-panel";
@@ -19,6 +20,7 @@ export default function SettingsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteComplete, setDeleteComplete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState("");
   const { navItems } = useSettings(role);
   const { theme, preference, setTheme } = useTheme();
   const { consent, setConsent } = useConsent();
@@ -67,7 +69,7 @@ export default function SettingsPage() {
       await navigator.clipboard.writeText(content.walletAddress);
       showSuccess("Address copied", "Wallet address copied to clipboard.");
     } catch {
-      showError("COPY_FAILED", {
+      showError("UNKNOWN_ERROR", {
         message: "Copy failed",
         description: "Please copy manually.",
       });

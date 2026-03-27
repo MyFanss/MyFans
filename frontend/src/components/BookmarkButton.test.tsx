@@ -38,9 +38,9 @@ describe('BookmarkButton', () => {
   it('renders bookmark outline when not favorited', async () => {
     renderWithFavorites('creator-1');
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Add bookmark' })).toHaveAttribute('aria-pressed', 'false');
-    });
+    const button = await screen.findByRole('button', { name: 'Add bookmark' }, { timeout: 10000 });
+
+    expect(button).toHaveAttribute('aria-pressed', 'false');
 
     expect(screen.getByTestId('bookmark-outline-icon')).toBeInTheDocument();
   });

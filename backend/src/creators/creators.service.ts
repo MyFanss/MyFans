@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { EventBus } from '../events/event-bus';
-import { PlanCreatedEvent } from '../events/domain-events';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { PaginationDto, PaginatedResponseDto } from '../common/dto';
+import { SearchCreatorsDto } from './dto/search-creators.dto';
+import { PublicCreatorDto } from './dto/public-creator.dto';
+import { User } from '../users/entities/user.entity';
 
 export interface Plan {
   id: number;
@@ -15,16 +19,14 @@ export class CreatorsService {
   private plans: Map<number, Plan> = new Map();
   private planCounter = 0;
 
-  constructor(private readonly eventBus: EventBus) {}
+  constructor(
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+  ) {}
 
   createPlan(creator: string, asset: string, amount: string, intervalDays: number): Plan {
     const plan = { id: ++this.planCounter, creator, asset, amount, intervalDays };
     this.plans.set(plan.id, plan);
-
-    this.eventBus.publish(
-      new PlanCreatedEvent(plan.id, creator, asset, amount),
-    );
-
     return plan;
   }
 
@@ -33,82 +35,50 @@ export class CreatorsService {
   }
 
   getCreatorPlans(creator: string): Plan[] {
-    return Array.from(this.plans.values()).filter((p) => p.creator === creator);
+    return Array.from(this.plans.values()).filter(p => p.creator === creator);
   }
 
-  /**
-   * Get all plans with pagination
-   */
-  findAllPlans(pagination: PaginationDto): PaginatedResponseDto<PlanDto> {
+  findAllPlans(pagination: PaginationDto): PaginatedResponseDto<Plan> {
     const { page = 1, limit = 20 } = pagination;
     const allPlans = Array.from(this.plans.values());
     const total = allPlans.length;
-    const skip = (page - 1) * limit;
-    const data = allPlans.slice(skip, skip + limit);
-
+    const data = allPlans.slice((page - 1) * limit, page * limit);
     return new PaginatedResponseDto(data, total, page, limit);
   }
 
-  /**
-   * Get creator plans with pagination
-   */
-  findCreatorPlans(
-    creator: string,
-    pagination: PaginationDto,
-  ): PaginatedResponseDto<PlanDto> {
+  findCreatorPlans(creator: string, pagination: PaginationDto): PaginatedResponseDto<Plan> {
     const { page = 1, limit = 20 } = pagination;
     const creatorPlans = this.getCreatorPlans(creator);
     const total = creatorPlans.length;
-    const skip = (page - 1) * limit;
-    const data = creatorPlans.slice(skip, skip + limit);
-
+    const data = creatorPlans.slice((page - 1) * limit, page * limit);
     return new PaginatedResponseDto(data, total, page, limit);
   }
 
-  /**
-   * Search creators by display name or username with pagination
-   */
-  async searchCreators(
-    searchDto: SearchCreatorsDto,
-  ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
-    const { q, page = 1, limit = 20 } = searchDto;
+  async searchCreators(searchDto: SearchCreatorsDto): Promise<PaginatedResponseDto<PublicCreatorDto>> {
+    const { page = 1, limit = 20, q } = searchDto;
+    const trimmed = q?.trim();
 
-    // Build query with LEFT JOIN to Creator entity
-    const queryBuilder = this.usersRepository
+    const qb = this.userRepository
       .createQueryBuilder('user')
-      .leftJoin(Creator, 'creator', 'creator.userId = user.id')
-      .addSelect('creator.bio')
-      .where('user.is_creator = :isCreator', { isCreator: true });
+      .leftJoin('user.creator', 'creator')
+      .addSelect('creator.bio', 'creator_bio')
+      .where('user.is_creator = :isCreator', { isCreator: true })
+      .orderBy('user.username', 'ASC');
 
-    // Apply search filter if query provided
-    if (q && q.trim()) {
-      const searchTerm = q.trim().toLowerCase();
-      queryBuilder.andWhere(
+    if (trimmed) {
+      qb.andWhere(
         '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
-        { search: `${searchTerm}%` },
+        { search: `${trimmed.toLowerCase()}%` },
       );
     }
 
-    // Apply ordering
-    queryBuilder.orderBy('user.username', 'ASC');
+    const total = await qb.getCount();
+    const { entities, raw } = await qb.skip((page - 1) * limit).take(limit).getRawAndEntities();
 
-    // Get total count
-    const total = await queryBuilder.getCount();
-
-    // Apply pagination
-    const skip = (page - 1) * limit;
-    const results = await queryBuilder
-      .skip(skip)
-      .take(limit)
-      .getRawAndEntities();
-
-    // Map to DTOs
-    const data = results.entities.map((user, index) => {
-      const rawResult = results.raw[index] as { creator_bio?: string };
-      const creator = rawResult?.creator_bio
-        ? ({ bio: rawResult.creator_bio } as Creator)
-        : undefined;
-      return new PublicCreatorDto(user, creator);
+    const data = entities.map((user, i) => {
+      const dto = new PublicCreatorDto(user);
+      dto.bio = raw[i]?.creator_bio ?? null;
+      return dto;
     });
 
     return new PaginatedResponseDto(data, total, page, limit);
