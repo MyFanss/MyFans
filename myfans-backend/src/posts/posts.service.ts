@@ -17,6 +17,8 @@ import {
 } from '../subscriptions/entities/subscription.entity';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
+import { PaginatedResponseDto } from '../common/dto';
+import { AuditLog, AuditAction } from '../audit-log/entities/audit-log.entity';
 
 @Injectable()
 export class PostsService {
@@ -27,6 +29,8 @@ export class PostsService {
     private readonly creatorRepo: Repository<Creator>,
     @InjectRepository(Subscription)
     private readonly subscriptionRepo: Repository<Subscription>,
+    @InjectRepository(AuditLog)
+    private readonly auditLogRepo: Repository<AuditLog>,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
 
@@ -84,13 +88,7 @@ export class PostsService {
 
     const [items, total] = await qb.skip(skip).take(limit).getManyAndCount();
 
-    return {
-      items,
-      total,
-      page,
-      limit,
-      total_pages: Math.ceil(total / limit),
-    };
+    return new PaginatedResponseDto(items, total, page, limit);
   }
 
   async findOne(id: string, userId?: string) {
@@ -99,7 +97,7 @@ export class PostsService {
       relations: ['creator'],
     });
 
-    if (!post) {
+    if (!post || post.deleted_at !== null) {
       throw new NotFoundException(`Post with ID ${id} not found`);
     }
 
@@ -178,7 +176,19 @@ export class PostsService {
       throw new ForbiddenException('Only the creator can delete this post');
     }
 
-    await this.postRepo.remove(post);
+    post.deleted_by = userId;
+    await this.postRepo.save(post);
+    await this.postRepo.softDelete(id);
+
+    await this.auditLogRepo.save(
+      this.auditLogRepo.create({
+        entity_type: 'post',
+        entity_id: id,
+        action: AuditAction.DELETE,
+        performed_by: userId,
+      }),
+    );
+
     await this.invalidateCache();
     return { success: true };
   }

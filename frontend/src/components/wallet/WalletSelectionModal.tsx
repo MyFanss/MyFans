@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { WalletOption } from './WalletOption';
 import { ConnectedWalletView } from './ConnectedWalletView';
 import type { WalletType, WalletConnectionState } from '@/types/wallet';
+import { useToast } from '@/contexts/ToastContext';
+import { errorToastWithCause } from '@/lib/error-copy';
 
 interface WalletSelectionModalProps {
   isOpen: boolean;
@@ -18,11 +20,38 @@ export function WalletSelectionModal({
   onConnect,
   onDisconnect,
 }: WalletSelectionModalProps) {
+  const { showLoading, showSuccess, showError, dismiss } = useToast();
   const [connectionState, setConnectionState] = useState<WalletConnectionState>({
     status: 'disconnected',
   });
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  const handleClose = useCallback(() => {
+    if (connectionState.status === 'connecting') return;
+    onClose();
+  }, [connectionState.status, onClose]);
+
+  // Prevent background scroll
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const originalOverflow = document.body.style.overflow;
+    const originalPaddingRight = document.body.style.paddingRight;
+
+    // Check if scrollbar is present
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    document.body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.paddingRight = originalPaddingRight;
+    };
+  }, [isOpen]);
 
   // Focus trap
   useEffect(() => {
@@ -31,8 +60,10 @@ export function WalletSelectionModal({
     // Store previously focused element
     previousFocusRef.current = document.activeElement as HTMLElement;
 
-    // Focus modal
-    modalRef.current?.focus();
+    // Focus modal after a brief delay to ensure it's rendered
+    const focusTimeout = setTimeout(() => {
+      modalRef.current?.focus();
+    }, 10);
 
     // Handle Tab key for focus trap
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -68,23 +99,20 @@ export function WalletSelectionModal({
     document.addEventListener('keydown', handleKeyDown);
 
     return () => {
+      clearTimeout(focusTimeout);
       document.removeEventListener('keydown', handleKeyDown);
       // Restore focus
       previousFocusRef.current?.focus();
     };
-  }, [isOpen]);
+  }, [handleClose, isOpen]);
 
-  const handleClose = useCallback(() => {
-    if (connectionState.status === 'connecting') return;
-    onClose();
-  }, [connectionState.status, onClose]);
-
-  const handleWalletSelect = async (walletType: WalletType) => {
+  const handleWalletSelect = useCallback(async (walletType: WalletType) => {
     setConnectionState({ status: 'connecting', walletType });
+    const loadingToastId = showLoading(`Connecting ${walletType} wallet...`, 'Approve the connection in your wallet app.');
 
     try {
       const address = await connectToWallet(walletType);
-      
+      dismiss(loadingToastId);
       setConnectionState({
         status: 'connected',
         address,
@@ -93,15 +121,18 @@ export function WalletSelectionModal({
       });
 
       onConnect?.(address, walletType);
+      showSuccess('Wallet connected', `${walletType} wallet is ready.`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to connect';
+      dismiss(loadingToastId);
       setConnectionState({
         status: 'error',
         error: errorMessage,
         walletType,
       });
+      showError('WALLET_CONNECTION_FAILED', errorToastWithCause('WALLET_CONNECTION_FAILED', error));
     }
-  };
+  }, [dismiss, onConnect, showError, showLoading, showSuccess]);
 
   const handleDisconnect = useCallback(() => {
     setConnectionState({ status: 'disconnected' });
@@ -112,7 +143,7 @@ export function WalletSelectionModal({
     if (connectionState.status === 'error' && connectionState.walletType) {
       handleWalletSelect(connectionState.walletType);
     }
-  }, [connectionState]);
+  }, [connectionState, handleWalletSelect]);
 
   if (!isOpen) return null;
 
@@ -292,7 +323,7 @@ async function connectFreighter(): Promise<string> {
     throw new Error('Window is not defined');
   }
 
-  const freighter = (window as any).freighter;
+  const freighter = (window as Window & { freighter?: FreighterApi }).freighter;
 
   if (!freighter) {
     throw new Error('Freighter wallet not found. Please install the extension.');
@@ -310,6 +341,10 @@ async function connectFreighter(): Promise<string> {
     }
     throw error;
   }
+}
+
+interface FreighterApi {
+  getPublicKey: () => Promise<string>;
 }
 
 async function connectLobstr(): Promise<string> {

@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { HealthController } from './health.controller';
 import { HealthService } from './health.service';
 import { DataSource } from 'typeorm';
+import { SorobanRpcService } from '../common/services/soroban-rpc.service';
+import { QueueMetricsService } from '../common/services/queue-metrics.service';
 
 describe('HealthController', () => {
     let controller: HealthController;
@@ -19,6 +21,19 @@ describe('HealthController', () => {
                 {
                     provide: DataSource,
                     useValue: mockDataSource,
+                },
+                {
+                    provide: SorobanRpcService,
+                    useValue: {
+                        checkConnectivity: jest.fn(),
+                        checkKnownContract: jest.fn(),
+                        getRpcUrl: jest.fn(),
+                        getTimeout: jest.fn(),
+                    },
+                },
+                {
+                    provide: QueueMetricsService,
+                    useValue: { snapshot: jest.fn().mockReturnValue({}) },
                 },
             ],
         }).compile();

@@ -16,7 +16,7 @@ import { CommentDto, CreateCommentDto, UpdateCommentDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 
 @ApiTags('comments')
-@Controller('comments')
+@Controller({ path: 'comments', version: '1' })
 @UseInterceptors(ClassSerializerInterceptor)
 export class CommentsController {
   constructor(private readonly commentsService: CommentsService) {}
