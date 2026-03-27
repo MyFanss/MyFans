@@ -456,7 +456,11 @@ mod test {
         let event = unlock_event.unwrap();
 
         // ── topics ────────────────────────────────────────────────────────────
-        assert_eq!(event.1.len(), 3, "expected 3 topics: (name, buyer, creator)");
+        assert_eq!(
+            event.1.len(),
+            3,
+            "expected 3 topics: (name, buyer, creator)"
+        );
 
         let topic_name: Symbol = event.1.get(0).unwrap().try_into_val(&env).unwrap();
         assert_eq!(topic_name, Symbol::new(&env, "content_unlocked"));
@@ -468,8 +472,7 @@ mod test {
         assert_eq!(event_creator, creator, "creator mismatch in topics");
 
         // ── data: (content_id, amount) ────────────────────────────────────────
-        let (event_content_id, event_amount): (u64, i128) =
-            event.2.try_into_val(&env).unwrap();
+        let (event_content_id, event_amount): (u64, i128) = event.2.try_into_val(&env).unwrap();
         assert_eq!(event_content_id, 42u64, "content_id mismatch in data");
         assert_eq!(event_amount, 750i128, "amount mismatch in data");
     }
@@ -508,6 +511,9 @@ mod test {
             .count();
 
         assert_eq!(count_after_first, 1);
-        assert_eq!(count_after_second, 1, "duplicate unlock must not emit a second event");
+        assert_eq!(
+            count_after_second, 1,
+            "duplicate unlock must not emit a second event"
+        );
     }
 }
