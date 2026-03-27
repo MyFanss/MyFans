@@ -1,6 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Injectable, Optional } from '@nestjs/common';
+import { Repository } from 'typeorm';
+import { PaginatedResponseDto, PaginationDto } from '../common/dto';
 import { EventBus } from '../events/event-bus';
 import { PlanCreatedEvent } from '../events/domain-events';
+import { PublicCreatorDto } from './dto/public-creator.dto';
+import { PlanDto } from './dto/plan.dto';
+import { SearchCreatorsDto } from './dto/search-creators.dto';
+import { Creator } from './entities/creator.entity';
+import { User } from '../users/entities/user.entity';
 
 export interface Plan {
   id: number;
@@ -15,13 +23,19 @@ export class CreatorsService {
   private plans: Map<number, Plan> = new Map();
   private planCounter = 0;
 
-  constructor(private readonly eventBus: EventBus) {}
+  constructor(
+    @Optional()
+    @InjectRepository(User)
+    private readonly usersRepository?: Repository<User>,
+    @Optional()
+    private readonly eventBus?: EventBus,
+  ) {}
 
   createPlan(creator: string, asset: string, amount: string, intervalDays: number): Plan {
     const plan = { id: ++this.planCounter, creator, asset, amount, intervalDays };
     this.plans.set(plan.id, plan);
 
-    this.eventBus.publish(
+    this.eventBus?.publish(
       new PlanCreatedEvent(plan.id, creator, asset, amount),
     );
 
@@ -44,7 +58,9 @@ export class CreatorsService {
     const allPlans = Array.from(this.plans.values());
     const total = allPlans.length;
     const skip = (page - 1) * limit;
-    const data = allPlans.slice(skip, skip + limit);
+    const data = allPlans
+      .slice(skip, skip + limit)
+      .map((plan) => Object.assign(new PlanDto(), plan));
 
     return new PaginatedResponseDto(data, total, page, limit);
   }
@@ -60,7 +76,9 @@ export class CreatorsService {
     const creatorPlans = this.getCreatorPlans(creator);
     const total = creatorPlans.length;
     const skip = (page - 1) * limit;
-    const data = creatorPlans.slice(skip, skip + limit);
+    const data = creatorPlans
+      .slice(skip, skip + limit)
+      .map((plan) => Object.assign(new PlanDto(), plan));
 
     return new PaginatedResponseDto(data, total, page, limit);
   }
@@ -71,12 +89,16 @@ export class CreatorsService {
   async searchCreators(
     searchDto: SearchCreatorsDto,
   ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
+    if (!this.usersRepository) {
+      return new PaginatedResponseDto([], 0, searchDto.page ?? 1, searchDto.limit ?? 20);
+    }
+
     const { q, page = 1, limit = 20 } = searchDto;
 
     // Build query with LEFT JOIN to Creator entity
     const queryBuilder = this.usersRepository
       .createQueryBuilder('user')
-      .leftJoin(Creator, 'creator', 'creator.userId = user.id')
+      .leftJoin(Creator, 'creator', 'creator.user_id = user.id')
       .addSelect('creator.bio')
       .where('user.is_creator = :isCreator', { isCreator: true });
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
 import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 
@@ -159,5 +159,14 @@ export class SubscriptionsController {
   ) {
     return this.subscriptionsService.failCheckout(checkoutId, body.error, body.rejected);
   }
-}
 
+  @Post('cancel')
+  cancelSubscription(
+    @Body() body: { fanAddress: string; creatorAddress: string },
+  ) {
+    return this.subscriptionsService.cancelSubscription(
+      body.fanAddress,
+      body.creatorAddress,
+    );
+  }
+}
