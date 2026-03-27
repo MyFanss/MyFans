@@ -6,9 +6,17 @@ import {
 } from './events';
 import { SubscriptionsService, SERVER_NETWORK } from './subscriptions.service';
 import { EventBus } from '../events/event-bus';
+import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
 
 function makeEventBus(): EventBus {
   return { publish: jest.fn() } as unknown as EventBus;
+}
+
+function makeChainReader(): SubscriptionChainReaderService {
+  return {
+    getConfiguredContractId: jest.fn().mockReturnValue(undefined),
+    readIsSubscriber: jest.fn(),
+  } as unknown as SubscriptionChainReaderService;
 }
 
 async function buildService(
@@ -17,6 +25,7 @@ async function buildService(
   const providers: object[] = [
     SubscriptionsService,
     { provide: EventBus, useValue: makeEventBus() },
+    { provide: SubscriptionChainReaderService, useValue: makeChainReader() },
   ];
   if (eventPublisher) {
     providers.push({
@@ -219,6 +228,35 @@ describe('SubscriptionsService', () => {
           SERVER_NETWORK,
         ),
       ).not.toThrow();
+    });
+  });
+
+  describe('getFanCreatorSubscriptionState', () => {
+    const fan = `G${'A'.repeat(55)}`;
+    const creator = `G${'B'.repeat(55)}`;
+
+    it('rejects when fan equals creator', async () => {
+      await expect(
+        service.getFanCreatorSubscriptionState(fan, fan),
+      ).rejects.toThrow(/different/);
+    });
+
+    it('returns none when no subscription', async () => {
+      const r = await service.getFanCreatorSubscriptionState(fan, creator);
+      expect(r.indexedStatus).toBe('none');
+      expect(r.active).toBe(false);
+      expect(r.indexed).toBeNull();
+      expect(r.chain.configured).toBe(false);
+    });
+
+    it('returns active with expiry when indexed subscription exists', async () => {
+      const future = Math.floor(Date.now() / 1000) + 3600;
+      service.addSubscription(fan, creator, 1, future);
+      const r = await service.getFanCreatorSubscriptionState(fan, creator);
+      expect(r.active).toBe(true);
+      expect(r.indexedStatus).toBe('active');
+      expect(r.indexed?.expiresAtUnix).toBe(future);
+      expect(r.indexed?.planId).toBe(1);
     });
   });
 });
