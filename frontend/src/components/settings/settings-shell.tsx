@@ -59,6 +59,7 @@ export function SettingsShell({
               }`}
               onClick={() => onRoleChange("creator")}
               type="button"
+              aria-pressed={role === "creator"}
             >
               Creator Settings
             </button>
@@ -70,6 +71,7 @@ export function SettingsShell({
               }`}
               onClick={() => onRoleChange("fan")}
               type="button"
+              aria-pressed={role === "fan"}
             >
               Fan Settings
             </button>
@@ -92,6 +94,7 @@ export function SettingsShell({
                   key={item.id}
                   onClick={() => onSectionChange(item.id)}
                   type="button"
+                  aria-current={activeSectionId === item.id ? 'page' : undefined}
                 >
                   {item.label}
                 </button>
