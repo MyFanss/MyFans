@@ -135,3 +135,14 @@ fn test_rate_limit_after_window_succeeds() {
     assert_eq!(client.get_creator_id(&creator1), Some(111));
     assert_eq!(client.get_creator_id(&creator2), Some(222));
 }
+
+#[test]
+fn test_registration_ledger_key_helper_keeps_legacy_variant() {
+    let env = Env::default();
+    let caller = Address::generate(&env);
+
+    assert_eq!(
+        DataKey::registration_ledger(caller.clone()),
+        DataKey::LastRegLedger(caller)
+    );
+}
