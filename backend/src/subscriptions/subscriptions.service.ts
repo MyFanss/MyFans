@@ -67,6 +67,7 @@ interface Plan {
   asset: string;
   amount: string;
   intervalDays: number;
+  updatedAt?: Date;
 }
 
 function generateId(): string {
@@ -81,6 +82,7 @@ function generateId(): string {
 export class SubscriptionsService {
   private subscriptions: Map<string, Subscription> = new Map();
   private checkouts: Map<string, Checkout> = new Map();
+  private plans: Map<number, Plan> = new Map();
   private checkoutExpiryMinutes = 15;
   private readonly logger = new Logger(SubscriptionsService.name);
 
@@ -119,6 +121,41 @@ export class SubscriptionsService {
       'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5',
       { name: 'Creator 2', description: 'Exclusive videos and photos' },
     );
+    
+    // Initialize default plans
+    this.initializePlans();
+  }
+
+  private initializePlans(): void {
+    const defaultPlans: Plan[] = [
+      {
+        id: 1,
+        creator: 'GAAAAAAAAAAAAAAA',
+        asset: 'XLM',
+        amount: '10',
+        intervalDays: 30,
+        updatedAt: new Date(),
+      },
+      {
+        id: 2,
+        creator: 'GAAAAAAAAAAAAAAA',
+        asset: 'USDC:GA7Z6G7T3LSSKDJPLAWJH25C4D4PQV4CEMM5S5E6LQD3VDF5W6G6F3K',
+        amount: '5',
+        intervalDays: 30,
+        updatedAt: new Date(),
+      },
+      {
+        id: 3,
+        creator:
+          'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5',
+        asset: 'XLM',
+        amount: '25',
+        intervalDays: 7,
+        updatedAt: new Date(),
+      },
+    ];
+    
+    defaultPlans.forEach(plan => this.plans.set(plan.id, plan));
   }
 
   assertNetworkMatch(requestNetwork: string | undefined): void {
@@ -527,40 +564,85 @@ export class SubscriptionsService {
   }
 
   private getPlanMock(planId: number): Plan | undefined {
-    const plans: Plan[] = [
-      {
-        id: 1,
-        creator: 'GAAAAAAAAAAAAAAA',
-        asset: 'XLM',
-        amount: '10',
-        intervalDays: 30,
-      },
-      {
-        id: 2,
-        creator: 'GAAAAAAAAAAAAAAA',
-        asset: 'USDC:GA7Z6G7T3LSSKDJPLAWJH25C4D4PQV4CEMM5S5E6LQD3VDF5W6G6F3K',
-        amount: '5',
-        intervalDays: 30,
-      },
-      {
-        id: 3,
-        creator:
-          'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5',
-        asset: 'XLM',
-        amount: '25',
-        intervalDays: 7,
-      },
-    ];
-    return plans.find((p) => p.id === planId);
+    return this.plans.get(planId);
   }
 
   /**
-   * Calculate subscription expiry timestamp in seconds
-   * Prevents overflow by checking for max safe integer
-   * @param intervalDays - Number of days for the subscription interval
-   * @returns Unix timestamp in seconds when subscription expires
-   * @throws Error if calculation would overflow
+   * Update an existing subscription plan
+   * Only the creator who owns the plan can update it
+   * Existing subscriptions remain unaffected
+   * @param planId - ID of the plan to update
+   * @param creatorAddress - Address of the creator attempting the update
+   * @param updates - Object containing amount and/or intervalDays to update
+   * @returns Updated plan
+   * @throws Error if plan not found, creator not authorized, or invalid updates
    */
+  updatePlan(
+    planId: number,
+    creatorAddress: string,
+    updates: { amount?: string; intervalDays?: number },
+  ): Plan {
+    const plan = this.plans.get(planId);
+    
+    if (!plan) {
+      throw new NotFoundException(`Plan ${planId} not found`);
+    }
+    
+    if (plan.creator !== creatorAddress) {
+      throw new Error('Unauthorized: Only the plan creator can update this plan');
+    }
+    
+    // Validate updates
+    if (updates.amount !== undefined) {
+      const amount = parseFloat(updates.amount);
+      if (isNaN(amount) || amount <= 0) {
+        throw new BadRequestException('Amount must be a positive number');
+      }
+    }
+    
+    if (updates.intervalDays !== undefined) {
+      if (!Number.isInteger(updates.intervalDays) || updates.intervalDays <= 0) {
+        throw new BadRequestException('Interval days must be a positive integer');
+      }
+    }
+    
+    // Update the plan
+    const updatedPlan: Plan = {
+      ...plan,
+      ...(updates.amount !== undefined && { amount: updates.amount }),
+      ...(updates.intervalDays !== undefined && { intervalDays: updates.intervalDays }),
+      updatedAt: new Date(),
+    };
+    
+    this.plans.set(planId, updatedPlan);
+    
+    this.logger.log(
+      `Plan ${planId} updated by ${creatorAddress}: ${JSON.stringify(updates)}`,
+    );
+    
+    return updatedPlan;
+  }
+
+  /**
+   * Get a plan by ID
+   * @param planId - ID of the plan
+   * @returns Plan or undefined if not found
+   */
+  getPlan(planId: number): Plan | undefined {
+    return this.plans.get(planId);
+  }
+
+  /**
+   * List all plans for a creator
+   * @param creatorAddress - Address of the creator
+   * @returns Array of plans owned by the creator
+   */
+  listCreatorPlans(creatorAddress: string): Plan[] {
+    return Array.from(this.plans.values()).filter(
+      plan => plan.creator === creatorAddress,
+    );
+  }
+
   private calculateExpiryTimestamp(intervalDays: number): number {
     const nowSec = Math.floor(Date.now() / 1000);
     const intervalSec = intervalDays * 24 * 60 * 60;
