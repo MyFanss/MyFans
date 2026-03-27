@@ -5,6 +5,8 @@ import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 import { PlanDto } from './dto/plan.dto';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
+import { CreatorPayoutHistoryQueryDto } from './dto';
+import { CreatorPayoutHistoryResult } from '../subscriptions/subscriptions.service';
 
 @ApiTags('creators')
 @Controller({ path: 'creators', version: '1' })
@@ -65,5 +67,20 @@ export class CreatorsController {
     @Query() pagination: PaginationDto,
   ): PaginatedResponseDto<PlanDto> {
     return this.creatorsService.findCreatorPlans(address, pagination);
+  }
+
+  @Get(':address/payout-history')
+  @ApiOperation({
+    summary: 'List creator payout history with date filters and cursor pagination',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Creator payout history page',
+  })
+  getPayoutHistory(
+    @Param('address') address: string,
+    @Query() query: CreatorPayoutHistoryQueryDto,
+  ): CreatorPayoutHistoryResult {
+    return this.creatorsService.getPayoutHistory(address, query);
   }
 }

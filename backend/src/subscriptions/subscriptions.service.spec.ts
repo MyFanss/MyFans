@@ -259,4 +259,74 @@ describe('SubscriptionsService', () => {
       expect(r.indexed?.planId).toBe(1);
     });
   });
+
+  describe('getCreatorPayoutHistory', () => {
+    const creatorAddress = 'GAAAAAAAAAAAAAAA';
+    const fanAddress = `G${'C'.repeat(55)}`;
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-03-27T12:00:00.000Z'));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('returns completed payouts including txHash references', () => {
+      const first = service.createCheckout(fanAddress, creatorAddress, 1);
+      service.confirmSubscription(first.id, 'tx-first');
+      jest.advanceTimersByTime(1000);
+      const second = service.createCheckout(fanAddress, creatorAddress, 1);
+      service.confirmSubscription(second.id, 'tx-second');
+
+      const result = service.getCreatorPayoutHistory({ creatorAddress, limit: 10 });
+
+      expect(result.data).toHaveLength(2);
+      expect(result.data[0].txHash).toBe('tx-second');
+      expect(result.data[1].txHash).toBe('tx-first');
+      expect(result.hasMore).toBe(false);
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('applies date-range filters', () => {
+      const older = service.createCheckout(fanAddress, creatorAddress, 1);
+      service.confirmSubscription(older.id, 'tx-old');
+      jest.setSystemTime(new Date('2026-03-28T12:00:00.000Z'));
+      const newer = service.createCheckout(fanAddress, creatorAddress, 1);
+      service.confirmSubscription(newer.id, 'tx-new');
+
+      const result = service.getCreatorPayoutHistory({
+        creatorAddress,
+        from: '2026-03-28T00:00:00.000Z',
+        to: '2026-03-29T00:00:00.000Z',
+        limit: 10,
+      });
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].txHash).toBe('tx-new');
+    });
+
+    it('supports cursor pagination', () => {
+      const first = service.createCheckout(fanAddress, creatorAddress, 1);
+      service.confirmSubscription(first.id, 'tx-first');
+      jest.advanceTimersByTime(1000);
+      const second = service.createCheckout(fanAddress, creatorAddress, 1);
+      service.confirmSubscription(second.id, 'tx-second');
+
+      const pageOne = service.getCreatorPayoutHistory({ creatorAddress, limit: 1 });
+      expect(pageOne.data).toHaveLength(1);
+      expect(pageOne.hasMore).toBe(true);
+      expect(pageOne.nextCursor).toBeTruthy();
+
+      const pageTwo = service.getCreatorPayoutHistory({
+        creatorAddress,
+        limit: 1,
+        cursor: pageOne.nextCursor as string,
+      });
+
+      expect(pageTwo.data).toHaveLength(1);
+      expect(pageTwo.data[0].txHash).toBe('tx-first');
+    });
+  });
 });

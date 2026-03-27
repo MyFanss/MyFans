@@ -5,6 +5,11 @@ import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
 import { User } from '../users/entities/user.entity';
+import {
+  CreatorPayoutHistoryResult,
+  SubscriptionsService,
+} from '../subscriptions/subscriptions.service';
+import { CreatorPayoutHistoryQueryDto } from './dto';
 
 export interface Plan {
   id: number;
@@ -22,6 +27,7 @@ export class CreatorsService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   createPlan(creator: string, asset: string, amount: string, intervalDays: number): Plan {
@@ -82,5 +88,18 @@ export class CreatorsService {
     });
 
     return new PaginatedResponseDto(data, total, page, limit);
+  }
+
+  getPayoutHistory(
+    creatorAddress: string,
+    query: CreatorPayoutHistoryQueryDto,
+  ): CreatorPayoutHistoryResult {
+    return this.subscriptionsService.getCreatorPayoutHistory({
+      creatorAddress,
+      from: query.from,
+      to: query.to,
+      cursor: query.cursor,
+      limit: query.limit,
+    });
   }
 }
