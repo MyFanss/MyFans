@@ -3,7 +3,7 @@ use soroban_sdk::{
     testutils::{Address as _, Events, MockAuth, MockAuthInvoke},
     token::{StellarAssetClient, TokenClient},
     xdr::SorobanAuthorizationEntry,
-    Address, Env, IntoVal, Symbol,
+    Address, Env, Error as SorobanError, IntoVal, Symbol, TryIntoVal,
 };
 
 fn create_token_contract<'a>(
@@ -44,7 +44,6 @@ fn test_deposit_and_withdraw() {
 }
 
 #[test]
-#[should_panic(expected = "insufficient balance")]
 fn test_withdraw_insufficient_balance() {
     let env = Env::default();
     env.mock_all_auths();
@@ -61,7 +60,13 @@ fn test_withdraw_insufficient_balance() {
     treasury_client.initialize(&admin, &token_address);
     treasury_client.deposit(&user, &100);
 
-    treasury_client.withdraw(&user, &500);
+    let result = treasury_client.try_withdraw(&user, &500);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InsufficientBalance as u32,
+        )))
+    );
 }
 
 #[test]
@@ -141,7 +146,6 @@ fn test_unauthorized_withdraw_reverts() {
 }
 
 #[test]
-#[should_panic(expected = "treasury is paused")]
 fn test_pause_blocks_deposit() {
     let env = Env::default();
     env.mock_all_auths();
@@ -157,11 +161,14 @@ fn test_pause_blocks_deposit() {
 
     treasury_client.initialize(&admin, &token_address);
     treasury_client.set_paused(&true);
-    treasury_client.deposit(&user, &100);
+    let result = treasury_client.try_deposit(&user, &100);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
 }
 
 #[test]
-#[should_panic(expected = "treasury is paused")]
 fn test_pause_blocks_withdraw() {
     let env = Env::default();
     env.mock_all_auths();
@@ -180,7 +187,11 @@ fn test_pause_blocks_withdraw() {
     assert_eq!(token_client.balance(&treasury_id), 500);
 
     treasury_client.set_paused(&true);
-    treasury_client.withdraw(&user, &100);
+    let result = treasury_client.try_withdraw(&user, &100);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
 }
 
 #[test]
@@ -207,7 +218,6 @@ fn test_unpause_allows_deposit_and_withdraw() {
 }
 
 #[test]
-#[should_panic(expected = "withdraw would leave balance below minimum")]
 fn test_min_balance_blocks_withdraw() {
     let env = Env::default();
     env.mock_all_auths();
@@ -228,7 +238,13 @@ fn test_min_balance_blocks_withdraw() {
     // 500 - 300 = 200 would remain; min is 300, so withdraw 300 is ok, withdraw 201 is not
     treasury_client.withdraw(&user, &200);
     assert_eq!(token_client.balance(&treasury_id), 300);
-    treasury_client.withdraw(&user, &1); // would leave 299 < 300
+    let result = treasury_client.try_withdraw(&user, &1); // would leave 299 < 300
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::MinBalanceViolation as u32,
+        )))
+    );
 }
 
 #[test]
@@ -255,7 +271,6 @@ fn test_min_balance_allows_withdraw_above_threshold() {
 }
 
 #[test]
-#[should_panic(expected = "min_balance cannot be negative")]
 fn test_set_min_balance_negative_reverts() {
     let env = Env::default();
     env.mock_all_auths();
@@ -267,7 +282,13 @@ fn test_set_min_balance_negative_reverts() {
     let treasury_client = TreasuryClient::new(&env, &treasury_id);
 
     treasury_client.initialize(&admin, &token_address);
-    treasury_client.set_min_balance(&-1);
+    let result = treasury_client.try_set_min_balance(&-1);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::NegativeMinBalance as u32,
+        )))
+    );
 }
 
 #[test]
@@ -289,14 +310,14 @@ fn test_deposit_emits_event() {
 
     let events = env.events().all();
     let deposit_event = events.iter().find(|e| {
-        e.topics.first().map_or(false, |t| {
-            t.as_val().try_into_val(&env).ok() == Some(Symbol::new(&env, "deposit"))
+        e.1.first().map_or(false, |t| {
+            t.try_into_val(&env).ok() == Some(Symbol::new(&env, "deposit"))
         })
     });
 
     assert!(deposit_event.is_some());
     let event = deposit_event.unwrap();
-    let (from, amount, token): (Address, i128, Address) = event.data.try_into_val(&env).unwrap();
+    let (from, amount, token): (Address, i128, Address) = event.2.try_into_val(&env).unwrap();
     assert_eq!(from, user);
     assert_eq!(amount, 500);
     assert_eq!(token, token_address);

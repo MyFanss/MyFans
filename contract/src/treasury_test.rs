@@ -6,7 +6,7 @@ use soroban_sdk::{
     token::{StellarAssetClient, TokenClient},
     vec,
     xdr::SorobanAuthorizationEntry,
-    Address, Env, IntoVal,
+    Address, Env, Error as SorobanError, IntoVal,
 };
 
 fn create_token_contract<'a>(
@@ -47,7 +47,6 @@ fn test_deposit_and_withdraw() {
 }
 
 #[test]
-#[should_panic(expected = "insufficient balance")]
 fn test_withdraw_insufficient_balance() {
     let env = Env::default();
     env.mock_all_auths();
@@ -64,7 +63,13 @@ fn test_withdraw_insufficient_balance() {
     treasury_client.initialize(&admin, &token_address);
     treasury_client.deposit(&user, &100);
 
-    treasury_client.withdraw(&user, &500);
+    let result = treasury_client.try_withdraw(&user, &500);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            crate::treasury::Error::InsufficientBalance as u32,
+        )))
+    );
 }
 
 #[test]
