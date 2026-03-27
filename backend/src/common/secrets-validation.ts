@@ -8,7 +8,12 @@
  *
  * Add every secret/config key that the app cannot function without to
  * REQUIRED_SECRETS. Optional vars with safe defaults do NOT belong here.
+ *
+ * Stellar / Soroban variables are validated separately via `validateSorobanEnv()`
+ * (see `soroban-env.validation.ts`).
  */
+
+import { validateSorobanEnv } from './soroban-env.validation';
 
 const REQUIRED_SECRETS: string[] = [
   'JWT_SECRET',
@@ -38,4 +43,6 @@ export function validateRequiredSecrets(): void {
         `\n\nSee backend/.env.example for the full list of required variables.`,
     );
   }
+
+  validateSorobanEnv();
 }
