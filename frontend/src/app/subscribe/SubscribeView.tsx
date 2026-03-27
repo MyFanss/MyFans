@@ -1,12 +1,17 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import WalletConnect from '@/components/WalletConnect';
 import { BookmarkButton } from '@/components/BookmarkButton';
 import { CreatorCard } from '@/components/cards';
 import { CardSkeletonGrid, EmptyState } from '@/components/ui/states';
 import { useToast } from '@/contexts/ToastContext';
-import { subscribeToCreatorFailed } from '@/lib/error-copy';
+import {
+  loadFanQuickstartState,
+  saveFanQuickstartState,
+  completeFanQuickstartSubscribe,
+} from '@/lib/fan-quickstart';
 
 interface Creator {
   id: string;
@@ -45,6 +50,8 @@ const CREATOR_DATA: Creator[] = [
 ];
 
 export default function SubscribeView() {
+  const searchParams = useSearchParams();
+  const fanQuickstart = searchParams.get('fanQuickstart') === '1';
   const { showLoading, showSuccess, showError, dismiss } = useToast();
   const [query, setQuery] = useState('');
   const [isLoadingCreators, setIsLoadingCreators] = useState(true);
@@ -54,6 +61,12 @@ export default function SubscribeView() {
     const timer = setTimeout(() => setIsLoadingCreators(false), 1100);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (!fanQuickstart) return;
+    const s = loadFanQuickstartState();
+    saveFanQuickstartState({ ...s, explore: true });
+  }, [fanQuickstart]);
 
   const filteredCreators = useMemo(() => {
     const value = query.trim().toLowerCase();
@@ -71,9 +84,15 @@ export default function SubscribeView() {
     const loadingToastId = showLoading(`Subscribing to ${creator.name}...`);
     try {
       await new Promise((resolve) => setTimeout(resolve, 700));
+      if (fanQuickstart) {
+        completeFanQuickstartSubscribe();
+      }
       showSuccess(`Subscribed to ${creator.name}`, 'You now have access to their subscriber content.');
     } catch {
-      showError('TX_FAILED', subscribeToCreatorFailed(creator.name));
+      showError('TX_FAILED', {
+        message: `Could not subscribe to ${creator.name}`,
+        description: 'Please try again.',
+      });
     } finally {
       dismiss(loadingToastId);
       setIsSubscribing(null);
@@ -87,6 +106,11 @@ export default function SubscribeView() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
             Subscribe to Creators
           </h1>
+          {fanQuickstart ? (
+            <p className="mt-1 text-sm text-sky-700 dark:text-sky-300">
+              Quickstart: pick a creator and tap Subscribe.
+            </p>
+          ) : null}
         </div>
         <WalletConnect />
       </header>
