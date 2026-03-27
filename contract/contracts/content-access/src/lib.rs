@@ -26,10 +26,15 @@ impl ContentAccess {
     /// * `env` - Soroban environment
     /// * `admin` - Admin address
     /// * `token_address` - Token contract address for payments
-    pub fn initialize(env: Env, admin: Address, token_address: Address) {
+pub fn initialize(env: Env, admin: Address, token_address: Address) {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("already initialized");
         }
+
+        let token_client = token::Client::new(&env, &token_address);
+        let _ = token_client.balance(&admin);
+
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
             .instance()
@@ -142,8 +147,12 @@ mod test {
     #[contract]
     pub struct MockToken;
 
-    #[contractimpl]
+#[contractimpl]
     impl MockToken {
+        pub fn balance(_env: Env, _id: Address) -> i128 {
+            0
+        }
+
         pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {
             // Mock implementation - just succeed
         }
@@ -499,5 +508,44 @@ mod test {
             count_after_second, 1,
             "duplicate unlock must not emit a second event"
         );
+    }
+
+    #[test]
+    fn test_initialize_valid_token_succeeds() {
+        let (env, contract_id, admin, token_address, _, _) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+    }
+
+    #[test]
+    #[should_panic(expected = r##"calling unknown contract function"##)]
+    fn test_initialize_invalid_token_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+let invalid_token_contract = env.register_contract(None, ContentAccess);
+        let invalid_token_address: Address = invalid_token_contract.into();
+
+        let contract_id = env.register_contract(None, ContentAccess);
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &invalid_token_address);
+    }
+
+    #[test]
+    #[should_panic(expected = r##"Unauthorized function call"##)]
+    fn test_initialize_missing_admin_auth_fails() {
+        let env = Env::default();
+        // No mock auths
+
+        let contract_id = env.register_contract(None, ContentAccess);
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let token_address = Address::generate(&env);
+
+        client.initialize(&admin, &token_address);
     }
 }
