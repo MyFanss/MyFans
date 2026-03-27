@@ -254,6 +254,56 @@ export class SubscriptionsService {
     };
   }
 
+  getFanDashboardSummary(
+    fan: string,
+    page: number = 1,
+    limit: number = 20,
+  ) {
+    const nowSecs = Date.now() / 1000;
+    const activeSubs = Array.from(this.subscriptions.values()).filter(
+      (sub) => sub.fan === fan && sub.status === 'active' && sub.expiry > nowSecs,
+    );
+
+    activeSubs.sort((a, b) => a.expiry - b.expiry);
+
+    const total = activeSubs.length;
+    const paginated = activeSubs.slice((page - 1) * limit, page * limit);
+
+    const subscriptions = paginated.map((sub) => {
+      const plan = this.getPlanMock(sub.planId);
+      const creatorProfile = this.creatorProfiles.get(sub.creator);
+      return {
+        id: sub.id,
+        creatorId: sub.creator,
+        creatorName: creatorProfile?.name ?? 'Unknown Creator',
+        planName: plan
+          ? `${this.getIntervalText(plan.intervalDays)} Subscription`
+          : 'Subscription',
+        price: plan ? parseFloat(plan.amount) : 0,
+        currency: plan ? plan.asset.split(':')[0] : 'XLM',
+        interval:
+          plan?.intervalDays === 365
+            ? 'year'
+            : plan?.intervalDays === 7
+              ? 'week'
+              : 'month',
+        renewsAt: new Date(sub.expiry * 1000).toISOString(),
+        renewsAtUnix: sub.expiry,
+        status: sub.status,
+        createdAt: sub.createdAt.toISOString(),
+      };
+    });
+
+    return {
+      fan,
+      totalActive: total,
+      subscriptions,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
   listSubscriptions(
     fan: string,
     status?: string,
