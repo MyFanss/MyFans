@@ -15,6 +15,8 @@ import { SubscriptionsService } from './subscriptions.service';
   providers: [
     SubscriptionsService,
     SubscriptionChainReaderService,
+    SubscriptionCacheService,
+    GatedContentGuard,
     FanBearerGuard,
     SubscriptionLifecycleIndexerService,
     {
