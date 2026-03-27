@@ -47,44 +47,6 @@ const CREATOR_DATA: Creator[] = [
 ];
 
 export default function SubscribePage() {
-  const { showLoading, showSuccess, showError, dismiss } = useToast();
-  const [query, setQuery] = useState('');
-  const [isLoadingCreators, setIsLoadingCreators] = useState(true);
-  const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoadingCreators(false), 1100);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const filteredCreators = useMemo(() => {
-    const value = query.trim().toLowerCase();
-    if (!value) return CREATOR_DATA;
-    return CREATOR_DATA.filter(
-      (creator) =>
-        creator.name.toLowerCase().includes(value) ||
-        creator.username.toLowerCase().includes(value) ||
-        creator.bio.toLowerCase().includes(value),
-    );
-  }, [query]);
-
-  const handleSubscribe = async (creator: Creator) => {
-    setIsSubscribing(creator.id);
-    const loadingToastId = showLoading(`Subscribing to ${creator.name}...`);
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 700));
-      showSuccess(`Subscribed to ${creator.name}`, 'You now have access to their subscriber content.');
-    } catch {
-      showError('TX_FAILED', {
-        message: `Could not subscribe to ${creator.name}`,
-        description: 'Please try again.',
-      });
-    } finally {
-      dismiss(loadingToastId);
-      setIsSubscribing(null);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 p-8">
       <header className="mb-8 flex items-center justify-between">
