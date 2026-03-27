@@ -1,6 +1,25 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
+import { PaginatedResponseDto } from '../common/dto';
 import { EventBus } from '../events/event-bus';
-import { SubscriptionCreatedEvent, SubscriptionExpiredEvent } from '../events/domain-events';
+import {
+  SubscriptionCancelledEvent,
+  SubscriptionCreatedEvent,
+  SubscriptionExpiredEvent,
+  SubscriptionRenewedEvent,
+} from '../events/domain-events';
+import {
+  RenewalFailurePayload,
+  SUBSCRIPTION_RENEWAL_FAILED,
+  SUBSCRIPTION_EVENT_PUBLISHER,
+} from './events';
+import type { SubscriptionEventPublisher } from './events';
 
 interface Subscription {
   id: string;
@@ -38,6 +57,14 @@ interface Plan {
   intervalDays: number;
 }
 
+export enum CheckoutStatus {
+  PENDING = 'pending',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  REJECTED = 'rejected',
+  EXPIRED = 'expired',
+}
+
 /** Generate a simple UUID */
 function generateId(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -49,24 +76,25 @@ function generateId(): string {
 
 @Injectable()
 export class SubscriptionsService {
-  private subscriptions: Map<string, Subscription> = new Map();
-  private checkouts: Map<string, Checkout> = new Map();
-  private checkoutExpiryMinutes = 15;
+  private readonly subscriptions: Map<string, Subscription> = new Map();
+  private readonly checkouts: Map<string, Checkout> = new Map();
+  private readonly checkoutExpiryMinutes = 15;
   private readonly logger = new Logger(SubscriptionsService.name);
 
   // Mock platform fee (in basis points, e.g., 500 = 5%)
-  private platformFeeBps = 500;
+  private readonly platformFeeBps = 500;
 
   // Mock supported assets
-  private supportedAssets: { code: string; issuer?: string; isNative: boolean }[] = [
+  private readonly supportedAssets: { code: string; issuer?: string; isNative: boolean }[] = [
     { code: 'XLM', isNative: true },
     { code: 'USDC', issuer: 'GA7Z6G7T3LSSKDAWJH25C4JPLD4PQV4CEMM5S5E6LQD3VDF5W6G6F3K', isNative: false },
   ];
 
   // Mock creator profiles
-  private creatorProfiles: Map<string, { name: string; description?: string }> = new Map();
+  private readonly creatorProfiles: Map<string, { name: string; description?: string }> = new Map();
 
   constructor(
+    private readonly eventBus: EventBus,
     @Optional()
     @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
     private readonly subscriptionEventPublisher?: SubscriptionEventPublisher,
@@ -76,26 +104,94 @@ export class SubscriptionsService {
     this.creatorProfiles.set('GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5', { name: 'Creator 2', description: 'Exclusive videos and photos' });
   }
 
-  constructor(private readonly eventBus: EventBus) {}
-
   private getKey(fan: string, creator: string): string {
     return `${fan}:${creator}`;
   }
 
   addSubscription(fan: string, creator: string, planId: number, expiry: number) {
-    this.subscriptions.set(this.getKey(fan, creator), { fan, creator, planId, expiry });
+    const subscription: Subscription = {
+      id: generateId(),
+      fan,
+      creator,
+      planId,
+      expiry,
+      status: expiry > Date.now() / 1000 ? 'active' : 'expired',
+      createdAt: new Date(),
+    };
+
+    this.subscriptions.set(this.getKey(fan, creator), subscription);
 
     this.eventBus.publish(
       new SubscriptionCreatedEvent(fan, creator, planId, expiry),
     );
+
+    return subscription;
+  }
+
+  renewSubscription(fan: string, creator: string, planId: number, expiry: number) {
+    const key = this.getKey(fan, creator);
+    const existing = this.subscriptions.get(key);
+
+    if (!existing) {
+      return this.addSubscription(fan, creator, planId, expiry);
+    }
+
+    existing.planId = planId;
+    existing.expiry = expiry;
+    existing.status = 'active';
+
+    this.eventBus.publish(
+      new SubscriptionRenewedEvent(
+        existing.id,
+        fan,
+        creator,
+        planId,
+        expiry,
+      ),
+    );
+
+    return existing;
   }
 
   expireSubscription(fan: string, creator: string) {
-    this.subscriptions.delete(this.getKey(fan, creator));
+    const key = this.getKey(fan, creator);
+    const existing = this.subscriptions.get(key);
+    if (existing) {
+      existing.status = 'expired';
+    }
 
     this.eventBus.publish(
       new SubscriptionExpiredEvent(fan, creator),
     );
+  }
+
+  cancelSubscription(fan: string, creator: string) {
+    const subscription = this.subscriptions.get(this.getKey(fan, creator));
+    if (!subscription) {
+      throw new NotFoundException('Subscription not found');
+    }
+
+    subscription.status = 'cancelled';
+    subscription.expiry = Math.floor(Date.now() / 1000);
+
+    this.eventBus.publish(
+      new SubscriptionCancelledEvent(
+        subscription.id,
+        fan,
+        creator,
+        subscription.planId,
+      ),
+    );
+
+    return {
+      success: true,
+      subscriptionId: subscription.id,
+      fan,
+      creator,
+      status: subscription.status,
+      cancelledAt: new Date().toISOString(),
+      message: 'Subscription cancelled successfully',
+    };
   }
 
   isSubscriber(fan: string, creator: string): boolean {
@@ -333,6 +429,10 @@ export class SubscriptionsService {
    */
   confirmSubscription(checkoutId: string, txHash?: string) {
     const checkout = this.getCheckout(checkoutId);
+    const existingSubscription = this.getSubscription(
+      checkout.fanAddress,
+      checkout.creatorAddress,
+    );
 
     // Update checkout status
     checkout.status = CheckoutStatus.COMPLETED;
@@ -342,9 +442,20 @@ export class SubscriptionsService {
     // Generate explorer URL
     const explorerUrl = `https://stellar.expert/explorer/testnet/tx/${checkout.txHash}`;
 
-    // Create subscription
-    this.addSubscription(checkout.fanAddress, checkout.creatorAddress, checkout.planId,
-      Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60); // 30 days
+    const expiry = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+    const subscription = existingSubscription
+      ? this.renewSubscription(
+          checkout.fanAddress,
+          checkout.creatorAddress,
+          checkout.planId,
+          expiry,
+        )
+      : this.addSubscription(
+          checkout.fanAddress,
+          checkout.creatorAddress,
+          checkout.planId,
+          expiry,
+        );
 
     return {
       success: true,
@@ -352,7 +463,11 @@ export class SubscriptionsService {
       status: checkout.status,
       txHash: checkout.txHash,
       explorerUrl,
-      message: 'Subscription created successfully!',
+      subscriptionId: subscription.id,
+      lifecycleEvent: existingSubscription ? 'renewed' : 'created',
+      message: existingSubscription
+        ? 'Subscription renewed successfully!'
+        : 'Subscription created successfully!',
     };
   }
 

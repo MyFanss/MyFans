@@ -4,20 +4,28 @@ import {
   SUBSCRIPTION_RENEWAL_FAILED,
   SubscriptionEventPublisher,
 } from './events';
+import { EventBus } from '../events/event-bus';
+import { InProcessEventBus } from '../events/in-process-event-bus';
 import { SubscriptionsService } from './subscriptions.service';
 
 describe('SubscriptionsService', () => {
   let service: SubscriptionsService;
   let eventPublisher: jest.Mocked<SubscriptionEventPublisher>;
+  let eventBus: InProcessEventBus;
 
   beforeEach(async () => {
     eventPublisher = {
       emit: jest.fn(),
     };
+    eventBus = new InProcessEventBus();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SubscriptionsService,
+        {
+          provide: EventBus,
+          useValue: eventBus,
+        },
         {
           provide: SUBSCRIPTION_EVENT_PUBLISHER,
           useValue: eventPublisher,
@@ -76,7 +84,7 @@ describe('SubscriptionsService', () => {
     const fan = 'GAAAAAAAAAAAAAAA';
 
     beforeEach(() => {
-      service = new SubscriptionsService();
+      service = new SubscriptionsService(eventBus, eventPublisher);
     });
 
     it('should return empty paginated response when fan has no subscriptions', () => {
@@ -151,5 +159,59 @@ describe('SubscriptionsService', () => {
       expect(result.page).toBe(5);
       expect(result.totalPages).toBe(1);
     });
+  });
+
+  it('publishes a renewal event when confirming an existing subscription', () => {
+    const handler = jest.fn();
+    eventBus.subscribe('subscription.renewed', handler);
+
+    service.addSubscription(
+      'GFANADDRESS333333333333333333333333333333333333333333333333',
+      'GAAAAAAAAAAAAAAA',
+      1,
+      Math.floor(Date.now() / 1000) + 60,
+    );
+
+    const checkout = service.createCheckout(
+      'GFANADDRESS333333333333333333333333333333333333333333333333',
+      'GAAAAAAAAAAAAAAA',
+      1,
+    );
+
+    const result = service.confirmSubscription(checkout.id, 'tx-renew');
+
+    expect(result.lifecycleEvent).toBe('renewed');
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'subscription.renewed',
+        fan: checkout.fanAddress,
+        creator: checkout.creatorAddress,
+      }),
+    );
+  });
+
+  it('publishes a cancelled event when subscription is cancelled', () => {
+    const handler = jest.fn();
+    eventBus.subscribe('subscription.cancelled', handler);
+
+    const subscription = service.addSubscription(
+      'GFANADDRESS444444444444444444444444444444444444444444444444',
+      'GAAAAAAAAAAAAAAA',
+      1,
+      Math.floor(Date.now() / 1000) + 60,
+    );
+
+    const result = service.cancelSubscription(
+      'GFANADDRESS444444444444444444444444444444444444444444444444',
+      'GAAAAAAAAAAAAAAA',
+    );
+
+    expect(result.subscriptionId).toBe(subscription.id);
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'subscription.cancelled',
+        subscriptionId: subscription.id,
+      }),
+    );
   });
 });
