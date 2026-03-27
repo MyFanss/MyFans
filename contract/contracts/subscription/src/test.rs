@@ -337,7 +337,7 @@ fn test_subscription_state_after_snapshot_restore() {
     let sub = env2.as_contract(&contract_id2, || {
         env2.storage()
             .instance()
-            .get::<DataKey, Subscription>(&DataKey::Sub(fan2.clone(), creator2.clone()))
+            .get::<DataKey, Subscription>(&DataKey::subscription(fan2.clone(), creator2.clone()))
             .unwrap()
     });
     assert_eq!(sub.fan, fan2);
@@ -510,6 +510,18 @@ fn test_create_subscription_emits_subscribed_event() {
 
     let d_plan_id: u32 = ev.2.try_into_val(&env).unwrap();
     assert_eq!(d_plan_id, 0u32, "direct sub should have plan_id=0 in data");
+}
+
+#[test]
+fn test_subscription_key_helper_keeps_legacy_variant() {
+    let env = Env::default();
+    let fan = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    assert_eq!(
+        DataKey::subscription(fan.clone(), creator.clone()),
+        DataKey::Sub(fan, creator)
+    );
 }
 
 /// Cancel after snapshot restore and assert subscription state is cleared.

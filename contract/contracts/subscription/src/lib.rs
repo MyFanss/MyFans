@@ -5,6 +5,7 @@ use soroban_sdk::{
 };
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Plan {
     pub creator: Address,
     pub asset: Address,
@@ -13,6 +14,7 @@ pub struct Plan {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Subscription {
     pub fan: Address,
     pub plan_id: u32,
@@ -20,12 +22,15 @@ pub struct Subscription {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Admin,
     FeeBps,
     FeeRecipient,
     PlanCount,
     Plan(u32),
+    // Canonical storage name: `subscription`.
+    // Keep the legacy `Sub` variant to preserve deployed key serialization.
     Sub(Address, Address),
     CreatorSubscriptionCount(Address),
     AcceptedToken(Address),
@@ -145,9 +150,10 @@ impl MyfansContract {
             plan_id,
             expiry: expiry as u64,
         };
-        env.storage()
-            .instance()
-            .set(&DataKey::Sub(fan.clone(), plan.creator.clone()), &sub);
+        env.storage().instance().set(
+            &DataKey::subscription(fan.clone(), plan.creator.clone()),
+            &sub,
+        );
         // topics: (name, fan, creator)  data: plan_id
         env.events().publish(
             (
@@ -163,7 +169,7 @@ impl MyfansContract {
         if let Some(sub) = env
             .storage()
             .instance()
-            .get::<DataKey, Subscription>(&DataKey::Sub(fan, creator))
+            .get::<DataKey, Subscription>(&DataKey::subscription(fan, creator))
         {
             env.ledger().sequence() <= sub.expiry as u32
         } else {
@@ -219,9 +225,10 @@ impl MyfansContract {
             expiry: new_expiry,
         };
 
-        env.storage()
-            .instance()
-            .set(&DataKey::Sub(fan.clone(), creator.clone()), &updated_sub);
+        env.storage().instance().set(
+            &DataKey::subscription(fan.clone(), creator.clone()),
+            &updated_sub,
+        );
 
         // topics: (name, fan, creator)  data: plan_id
         env.events().publish(
@@ -243,7 +250,7 @@ impl MyfansContract {
 
         env.storage()
             .instance()
-            .remove(&DataKey::Sub(fan.clone(), creator.clone()));
+            .remove(&DataKey::subscription(fan.clone(), creator.clone()));
         // topics: (name, fan, creator)  data: true
         env.events()
             .publish((Symbol::new(&env, "cancelled"), fan.clone(), creator), true);
@@ -280,7 +287,7 @@ impl MyfansContract {
 
         env.storage()
             .instance()
-            .set(&DataKey::Sub(fan.clone(), creator.clone()), &sub);
+            .set(&DataKey::subscription(fan.clone(), creator.clone()), &sub);
 
         let mut current_count: u32 = env
             .storage()
