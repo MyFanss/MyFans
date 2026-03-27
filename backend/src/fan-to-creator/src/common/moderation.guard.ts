@@ -13,10 +13,11 @@ export class ModerationGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
     const body = request.body as { content?: string };
+    const content = body.content;
 
-    if (body?.content) {
+    if (content) {
       const flagged = BLOCKED_PATTERNS.some((pattern) =>
-        pattern.test(body.content),
+        pattern.test(content),
       );
       if (flagged) {
         throw new ForbiddenException('Message content violates community guidelines');

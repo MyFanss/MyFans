@@ -1,26 +1,28 @@
 import {
-  Injectable,
-  Logger,
-  Optional,
-  Inject,
-  NotFoundException,
   BadRequestException,
   HttpException,
   HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { PaginatedResponseDto } from '../common/dto';
+import { isStellarAccountAddress } from '../common/utils/stellar-address';
 import { EventBus } from '../events/event-bus';
 import {
+  SubscriptionCancelledEvent,
   SubscriptionCreatedEvent,
   SubscriptionExpiredEvent,
+  SubscriptionRenewedEvent,
 } from '../events/domain-events';
-import type { SubscriptionEventPublisher } from './events';
 import {
+  RenewalFailurePayload,
   SUBSCRIPTION_EVENT_PUBLISHER,
   SUBSCRIPTION_RENEWAL_FAILED,
-  RenewalFailurePayload,
 } from './events';
-import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
-import { isStellarAccountAddress } from '../common/utils/stellar-address';
+import type { SubscriptionEventPublisher } from './events';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
 
 export enum CheckoutStatus {
@@ -83,10 +85,8 @@ export class SubscriptionsService {
   private readonly checkouts: Map<string, Checkout> = new Map();
   private readonly checkoutExpiryMinutes = 15;
   private readonly logger = new Logger(SubscriptionsService.name);
-
-  private platformFeeBps = 500;
-
-  private supportedAssets: {
+  private readonly platformFeeBps = 500;
+  private readonly supportedAssets: {
     code: string;
     issuer?: string;
     isNative: boolean;
@@ -98,8 +98,7 @@ export class SubscriptionsService {
       isNative: false,
     },
   ];
-
-  private creatorProfiles: Map<
+  private readonly creatorProfiles: Map<
     string,
     { name: string; description?: string }
   > = new Map();
@@ -109,7 +108,8 @@ export class SubscriptionsService {
     @Optional()
     @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
     private readonly subscriptionEventPublisher?: SubscriptionEventPublisher,
-    private readonly chainReader: SubscriptionChainReaderService,
+    @Optional()
+    private readonly chainReader?: SubscriptionChainReaderService,
   ) {
     this.creatorProfiles.set('GAAAAAAAAAAAAAAA', {
       name: 'Creator 1',
@@ -147,17 +147,17 @@ export class SubscriptionsService {
     planId: number,
     expiry: number,
   ) {
-    const id = generateId();
-    this.subscriptions.set(this.getKey(fan, creator), {
-      id,
+    const subscription: Subscription = {
+      id: generateId(),
       fan,
       creator,
       planId,
       expiry,
-      status: 'active',
+      status: expiry > Date.now() / 1000 ? 'active' : 'expired',
       createdAt: new Date(),
-    });
+    };
 
+    this.subscriptions.set(this.getKey(fan, creator), subscription);
     this.eventBus.publish(
       new SubscriptionCreatedEvent(fan, creator, planId, expiry),
     );
@@ -165,7 +165,12 @@ export class SubscriptionsService {
     return subscription;
   }
 
-  renewSubscription(fan: string, creator: string, planId: number, expiry: number) {
+  renewSubscription(
+    fan: string,
+    creator: string,
+    planId: number,
+    expiry: number,
+  ) {
     const key = this.getKey(fan, creator);
     const existing = this.subscriptions.get(key);
 
@@ -238,11 +243,6 @@ export class SubscriptionsService {
     return this.subscriptions.get(this.getKey(fan, creator));
   }
 
-  /**
-   * Fan–creator subscription state: in-memory index used by checkout flows, plus
-   * optional on-chain `is_subscriber` when a subscription contract id is configured
-   * (`CONTRACT_ID_SUBSCRIPTION` or `CONTRACT_ID_MYFANS`).
-   */
   async getFanCreatorSubscriptionState(fan: string, creator: string) {
     if (fan === creator) {
       throw new BadRequestException(
@@ -285,23 +285,24 @@ export class SubscriptionsService {
       };
     }
 
-    const contractId = this.chainReader.getConfiguredContractId();
+    const contractId = this.chainReader?.getConfiguredContractId();
     let chain: {
       configured: boolean;
       isSubscriber: boolean | null;
       error?: string;
     };
-    if (!contractId) {
+
+    if (!contractId || !this.chainReader) {
       chain = { configured: false, isSubscriber: null };
     } else {
-      const r = await this.chainReader.readIsSubscriber(
+      const result = await this.chainReader.readIsSubscriber(
         contractId,
         fan,
         creator,
       );
-      chain = r.ok
-        ? { configured: true, isSubscriber: r.isSubscriber }
-        : { configured: true, isSubscriber: null, error: r.error };
+      chain = result.ok
+        ? { configured: true, isSubscriber: result.isSubscriber }
+        : { configured: true, isSubscriber: null, error: result.error };
     }
 
     return {
@@ -331,15 +332,15 @@ export class SubscriptionsService {
         sub.status = 'expired';
       }
     });
-    if (status) userSubs = userSubs.filter(sub => sub.status === status);
 
     if (status) {
       userSubs = userSubs.filter((sub) => sub.status === status);
     }
 
-    let results = userSubs.map((sub) => {
+    const results = userSubs.map((sub) => {
       const plan = this.getPlanMock(sub.planId);
       const creatorProfile = this.creatorProfiles.get(sub.creator);
+
       return {
         id: sub.id,
         creatorId: sub.creator,
@@ -391,7 +392,9 @@ export class SubscriptionsService {
     this.assertNetworkMatch(requestNetwork);
 
     const plan = this.getPlanMock(planId);
-    if (!plan) throw new NotFoundException('Plan not found');
+    if (!plan) {
+      throw new NotFoundException('Plan not found');
+    }
 
     const amount = plan.amount;
     const fee = this.calculateFee(amount);
@@ -414,6 +417,7 @@ export class SubscriptionsService {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+
     this.checkouts.set(checkout.id, checkout);
     return checkout;
   }
@@ -428,15 +432,18 @@ export class SubscriptionsService {
       checkout.status = CheckoutStatus.EXPIRED;
       throw new BadRequestException('Checkout session has expired');
     }
+
     return checkout;
   }
 
   getPlanSummary(planId: number) {
     const plan = this.getPlanMock(planId);
-    if (!plan) throw new NotFoundException('Plan not found');
+    if (!plan) {
+      throw new NotFoundException('Plan not found');
+    }
+
     const creatorProfile = this.creatorProfiles.get(plan.creator);
     const intervalText = this.getIntervalText(plan.intervalDays);
-
     const assetParts = plan.asset.split(':');
     const assetCode = assetParts[0];
     const assetIssuer = assetParts[1] || undefined;
@@ -474,21 +481,22 @@ export class SubscriptionsService {
     const balance = this.getMockBalance(fanAddress, assetCode);
     const balanceNum = parseFloat(balance);
     const requiredNum = parseFloat(requiredAmount);
-    if (balanceNum >= requiredNum) return { valid: true, balance };
-    return { valid: false, balance, shortfall: (requiredNum - balanceNum).toFixed(7) };
+
+    if (balanceNum >= requiredNum) {
+      return { valid: true, balance };
+    }
+
+    return {
+      valid: false,
+      balance,
+      shortfall: (requiredNum - balanceNum).toFixed(7),
+    };
   }
 
   getWalletStatus(fanAddress: string) {
-    const balances = this.supportedAssets.map((asset) => ({
-      code: asset.code,
-      issuer: asset.issuer,
-      balance: this.getMockBalance(fanAddress, asset.code),
-      isNative: asset.isNative,
-    }));
-
     return {
       address: fanAddress,
-      balances: this.supportedAssets.map(asset => ({
+      balances: this.supportedAssets.map((asset) => ({
         code: asset.code,
         issuer: asset.issuer,
         balance: this.getMockBalance(fanAddress, asset.code),
@@ -525,13 +533,20 @@ export class SubscriptionsService {
     checkout.updatedAt = new Date();
 
     const explorerUrl = `https://stellar.expert/explorer/testnet/tx/${checkout.txHash}`;
-
-    this.addSubscription(
-      checkout.fanAddress,
-      checkout.creatorAddress,
-      checkout.planId,
-      Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
-    );
+    const expiry = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+    const subscription = existingSubscription
+      ? this.renewSubscription(
+          checkout.fanAddress,
+          checkout.creatorAddress,
+          checkout.planId,
+          expiry,
+        )
+      : this.addSubscription(
+          checkout.fanAddress,
+          checkout.creatorAddress,
+          checkout.planId,
+          expiry,
+        );
 
     return {
       success: true,
@@ -560,14 +575,13 @@ export class SubscriptionsService {
     checkout.error = error;
     checkout.updatedAt = new Date();
     this.emitRenewalFailureEvent(checkout, error);
+
     return {
       success: false,
       checkoutId: checkout.id,
       status: checkout.status,
-      error: error,
-      message: isRejected
-        ? 'Transaction was rejected'
-        : 'Transaction failed',
+      error,
+      message: isRejected ? 'Transaction was rejected' : 'Transaction failed',
     };
   }
 
@@ -592,13 +606,7 @@ export class SubscriptionsService {
 
   private getPlanMock(planId: number): Plan | undefined {
     const plans: Plan[] = [
-      {
-        id: 1,
-        creator: 'GAAAAAAAAAAAAAAA',
-        asset: 'XLM',
-        amount: '10',
-        intervalDays: 30,
-      },
+      { id: 1, creator: 'GAAAAAAAAAAAAAAA', asset: 'XLM', amount: '10', intervalDays: 30 },
       {
         id: 2,
         creator: 'GAAAAAAAAAAAAAAA',
@@ -608,8 +616,7 @@ export class SubscriptionsService {
       },
       {
         id: 3,
-        creator:
-          'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5',
+        creator: 'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5',
         asset: 'XLM',
         amount: '25',
         intervalDays: 7,
@@ -625,11 +632,16 @@ export class SubscriptionsService {
       timestamp: new Date().toISOString(),
       userId: checkout.fanAddress,
     };
+
     Promise.resolve()
-      .then(() => this.subscriptionEventPublisher?.emit(SUBSCRIPTION_RENEWAL_FAILED, payload))
+      .then(() =>
+        this.subscriptionEventPublisher?.emit(
+          SUBSCRIPTION_RENEWAL_FAILED,
+          payload,
+        ),
+      )
       .catch((error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : String(error);
+        const message = error instanceof Error ? error.message : String(error);
         this.logger.error(`Failed to emit renewal failure event: ${message}`);
       });
   }
