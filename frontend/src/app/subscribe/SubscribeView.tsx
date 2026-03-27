@@ -1,14 +1,17 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import WalletConnect from '@/components/WalletConnect';
 import { BookmarkButton } from '@/components/BookmarkButton';
-import { FeatureGate } from '@/components/FeatureGate';
 import { CreatorCard } from '@/components/cards';
-import { CardSkeletonGrid, EmptyState, SuccessAnimation } from '@/components/ui/states';
-import { FeatureFlag } from '@/lib/feature-flags';
 import { CardSkeletonGrid, EmptyState } from '@/components/ui/states';
 import { useToast } from '@/contexts/ToastContext';
+import {
+  loadFanQuickstartState,
+  saveFanQuickstartState,
+  completeFanQuickstartSubscribe,
+} from '@/lib/fan-quickstart';
 
 interface Creator {
   id: string;
@@ -46,11 +49,69 @@ const CREATOR_DATA: Creator[] = [
   },
 ];
 
-export default function SubscribePage() {
+export default function SubscribeView() {
+  const searchParams = useSearchParams();
+  const fanQuickstart = searchParams.get('fanQuickstart') === '1';
+  const { showLoading, showSuccess, showError, dismiss } = useToast();
+  const [query, setQuery] = useState('');
+  const [isLoadingCreators, setIsLoadingCreators] = useState(true);
+  const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoadingCreators(false), 1100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!fanQuickstart) return;
+    const s = loadFanQuickstartState();
+    saveFanQuickstartState({ ...s, explore: true });
+  }, [fanQuickstart]);
+
+  const filteredCreators = useMemo(() => {
+    const value = query.trim().toLowerCase();
+    if (!value) return CREATOR_DATA;
+    return CREATOR_DATA.filter(
+      (creator) =>
+        creator.name.toLowerCase().includes(value) ||
+        creator.username.toLowerCase().includes(value) ||
+        creator.bio.toLowerCase().includes(value),
+    );
+  }, [query]);
+
+  const handleSubscribe = async (creator: Creator) => {
+    setIsSubscribing(creator.id);
+    const loadingToastId = showLoading(`Subscribing to ${creator.name}...`);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      if (fanQuickstart) {
+        completeFanQuickstartSubscribe();
+      }
+      showSuccess(`Subscribed to ${creator.name}`, 'You now have access to their subscriber content.');
+    } catch {
+      showError('TX_FAILED', {
+        message: `Could not subscribe to ${creator.name}`,
+        description: 'Please try again.',
+      });
+    } finally {
+      dismiss(loadingToastId);
+      setIsSubscribing(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 p-8">
-      <header className="mb-8 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Subscribe to Creators</h1>
+      <header className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+            Subscribe to Creators
+          </h1>
+          {fanQuickstart ? (
+            <p className="mt-1 text-sm text-sky-700 dark:text-sky-300">
+              Quickstart: pick a creator and tap Subscribe.
+            </p>
+          ) : null}
+        </div>
         <WalletConnect />
       </header>
 
@@ -100,11 +161,7 @@ export default function SubscribePage() {
                   }
                   bio={creator.bio}
                   key={creator.id}
-                  headerAccessory={
-                    <FeatureGate flag={FeatureFlag.BOOKMARKS}>
-                      <BookmarkButton creatorId={creator.id} />
-                    </FeatureGate>
-                  }
+                  headerAccessory={<BookmarkButton creatorId={creator.id} />}
                   name={creator.name}
                   subscriberCount={creator.subscriberCount}
                   subscriptionPrice={creator.subscriptionPrice}
