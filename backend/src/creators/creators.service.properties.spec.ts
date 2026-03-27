@@ -27,6 +27,7 @@ describe('CreatorsService - Property-Based Tests', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CreatorsService,
+        { provide: EventBus, useValue: { publish: jest.fn() } },
         {
           provide: getRepositoryToken(User),
           useValue: {

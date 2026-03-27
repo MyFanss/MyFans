@@ -1,10 +1,38 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  Headers,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
 import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
+import { FanBearerGuard, RequestWithFan } from './guards/fan-bearer.guard';
+import { SubscriptionStateQueryDto } from './dto/subscription-state-query.dto';
 
 @Controller({ path: 'subscriptions', version: '1' })
 export class SubscriptionsController {
   constructor(private subscriptionsService: SubscriptionsService) { }
+
+  /**
+   * Authenticated fan: subscription state toward a creator (indexed + optional chain).
+   * Authorization: Bearer &lt;base64(Stellar G-address)&gt; (same as POST /v1/auth/login).
+   */
+  @Get('me/subscription-state')
+  @UseGuards(FanBearerGuard)
+  async getFanCreatorSubscriptionState(
+    @Req() req: RequestWithFan,
+    @Query() query: SubscriptionStateQueryDto,
+  ) {
+    return this.subscriptionsService.getFanCreatorSubscriptionState(
+      req.fanAddress,
+      query.creator,
+    );
+  }
 
   @Get('check')
   checkSubscription(@Query('fan') fan: string, @Query('creator') creator: string) {
@@ -34,6 +62,7 @@ export class SubscriptionsController {
       assetCode?: string;
       assetIssuer?: string;
     },
+    @Headers('x-network') requestNetwork?: string,
   ) {
     const checkout = this.subscriptionsService.createCheckout(
       body.fanAddress,
@@ -41,6 +70,7 @@ export class SubscriptionsController {
       body.planId,
       body.assetCode,
       body.assetIssuer,
+      requestNetwork,
     );
 
     return {

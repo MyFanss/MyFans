@@ -5,6 +5,7 @@ import { WalletOption } from './WalletOption';
 import { ConnectedWalletView } from './ConnectedWalletView';
 import type { WalletType, WalletConnectionState } from '@/types/wallet';
 import { useToast } from '@/contexts/ToastContext';
+import { errorToastWithCause } from '@/lib/error-copy';
 
 interface WalletSelectionModalProps {
   isOpen: boolean;
@@ -129,10 +130,7 @@ export function WalletSelectionModal({
         error: errorMessage,
         walletType,
       });
-      showError('WALLET_CONNECTION_FAILED', {
-        message: 'Wallet connection failed',
-        description: errorMessage,
-      });
+      showError('WALLET_CONNECTION_FAILED', errorToastWithCause('WALLET_CONNECTION_FAILED', error));
     }
   }, [dismiss, onConnect, showError, showLoading, showSuccess]);
 

@@ -25,7 +25,7 @@ async function bootstrap() {
     origin: origins.length > 0 ? origins : true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-User-Id'],
   });
 
   await app.listen(configService.get<number>('PORT', 3000));
