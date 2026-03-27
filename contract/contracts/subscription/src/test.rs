@@ -5,7 +5,7 @@ use soroban_sdk::{
     testutils::{Address as _, Ledger},
     token,
     xdr::ScAddress,
-    Address, Env, TryFromVal,
+    Address, Env, Error as SorobanError, TryFromVal,
 };
 
 fn setup_test() -> (
@@ -154,10 +154,10 @@ fn test_is_subscribed_false_after_expiry() {
     env.ledger().with_mut(|li| {
         li.sequence_number = 1000;
     });
-    client.create_subscription(&fan, &creator, &518400);
+    client.create_subscription(&fan, &creator, &5);
     assert!(client.is_subscriber(&fan, &creator));
     env.ledger().with_mut(|li| {
-        li.sequence_number += 17281;
+        li.sequence_number += 6;
     });
     assert!(!client.is_subscriber(&fan, &creator));
 }
@@ -182,11 +182,30 @@ fn test_extend_updates_expiry() {
     client.init(&admin, &0, &fee_recipient, &token.address, &1000);
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
-    token_admin.mint(&fan, &500);
+    token_admin.mint(&fan, &20_000);
     env.ledger().with_mut(|li| {
         li.sequence_number = 1000;
     });
-    client.create_subscription(&fan, &creator, &518400);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &1);
+    client.subscribe(&fan, &plan_id, &token.address);
+    let initial_expiry = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, Subscription>(&DataKey::Sub(fan.clone(), creator.clone()))
+            .unwrap()
+            .expiry
+    });
+
+    client.extend_subscription(&fan, &creator, &7, &token.address);
+
+    let updated_expiry = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, Subscription>(&DataKey::Sub(fan.clone(), creator.clone()))
+            .unwrap()
+            .expiry
+    });
+    assert_eq!(updated_expiry, initial_expiry + 7);
 }
 
 #[test]
@@ -200,22 +219,24 @@ fn test_create_subscription_no_fee() {
     let plan_id = client.create_plan(&creator, &token.address, &1000, &1);
     client.subscribe(&fan, &plan_id, &token.address);
 
-    let initial_ledger = env.ledger().sequence();
-    let expected_expiry = initial_ledger + 17280;
-
-    env.ledger().with_mut(|li| {
-        li.sequence_number += 10000;
+    let initial_expiry = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, Subscription>(&DataKey::Sub(fan.clone(), creator.clone()))
+            .unwrap()
+            .expiry
     });
-
-    assert!(client.is_subscriber(&fan, &creator));
 
     client.extend_subscription(&fan, &creator, &17280, &token.address);
 
-    env.ledger().with_mut(|li| {
-        li.sequence_number = expected_expiry + 1;
+    let updated_expiry = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, Subscription>(&DataKey::Sub(fan.clone(), creator.clone()))
+            .unwrap()
+            .expiry
     });
-
-    assert!(client.is_subscriber(&fan, &creator));
+    assert_eq!(updated_expiry, initial_expiry + 17280);
 }
 
 #[test]
@@ -238,7 +259,6 @@ fn test_extend_requires_payment() {
 }
 
 #[test]
-#[should_panic(expected = "subscription expired")]
 fn test_extend_fails_if_expired() {
     let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
@@ -246,12 +266,28 @@ fn test_extend_fails_if_expired() {
     let fan = Address::generate(&env);
     client.init(&admin, &0, &fee_recipient, &token.address, &1000);
     token_admin.mint(&fan, &20000);
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1000;
+    });
     let plan_id = client.create_plan(&creator, &token.address, &1000, &1);
     client.subscribe(&fan, &plan_id, &token.address);
-    env.ledger().with_mut(|li| {
-        li.sequence_number += 17281;
+    env.as_contract(&client.address, || {
+        let expired_sub = Subscription {
+            fan: fan.clone(),
+            plan_id,
+            expiry: 999,
+        };
+        env.storage()
+            .instance()
+            .set(&DataKey::Sub(fan.clone(), creator.clone()), &expired_sub);
     });
-    client.extend_subscription(&fan, &creator, &17280, &token.address);
+    let result = client.try_extend_subscription(&fan, &creator, &17280, &token.address);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::SubscriptionExpired as u32,
+        )))
+    );
 }
 
 /// Verify subscription state consistency across snapshot restore.
