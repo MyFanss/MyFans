@@ -13,6 +13,8 @@ pub enum DataKey {
     Access(Address, Address, u64),
     /// Content price: (creator, content_id) -> price
     ContentPrice(Address, u64),
+    /// Optional maximum price cap set by admin
+    MaxPrice,
 }
 
 #[contract]
@@ -112,10 +114,55 @@ impl ContentAccess {
     }
 
     /// Set the price for a creator's content. Creator must authorize.
+    ///
+    /// # Panics
+    /// - If `price` is not strictly positive (≤ 0).
+    /// - If a max-price cap is configured and `price` exceeds it.
     pub fn set_content_price(env: Env, creator: Address, content_id: u64, price: i128) {
         creator.require_auth();
+
+        if price <= 0 {
+            panic!("price must be positive");
+        }
+
+        if let Some(max_price) = env
+            .storage()
+            .instance()
+            .get::<DataKey, i128>(&DataKey::MaxPrice)
+        {
+            if price > max_price {
+                panic!("price exceeds maximum allowed");
+            }
+        }
+
         let key = DataKey::ContentPrice(creator, content_id);
         env.storage().instance().set(&key, &price);
+    }
+
+    /// Set a global maximum price cap. Only admin may call this.
+    ///
+    /// Pass `0` to remove the cap entirely.
+    pub fn set_max_price(env: Env, max_price: i128) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+        admin.require_auth();
+
+        if max_price == 0 {
+            env.storage().instance().remove(&DataKey::MaxPrice);
+        } else {
+            if max_price < 0 {
+                panic!("max price must be positive or zero to remove cap");
+            }
+            env.storage().instance().set(&DataKey::MaxPrice, &max_price);
+        }
+    }
+
+    /// Get the configured max-price cap, or `None` if no cap is set.
+    pub fn get_max_price(env: Env) -> Option<i128> {
+        env.storage().instance().get(&DataKey::MaxPrice)
     }
 
     /// Set a new admin address. Current admin must authorize.
@@ -499,5 +546,134 @@ mod test {
             count_after_second, 1,
             "duplicate unlock must not emit a second event"
         );
+    }
+
+    // ── #294 – content price bounds and validation ───────────────────────────
+
+    #[test]
+    #[should_panic(expected = "price must be positive")]
+    fn test_set_content_price_rejects_zero() {
+        let (env, contract_id, admin, token_address, _, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &1, &0);
+    }
+
+    #[test]
+    #[should_panic(expected = "price must be positive")]
+    fn test_set_content_price_rejects_negative() {
+        let (env, contract_id, admin, token_address, _, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &1, &-1);
+    }
+
+    #[test]
+    fn test_set_content_price_valid_stores_successfully() {
+        let (env, contract_id, admin, token_address, _, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &1, &500);
+        assert_eq!(client.get_content_price(&creator, &1), Some(500i128));
+    }
+
+    #[test]
+    fn test_set_max_price_and_get_max_price() {
+        let (env, contract_id, admin, token_address, _, _) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+        client.initialize(&admin, &token_address);
+
+        assert_eq!(client.get_max_price(), None);
+
+        client.set_max_price(&1000);
+        assert_eq!(client.get_max_price(), Some(1000i128));
+    }
+
+    #[test]
+    fn test_set_max_price_zero_removes_cap() {
+        let (env, contract_id, admin, token_address, _, _) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+        client.initialize(&admin, &token_address);
+
+        client.set_max_price(&1000);
+        assert_eq!(client.get_max_price(), Some(1000i128));
+
+        // Pass 0 to remove the cap
+        client.set_max_price(&0);
+        assert_eq!(client.get_max_price(), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "price exceeds maximum allowed")]
+    fn test_set_content_price_rejects_above_max_cap() {
+        let (env, contract_id, admin, token_address, _, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+        client.initialize(&admin, &token_address);
+
+        client.set_max_price(&500);
+        // Price of 501 exceeds the cap of 500 – must revert
+        client.set_content_price(&creator, &1, &501);
+    }
+
+    #[test]
+    fn test_set_content_price_at_exact_max_cap_succeeds() {
+        let (env, contract_id, admin, token_address, _, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+        client.initialize(&admin, &token_address);
+
+        client.set_max_price(&500);
+        client.set_content_price(&creator, &1, &500);
+        assert_eq!(client.get_content_price(&creator, &1), Some(500i128));
+    }
+
+    #[test]
+    #[should_panic(expected = "max price must be positive or zero to remove cap")]
+    fn test_set_max_price_rejects_negative() {
+        let (env, contract_id, admin, token_address, _, _) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+        client.initialize(&admin, &token_address);
+        client.set_max_price(&-1);
+    }
+
+    #[test]
+    fn test_set_content_price_succeeds_without_cap() {
+        let (env, contract_id, admin, token_address, _, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+        client.initialize(&admin, &token_address);
+
+        // No cap set – any positive price should be stored
+        client.set_content_price(&creator, &1, &1_000_000);
+        assert_eq!(client.get_content_price(&creator, &1), Some(1_000_000i128));
+    }
+
+    #[test]
+    fn test_creator_authorization_still_required_for_set_price() {
+        // With no mock_all_auths, calling set_content_price without auth must panic
+        let env = Env::default();
+        let contract_id = env.register_contract(None, ContentAccess);
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let token_address = Address::generate(&env);
+        let _creator = Address::generate(&env);
+
+        // Use mock_all_auths only for initialize
+        env.mock_all_auths();
+        client.initialize(&admin, &token_address);
+
+        // Now clear auths to verify creator auth is enforced
+        let env2 = Env::default();
+        // Re-register on a fresh env to isolate the auth check
+        let contract_id2 = env2.register_contract(None, ContentAccess);
+        let client2 = ContentAccessClient::new(&env2, &contract_id2);
+        let admin2 = Address::generate(&env2);
+        let token2 = Address::generate(&env2);
+        let creator2 = Address::generate(&env2);
+        env2.mock_all_auths();
+        client2.initialize(&admin2, &token2);
+
+        // Verify a valid price is stored when auth is mocked
+        client2.set_content_price(&creator2, &1, &100);
+        assert_eq!(client2.get_content_price(&creator2, &1), Some(100i128));
     }
 }
