@@ -1,11 +1,17 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseInterceptors } from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
+import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
 
 @Controller('subscriptions')
 export class SubscriptionsController {
   constructor(private subscriptionsService: SubscriptionsService) {}
 
   @Get('check')
+  @Deprecated({
+    sunsetDate: '2026-01-01',
+    migrationPath: '/subscriptions/status',
+    reason: 'Use GET /subscriptions/status with query params fan & creator instead.',
+  })
   checkSubscription(@Query('fan') fan: string, @Query('creator') creator: string) {
     return { isSubscriber: this.subscriptionsService.isSubscriber(fan, creator) };
   }

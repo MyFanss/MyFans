@@ -12,6 +12,7 @@ import { UsersService } from './users.service';
 import { UpdateUserDto, UserProfileDto } from './dto';
 import { plainToInstance } from 'class-transformer';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
+import { Deprecated } from '../common/deprecation';
 
 @Controller('users')
 @UseInterceptors(ClassSerializerInterceptor)
@@ -19,6 +20,11 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('me')
+  @Deprecated({
+    sunsetDate: '2026-01-01',
+    migrationPath: '/users/:id',
+    reason: 'Use GET /users/:id with authenticated user ID from JWT.',
+  })
   async getMe(): Promise<UserProfileDto> {
     // TODO: Get user ID from auth token/session
     const userId = 'temp-user-id';
@@ -27,6 +33,11 @@ export class UsersController {
   }
 
   @Patch('me')
+  @Deprecated({
+    sunsetDate: '2026-01-01',
+    migrationPath: '/users/:id',
+    reason: 'Use PATCH /users/:id with authenticated user ID from JWT.',
+  })
   async updateMe(@Body() updateUserDto: UpdateUserDto): Promise<UserProfileDto> {
     // TODO: Get user ID from auth token/session
     const userId = 'temp-user-id';
