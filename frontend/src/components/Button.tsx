@@ -34,6 +34,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${fullWidth ? 'w-full' : ''} ${className}`}
         aria-busy={loading}
         aria-disabled={disabled || loading}
+        type={type || 'button'}
         {...props}
       >
         {loading && (
