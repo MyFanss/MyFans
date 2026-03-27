@@ -4,6 +4,7 @@ import React, { useState, useCallback } from 'react';
 import { BaseCard } from '@/components/cards';
 import { PlanCard } from '@/components/cards/PlanCard';
 import { useToast } from '@/contexts/ToastContext';
+import { errorToastWithCause } from '@/lib/error-copy';
 import {
   validatePlanForm,
   getCurrencySymbol,

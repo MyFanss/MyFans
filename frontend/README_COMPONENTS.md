@@ -1,5 +1,7 @@
 # Component Documentation
 
+For repo-level structure and placement guidance, start with the [Frontend Component Architecture](../docs/frontend/component-architecture.md) guide. This file stays focused on individual component usage notes.
+
 ## Button
 
 Reusable button component with multiple variants, sizes, and states.

@@ -14,6 +14,7 @@ import {
 } from '@/lib/creator-profile';
 import { createCreatorMetadata } from '@/lib/metadata';
 import { BookmarkButton } from '@/components/BookmarkButton';
+import { FeatureGate } from '@/components/FeatureGate';
 import { PlanCard } from '@/components/cards';
 import { ContentCard } from '@/components/cards';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -243,7 +244,9 @@ function CreatorHero({ creator }: { creator: CreatorProfile }) {
               )}
             </div>
             <div className="flex-shrink-0">
-              <BookmarkButton creatorId={creator.id} showLabel className="shadow-sm shadow-black/5" />
+              <FeatureGate flag={FeatureFlag.BOOKMARKS}>
+                <BookmarkButton creatorId={creator.id} showLabel className="shadow-sm shadow-black/5" />
+              </FeatureGate>
             </div>
           </div>
         </div>

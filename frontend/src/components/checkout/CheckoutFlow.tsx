@@ -17,6 +17,7 @@ import {
 } from "@/lib/checkout";
 import { useTransaction } from "@/hooks/useTransaction";
 import { useToast } from "@/contexts/ToastContext";
+import { createAppError } from "@/types/errors";
 
 import PlanSummaryComponent from "./PlanSummary";
 import PriceBreakdownComponent from "./PriceBreakdown";
@@ -167,11 +168,12 @@ export default function CheckoutFlow({
   // Handle continue to preview
   const handleContinueToPreview = useCallback(() => {
     if (!balanceValidation?.valid) {
+      const base = createAppError("INSUFFICIENT_BALANCE");
       showError("INSUFFICIENT_BALANCE", {
-        message: "Insufficient balance for this transaction",
+        message: base.message,
         description: balanceValidation?.shortfall
-          ? `You need ${balanceValidation.shortfall} more`
-          : undefined,
+          ? `${base.description} You’re short by about ${balanceValidation.shortfall} for this plan—pick another asset or add funds.`
+          : base.description,
       });
       return;
     }

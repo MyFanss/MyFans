@@ -135,10 +135,7 @@ describe('CreatorsService events', () => {
       providers: [
         CreatorsService,
         { provide: EventBus, useClass: InProcessEventBus },
-        {
-          provide: getRepositoryToken(User),
-          useValue: { createQueryBuilder: jest.fn() },
-        },
+        { provide: getRepositoryToken(User), useValue: { createQueryBuilder: jest.fn() } },
       ],
     }).compile();
 

@@ -2,13 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
-import { PlanDto } from './dto/plan.dto';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
 import { User } from '../users/entities/user.entity';
-import { Creator } from './entities/creator.entity';
-import { EventBus } from '../events/event-bus';
-import { PlanCreatedEvent } from '../events/domain-events';
 
 export interface Plan {
   id: number;
@@ -25,14 +21,12 @@ export class CreatorsService {
 
   constructor(
     @InjectRepository(User)
-    private readonly usersRepository: Repository<User>,
-    private readonly eventBus: EventBus,
+    private readonly userRepository: Repository<User>,
   ) {}
 
   createPlan(creator: string, asset: string, amount: string, intervalDays: number): Plan {
     const plan = { id: ++this.planCounter, creator, asset, amount, intervalDays };
     this.plans.set(plan.id, plan);
-    this.eventBus.publish(new PlanCreatedEvent(plan.id, creator, asset, amount));
     return plan;
   }
 
@@ -44,45 +38,47 @@ export class CreatorsService {
     return Array.from(this.plans.values()).filter(p => p.creator === creator);
   }
 
-  findAllPlans(pagination: PaginationDto): PaginatedResponseDto<PlanDto> {
+  findAllPlans(pagination: PaginationDto): PaginatedResponseDto<Plan> {
     const { page = 1, limit = 20 } = pagination;
     const allPlans = Array.from(this.plans.values());
-    const skip = (page - 1) * limit;
-    return new PaginatedResponseDto(allPlans.slice(skip, skip + limit), allPlans.length, page, limit);
+    const total = allPlans.length;
+    const data = allPlans.slice((page - 1) * limit, page * limit);
+    return new PaginatedResponseDto(data, total, page, limit);
   }
 
-  findCreatorPlans(creator: string, pagination: PaginationDto): PaginatedResponseDto<PlanDto> {
+  findCreatorPlans(creator: string, pagination: PaginationDto): PaginatedResponseDto<Plan> {
     const { page = 1, limit = 20 } = pagination;
     const creatorPlans = this.getCreatorPlans(creator);
-    const skip = (page - 1) * limit;
-    return new PaginatedResponseDto(creatorPlans.slice(skip, skip + limit), creatorPlans.length, page, limit);
+    const total = creatorPlans.length;
+    const data = creatorPlans.slice((page - 1) * limit, page * limit);
+    return new PaginatedResponseDto(data, total, page, limit);
   }
 
   async searchCreators(searchDto: SearchCreatorsDto): Promise<PaginatedResponseDto<PublicCreatorDto>> {
-    const { q, page = 1, limit = 20 } = searchDto;
+    const { page = 1, limit = 20, q } = searchDto;
+    const trimmed = q?.trim();
 
-    const queryBuilder = this.usersRepository
+    const qb = this.userRepository
       .createQueryBuilder('user')
-      .leftJoin(Creator, 'creator', 'creator.userId = user.id')
-      .addSelect('creator.bio')
-      .where('user.is_creator = :isCreator', { isCreator: true });
+      .leftJoin('user.creator', 'creator')
+      .addSelect('creator.bio', 'creator_bio')
+      .where('user.is_creator = :isCreator', { isCreator: true })
+      .orderBy('user.username', 'ASC');
 
-    if (q?.trim()) {
-      const search = q.trim().toLowerCase();
-      queryBuilder.andWhere(
+    if (trimmed) {
+      qb.andWhere(
         '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
-        { search: `${search}%` },
+        { search: `${trimmed.toLowerCase()}%` },
       );
     }
 
-    queryBuilder.orderBy('user.username', 'ASC');
-    const total = await queryBuilder.getCount();
-    const results = await queryBuilder.skip((page - 1) * limit).take(limit).getRawAndEntities();
+    const total = await qb.getCount();
+    const { entities, raw } = await qb.skip((page - 1) * limit).take(limit).getRawAndEntities();
 
-    const data = results.entities.map((user, i) => {
-      const raw = results.raw[i] as { creator_bio?: string };
-      const creator = raw?.creator_bio ? ({ bio: raw.creator_bio } as Creator) : undefined;
-      return new PublicCreatorDto(user, creator);
+    const data = entities.map((user, i) => {
+      const dto = new PublicCreatorDto(user);
+      dto.bio = raw[i]?.creator_bio ?? null;
+      return dto;
     });
 
     return new PaginatedResponseDto(data, total, page, limit);
