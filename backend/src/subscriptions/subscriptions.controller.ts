@@ -11,7 +11,8 @@ import {
 } from '@nestjs/common';
 import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 import { SubscriptionStateQueryDto } from './dto/subscription-state-query.dto';
-import { FanBearerGuard, RequestWithFan } from './guards/fan-bearer.guard';
+import { FanBearerGuard } from './guards/fan-bearer.guard';
+import type { RequestWithFan } from './guards/fan-bearer.guard';
 import { SubscriptionsService } from './subscriptions.service';
 
 @Controller({ path: 'subscriptions', version: '1' })
