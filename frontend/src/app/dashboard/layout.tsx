@@ -16,6 +16,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { OnboardingResumeBanner } from '@/components/onboarding';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
@@ -171,7 +172,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       >
         <div className="p-3 sm:p-5 md:p-6 lg:p-8 max-w-full overflow-x-hidden">
           <OnboardingResumeBanner />
-          {children}
+          <ErrorBoundary errorCode="INTERNAL_ERROR">
+            {children}
+          </ErrorBoundary>
         </div>
       </main>
     </div>

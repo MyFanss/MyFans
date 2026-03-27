@@ -32,11 +32,23 @@ export class SubscriptionsController {
   }
 
   @Get('check')
+  @Deprecated({
+    sunset: '2026-01-01',
+    link: '/v1/subscriptions/me/subscription-state',
+    message: 'Use GET /v1/subscriptions/me/subscription-state instead. Removal date: 2026-01-01.',
+  })
+  @UseInterceptors(new DeprecationInterceptor(new Reflector()))
   checkSubscription(@Query('fan') fan: string, @Query('creator') creator: string) {
     return { isSubscriber: this.subscriptionsService.isSubscriber(fan, creator) };
   }
 
   @Get('list')
+  @Deprecated({
+    sunset: '2026-01-01',
+    link: '/v1/subscriptions/me/subscription-state',
+    message: 'Use GET /v1/subscriptions/me/subscription-state instead. Removal date: 2026-01-01.',
+  })
+  @UseInterceptors(new DeprecationInterceptor(new Reflector()))
   listSubscriptions(@Query() query: ListSubscriptionsQueryDto) {
     return this.subscriptionsService.listSubscriptions(
       query.fan,
