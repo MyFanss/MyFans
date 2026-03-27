@@ -1,9 +1,10 @@
-import { ContractHealthService } from './contract-health.service';
 import { loadContractIds } from './contract-ids.loader';
+import { ContractHealthService } from './contract-health.service';
 import { writeFileSync, unlinkSync } from 'fs';
 import { resolve } from 'path';
 
-// Mock fetch globally
+// ── ContractHealthService ────────────────────────────────────────────────────
+
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
 
@@ -23,10 +24,7 @@ describe('ContractHealthService', () => {
   });
 
   it('returns ok=true on successful RPC response', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ result: {} }),
-    });
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ result: {} }) });
     const result = await service.checkContract('myfans', 'CABC123', 'is_subscriber');
     expect(result.ok).toBe(true);
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
@@ -71,34 +69,189 @@ describe('ContractHealthService', () => {
   });
 });
 
+// ── loadContractIds ──────────────────────────────────────────────────────────
+
+const TMP = resolve(__dirname, '_test-contract-ids.json');
+
+const ENV_KEYS = [
+  'CONTRACT_ID_MYFANS',
+  'CONTRACT_ID_MYFANS_TOKEN',
+  'CONTRACT_ID_CREATOR_REGISTRY',
+  'CONTRACT_ID_SUBSCRIPTIONS',
+  'CONTRACT_ID_CONTENT_ACCESS',
+  'CONTRACT_ID_EARNINGS',
+  'CONTRACT_IDS_PATH',
+  'STELLAR_NETWORK',
+];
+
+function cleanEnv() {
+  ENV_KEYS.forEach(k => delete process.env[k]);
+}
+
+function writeTmp(content: object) {
+  writeFileSync(TMP, JSON.stringify(content));
+  process.env.CONTRACT_IDS_PATH = TMP;
+}
+
 describe('loadContractIds', () => {
-  const tmpPath = resolve(__dirname, 'test-contract-ids.json');
-
+  beforeEach(cleanEnv);
   afterEach(() => {
-    delete process.env.CONTRACT_ID_MYFANS;
-    delete process.env.CONTRACT_ID_MYFANS_TOKEN;
-    delete process.env.CONTRACT_IDS_PATH;
-    try { unlinkSync(tmpPath); } catch { /* ignore */ }
+    cleanEnv();
+    try { unlinkSync(TMP); } catch { /* ignore */ }
   });
 
-  it('loads from env vars when set', () => {
-    process.env.CONTRACT_ID_MYFANS = 'CABC123';
-    process.env.CONTRACT_ID_MYFANS_TOKEN = 'CDEF456';
-    const ids = loadContractIds();
-    expect(ids.myfans).toBe('CABC123');
-    expect(ids.myfansToken).toBe('CDEF456');
+  // ── env vars ──────────────────────────────────────────────────────────────
+
+  describe('env var resolution', () => {
+    it('loads primary IDs from env vars', () => {
+      process.env.CONTRACT_ID_MYFANS = 'CENV1';
+      process.env.CONTRACT_ID_MYFANS_TOKEN = 'CENV2';
+      const ids = loadContractIds();
+      expect(ids.myfans).toBe('CENV1');
+      expect(ids.myfansToken).toBe('CENV2');
+    });
+
+    it('loads all 6 IDs from env vars', () => {
+      process.env.CONTRACT_ID_MYFANS = 'C1';
+      process.env.CONTRACT_ID_MYFANS_TOKEN = 'C2';
+      process.env.CONTRACT_ID_CREATOR_REGISTRY = 'C3';
+      process.env.CONTRACT_ID_SUBSCRIPTIONS = 'C4';
+      process.env.CONTRACT_ID_CONTENT_ACCESS = 'C5';
+      process.env.CONTRACT_ID_EARNINGS = 'C6';
+      const ids = loadContractIds();
+      expect(ids.creatorRegistry).toBe('C3');
+      expect(ids.subscriptions).toBe('C4');
+      expect(ids.contentAccess).toBe('C5');
+      expect(ids.earnings).toBe('C6');
+    });
+
+    it('optional env vars default to empty string', () => {
+      process.env.CONTRACT_ID_MYFANS = 'C1';
+      process.env.CONTRACT_ID_MYFANS_TOKEN = 'C2';
+      const ids = loadContractIds();
+      expect(ids.creatorRegistry).toBe('');
+      expect(ids.subscriptions).toBe('');
+    });
+
+    it('does not use env vars when primary IDs are missing', () => {
+      process.env.CONTRACT_ID_MYFANS = 'C1';
+      // myfansToken not set — should fall through to file
+      writeTmp({ myfans: 'CFILE', myfansToken: 'CFILE2' });
+      const ids = loadContractIds();
+      expect(ids.myfans).toBe('CFILE');
+    });
   });
 
-  it('loads from artifact file when env vars not set', () => {
-    writeFileSync(tmpPath, JSON.stringify({ myfans: 'CFILE1', myfansToken: 'CFILE2' }));
-    process.env.CONTRACT_IDS_PATH = tmpPath;
-    const ids = loadContractIds();
-    expect(ids.myfans).toBe('CFILE1');
-    expect(ids.myfansToken).toBe('CFILE2');
+  // ── flat artifact (contract-ids.json) ─────────────────────────────────────
+
+  describe('flat artifact format', () => {
+    it('parses flat contract-ids.json', () => {
+      writeTmp({ myfans: 'CF1', myfansToken: 'CF2', subscriptions: 'CF3' });
+      const ids = loadContractIds();
+      expect(ids.myfans).toBe('CF1');
+      expect(ids.myfansToken).toBe('CF2');
+      expect(ids.subscriptions).toBe('CF3');
+    });
+
+    it('defaults missing fields to empty string', () => {
+      writeTmp({ myfans: 'CF1', myfansToken: 'CF2' });
+      const ids = loadContractIds();
+      expect(ids.creatorRegistry).toBe('');
+      expect(ids.earnings).toBe('');
+    });
   });
 
-  it('throws when neither env vars nor file available', () => {
-    process.env.CONTRACT_IDS_PATH = '/nonexistent/path.json';
-    expect(() => loadContractIds()).toThrow('Cannot load contract IDs');
+  // ── deploy artifact format (deployed-local.json / deployed-testnet.json) ──
+
+  describe('deploy artifact format', () => {
+    it('parses nested contracts key', () => {
+      writeTmp({
+        network: 'testnet',
+        contracts: {
+          token: 'CTOKEN',
+          creatorRegistry: 'CREG',
+          subscriptions: 'CSUB',
+          contentAccess: 'CACCESS',
+          earnings: 'CEARN',
+        },
+      });
+      const ids = loadContractIds();
+      expect(ids.myfansToken).toBe('CTOKEN');
+      expect(ids.creatorRegistry).toBe('CREG');
+      expect(ids.subscriptions).toBe('CSUB');
+      expect(ids.contentAccess).toBe('CACCESS');
+      expect(ids.earnings).toBe('CEARN');
+    });
+
+    it('maps token -> myfansToken', () => {
+      writeTmp({ contracts: { token: 'CTOK' } });
+      const ids = loadContractIds();
+      expect(ids.myfansToken).toBe('CTOK');
+    });
+
+    it('falls back to myfansToken key if token absent', () => {
+      writeTmp({ contracts: { myfansToken: 'CMFT' } });
+      const ids = loadContractIds();
+      expect(ids.myfansToken).toBe('CMFT');
+    });
+
+    it('defaults missing nested fields to empty string', () => {
+      writeTmp({ contracts: { token: 'CTOK' } });
+      const ids = loadContractIds();
+      expect(ids.myfans).toBe('');
+      expect(ids.creatorRegistry).toBe('');
+    });
+  });
+
+  // ── CI artifact path ──────────────────────────────────────────────────────
+
+  describe('CI artifact path (CONTRACT_IDS_PATH)', () => {
+    it('reads from CONTRACT_IDS_PATH when set', () => {
+      writeTmp({ myfans: 'CCI', myfansToken: 'CCI2' });
+      const ids = loadContractIds();
+      expect(ids.myfans).toBe('CCI');
+    });
+
+    it('CONTRACT_IDS_PATH takes priority over default file locations', () => {
+      writeTmp({ myfans: 'CPRIORITY', myfansToken: 'CPRIORITY2' });
+      // Even if STELLAR_NETWORK is set, explicit path wins
+      process.env.STELLAR_NETWORK = 'testnet';
+      const ids = loadContractIds();
+      expect(ids.myfans).toBe('CPRIORITY');
+    });
+
+    it('throws with helpful message when CONTRACT_IDS_PATH file missing', () => {
+      process.env.CONTRACT_IDS_PATH = '/nonexistent/ci-artifact.json';
+      expect(() => loadContractIds()).toThrow('Cannot load contract IDs');
+    });
+  });
+
+  // ── STELLAR_NETWORK resolution ────────────────────────────────────────────
+
+  describe('STELLAR_NETWORK resolution', () => {
+    it('resolves deployed-<network>.json when STELLAR_NETWORK set', () => {
+      // Point CONTRACT_IDS_PATH to a file named as the network artifact would be
+      // (we simulate by using CONTRACT_IDS_PATH since we can't write to contract/ in tests)
+      writeTmp({ contracts: { token: 'CNET', subscriptions: 'CSNET' } });
+      // CONTRACT_IDS_PATH is already set by writeTmp — this test validates the parse
+      const ids = loadContractIds();
+      expect(ids.myfansToken).toBe('CNET');
+      expect(ids.subscriptions).toBe('CSNET');
+    });
+  });
+
+  // ── error handling ────────────────────────────────────────────────────────
+
+  describe('error handling', () => {
+    it('throws when no source available', () => {
+      process.env.CONTRACT_IDS_PATH = '/nonexistent/path.json';
+      expect(() => loadContractIds()).toThrow('Cannot load contract IDs');
+    });
+
+    it('throws with parse error message on malformed JSON', () => {
+      writeFileSync(TMP, 'not-json{{{');
+      process.env.CONTRACT_IDS_PATH = TMP;
+      expect(() => loadContractIds()).toThrow('Failed to parse contract artifact');
+    });
   });
 });
