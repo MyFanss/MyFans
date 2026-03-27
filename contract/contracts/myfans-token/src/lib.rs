@@ -34,7 +34,7 @@ pub struct AllowanceData {
 
 /// Token contract errors (codes 1–3 match test expectations)
 #[contracterror]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     InsufficientBalance = 1,   // transfer: not enough balance
     InsufficientAllowance = 2, // transfer_from: allowance too low
@@ -251,6 +251,9 @@ impl MyFansToken {
 
     pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), Error> {
         from.require_auth();
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
         let balance = read_balance(&env, from.clone());
         if balance < amount {
             return Err(Error::InsufficientBalance);

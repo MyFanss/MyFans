@@ -112,4 +112,77 @@ describe('NotificationsService', () => {
       await expect(service.remove('notif-1', 'user-1')).resolves.toBeUndefined();
     });
   });
+
+  describe('subscription lifecycle queue', () => {
+    it('builds renew templates for in-app and email delivery', () => {
+      const template = service.buildSubscriptionLifecycleTemplate({
+        dedupeKey: 'renew:1',
+        event: 'renewed',
+        recipientUserId: 'user-1',
+        creatorUserId: 'creator-1',
+        creatorDisplayName: 'Creator One',
+        subscriptionId: 'sub-1',
+        planId: 1,
+      });
+
+      expect(template.inApp.title).toBe('Subscription renewed');
+      expect(template.inApp.body).toContain('Creator One');
+      expect(template.email.subject).toContain('renewed');
+    });
+
+    it('deduplicates repeated lifecycle notifications', async () => {
+      const notif = {
+        ...mockNotification(),
+        type: NotificationType.SUBSCRIPTION_RENEWED,
+        title: 'Subscription renewed',
+      };
+      repo.create.mockReturnValue(notif);
+      repo.save.mockResolvedValue(notif);
+
+      const payload = {
+        dedupeKey: 'subscription.renewed:sub-1:123',
+        event: 'renewed' as const,
+        recipientUserId: 'user-1',
+        creatorUserId: 'creator-1',
+        subscriptionId: 'sub-1',
+        planId: 1,
+      };
+
+      const first = await service.enqueueSubscriptionLifecycleNotification(payload);
+      const second = await service.enqueueSubscriptionLifecycleNotification(payload);
+
+      expect(first).toEqual(notif);
+      expect(second).toEqual(notif);
+      expect(repo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries pending jobs without creating duplicates', async () => {
+      const notif = {
+        ...mockNotification(),
+        type: NotificationType.SUBSCRIPTION_CANCELLED,
+        title: 'Subscription cancelled',
+      };
+      repo.create.mockReturnValue(notif);
+      repo.save
+        .mockRejectedValueOnce(new Error('db unavailable'))
+        .mockResolvedValueOnce(notif);
+
+      await service.enqueueSubscriptionLifecycleNotification({
+        dedupeKey: 'subscription.cancelled:sub-1:456',
+        event: 'cancelled',
+        recipientUserId: 'user-1',
+        creatorUserId: 'creator-1',
+        subscriptionId: 'sub-1',
+        planId: 1,
+      });
+
+      expect(service.getRetryQueueSnapshot()[0]?.status).toBe('pending');
+
+      await service.processRetryQueue();
+
+      expect(repo.save).toHaveBeenCalledTimes(2);
+      expect(service.getRetryQueueSnapshot()[0]?.status).toBe('completed');
+      expect(service.getSentEmails()).toHaveLength(1);
+    });
+  });
 });
