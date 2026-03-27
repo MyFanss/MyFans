@@ -20,6 +20,30 @@ export class SubscriptionCreatedEvent {
   ) {}
 }
 
+export class SubscriptionRenewedEvent {
+  readonly type = 'subscription.renewed' as const;
+  constructor(
+    public readonly subscriptionId: string,
+    public readonly fan: string,
+    public readonly creator: string,
+    public readonly planId: number,
+    public readonly expiry: number,
+    public readonly timestamp: number = Date.now(),
+  ) {}
+}
+
+export class SubscriptionCancelledEvent {
+  readonly type = 'subscription.cancelled' as const;
+  constructor(
+    public readonly subscriptionId: string,
+    public readonly fan: string,
+    public readonly creator: string,
+    public readonly planId: number,
+    public readonly cancelledAt: number = Date.now(),
+    public readonly timestamp: number = Date.now(),
+  ) {}
+}
+
 export class SubscriptionExpiredEvent {
   readonly type = 'subscription.expired' as const;
   constructor(
@@ -44,5 +68,7 @@ export class PlanCreatedEvent {
 export type DomainEvent =
   | UserLoggedInEvent
   | SubscriptionCreatedEvent
+  | SubscriptionRenewedEvent
+  | SubscriptionCancelledEvent
   | SubscriptionExpiredEvent
   | PlanCreatedEvent;
