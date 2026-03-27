@@ -251,6 +251,9 @@ impl MyFansToken {
 
     pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), Error> {
         from.require_auth();
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
         let balance = read_balance(&env, from.clone());
         if balance < amount {
             return Err(Error::InsufficientBalance);
