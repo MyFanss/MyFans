@@ -2,6 +2,12 @@
 
 Smart contracts and deployment automation for MyFans on Stellar/Soroban.
 
+## Authorization matrix
+
+Use [`AUTH_MATRIX.md`](./AUTH_MATRIX.md) for method-by-method signer requirements, including valid/invalid invocation examples for each public method in deployed contracts.
+
+When any contract interface or auth rule changes, update `AUTH_MATRIX.md` in the same PR.
+
 ## Contracts deployed by script
 
 1. `myfans-token`
@@ -11,6 +17,10 @@ Smart contracts and deployment automation for MyFans on Stellar/Soroban.
 5. `earnings`
 
 The deploy script applies this order to keep initialization/dependency flow deterministic.
+
+## Workspace layout and versions
+
+The workspace root is `contract/Cargo.toml`. Shared crate metadata (`version`, `edition`, `authors`, `license`, `repository`, `description`, `publish`) lives under `[workspace.package]`. The Soroban SDK pin is declared once in `[workspace.dependencies]` (`soroban-sdk`) and referenced from each crate with `soroban-sdk = { workspace = true }`. After dependency changes, refresh the lockfile with `cargo update -p <crate>` as needed and verify with `cargo check --workspace`.
 
 ## Prerequisites
 

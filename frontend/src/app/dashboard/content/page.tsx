@@ -1,10 +1,10 @@
 'use client';
 
-import { useImageUpload } from '@/hooks/useImageUpload';
+import { useFileUpload } from '@/hooks/useFileUpload';
 import { FileUpload } from '@/components/ui';
 
 export default function ContentPage() {
-  const { upload } = useImageUpload({ endpoint: '/api/content/upload' });
+  const { upload } = useFileUpload({ endpoint: '/api/content/upload' });
 
   return (
     <div className="max-w-full">
@@ -19,3 +19,4 @@ export default function ContentPage() {
     </div>
   );
 }
+

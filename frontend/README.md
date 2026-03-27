@@ -1,5 +1,11 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Frontend Architecture
+
+Read the [Frontend Component Architecture](../docs/frontend/component-architecture.md) guide before adding new frontend components or route logic.
+
+It explains the current `frontend/src` structure, where new code should live, and the common patterns this repo already uses.
+
 ## Getting Started
 
 First, run the development server:

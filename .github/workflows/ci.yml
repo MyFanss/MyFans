@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, master, feat/dependency-audit-ci]
+    branches: [main, master, feat/dependency-audit-ci, "ci/**"]
   pull_request:
     branches: [main, master, feat/dependency-audit-ci]
 
@@ -17,9 +17,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci
         working-directory: frontend
 
       - name: Security audit (dependencies)
@@ -63,32 +65,42 @@ jobs:
       - name: Run unit tests
         run: npm test
         working-directory: backend
+        env:
+          JWT_SECRET: ci-test-secret
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: myfans
 
       - name: Run E2E tests
         run: npm run test:e2e
         working-directory: backend
+        env:
+          JWT_SECRET: ci-test-secret
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: myfans
 
-  contracts:
-    name: Contracts
+  # Single audit job (not duplicated across the toolchain matrix) to save CI time.
+  contracts-audit:
+    name: Contracts (RustSec audit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system dependencies (for stellar-cli)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libdbus-1-dev libudev-dev pkg-config
-
-      - name: Install Rust
+      - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           targets: wasm32-unknown-unknown,wasm32v1-none
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: contract
+          prefix-key: contracts-audit
 
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
@@ -98,22 +110,71 @@ jobs:
         run: cargo audit
         working-directory: contract
 
-      - name: Build
-        run: cargo build --target wasm32-unknown-unknown --release
+  contracts:
+    name: Contracts (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Rust stable × two supported stellar-cli releases
+          - name: rust-stable-cli-23
+            rust: stable
+            stellar_cli: "23.4.1"
+          - name: rust-stable-cli-25
+            rust: stable
+            stellar_cli: "25.2.0"
+          # Minimum supported toolchain in CI (keep aligned with Soroban SDK / MSRV)
+          - name: rust-1.82-cli-23
+            rust: "1.82"
+            stellar_cli: "23.4.1"
+          - name: rust-1.82-cli-25
+            rust: "1.82"
+            stellar_cli: "25.2.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies (for stellar-cli)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev libudev-dev pkg-config
+
+      - name: Install Rust (${{ matrix.rust }})
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          targets: wasm32-unknown-unknown,wasm32v1-none
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract
+          prefix-key: contracts-${{ matrix.name }}
+
+      - name: Build (wasm release, workspace)
+        run: cargo build --workspace --target wasm32-unknown-unknown --release
         working-directory: contract
 
-      - name: Run tests
-        run: cargo test
+      - name: Run tests (workspace)
+        run: cargo test --workspace
         working-directory: contract
 
-      - name: Install Stellar CLI
-        run: cargo install --locked stellar-cli
+      - name: Cache stellar CLI binary
+        id: stellar-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/stellar
+          key: stellar-cli-${{ matrix.stellar_cli }}-${{ runner.os }}-v1
 
-      - name: Deploy and verify on Futurenet
+      - name: Install Stellar CLI ${{ matrix.stellar_cli }}
+        if: steps.stellar-cache.outputs.cache-hit != 'true'
+        run: cargo install stellar-cli --locked --version ${{ matrix.stellar_cli }}
+
+      - name: Deploy and verify on Futurenet (smoke)
         run: |
           ./scripts/deploy.sh \
             --network futurenet \
-            --source "ci-deployer-${{ github.run_id }}-${{ github.run_attempt }}" \
-            --out ./deployed-ci.json \
-            --env-out ./.env.deployed-ci
+            --source "ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.name }}" \
+            --out "./deployed-ci-${{ matrix.name }}.json" \
+            --env-out "./.env.deployed-ci-${{ matrix.name }}"
         working-directory: contract
