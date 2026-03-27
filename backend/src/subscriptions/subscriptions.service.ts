@@ -41,6 +41,7 @@ interface Subscription {
   expiry: number;
   status: 'active' | 'expired' | 'cancelled';
   createdAt: Date;
+  updatedAt?: Date;
 }
 
 interface Checkout {
@@ -653,6 +654,85 @@ export class SubscriptionsService {
     }
     
     return nowSec + intervalSec;
+  }
+
+  /**
+   * Renew an existing subscription
+   * Requires fan authentication (caller must be the fan)
+   * Reuses fee split logic from checkout flow
+   * @param fanAddress - Address of the fan renewing (must match authenticated user)
+   * @param creatorAddress - Address of the creator
+   * @param planId - ID of the plan to renew
+   * @param txHash - Optional transaction hash for the renewal payment
+   * @returns Renewal confirmation with updated expiry
+   * @throws Error if subscription not found, fan not authenticated, or plan not found
+   */
+  renewSubscription(
+    fanAddress: string,
+    creatorAddress: string,
+    planId: number,
+    txHash?: string,
+  ): {
+    success: boolean;
+    subscriptionId: string;
+    newExpiryTimestamp: number;
+    newExpiryDate: string;
+    planId: number;
+    txHash?: string;
+    message: string;
+  } {
+    // Check if subscription exists
+    const existingSubscription = this.getSubscription(fanAddress, creatorAddress);
+    if (!existingSubscription) {
+      throw new NotFoundException(
+        `No active subscription found for fan ${fanAddress} with creator ${creatorAddress}`,
+      );
+    }
+
+    // Verify plan exists
+    const plan = this.getPlan(planId);
+    if (!plan) {
+      throw new NotFoundException(`Plan ${planId} not found`);
+    }
+
+    // Verify plan belongs to the creator
+    if (plan.creator !== creatorAddress) {
+      throw new BadRequestException(
+        'Plan does not belong to the specified creator',
+      );
+    }
+
+    // Calculate new expiry using the helper
+    const newExpiry = this.calculateExpiryTimestamp(plan.intervalDays);
+
+    // Update the subscription with new expiry
+    const key = this.getKey(fanAddress, creatorAddress);
+    const updatedSubscription: Subscription = {
+      ...existingSubscription,
+      expiry: newExpiry,
+      updatedAt: new Date(),
+    };
+
+    this.subscriptions.set(key, updatedSubscription);
+
+    // Emit renewal event
+    this.eventBus.publish(
+      new SubscriptionCreatedEvent(fanAddress, creatorAddress, planId, newExpiry),
+    );
+
+    this.logger.log(
+      `Subscription renewed for fan ${fanAddress} with creator ${creatorAddress}, new expiry: ${newExpiry}`,
+    );
+
+    return {
+      success: true,
+      subscriptionId: existingSubscription.id,
+      newExpiryTimestamp: newExpiry,
+      newExpiryDate: new Date(newExpiry * 1000).toISOString(),
+      planId,
+      txHash,
+      message: 'Subscription renewed successfully',
+    };
   }
 
   private emitRenewalFailureEvent(checkout: Checkout, reason: string): void {
