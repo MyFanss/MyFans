@@ -1,5 +1,8 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
+    Symbol,
+};
 
 /// Storage keys for content access contract
 #[contracttype]
@@ -15,6 +18,14 @@ pub enum DataKey {
     ContentPrice(Address, u64),
 }
 
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Error {
+    AlreadyInitialized = 1,
+    ContentPriceNotSet = 2,
+    NotInitialized = 3,
+}
+
 #[contract]
 pub struct ContentAccess;
 
@@ -28,7 +39,7 @@ impl ContentAccess {
     /// * `token_address` - Token contract address for payments
     pub fn initialize(env: Env, admin: Address, token_address: Address) {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
+            panic_with_error!(&env, Error::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
@@ -61,7 +72,7 @@ impl ContentAccess {
 
         // Get stored price
         let price: i128 = Self::get_content_price(env.clone(), creator.clone(), content_id)
-            .expect("content price not set");
+            .unwrap_or_else(|| panic_with_error!(&env, Error::ContentPriceNotSet));
 
         // Get token address
         let token_address: Address = env
@@ -124,7 +135,7 @@ impl ContentAccess {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("not initialized");
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
         current_admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
     }
@@ -135,7 +146,7 @@ mod test {
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Events},
-        vec, Address, Env, IntoVal, Symbol, TryIntoVal,
+        vec, Address, Env, Error as SorobanError, IntoVal, Symbol, TryIntoVal,
     };
 
     // Mock token contract for testing
@@ -402,13 +413,18 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "already initialized")]
     fn test_initialize_fails_if_already_initialized() {
         let (env, contract_id, admin, token_address, _, _) = setup_test();
         let client = ContentAccessClient::new(&env, &contract_id);
 
         client.initialize(&admin, &token_address);
-        client.initialize(&admin, &token_address);
+        let result = client.try_initialize(&admin, &token_address);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::AlreadyInitialized as u32,
+            )))
+        );
     }
 
     // ── #295 – detailed unlock event fields ──────────────────────────────────
