@@ -3,7 +3,10 @@ import { createAppError, type AppError } from '@/types/errors';
 /** Freighter wallet interface */
 interface FreighterWallet {
   getPublicKey: () => Promise<string>;
-  signTransaction: (xdr: string) => Promise<string>;
+  signTransaction: (
+    xdr: string,
+    opts?: { network?: string; networkPassphrase?: string },
+  ) => Promise<string>;
 }
 
 /** Window with Freighter extension */
@@ -87,7 +90,10 @@ export async function connectWallet(): Promise<string | null> {
  * @returns Signed transaction XDR
  * @throws AppError if signing fails
  */
-export async function signTransaction(xdr: string): Promise<string> {
+export async function signTransaction(
+  xdr: string,
+  opts?: { network?: string; networkPassphrase?: string },
+): Promise<string> {
   if (typeof window === 'undefined') {
     throw createAppError('WALLET_NOT_FOUND', {
       message: 'Window is not defined',
@@ -107,7 +113,7 @@ export async function signTransaction(xdr: string): Promise<string> {
   }
 
   try {
-    const signedXdr = await freighter.signTransaction(xdr);
+    const signedXdr = await freighter.signTransaction(xdr, opts);
 
     if (!signedXdr) {
       throw createAppError('WALLET_SIGNATURE_FAILED', {
