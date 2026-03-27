@@ -5,12 +5,23 @@ import { StartupProbeService } from './health/startup-probe.service';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { validateRequiredSecrets } from './common/secrets-validation';
+import { CorsService } from './common/services/cors.service';
+import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 
 async function bootstrap() {
   // Fail fast if any required secret is absent — before the app is created.
   validateRequiredSecrets();
 
-  const app = await NestFactory.create(AppModule);
+  const corsService = new CorsService();
+  const corsOptions = corsService.getCorsOptions();
+
+  const app = await NestFactory.create(AppModule, {
+    cors: corsOptions,
+  });
+
+  // Apply security headers middleware
+  const securityHeadersMiddleware = new SecurityHeadersMiddleware();
+  app.use((req, res, next) => securityHeadersMiddleware.use(req, res, next));
 
   // Enable versioning (URI versioning like /v1/...)
   app.enableVersioning({

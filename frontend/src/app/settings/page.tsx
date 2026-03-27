@@ -7,7 +7,6 @@ import { NotificationPreferencesForm } from "@/components/settings/NotificationP
 import { useTheme, type Theme } from "@/contexts/ThemeContext";
 import { useConsent } from "@/contexts/ConsentContext";
 import { useToast } from "@/contexts/ToastContext";
-import { useConsent } from "@/contexts/ConsentContext";
 import { ProfileSettingsPanel } from "@/components/settings/profile-settings-panel";
 
 export default function SettingsPage() {
