@@ -60,9 +60,9 @@ describe('Wallet Endpoints (e2e)', () => {
         .send({
           address: 'XBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H',
         })
-        .expect(201)
+        .expect(400)
         .expect((res) => {
-          expect(res.body).toHaveProperty('error', 'Invalid Stellar address');
+          expect(res.body.message).toBe('Invalid Stellar address');
         });
     });
 
@@ -70,9 +70,9 @@ describe('Wallet Endpoints (e2e)', () => {
       return request(app.getHttpServer())
         .post('/auth/login')
         .send({ address: 'GBRPYHIL2CI3FNQ4' })
-        .expect(201)
+        .expect(400)
         .expect((res) => {
-          expect(res.body).toHaveProperty('error', 'Invalid Stellar address');
+          expect(res.body.message).toBe('Invalid Stellar address');
         });
     });
 
@@ -80,9 +80,9 @@ describe('Wallet Endpoints (e2e)', () => {
       return request(app.getHttpServer())
         .post('/auth/login')
         .send({ address: '' })
-        .expect(201)
+        .expect(400)
         .expect((res) => {
-          expect(res.body).toHaveProperty('error', 'Invalid Stellar address');
+          expect(res.body.message).toBe('Invalid Stellar address');
         });
     });
 
@@ -90,7 +90,10 @@ describe('Wallet Endpoints (e2e)', () => {
       return request(app.getHttpServer())
         .post('/auth/login')
         .send({})
-        .expect(500);
+        .expect(400)
+        .expect((res) => {
+          expect(res.body.message).toBe('Invalid Stellar address');
+        });
     });
   });
 

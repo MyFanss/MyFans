@@ -15,6 +15,7 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
 import { GetCommentsQueryDto } from './dto/get-comments-query.dto';
 import { User } from '../users/entities/user.entity';
+import { PaginatedResponseDto } from '../common/dto';
 
 @Injectable()
 export class CommentsService {
@@ -68,13 +69,12 @@ export class CommentsService {
       take: limit,
     });
 
-    return {
-      items: comments.map((c) => this.toResponse(c)),
+    return new PaginatedResponseDto(
+      comments.map((c) => this.toResponse(c)),
       total,
       page,
       limit,
-      total_pages: Math.ceil(total / limit),
-    };
+    );
   }
 
   async update(user: User, commentId: string, dto: UpdateCommentDto) {

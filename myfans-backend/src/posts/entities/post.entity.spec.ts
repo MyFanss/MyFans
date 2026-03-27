@@ -3,6 +3,7 @@ import { Creator } from '../../creators/entities/creator.entity';
 import { Post, PostType } from './post.entity';
 import { Subscription } from '../../subscriptions/entities/subscription.entity';
 import { User } from '../../users/entities/user.entity';
+import { AuditLog } from '../../audit-log/entities/audit-log.entity';
 
 describe('Post Entity', () => {
   let dataSource: DataSource;
@@ -15,7 +16,7 @@ describe('Post Entity', () => {
     dataSource = new DataSource({
       type: 'better-sqlite3',
       database: ':memory:',
-      entities: [User, Creator, Post, Subscription],
+      entities: [User, Creator, Post, Subscription, AuditLog],
       synchronize: true,
     });
     await dataSource.initialize();
@@ -120,5 +121,61 @@ describe('Post Entity', () => {
     });
 
     await expect(postRepo.save(post)).rejects.toThrow();
+  });
+
+  it('soft delete sets deleted_at and deleted_by', async () => {
+    const post = postRepo.create({
+      creator,
+      title: 'To Be Deleted',
+      body: 'Content',
+      type: PostType.FREE,
+      price: null,
+      media_urls: [],
+      published_at: new Date(),
+      deleted_by: null,
+    });
+    await postRepo.save(post);
+
+    post.deleted_by = creator.user_id;
+    await postRepo.save(post);
+    await postRepo.softDelete(post.id);
+
+    const found = await postRepo.findOne({ where: { id: post.id } });
+    expect(found).toBeNull();
+
+    const withDeleted = await postRepo.findOne({
+      where: { id: post.id },
+      withDeleted: true,
+    });
+    expect(withDeleted).toBeDefined();
+    expect(withDeleted?.deleted_at).not.toBeNull();
+    expect(withDeleted?.deleted_by).toBe(creator.user_id);
+  });
+
+  it('excludes soft-deleted posts from default findAll queries', async () => {
+    const active = postRepo.create({
+      creator,
+      title: 'Active Post',
+      body: 'Content',
+      type: PostType.FREE,
+      price: null,
+      media_urls: [],
+      published_at: new Date(),
+    });
+    const toDelete = postRepo.create({
+      creator,
+      title: 'Deleted Post',
+      body: 'Content',
+      type: PostType.FREE,
+      price: null,
+      media_urls: [],
+      published_at: new Date(),
+    });
+    await postRepo.save([active, toDelete]);
+    await postRepo.softDelete(toDelete.id);
+
+    const all = await postRepo.find();
+    expect(all.some((p) => p.id === active.id)).toBe(true);
+    expect(all.some((p) => p.id === toDelete.id)).toBe(false);
   });
 });
