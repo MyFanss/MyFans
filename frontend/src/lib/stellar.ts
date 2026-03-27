@@ -57,3 +57,30 @@ export async function checkSubscription(fanAddress: string, creatorAddress: stri
   // Mock implementation - replace with actual Soroban RPC call
   return false;
 }
+
+export async function checkTransactionStatus(
+  txHash: string
+): Promise<'pending' | 'confirmed' | 'failed'> {
+  try {
+    const response = await fetch(
+      `${STELLAR_CONFIG.horizonUrl}/transactions/${txHash}`
+    );
+    if (response.status === 404) {
+      return 'pending';
+    }
+    if (!response.ok) {
+      return 'pending';
+    }
+    const data = await response.json();
+    // Horizon returns successful field; absence or false means failed
+    if (data.successful === true) {
+      return 'confirmed';
+    }
+    if (data.successful === false) {
+      return 'failed';
+    }
+    return 'pending';
+  } catch {
+    return 'pending';
+  }
+}
