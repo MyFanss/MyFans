@@ -3,6 +3,7 @@ import { HealthController } from './health.controller';
 import { HealthService } from './health.service';
 import { DataSource } from 'typeorm';
 import { SorobanRpcService } from '../common/services/soroban-rpc.service';
+import { QueueMetricsService } from '../common/services/queue-metrics.service';
 
 describe('HealthController', () => {
     let controller: HealthController;
@@ -29,6 +30,10 @@ describe('HealthController', () => {
                         getRpcUrl: jest.fn(),
                         getTimeout: jest.fn(),
                     },
+                },
+                {
+                    provide: QueueMetricsService,
+                    useValue: { snapshot: jest.fn().mockReturnValue({}) },
                 },
             ],
         }).compile();
