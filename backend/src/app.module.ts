@@ -12,6 +12,8 @@ import { CreatorsModule } from './creators/creators.module';
 import { HealthModule } from './health/health.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { AuthModule } from './auth/auth.module';
+import { ModerationModule } from './moderation/moderation.module';
 
 @Module({
   imports: [
@@ -22,6 +24,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     SubscriptionsModule,
     NotificationsModule,
     HealthModule,
+    ModerationModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
