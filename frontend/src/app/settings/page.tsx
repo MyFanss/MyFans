@@ -3,10 +3,12 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 import { SettingsShell } from "@/components/settings/settings-shell";
 import { useSettings, type Role } from "@/components/settings/use-settings";
-import { SocialLinksForm } from "@/components/settings/social-links-form";
 import { NotificationPreferencesForm } from "@/components/settings/NotificationPreferencesForm";
 import { useTheme, type Theme } from "@/contexts/ThemeContext";
+import { useConsent } from "@/contexts/ConsentContext";
 import { useToast } from "@/contexts/ToastContext";
+import { useConsent } from "@/contexts/ConsentContext";
+import { ProfileSettingsPanel } from "@/components/settings/profile-settings-panel";
 
 export default function SettingsPage() {
   const { showSuccess, showError, showInfo, showWarning } = useToast();
@@ -18,6 +20,7 @@ export default function SettingsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteComplete, setDeleteComplete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState("");
   const { navItems } = useSettings(role);
   const { theme, preference, setTheme } = useTheme();
   const { consent, setConsent } = useConsent();
@@ -66,7 +69,7 @@ export default function SettingsPage() {
       await navigator.clipboard.writeText(content.walletAddress);
       showSuccess("Address copied", "Wallet address copied to clipboard.");
     } catch {
-      showError("COPY_FAILED", {
+      showError("UNKNOWN_ERROR", {
         message: "Copy failed",
         description: "Please copy manually.",
       });
@@ -185,85 +188,14 @@ export default function SettingsPage() {
     /* ── PROFILE ── */
     if (activeSectionId === "profile") {
       return (
-        <section className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
-            Profile
-          </h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{content.profileHint}</p>
-
-          <div className="mt-4 flex flex-col gap-3 sm:grid sm:grid-cols-2">
-            <label className="flex flex-col gap-1.5 text-sm text-slate-700 dark:text-slate-300">
-              Display name
-              <input
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-slate-900 dark:text-slate-100 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-600"
-                defaultValue={
-                  role === "creator" ? "@star.creator" : "@fan.nova"
-                }
-                type="text"
-              />
-            </label>
-
-            <label className="flex flex-col gap-1.5 text-sm text-slate-700 dark:text-slate-300">
-              Email
-              <input
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-slate-900 dark:text-slate-100 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-600"
-                defaultValue={
-                  role === "creator" ? "creator@myfans.app" : "fan@myfans.app"
-                }
-                type="email"
-              />
-            </label>
-
-            <label className="flex flex-col gap-1.5 text-sm text-slate-700 dark:text-slate-300 sm:col-span-2">
-              Bio
-              <textarea
-                className="w-full min-h-[90px] rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-slate-900 dark:text-slate-100 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-600"
-                defaultValue={
-                  role === "creator"
-                    ? "Indie creator sharing early drops and behind-the-scenes clips."
-                    : "Supporter of music and visual creators."
-                }
-              />
-            </label>
-          </div>
-          <div className="mt-6 flex justify-end">
-            <button 
-              onClick={() => showSuccess("Profile saved", "Your profile information has been updated.")}
-              className="rounded-xl bg-slate-900 dark:bg-slate-100 px-6 py-2.5 text-sm font-semibold text-white dark:text-slate-900 transition hover:opacity-90"
-            >
-              Save changes
-            </button>
-          </div>
-        </section>
-      );
-    }
-
-    /* ── SOCIAL LINKS ── */
-    if (activeSectionId === "social") {
-      const handleSocialLinksSubmit = (links: {
-        website: string;
-        x: string;
-        instagram: string;
-        other: string;
-      }) => {
-        console.log("Social links saved:", links);
-        showSuccess("Social links updated", "Your connected platforms have been saved.");
-        // Here you would typically save to your backend
-      };
-
-
-      return (
-        <section className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
-            Social Links
-          </h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Add your social media profiles to help fans connect with you.
-          </p>
-          <div className="mt-4">
-            <SocialLinksForm onSubmit={handleSocialLinksSubmit} />
-          </div>
-        </section>
+        <ProfileSettingsPanel
+          role={role}
+          profileHint={content.profileHint}
+          onSuccess={(title, message) => showSuccess(title, message)}
+          onError={(message) =>
+            showError("PROFILE_ERROR", { message, description: message })
+          }
+        />
       );
     }
 
@@ -577,7 +509,6 @@ export default function SettingsPage() {
         setActiveSectionId("profile");
         setDeleteInput("");
         setDeleteComplete(false);
-        setCopyFeedback("");
       }}
     >
       {/* Wrapper ensures section never bleeds past its column */}

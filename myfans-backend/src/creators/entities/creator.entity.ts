@@ -31,6 +31,10 @@ export class Creator {
   @Column({ type: 'text', nullable: true })
   bio!: string | null;
 
+  /** Cover / banner image for creator profile */
+  @Column({ name: 'banner_url', type: 'varchar', length: 2048, nullable: true })
+  banner_url!: string | null;
+
   @Column({
     name: 'subscription_price',
     type: 'decimal',

@@ -3,6 +3,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { SelectQueryBuilder } from 'typeorm';
 import { CreatorsService } from './creators.service';
 import { User, UserRole } from '../users/entities/user.entity';
+import { EventBus } from '../events/event-bus';
+import { SearchCreatorsDto } from './dto/search-creators.dto';
 
 describe('CreatorsService', () => {
   let service: CreatorsService;
@@ -26,11 +28,16 @@ describe('CreatorsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CreatorsService,
+        { provide: EventBus, useValue: { publish: jest.fn() } },
         {
           provide: getRepositoryToken(User),
           useValue: {
             createQueryBuilder: jest.fn(() => mockQueryBuilder),
           },
+        },
+        {
+          provide: EventBus,
+          useValue: { publish: jest.fn() },
         },
       ],
     }).compile();
