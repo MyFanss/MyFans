@@ -113,7 +113,7 @@ export function createCreatorMetadata(
     description,
     keywords: safeKeywords.join(', '),
     authors: [{ name: creator.displayName }],
-    creators: [{ name: creator.displayName, url }],
+    creator: creator.displayName,
     openGraph: {
       title,
       description,
@@ -127,12 +127,6 @@ export function createCreatorMetadata(
         height: 400,
         alt: `${creator.displayName} profile picture`,
       }] : [],
-      profile: {
-        firstName: creator.displayName.split(' ')[0],
-        lastName: creator.displayName.split(' ').slice(1).join(' '),
-        username: creator.username,
-        gender: 'unspecified',
-      },
     },
     twitter: {
       card: 'summary_large_image',

@@ -46,6 +46,9 @@ export type ErrorCode =
   | 'INTERNAL_ERROR'
   | 'SERVICE_UNAVAILABLE'
   | 'RATE_LIMITED'
+  // Form/Plan errors
+  | 'SAVE_FAILED'
+  | 'PUBLISH_FAILED'
   // Unknown
   | 'UNKNOWN_ERROR'
   // Product / UX-specific (toasts & inline recovery)
@@ -494,6 +497,22 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       description: 'Please wait a moment before trying again.',
       severity: 'warning',
       category: 'server',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    SAVE_FAILED: {
+      message: 'Save failed',
+      description: 'The changes could not be saved. Please try again.',
+      severity: 'error',
+      category: 'form',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    PUBLISH_FAILED: {
+      message: 'Publish failed',
+      description: 'The plan could not be published. Please try again.',
+      severity: 'error',
+      category: 'form',
       recoverable: true,
       actions: [{ label: 'Try again', type: 'retry', primary: true }],
     },
