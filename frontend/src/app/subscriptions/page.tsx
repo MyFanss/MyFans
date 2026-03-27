@@ -13,6 +13,7 @@ import { formatCurrency, formatDate, getCurrencySymbol } from '@/lib/formatting'
 import { BaseCard } from '@/components/cards/BaseCard';
 import HistoryCardSkeleton from '@/components/ui/HistoryCardSkeleton';
 import { useToast } from '@/contexts/ToastContext';
+import { subscriptionActionToast, subscriptionsLoadFailed } from '@/lib/error-copy';
 
 export default function SubscriptionsPage() {
   const { showInfo, showSuccess, showError, showLoading, dismiss } = useToast();
@@ -45,10 +46,7 @@ export default function SubscriptionsPage() {
         }
       } catch (err) {
         console.error(err);
-        showError('NETWORK_ERROR', {
-          message: 'Could not load subscriptions',
-          description: 'Please refresh and try again.',
-        });
+        showError('NETWORK_ERROR', subscriptionsLoadFailed());
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -137,10 +135,7 @@ export default function SubscriptionsPage() {
       setCancelTarget(null);
       showInfo('Subscription cancelled', `Access remains active until ${formatDate(cancelTarget.currentPeriodEnd)}.`);
     } catch {
-      showError('TX_FAILED', {
-        message: 'Could not cancel subscription',
-        description: 'Please try again.',
-      });
+      showError('TX_FAILED', subscriptionActionToast.cancelFailed());
     } finally {
       dismiss(loadingToastId);
       setIsCancelling(false);
@@ -168,10 +163,7 @@ export default function SubscriptionsPage() {
       
       setRenewTarget(null);
     } catch {
-      showError('TX_FAILED', {
-        message: 'Could not renew subscription',
-        description: 'Please try again.',
-      });
+      showError('TX_FAILED', subscriptionActionToast.renewFailed());
     } finally {
       dismiss(loadingToastId);
       setIsRenewing(false);
