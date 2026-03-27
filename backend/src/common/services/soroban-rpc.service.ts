@@ -83,10 +83,9 @@ export class SorobanRpcService {
                 throw new Error('Failed to initialize Stellar SDK server');
             }
 
-            // Try to read a known contract on Soroban Futurenet
-            // This is a placeholder contract address - replace with actual contract
-            const contractId = process.env.SOROBAN_HEALTH_CHECK_CONTRACT || 
-                'CA3D5KRYM6CB7OWQ6TWKRRJZ4LW5DZ5Z2J5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ';
+            // Contract ID for health checks — must be set via SOROBAN_HEALTH_CHECK_CONTRACT env var.
+            // If not configured, this check is skipped and falls back to account probe.
+            const contractId = process.env.SOROBAN_HEALTH_CHECK_CONTRACT;
             
             const timeoutPromise = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Contract read timeout')), this.timeout)
