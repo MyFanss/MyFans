@@ -188,6 +188,23 @@ fn test_burn_insufficient_balance() {
     client.burn(&user, &101);
 }
 
+#[test]
+#[should_panic(expected = "Error(Contract, #4)")]
+fn test_burn_invalid_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
+    let user = Address::generate(&env);
+    client.mint(&user, &100);
+    client.burn(&user, &0);
+}
+
 // Helper function to create a non-zero address
 fn generate_address(env: &Env) -> Address {
     Address::generate(env)
