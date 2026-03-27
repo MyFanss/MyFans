@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { connectWallet } from '@/lib/wallet';
 import { useToast } from '@/contexts/ToastContext';
 import { useTransaction } from '@/hooks/useTransaction';
+import { errorToastWithCause } from '@/lib/error-copy';
 import type { AppError } from '@/types/errors';
 
 interface WalletConnectProps {
@@ -37,14 +38,11 @@ export default function WalletConnect({
         setError(null);
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to connect wallet';
-      showError('WALLET_CONNECTION_FAILED', {
-        message: errorMessage,
-        description: 'Please make sure you have a compatible wallet installed and try again.',
-      });
+      const toast = errorToastWithCause('WALLET_CONNECTION_FAILED', err);
+      showError('WALLET_CONNECTION_FAILED', toast);
       setError({
         code: 'WALLET_CONNECTION_FAILED',
-        message: errorMessage,
+        message: toast.message,
         severity: 'error',
         category: 'wallet',
         recoverable: true,

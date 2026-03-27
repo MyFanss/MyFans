@@ -1,10 +1,34 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { SubscriptionsService } from './subscriptions.service';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
+import { SubscriptionStateQueryDto } from './dto/subscription-state-query.dto';
+import { FanBearerGuard, RequestWithFan } from './guards/fan-bearer.guard';
+import { SubscriptionsService } from './subscriptions.service';
 
 @Controller({ path: 'subscriptions', version: '1' })
 export class SubscriptionsController {
-  constructor(private subscriptionsService: SubscriptionsService) { }
+  constructor(private subscriptionsService: SubscriptionsService) {}
+
+  @Get('me/subscription-state')
+  @UseGuards(FanBearerGuard)
+  async getFanCreatorSubscriptionState(
+    @Req() req: RequestWithFan,
+    @Query() query: SubscriptionStateQueryDto,
+  ) {
+    return this.subscriptionsService.getFanCreatorSubscriptionState(
+      req.fanAddress,
+      query.creator,
+    );
+  }
 
   @Get('check')
   checkSubscription(@Query('fan') fan: string, @Query('creator') creator: string) {
@@ -22,18 +46,17 @@ export class SubscriptionsController {
     );
   }
 
-  /**
-   * Create a new checkout session
-   */
   @Post('checkout')
   createCheckout(
-    @Body() body: {
+    @Body()
+    body: {
       fanAddress: string;
       creatorAddress: string;
       planId: number;
       assetCode?: string;
       assetIssuer?: string;
     },
+    @Headers('x-network') requestNetwork?: string,
   ) {
     const checkout = this.subscriptionsService.createCheckout(
       body.fanAddress,
@@ -41,6 +64,7 @@ export class SubscriptionsController {
       body.planId,
       body.assetCode,
       body.assetIssuer,
+      requestNetwork,
     );
 
     return {
@@ -60,9 +84,6 @@ export class SubscriptionsController {
     };
   }
 
-  /**
-   * Get checkout details
-   */
   @Get('checkout/:id')
   getCheckout(@Param('id') checkoutId: string) {
     const checkout = this.subscriptionsService.getCheckout(checkoutId);
@@ -85,43 +106,28 @@ export class SubscriptionsController {
     };
   }
 
-  /**
-   * Get plan summary
-   */
   @Get('checkout/:id/plan')
   getPlanSummary(@Param('id') checkoutId: string) {
     const checkout = this.subscriptionsService.getCheckout(checkoutId);
     return this.subscriptionsService.getPlanSummary(checkout.planId);
   }
 
-  /**
-   * Get price breakdown
-   */
   @Get('checkout/:id/price')
   getPriceBreakdown(@Param('id') checkoutId: string) {
     return this.subscriptionsService.getPriceBreakdown(checkoutId);
   }
 
-  /**
-   * Get wallet status
-   */
   @Get('checkout/:id/wallet')
   getWalletStatus(@Param('id') checkoutId: string) {
     const checkout = this.subscriptionsService.getCheckout(checkoutId);
     return this.subscriptionsService.getWalletStatus(checkout.fanAddress);
   }
 
-  /**
-   * Get transaction preview
-   */
   @Get('checkout/:id/preview')
   getTransactionPreview(@Param('id') checkoutId: string) {
     return this.subscriptionsService.getTransactionPreview(checkoutId);
   }
 
-  /**
-   * Validate balance
-   */
   @Post('checkout/:id/validate')
   validateBalance(
     @Param('id') checkoutId: string,
@@ -135,29 +141,24 @@ export class SubscriptionsController {
     );
   }
 
-  /**
-   * Confirm subscription (success)
-   */
   @Post('checkout/:id/confirm')
   confirmSubscription(
     @Param('id') checkoutId: string,
     @Body() body: { txHash?: string },
   ) {
-    return this.subscriptionsService.confirmSubscription(
-      checkoutId,
-      body.txHash,
-    );
+    return this.subscriptionsService.confirmSubscription(checkoutId, body.txHash);
   }
 
-  /**
-   * Handle checkout failure
-   */
   @Post('checkout/:id/fail')
   failCheckout(
     @Param('id') checkoutId: string,
     @Body() body: { error: string; rejected?: boolean },
   ) {
-    return this.subscriptionsService.failCheckout(checkoutId, body.error, body.rejected);
+    return this.subscriptionsService.failCheckout(
+      checkoutId,
+      body.error,
+      body.rejected,
+    );
   }
 
   @Post('cancel')

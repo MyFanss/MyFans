@@ -10,11 +10,15 @@ fn test_transfer() {
     let contract_id = env.register_contract(None, MyFansToken);
     let client = MyFansTokenClient::new(&env, &contract_id);
 
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
     let user1 = Address::generate(&env);
     let user2 = Address::generate(&env);
 
     client.mint(&user1, &1000);
     assert_eq!(client.balance(&user1), 1000);
+    assert_eq!(client.total_supply(), 1000);
 
     client.transfer(&user1, &user2, &600);
     assert_eq!(client.balance(&user1), 400);
@@ -29,6 +33,9 @@ fn test_transfer_insufficient_balance() {
 
     let contract_id = env.register_contract(None, MyFansToken);
     let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
 
     let user1 = Address::generate(&env);
     let user2 = Address::generate(&env);
@@ -45,6 +52,9 @@ fn test_approve_and_transfer_from() {
     let contract_id = env.register_contract(None, MyFansToken);
     let client = MyFansTokenClient::new(&env, &contract_id);
 
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
     let owner = Address::generate(&env);
     let spender = Address::generate(&env);
     let receiver = Address::generate(&env);
@@ -60,6 +70,7 @@ fn test_approve_and_transfer_from() {
     assert_eq!(client.balance(&owner), 800);
     assert_eq!(client.balance(&receiver), 200);
     assert_eq!(client.allowance(&owner, &spender), 300);
+    assert_eq!(client.total_supply(), 1000);
 }
 
 #[test]
@@ -74,6 +85,9 @@ fn test_transfer_from_insufficient_allowance() {
     let owner = Address::generate(&env);
     let spender = Address::generate(&env);
     let receiver = Address::generate(&env);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
 
     client.mint(&owner, &1000);
     client.approve(&owner, &spender, &100, &100);
@@ -92,6 +106,9 @@ fn test_transfer_from_expired_allowance() {
     let owner = Address::generate(&env);
     let spender = Address::generate(&env);
     let receiver = Address::generate(&env);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
 
     client.mint(&owner, &1000);
 
@@ -125,6 +142,44 @@ fn test_allowance_view_expired() {
 
     env.ledger().with_mut(|li| li.sequence_number = 21);
     assert_eq!(client.allowance(&owner, &spender), 0);
+}
+
+#[test]
+fn test_burn() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
+    let user = Address::generate(&env);
+    client.mint(&user, &1000);
+    assert_eq!(client.balance(&user), 1000);
+    assert_eq!(client.total_supply(), 1000);
+
+    client.burn(&user, &400);
+    assert_eq!(client.balance(&user), 600);
+    assert_eq!(client.total_supply(), 600);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_burn_insufficient_balance() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
+    let user = Address::generate(&env);
+    client.mint(&user, &100);
+    client.burn(&user, &101);
 }
 
 // Helper function to create a non-zero address
