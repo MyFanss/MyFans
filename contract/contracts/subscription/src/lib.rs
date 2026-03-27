@@ -1,5 +1,8 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
+    Symbol,
+};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -36,10 +39,14 @@ pub enum DataKey {
     Paused,
 }
 
-impl DataKey {
-    fn subscription(fan: Address, creator: Address) -> Self {
-        Self::Sub(fan, creator)
-    }
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Error {
+    AlreadyInitialized = 1,
+    Paused = 2,
+    SubscriptionNotFound = 3,
+    SubscriptionExpired = 4,
+    AdminNotInitialized = 5,
 }
 
 #[contract]
@@ -56,7 +63,7 @@ impl MyfansContract {
         price: i128,
     ) {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
+            panic_with_error!(&env, Error::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
@@ -81,7 +88,9 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false);
-        assert!(!paused, "contract is paused");
+        if paused {
+            panic_with_error!(&env, Error::Paused);
+        }
 
         let count: u32 = env
             .storage()
@@ -110,7 +119,9 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false);
-        assert!(!paused, "contract is paused");
+        if paused {
+            panic_with_error!(&env, Error::Paused);
+        }
 
         let plan: Plan = env
             .storage()
@@ -178,11 +189,11 @@ impl MyfansContract {
         let sub: Subscription = env
             .storage()
             .instance()
-            .get(&DataKey::subscription(fan.clone(), creator.clone()))
-            .expect("subscription not found");
+            .get(&DataKey::Sub(fan.clone(), creator.clone()))
+            .unwrap_or_else(|| panic_with_error!(&env, Error::SubscriptionNotFound));
 
         if env.ledger().sequence() > sub.expiry as u32 {
-            panic!("subscription expired");
+            panic_with_error!(&env, Error::SubscriptionExpired);
         }
 
         let plan: Plan = env
@@ -233,7 +244,9 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false);
-        assert!(!paused, "contract is paused");
+        if paused {
+            panic_with_error!(&env, Error::Paused);
+        }
 
         env.storage()
             .instance()
@@ -302,7 +315,7 @@ impl MyfansContract {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("admin not initialized");
+            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
         admin.require_auth();
 
         env.storage().instance().set(&DataKey::Paused, &true);
@@ -316,7 +329,7 @@ impl MyfansContract {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("admin not initialized");
+            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
         admin.require_auth();
 
         env.storage().instance().set(&DataKey::Paused, &false);

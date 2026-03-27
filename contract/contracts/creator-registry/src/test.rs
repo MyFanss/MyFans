@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, Env};
+use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, Env, Error as SorobanError};
 
 #[test]
 fn test_initialize() {
@@ -55,7 +55,6 @@ fn test_register_and_lookup_admin() {
 }
 
 #[test]
-#[should_panic(expected = "unauthorized: must be admin or the creator")]
 fn test_unauthorized_registration() {
     let env = Env::default();
     env.mock_all_auths();
@@ -69,11 +68,16 @@ fn test_unauthorized_registration() {
     client.initialize(&admin);
 
     // Rando tries to register creator
-    client.register_creator(&rando, &creator, &999);
+    let result = client.try_register_creator(&rando, &creator, &999);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::Unauthorized as u32,
+        )))
+    );
 }
 
 #[test]
-#[should_panic(expected = "already registered")]
 fn test_duplicate_registration_reverts() {
     let env = Env::default();
     env.mock_all_auths();
@@ -89,11 +93,16 @@ fn test_duplicate_registration_reverts() {
     client.register_creator(&creator, &creator, &111);
     // Advance past rate limit window so second attempt hits "already registered"
     env.ledger().with_mut(|li| li.sequence_number = 1015);
-    client.register_creator(&creator, &creator, &222);
+    let result = client.try_register_creator(&creator, &creator, &222);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::AlreadyRegistered as u32,
+        )))
+    );
 }
 
 #[test]
-#[should_panic(expected = "rate limit")]
 fn test_rate_limit_same_caller_within_window_fails() {
     let env = Env::default();
     env.mock_all_auths();
@@ -109,7 +118,13 @@ fn test_rate_limit_same_caller_within_window_fails() {
     env.ledger().with_mut(|li| li.sequence_number = 100);
     client.register_creator(&admin, &creator1, &111);
     // Same caller (admin), different creator, but within rate limit window -> must fail
-    client.register_creator(&admin, &creator2, &222);
+    let result = client.try_register_creator(&admin, &creator2, &222);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::RateLimited as u32,
+        )))
+    );
 }
 
 #[test]

@@ -73,8 +73,7 @@ describe('MessagesService unit', () => {
       find: jest.fn(),
     };
 
-    const { MessagesService: Svc } = await import('./messages.service');
-    const svc = new Svc(repo as any);
+    const svc = new MessagesService(repo as any);
     await expect(svc.deleteMessage('user-1', 'msg-uuid')).rejects.toThrow(ForbiddenException);
   });
 
@@ -87,8 +86,7 @@ describe('MessagesService unit', () => {
       find: jest.fn(),
     };
 
-    const { MessagesService: Svc } = await import('./messages.service');
-    const svc = new Svc(repo as any);
+    const svc = new MessagesService(repo as any);
     await expect(svc.deleteMessage('user-1', 'missing-id')).rejects.toThrow(NotFoundException);
   });
 });

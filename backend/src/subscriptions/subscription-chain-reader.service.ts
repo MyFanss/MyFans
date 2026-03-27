@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   Account,
   Address,
-  Api,
   Contract,
   Networks,
   rpc,
@@ -85,7 +84,7 @@ export class SubscriptionChainReaderService {
 
       const sim = await server.simulateTransaction(tx);
 
-      if (Api.isSimulationError(sim)) {
+      if (rpc.Api.isSimulationError(sim)) {
         return { ok: false, error: sim.error };
       }
 
