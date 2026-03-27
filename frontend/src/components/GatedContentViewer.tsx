@@ -141,7 +141,10 @@ export function GatedContentViewer({
       } catch (err) {
         setInternalStatus('error');
         setInternalError(err instanceof Error ? err.message : 'Failed to verify access');
-        showError('ACCESS_DENIED');
+        showError('UNAUTHORIZED', {
+          message: 'Access check failed',
+          description: 'Could not verify your subscription status.',
+        });
       }
     };
 
@@ -149,8 +152,9 @@ export function GatedContentViewer({
   }, [contentId, isGated, isSubscribed, externalLoading, externalError, onCheckAccess, showError]);
   
   const handleLike = () => {
-    setIsLiked(!isLiked);
-    onLike?.();
+    const newLiked = !isLiked;
+    setIsLiked(newLiked);
+    onLike?.(newLiked);
   };
 
   const formatDate = (date?: Date | string) => {

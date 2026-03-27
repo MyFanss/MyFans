@@ -9,7 +9,7 @@ import {
   type SubscriptionHistoryItem,
   type PaymentRecord,
 } from '@/lib/subscriptions';
-import { formatCurrency, formatDate } from '@/lib/formatting';
+import { formatCurrency, formatDate, getCurrencySymbol } from '@/lib/formatting';
 import { BaseCard } from '@/components/cards/BaseCard';
 import HistoryCardSkeleton from '@/components/ui/HistoryCardSkeleton';
 import { useToast } from '@/contexts/ToastContext';
@@ -301,7 +301,7 @@ export default function SubscriptionsPage() {
                   key={item.id}
                   item={item}
                   isRenewing={renewingId === item.id}
-                  onRenew={handleRenew}
+                  onRenew={handleRenewClick}
                 />
               ))}
             </ul>
