@@ -62,6 +62,9 @@ import { redisStore } from 'cache-manager-redis-yet';
             autoLoadEntities: true,
             synchronize:
               configService.get<string>('NODE_ENV') !== 'production',
+            retryAttempts: 5,
+            retryDelay: 3000,
+            keepConnectionAlive: true,
           },
     }),
     UsersModule,
