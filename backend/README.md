@@ -44,6 +44,16 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
+## Chain replay CLI
+
+Recover missed historical chain events into DB:
+
+```bash
+$ npm run replay:chain-events -- --start-cursor <cursor> --end-cursor <cursor> --dry-run
+```
+
+Detailed runbook: `docs/CHAIN_EVENT_REPLAY.md`
+
 ## Run tests
 
 ```bash
