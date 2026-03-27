@@ -6,9 +6,10 @@ import { EventsModule } from '../events/events.module';
 import { LoggingModule } from '../common/logging.module';
 import { FanBearerGuard } from './guards/fan-bearer.guard';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [EventsModule, LoggingModule],
+  imports: [EventsModule, LoggingModule, AuditModule],
   controllers: [SubscriptionsController],
   providers: [
     SubscriptionsService,

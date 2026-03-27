@@ -5,12 +5,13 @@ import { StartupProbeService } from './health/startup-probe.service';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { validateRequiredSecrets } from './common/secrets-validation';
+import { configureBodyParserLimits } from './common/http/body-parser.config';
 
 async function bootstrap() {
   // Fail fast if any required secret is absent — before the app is created.
   validateRequiredSecrets();
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
 
   // Enable versioning (URI versioning like /v1/...)
   app.enableVersioning({
@@ -20,6 +21,7 @@ async function bootstrap() {
 
   // Global validation pipe
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  configureBodyParserLimits(app);
 
   const probeService = app.get(StartupProbeService);
 

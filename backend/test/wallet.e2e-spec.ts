@@ -1,10 +1,27 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call */
+import { Module } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AuthModule } from './../src/auth/auth.module';
 import { SubscriptionsModule } from './../src/subscriptions/subscriptions.module';
+import { AuditService } from './../src/audit/audit.service';
+import { AuditModule } from './../src/audit/audit.module';
+
+@Module({
+  providers: [
+    {
+      provide: AuditService,
+      useValue: {
+        record: jest.fn().mockResolvedValue(undefined),
+        query: jest.fn(),
+      },
+    },
+  ],
+  exports: [AuditService],
+})
+class AuditModuleStub {}
 
 describe('Wallet Endpoints (e2e)', () => {
   let app: INestApplication<App>;
@@ -12,7 +29,10 @@ describe('Wallet Endpoints (e2e)', () => {
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AuthModule, SubscriptionsModule],
-    }).compile();
+    })
+      .overrideModule(AuditModule)
+      .useModule(AuditModuleStub)
+      .compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();

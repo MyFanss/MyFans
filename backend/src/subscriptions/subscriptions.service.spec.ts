@@ -1,3 +1,4 @@
+import { Provider } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   SUBSCRIPTION_EVENT_PUBLISHER,
@@ -7,6 +8,8 @@ import {
 import { SubscriptionsService, SERVER_NETWORK } from './subscriptions.service';
 import { EventBus } from '../events/event-bus';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
+import { AuditService } from '../audit/audit.service';
+import { AuditableAction } from '../audit/auditable-action';
 
 function makeEventBus(): EventBus {
   return { publish: jest.fn() } as unknown as EventBus;
@@ -19,13 +22,19 @@ function makeChainReader(): SubscriptionChainReaderService {
   } as unknown as SubscriptionChainReaderService;
 }
 
+function makeAuditService(): AuditService {
+  return { record: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
+}
+
 async function buildService(
   eventPublisher?: jest.Mocked<SubscriptionEventPublisher>,
+  audit?: AuditService,
 ): Promise<SubscriptionsService> {
-  const providers: object[] = [
+  const providers: Provider[] = [
     SubscriptionsService,
     { provide: EventBus, useValue: makeEventBus() },
     { provide: SubscriptionChainReaderService, useValue: makeChainReader() },
+    { provide: AuditService, useValue: audit ?? makeAuditService() },
   ];
   if (eventPublisher) {
     providers.push({
@@ -46,6 +55,23 @@ describe('SubscriptionsService', () => {
   beforeEach(async () => {
     eventPublisher = { emit: jest.fn() };
     service = await buildService(eventPublisher);
+  });
+
+  it('records audit when checkout is confirmed', async () => {
+    const audit = { record: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
+    const svc = await buildService(undefined, audit);
+    const checkout = svc.createCheckout(
+      'GFANADDRESS111111111111111111111111111111111111111111111111',
+      'GAAAAAAAAAAAAAAA',
+      1,
+    );
+    svc.confirmSubscription(checkout.id, 'tx-abc');
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditableAction.SUBSCRIPTION_CHECKOUT_CONFIRMED,
+        metadata: expect.objectContaining({ txHash: 'tx-abc' }),
+      }),
+    );
   });
 
   it('emits renewal_failed event when checkout failure is recorded', async () => {
@@ -257,6 +283,76 @@ describe('SubscriptionsService', () => {
       expect(r.indexedStatus).toBe('active');
       expect(r.indexed?.expiresAtUnix).toBe(future);
       expect(r.indexed?.planId).toBe(1);
+    });
+  });
+
+  describe('getCreatorPayoutHistory', () => {
+    const creatorAddress = 'GAAAAAAAAAAAAAAA';
+    const fanAddress = `G${'C'.repeat(55)}`;
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-03-27T12:00:00.000Z'));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('returns completed payouts including txHash references', () => {
+      const first = service.createCheckout(fanAddress, creatorAddress, 1);
+      service.confirmSubscription(first.id, 'tx-first');
+      jest.advanceTimersByTime(1000);
+      const second = service.createCheckout(fanAddress, creatorAddress, 1);
+      service.confirmSubscription(second.id, 'tx-second');
+
+      const result = service.getCreatorPayoutHistory({ creatorAddress, limit: 10 });
+
+      expect(result.data).toHaveLength(2);
+      expect(result.data[0].txHash).toBe('tx-second');
+      expect(result.data[1].txHash).toBe('tx-first');
+      expect(result.hasMore).toBe(false);
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('applies date-range filters', () => {
+      const older = service.createCheckout(fanAddress, creatorAddress, 1);
+      service.confirmSubscription(older.id, 'tx-old');
+      jest.setSystemTime(new Date('2026-03-28T12:00:00.000Z'));
+      const newer = service.createCheckout(fanAddress, creatorAddress, 1);
+      service.confirmSubscription(newer.id, 'tx-new');
+
+      const result = service.getCreatorPayoutHistory({
+        creatorAddress,
+        from: '2026-03-28T00:00:00.000Z',
+        to: '2026-03-29T00:00:00.000Z',
+        limit: 10,
+      });
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].txHash).toBe('tx-new');
+    });
+
+    it('supports cursor pagination', () => {
+      const first = service.createCheckout(fanAddress, creatorAddress, 1);
+      service.confirmSubscription(first.id, 'tx-first');
+      jest.advanceTimersByTime(1000);
+      const second = service.createCheckout(fanAddress, creatorAddress, 1);
+      service.confirmSubscription(second.id, 'tx-second');
+
+      const pageOne = service.getCreatorPayoutHistory({ creatorAddress, limit: 1 });
+      expect(pageOne.data).toHaveLength(1);
+      expect(pageOne.hasMore).toBe(true);
+      expect(pageOne.nextCursor).toBeTruthy();
+
+      const pageTwo = service.getCreatorPayoutHistory({
+        creatorAddress,
+        limit: 1,
+        cursor: pageOne.nextCursor as string,
+      });
+
+      expect(pageTwo.data).toHaveLength(1);
+      expect(pageTwo.data[0].txHash).toBe('tx-first');
     });
   });
 });

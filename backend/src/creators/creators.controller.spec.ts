@@ -14,6 +14,7 @@ describe('CreatorsController', () => {
     createPlan: jest.fn(),
     findAllPlans: jest.fn(),
     findCreatorPlans: jest.fn(),
+    getPayoutHistory: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -372,6 +373,36 @@ describe('CreatorsController', () => {
         expect(result.data).toEqual(mockData);
         expect(result.total).toBe(1);
       });
+    });
+  });
+
+  describe('getPayoutHistory', () => {
+    it('calls service with creator address and query', () => {
+      const mockResponse = {
+        data: [
+          {
+            checkoutId: 'chk_1',
+            creatorAddress: 'GCREATOR',
+            fanAddress: 'GFAN',
+            amount: '10',
+            assetCode: 'XLM',
+            txHash: 'tx-1',
+            payoutAt: new Date().toISOString(),
+          },
+        ],
+        nextCursor: null,
+        hasMore: false,
+      };
+      mockCreatorsService.getPayoutHistory.mockReturnValue(mockResponse);
+
+      const query = { from: '2026-03-01T00:00:00.000Z', limit: 20 };
+      const result = controller.getPayoutHistory('GCREATOR', query);
+
+      expect(mockCreatorsService.getPayoutHistory).toHaveBeenCalledWith(
+        'GCREATOR',
+        query,
+      );
+      expect(result).toEqual(mockResponse);
     });
   });
 });

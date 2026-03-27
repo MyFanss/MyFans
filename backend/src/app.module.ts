@@ -1,8 +1,8 @@
 import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerGuard } from './auth/throttler.guard';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthModule } from './health/health.module';
@@ -12,14 +12,29 @@ import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { CreatorsModule } from './creators/creators.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { AuthModule } from './auth/auth.module';
+import { AuditModule } from './audit/audit.module';
+import { WebhookModule } from './webhook/webhook.module';
+import { ExampleController } from './common/examples/example.controller';
 
 @Module({
   imports: [
     ThrottlerModule.forRoot([{ name: 'auth', ttl: 60000, limit: 5 }]),
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT ?? '5432', 10),
+      username: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      autoLoadEntities: true,
+      synchronize: process.env.TYPEORM_SYNC === 'true',
+    }),
     LoggingModule,
+    AuditModule,
     AuthModule,
     CreatorsModule,
     SubscriptionsModule,
+    WebhookModule,
     HealthModule,
   ],
   controllers: [AppController, ExampleController],

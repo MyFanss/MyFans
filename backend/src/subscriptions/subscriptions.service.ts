@@ -22,6 +22,8 @@ import {
 import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
 import { isStellarAccountAddress } from '../common/utils/stellar-address';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
+import { AuditService } from '../audit/audit.service';
+import { AuditableAction } from '../audit/auditable-action';
 
 export enum CheckoutStatus {
   PENDING = 'pending',
@@ -59,6 +61,23 @@ interface Checkout {
   error?: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface CreatorPayoutHistoryItem {
+  checkoutId: string;
+  creatorAddress: string;
+  fanAddress: string;
+  amount: string;
+  assetCode: string;
+  assetIssuer?: string;
+  txHash: string;
+  payoutAt: string;
+}
+
+export interface CreatorPayoutHistoryResult {
+  data: CreatorPayoutHistoryItem[];
+  nextCursor: string | null;
+  hasMore: boolean;
 }
 
 interface Plan {
@@ -106,10 +125,11 @@ export class SubscriptionsService {
 
   constructor(
     private readonly eventBus: EventBus,
+    private readonly chainReader: SubscriptionChainReaderService,
+    private readonly auditService: AuditService,
     @Optional()
     @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
     private readonly subscriptionEventPublisher?: SubscriptionEventPublisher,
-    private readonly chainReader: SubscriptionChainReaderService,
   ) {
     this.creatorProfiles.set('GAAAAAAAAAAAAAAA', {
       name: 'Creator 1',
@@ -453,6 +473,66 @@ export class SubscriptionsService {
     };
   }
 
+  getCreatorPayoutHistory(params: {
+    creatorAddress: string;
+    from?: string;
+    to?: string;
+    cursor?: string;
+    limit?: number;
+  }): CreatorPayoutHistoryResult {
+    const limit = params.limit ?? 20;
+    const fromDate = params.from ? new Date(params.from) : undefined;
+    const toDate = params.to ? new Date(params.to) : undefined;
+
+    const filtered = Array.from(this.checkouts.values())
+      .filter((checkout) => checkout.creatorAddress === params.creatorAddress)
+      .filter((checkout) => checkout.status === CheckoutStatus.COMPLETED)
+      .filter((checkout) => Boolean(checkout.txHash))
+      .filter((checkout) => {
+        if (!fromDate) return true;
+        return checkout.updatedAt >= fromDate;
+      })
+      .filter((checkout) => {
+        if (!toDate) return true;
+        return checkout.updatedAt <= toDate;
+      })
+      .sort((a, b) => {
+        const byDate = b.updatedAt.getTime() - a.updatedAt.getTime();
+        if (byDate !== 0) return byDate;
+        return b.id.localeCompare(a.id);
+      });
+
+    const cursorData = params.cursor ? this.decodeCursor(params.cursor) : null;
+    const paged = cursorData
+      ? filtered.filter((checkout) => {
+          const ts = checkout.updatedAt.getTime();
+          if (ts < cursorData.timestamp) return true;
+          if (ts > cursorData.timestamp) return false;
+          return checkout.id < cursorData.checkoutId;
+        })
+      : filtered;
+
+    const selected = paged.slice(0, limit);
+    const hasMore = paged.length > limit;
+    const last = selected[selected.length - 1];
+    const nextCursor = hasMore && last ? this.encodeCursor(last.updatedAt, last.id) : null;
+
+    return {
+      data: selected.map((checkout) => ({
+        checkoutId: checkout.id,
+        creatorAddress: checkout.creatorAddress,
+        fanAddress: checkout.fanAddress,
+        amount: checkout.amount,
+        assetCode: checkout.assetCode,
+        assetIssuer: checkout.assetIssuer,
+        txHash: checkout.txHash as string,
+        payoutAt: checkout.updatedAt.toISOString(),
+      })),
+      nextCursor,
+      hasMore,
+    };
+  }
+
   confirmSubscription(checkoutId: string, txHash?: string) {
     const checkout = this.getCheckout(checkoutId);
 
@@ -468,6 +548,18 @@ export class SubscriptionsService {
       checkout.planId,
       Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
     );
+
+    void this.auditService.record({
+      action: AuditableAction.SUBSCRIPTION_CHECKOUT_CONFIRMED,
+      actorType: 'user',
+      actorId: checkout.fanAddress,
+      metadata: {
+        checkoutId: checkout.id,
+        creatorAddress: checkout.creatorAddress,
+        planId: checkout.planId,
+        txHash: checkout.txHash,
+      },
+    });
 
     return {
       success: true,
@@ -492,6 +584,19 @@ export class SubscriptionsService {
     checkout.error = error;
     checkout.updatedAt = new Date();
     this.emitRenewalFailureEvent(checkout, error);
+
+    void this.auditService.record({
+      action: AuditableAction.SUBSCRIPTION_CHECKOUT_FAILED,
+      actorType: 'user',
+      actorId: checkout.fanAddress,
+      metadata: {
+        checkoutId: checkout.id,
+        creatorAddress: checkout.creatorAddress,
+        rejected: isRejected,
+        errorSummary: error.slice(0, 240),
+      },
+    });
+
     return {
       success: false,
       checkoutId: checkout.id,
@@ -564,5 +669,23 @@ export class SubscriptionsService {
           error instanceof Error ? error.message : String(error);
         this.logger.error(`Failed to emit renewal failure event: ${message}`);
       });
+  }
+
+  private encodeCursor(payoutDate: Date, checkoutId: string): string {
+    return Buffer.from(`${payoutDate.getTime()}:${checkoutId}`).toString('base64url');
+  }
+
+  private decodeCursor(cursor: string): { timestamp: number; checkoutId: string } {
+    try {
+      const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
+      const [timestampRaw, checkoutId] = decoded.split(':');
+      const timestamp = Number.parseInt(timestampRaw, 10);
+      if (!Number.isFinite(timestamp) || !checkoutId) {
+        throw new Error('Invalid cursor');
+      }
+      return { timestamp, checkoutId };
+    } catch {
+      throw new BadRequestException('Invalid payout history cursor');
+    }
   }
 }
