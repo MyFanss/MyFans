@@ -462,11 +462,15 @@ export class SubscriptionsService {
 
     const explorerUrl = `https://stellar.expert/explorer/testnet/tx/${checkout.txHash}`;
 
+    const plan = this.getPlanMock(checkout.planId);
+    const intervalDays = plan?.intervalDays ?? 30;
+    const expiry = this.calculateExpiryTimestamp(intervalDays);
+
     this.addSubscription(
       checkout.fanAddress,
       checkout.creatorAddress,
       checkout.planId,
-      Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+      expiry,
     );
 
     return {
@@ -548,6 +552,25 @@ export class SubscriptionsService {
       },
     ];
     return plans.find((p) => p.id === planId);
+  }
+
+  /**
+   * Calculate subscription expiry timestamp in seconds
+   * Prevents overflow by checking for max safe integer
+   * @param intervalDays - Number of days for the subscription interval
+   * @returns Unix timestamp in seconds when subscription expires
+   * @throws Error if calculation would overflow
+   */
+  private calculateExpiryTimestamp(intervalDays: number): number {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const intervalSec = intervalDays * 24 * 60 * 60;
+    
+    // Check for overflow: ensure result doesn't exceed max safe integer
+    if (nowSec > Number.MAX_SAFE_INTEGER - intervalSec) {
+      throw new Error('Expiry calculation would overflow');
+    }
+    
+    return nowSec + intervalSec;
   }
 
   private emitRenewalFailureEvent(checkout: Checkout, reason: string): void {
