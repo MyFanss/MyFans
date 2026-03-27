@@ -5,10 +5,12 @@ import { CreatorsService } from './creators.service';
 import { User, UserRole } from '../users/entities/user.entity';
 import { EventBus } from '../events/event-bus';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 describe('CreatorsService', () => {
   let service: CreatorsService;
   let mockQueryBuilder: Partial<SelectQueryBuilder<User>>;
+  let subscriptionsService: { getCreatorPayoutHistory: jest.Mock };
 
   beforeEach(async () => {
     // Create mock query builder
@@ -25,6 +27,8 @@ describe('CreatorsService', () => {
       getRawAndEntities: jest.fn(),
     };
 
+    subscriptionsService = { getCreatorPayoutHistory: jest.fn() };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CreatorsService,
@@ -38,6 +42,10 @@ describe('CreatorsService', () => {
         {
           provide: EventBus,
           useValue: { publish: jest.fn() },
+        },
+        {
+          provide: SubscriptionsService,
+          useValue: subscriptionsService,
         },
       ],
     }).compile();
@@ -443,6 +451,28 @@ describe('CreatorsService', () => {
         expect(result.total).toBe(5);
         expect(result.page).toBe(10);
       });
+    });
+  });
+
+  describe('getPayoutHistory', () => {
+    it('delegates payout history query to subscriptions service', () => {
+      const response = { data: [], nextCursor: null, hasMore: false };
+      subscriptionsService.getCreatorPayoutHistory.mockReturnValue(response);
+
+      const result = service.getPayoutHistory('GCREATOR', {
+        from: '2026-01-01T00:00:00.000Z',
+        to: '2026-01-31T23:59:59.999Z',
+        limit: 20,
+      });
+
+      expect(subscriptionsService.getCreatorPayoutHistory).toHaveBeenCalledWith({
+        creatorAddress: 'GCREATOR',
+        from: '2026-01-01T00:00:00.000Z',
+        to: '2026-01-31T23:59:59.999Z',
+        cursor: undefined,
+        limit: 20,
+      });
+      expect(result).toEqual(response);
     });
   });
 });
