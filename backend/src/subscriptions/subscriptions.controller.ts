@@ -16,10 +16,28 @@ import { SubscriptionsService } from './subscriptions.service';
 import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 import { FanBearerGuard, RequestWithFan } from './guards/fan-bearer.guard';
 import { SubscriptionStateQueryDto } from './dto/subscription-state-query.dto';
+import { PaginationDto } from '../common/dto';
 
 @Controller({ path: 'subscriptions', version: '1' })
 export class SubscriptionsController {
   constructor(private subscriptionsService: SubscriptionsService) { }
+
+  /**
+   * Authenticated fan: active subscriptions summary with renew dates.
+   * Authorization: Bearer <base64(Stellar G-address)>
+   */
+  @Get('me/dashboard-summary')
+  @UseGuards(FanBearerGuard)
+  getFanDashboardSummary(
+    @Req() req: RequestWithFan,
+    @Query() query: PaginationDto,
+  ) {
+    return this.subscriptionsService.getFanDashboardSummary(
+      req.fanAddress,
+      query.page,
+      query.limit,
+    );
+  }
 
   /**
    * Authenticated fan: subscription state toward a creator (indexed + optional chain).

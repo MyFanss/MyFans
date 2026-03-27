@@ -231,6 +231,64 @@ describe('SubscriptionsService', () => {
     });
   });
 
+  describe('getFanDashboardSummary', () => {
+    const fan = `G${'D'.repeat(55)}`;
+    const creator1 = `G${'E'.repeat(55)}`;
+    const creator2 = `G${'F'.repeat(55)}`;
+
+    it('returns empty summary when fan has no active subscriptions', () => {
+      const result = service.getFanDashboardSummary(fan);
+      expect(result.fan).toBe(fan);
+      expect(result.totalActive).toBe(0);
+      expect(result.subscriptions).toEqual([]);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
+      expect(result.totalPages).toBe(0);
+    });
+
+    it('returns only active subscriptions with correct renewsAt', () => {
+      const futureExpiry = Math.floor(Date.now() / 1000) + 86400;
+      const pastExpiry = Math.floor(Date.now() / 1000) - 86400;
+      service.addSubscription(fan, creator1, 1, futureExpiry);
+      service.addSubscription(fan, creator2, 1, pastExpiry);
+
+      const result = service.getFanDashboardSummary(fan);
+      expect(result.totalActive).toBe(1);
+      expect(result.subscriptions).toHaveLength(1);
+      expect(result.subscriptions[0].creatorId).toBe(creator1);
+      expect(result.subscriptions[0].renewsAtUnix).toBe(futureExpiry);
+      expect(result.subscriptions[0].status).toBe('active');
+    });
+
+    it('paginates active subscriptions', () => {
+      const expiry = Math.floor(Date.now() / 1000) + 86400;
+      service.addSubscription(fan, `G${'G'.repeat(55)}`, 1, expiry);
+      service.addSubscription(fan, `G${'H'.repeat(55)}`, 1, expiry + 100);
+      service.addSubscription(fan, `G${'I'.repeat(55)}`, 1, expiry + 200);
+
+      const page1 = service.getFanDashboardSummary(fan, 1, 2);
+      expect(page1.totalActive).toBe(3);
+      expect(page1.subscriptions).toHaveLength(2);
+      expect(page1.totalPages).toBe(2);
+
+      const page2 = service.getFanDashboardSummary(fan, 2, 2);
+      expect(page2.subscriptions).toHaveLength(1);
+      expect(page2.page).toBe(2);
+    });
+
+    it('sorts subscriptions by soonest renewsAt first', () => {
+      const now = Math.floor(Date.now() / 1000);
+      const creatorA = `G${'J'.repeat(55)}`;
+      const creatorB = `G${'K'.repeat(55)}`;
+      service.addSubscription(fan, creatorA, 1, now + 7200);
+      service.addSubscription(fan, creatorB, 1, now + 3600);
+
+      const result = service.getFanDashboardSummary(fan);
+      expect(result.subscriptions[0].creatorId).toBe(creatorB);
+      expect(result.subscriptions[1].creatorId).toBe(creatorA);
+    });
+  });
+
   describe('getFanCreatorSubscriptionState', () => {
     const fan = `G${'A'.repeat(55)}`;
     const creator = `G${'B'.repeat(55)}`;
