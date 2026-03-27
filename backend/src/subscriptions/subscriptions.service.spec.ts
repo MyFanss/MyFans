@@ -1,3 +1,4 @@
+import { Provider } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   SUBSCRIPTION_EVENT_PUBLISHER,
@@ -7,6 +8,8 @@ import {
 import { SubscriptionsService, SERVER_NETWORK } from './subscriptions.service';
 import { EventBus } from '../events/event-bus';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
+import { AuditService } from '../audit/audit.service';
+import { AuditableAction } from '../audit/auditable-action';
 
 function makeEventBus(): EventBus {
   return { publish: jest.fn() } as unknown as EventBus;
@@ -19,13 +22,19 @@ function makeChainReader(): SubscriptionChainReaderService {
   } as unknown as SubscriptionChainReaderService;
 }
 
+function makeAuditService(): AuditService {
+  return { record: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
+}
+
 async function buildService(
   eventPublisher?: jest.Mocked<SubscriptionEventPublisher>,
+  audit?: AuditService,
 ): Promise<SubscriptionsService> {
-  const providers: object[] = [
+  const providers: Provider[] = [
     SubscriptionsService,
     { provide: EventBus, useValue: makeEventBus() },
     { provide: SubscriptionChainReaderService, useValue: makeChainReader() },
+    { provide: AuditService, useValue: audit ?? makeAuditService() },
   ];
   if (eventPublisher) {
     providers.push({
@@ -46,6 +55,23 @@ describe('SubscriptionsService', () => {
   beforeEach(async () => {
     eventPublisher = { emit: jest.fn() };
     service = await buildService(eventPublisher);
+  });
+
+  it('records audit when checkout is confirmed', async () => {
+    const audit = { record: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
+    const svc = await buildService(undefined, audit);
+    const checkout = svc.createCheckout(
+      'GFANADDRESS111111111111111111111111111111111111111111111111',
+      'GAAAAAAAAAAAAAAA',
+      1,
+    );
+    svc.confirmSubscription(checkout.id, 'tx-abc');
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditableAction.SUBSCRIPTION_CHECKOUT_CONFIRMED,
+        metadata: expect.objectContaining({ txHash: 'tx-abc' }),
+      }),
+    );
   });
 
   it('emits renewal_failed event when checkout failure is recorded', async () => {

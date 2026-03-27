@@ -6,7 +6,7 @@ import { PlanDto } from './dto/plan.dto';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
 import { CreatorPayoutHistoryQueryDto } from './dto';
-import { CreatorPayoutHistoryResult } from '../subscriptions/subscriptions.service';
+import type { CreatorPayoutHistoryResult } from '../subscriptions/subscriptions.service';
 
 @ApiTags('creators')
 @Controller({ path: 'creators', version: '1' })

@@ -1,4 +1,4 @@
-﻿import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 
@@ -12,7 +12,7 @@ export class AuthController {
     if (!this.authService.validateStellarAddress(body?.address ?? '')) {
       throw new BadRequestException('Invalid Stellar address');
     }
-    return this.authService.createSession(address);
+    return this.authService.createSession(body.address as string);
   }
 
   @Post('register')
@@ -21,6 +21,6 @@ export class AuthController {
     if (!this.authService.validateStellarAddress(body?.address ?? '')) {
       throw new BadRequestException('Invalid Stellar address');
     }
-    return this.authService.createSession(address);
+    return this.authService.createSession(body.address as string);
   }
 }

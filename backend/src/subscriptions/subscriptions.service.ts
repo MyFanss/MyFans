@@ -22,6 +22,8 @@ import {
 import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
 import { isStellarAccountAddress } from '../common/utils/stellar-address';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
+import { AuditService } from '../audit/audit.service';
+import { AuditableAction } from '../audit/auditable-action';
 
 export enum CheckoutStatus {
   PENDING = 'pending',
@@ -123,10 +125,11 @@ export class SubscriptionsService {
 
   constructor(
     private readonly eventBus: EventBus,
+    private readonly chainReader: SubscriptionChainReaderService,
+    private readonly auditService: AuditService,
     @Optional()
     @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
     private readonly subscriptionEventPublisher?: SubscriptionEventPublisher,
-    private readonly chainReader: SubscriptionChainReaderService,
   ) {
     this.creatorProfiles.set('GAAAAAAAAAAAAAAA', {
       name: 'Creator 1',
@@ -546,6 +549,18 @@ export class SubscriptionsService {
       Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
     );
 
+    void this.auditService.record({
+      action: AuditableAction.SUBSCRIPTION_CHECKOUT_CONFIRMED,
+      actorType: 'user',
+      actorId: checkout.fanAddress,
+      metadata: {
+        checkoutId: checkout.id,
+        creatorAddress: checkout.creatorAddress,
+        planId: checkout.planId,
+        txHash: checkout.txHash,
+      },
+    });
+
     return {
       success: true,
       checkoutId: checkout.id,
@@ -569,6 +584,19 @@ export class SubscriptionsService {
     checkout.error = error;
     checkout.updatedAt = new Date();
     this.emitRenewalFailureEvent(checkout, error);
+
+    void this.auditService.record({
+      action: AuditableAction.SUBSCRIPTION_CHECKOUT_FAILED,
+      actorType: 'user',
+      actorId: checkout.fanAddress,
+      metadata: {
+        checkoutId: checkout.id,
+        creatorAddress: checkout.creatorAddress,
+        rejected: isRejected,
+        errorSummary: error.slice(0, 240),
+      },
+    });
+
     return {
       success: false,
       checkoutId: checkout.id,
