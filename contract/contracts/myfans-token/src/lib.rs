@@ -34,7 +34,7 @@ pub struct AllowanceData {
 
 /// Token contract errors (codes 1–3 match test expectations)
 #[contracterror]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     InsufficientBalance = 1,   // transfer: not enough balance
     InsufficientAllowance = 2, // transfer_from: allowance too low
