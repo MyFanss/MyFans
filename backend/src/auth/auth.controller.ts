@@ -1,6 +1,8 @@
-﻿import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
+﻿import { Controller, Post, Body, BadRequestException, UseInterceptors } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
+import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
@@ -17,6 +19,12 @@ export class AuthController {
 
   @Post('register')
   @Throttle({ auth: { limit: 5, ttl: 60000 } })
+  @Deprecated({
+    sunset: '2026-01-01',
+    link: '/v1/auth/login',
+    message: 'Use POST /v1/auth/login instead. Removal date: 2026-01-01.',
+  })
+  @UseInterceptors(new DeprecationInterceptor(new Reflector()))
   async register(@Body() body: { address?: string }) {
     if (!this.authService.validateStellarAddress(body?.address ?? '')) {
       throw new BadRequestException('Invalid Stellar address');
