@@ -1,6 +1,8 @@
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { CorrelationExceptionFilter } from './common/filters/correlation-exception.filter';
+import { RequestContextService } from './common/services/request-context.service';
 import { StartupProbeService } from './health/startup-probe.service';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -31,6 +33,10 @@ async function bootstrap() {
 
   // Global validation pipe
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  // Global exception filter — attaches correlationId to error responses in non-prod
+  const requestContext = app.get(RequestContextService);
+  app.useGlobalFilters(new CorrelationExceptionFilter(requestContext));
 
   const probeService = app.get(StartupProbeService);
 
