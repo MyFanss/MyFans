@@ -3,10 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import WalletConnect from '@/components/WalletConnect';
 import { BookmarkButton } from '@/components/BookmarkButton';
-import { FeatureGate } from '@/components/FeatureGate';
 import { CreatorCard } from '@/components/cards';
-import { CardSkeletonGrid, EmptyState, SuccessAnimation } from '@/components/ui/states';
-import { FeatureFlag } from '@/lib/feature-flags';
 import { CardSkeletonGrid, EmptyState } from '@/components/ui/states';
 import { useToast } from '@/contexts/ToastContext';
 

@@ -26,7 +26,6 @@ fn test_transfer() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")]
 fn test_transfer_insufficient_balance() {
     let env = Env::default();
     env.mock_all_auths();
@@ -41,7 +40,10 @@ fn test_transfer_insufficient_balance() {
     let user2 = Address::generate(&env);
 
     client.mint(&user1, &100);
-    client.transfer(&user1, &user2, &101);
+    assert_eq!(
+        client.try_transfer(&user1, &user2, &101),
+        Err(Ok(Error::InsufficientBalance))
+    );
 }
 
 #[test]
@@ -74,7 +76,6 @@ fn test_approve_and_transfer_from() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #2)")]
 fn test_transfer_from_insufficient_allowance() {
     let env = Env::default();
     env.mock_all_auths();
@@ -91,11 +92,13 @@ fn test_transfer_from_insufficient_allowance() {
 
     client.mint(&owner, &1000);
     client.approve(&owner, &spender, &100, &100);
-    client.transfer_from(&spender, &owner, &receiver, &101);
+    assert_eq!(
+        client.try_transfer_from(&spender, &owner, &receiver, &101),
+        Err(Ok(Error::InsufficientAllowance))
+    );
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #3)")]
 fn test_transfer_from_expired_allowance() {
     let env = Env::default();
     env.mock_all_auths();
@@ -121,7 +124,10 @@ fn test_transfer_from_expired_allowance() {
     // Advance ledger sequence to 21
     env.ledger().with_mut(|li| li.sequence_number = 21);
 
-    client.transfer_from(&spender, &owner, &receiver, &100);
+    assert_eq!(
+        client.try_transfer_from(&spender, &owner, &receiver, &100),
+        Err(Ok(Error::AllowanceExpired))
+    );
 }
 
 #[test]
@@ -180,6 +186,23 @@ fn test_burn_insufficient_balance() {
     let user = Address::generate(&env);
     client.mint(&user, &100);
     client.burn(&user, &101);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #4)")]
+fn test_burn_invalid_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
+    let user = Address::generate(&env);
+    client.mint(&user, &100);
+    client.burn(&user, &0);
 }
 
 // Helper function to create a non-zero address
@@ -264,7 +287,7 @@ fn test_non_admin_cannot_set_admin() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = generate_address(&env);
-    let non_admin = generate_address(&env);
+    let _non_admin = generate_address(&env);
     let name = String::from_str(&env, "MyFans Token");
     let symbol = String::from_str(&env, "MFAN");
     let decimals: u32 = 7;
