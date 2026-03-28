@@ -62,6 +62,25 @@ impl CreatorRegistryContract {
         env.storage().persistent().set(&key, &creator_id);
     }
 
+    /// Unregister a creator (admin only).
+    /// Panics if the creator is not currently registered.
+    pub fn unregister_creator(env: Env, creator_address: Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+
+        admin.require_auth();
+
+        let key = DataKey::Creator(creator_address);
+        if !env.storage().persistent().has(&key) {
+            panic!("creator not registered");
+        }
+
+        env.storage().persistent().remove(&key);
+    }
+
     /// Look up a creator_id by their registered address
     pub fn get_creator_id(env: Env, address: Address) -> Option<u64> {
         env.storage().persistent().get(&DataKey::Creator(address))
