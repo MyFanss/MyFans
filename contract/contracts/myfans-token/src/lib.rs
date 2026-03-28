@@ -218,8 +218,11 @@ impl MyFansToken {
         let balance_to = read_balance(&env, to.clone());
         write_balance(&env, to.clone(), balance_to + amount);
 
+        // Emit transfer_from event so indexers can identify spender-triggered transfers.
+        // Regular `transfer` events use topics (transfer, from, to); this uses
+        // (transfer_from, spender, from, to) to distinguish the two paths.
         env.events()
-            .publish((symbol_short!("transfer"), from, to), amount);
+            .publish((symbol_short!("xfer_from"), spender, from, to), amount);
         Ok(())
     }
 

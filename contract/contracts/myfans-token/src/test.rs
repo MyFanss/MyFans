@@ -75,6 +75,73 @@ fn test_approve_and_transfer_from() {
     assert_eq!(client.total_supply(), 1000);
 }
 
+/// Verifies that transfer_from emits a distinct `xfer_from` event containing
+/// spender, from, and to — so indexers can attribute the transfer to the spender.
+/// Also verifies that a plain `transfer` does NOT emit `xfer_from`.
+#[test]
+fn test_transfer_from_event_includes_spender() {
+    use soroban_sdk::{symbol_short, TryIntoVal};
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
+    let owner = Address::generate(&env);
+    let spender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.mint(&owner, &1000);
+    client.approve(&owner, &spender, &500, &100);
+    client.transfer_from(&spender, &owner, &receiver, &300);
+
+    let events = env.events().all();
+
+    // Find the xfer_from event
+    let xfer_from_event = events.iter().find(|e| {
+        e.1.first()
+            .and_then(|t| t.try_into_val(&env).ok())
+            .map(|s: soroban_sdk::Symbol| s == symbol_short!("xfer_from"))
+            .unwrap_or(false)
+    });
+
+    assert!(xfer_from_event.is_some(), "xfer_from event not emitted");
+    let ev = xfer_from_event.unwrap();
+
+    // topics: (xfer_from, spender, from, to)
+    assert_eq!(ev.1.len(), 4, "expected 4 topics: (xfer_from, spender, from, to)");
+
+    let t_spender: Address = ev.1.get(1).unwrap().try_into_val(&env).unwrap();
+    let t_from: Address = ev.1.get(2).unwrap().try_into_val(&env).unwrap();
+    let t_to: Address = ev.1.get(3).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(t_spender, spender, "spender mismatch");
+    assert_eq!(t_from, owner, "from mismatch");
+    assert_eq!(t_to, receiver, "to mismatch");
+
+    let amount: i128 = ev.2.try_into_val(&env).unwrap();
+    assert_eq!(amount, 300, "amount mismatch");
+
+    // Plain transfer must NOT emit xfer_from
+    let other_user = Address::generate(&env);
+    client.mint(&other_user, &500);
+    client.transfer(&other_user, &receiver, &100);
+
+    let events2 = env.events().all();
+    let xfer_from_count = events2.iter().filter(|e| {
+        e.1.first()
+            .and_then(|t| t.try_into_val(&env).ok())
+            .map(|s: soroban_sdk::Symbol| s == symbol_short!("xfer_from"))
+            .unwrap_or(false)
+    }).count();
+
+    // Still only 1 xfer_from event (from the transfer_from call above)
+    assert_eq!(xfer_from_count, 1, "plain transfer must not emit xfer_from");
+}
+
 #[test]
 fn test_transfer_from_insufficient_allowance() {
     let env = Env::default();
