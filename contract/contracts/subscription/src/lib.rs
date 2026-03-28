@@ -185,6 +185,12 @@ impl MyfansContract {
         token: Address,
     ) {
         fan.require_auth();
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        assert!(!paused, "contract is paused");
 
         let sub: Subscription = env
             .storage()
@@ -258,6 +264,12 @@ impl MyfansContract {
 
     pub fn create_subscription(env: Env, fan: Address, creator: Address, duration_ledgers: u32) {
         fan.require_auth();
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        assert!(!paused, "contract is paused");
 
         let token: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         let price: i128 = env.storage().instance().get(&DataKey::Price).unwrap();
