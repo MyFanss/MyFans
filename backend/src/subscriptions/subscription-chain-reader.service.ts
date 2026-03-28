@@ -9,6 +9,7 @@ import {
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
 import { CircuitOpenError, withRetry } from '../common/utils/rpc-retry';
+import { resolveSubscriptionContractId } from '../common/contract-deployed-env';
 
 export type ChainReadResult =
   | { ok: true; isSubscriber: boolean }
@@ -31,9 +32,9 @@ export class SubscriptionChainReaderService {
   private readonly logger = new Logger(SubscriptionChainReaderService.name);
 
   getConfiguredContractId(): string | undefined {
-    const direct = process.env.CONTRACT_ID_SUBSCRIPTION?.trim();
-    if (direct) return direct;
-    return process.env.CONTRACT_ID_MYFANS?.trim();
+    return (
+      resolveSubscriptionContractId() ?? process.env.CONTRACT_ID_MYFANS?.trim()
+    );
   }
 
   private getRpcUrl(): string {
