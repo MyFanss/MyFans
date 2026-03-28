@@ -1,9 +1,15 @@
 //! Treasury contract for holding platform funds
 
-use soroban_sdk::{contract, contractimpl, token, Address, Env};
+use soroban_sdk::{contract, contracterror, contractimpl, panic_with_error, token, Address, Env};
 
 const ADMIN: &str = "ADMIN";
 const TOKEN: &str = "TOKEN";
+
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Error {
+    InsufficientBalance = 1,
+}
 
 #[contract]
 pub struct Treasury;
@@ -33,7 +39,7 @@ impl Treasury {
         let balance = token_client.balance(&contract_address);
 
         if balance < amount {
-            panic!("insufficient balance");
+            panic_with_error!(&env, Error::InsufficientBalance);
         }
 
         token_client.transfer(&contract_address, &to, &amount);

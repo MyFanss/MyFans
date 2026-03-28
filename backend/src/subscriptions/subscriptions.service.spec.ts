@@ -1,16 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { EventBus } from '../events/event-bus';
+import { InProcessEventBus } from '../events/in-process-event-bus';
+import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
+import { SERVER_NETWORK, SubscriptionsService } from './subscriptions.service';
 import {
   SUBSCRIPTION_EVENT_PUBLISHER,
   SUBSCRIPTION_RENEWAL_FAILED,
   SubscriptionEventPublisher,
 } from './events';
-import { SubscriptionsService, SERVER_NETWORK } from './subscriptions.service';
-import { EventBus } from '../events/event-bus';
-import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
-
-function makeEventBus(): EventBus {
-  return { publish: jest.fn() } as unknown as EventBus;
-}
 
 function makeChainReader(): SubscriptionChainReaderService {
   return {
@@ -19,33 +16,25 @@ function makeChainReader(): SubscriptionChainReaderService {
   } as unknown as SubscriptionChainReaderService;
 }
 
-async function buildService(
-  eventPublisher?: jest.Mocked<SubscriptionEventPublisher>,
-): Promise<SubscriptionsService> {
-  const providers: object[] = [
-    SubscriptionsService,
-    { provide: EventBus, useValue: makeEventBus() },
-    { provide: SubscriptionChainReaderService, useValue: makeChainReader() },
-  ];
-  if (eventPublisher) {
-    providers.push({
-      provide: SUBSCRIPTION_EVENT_PUBLISHER,
-      useValue: eventPublisher,
-    });
-  }
-  const module: TestingModule = await Test.createTestingModule({
-    providers,
-  }).compile();
-  return module.get<SubscriptionsService>(SubscriptionsService);
-}
-
 describe('SubscriptionsService', () => {
   let service: SubscriptionsService;
   let eventPublisher: jest.Mocked<SubscriptionEventPublisher>;
+  let eventBus: InProcessEventBus;
 
   beforeEach(async () => {
     eventPublisher = { emit: jest.fn() };
-    service = await buildService(eventPublisher);
+    eventBus = new InProcessEventBus();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SubscriptionsService,
+        { provide: EventBus, useValue: eventBus },
+        { provide: SubscriptionChainReaderService, useValue: makeChainReader() },
+        { provide: SUBSCRIPTION_EVENT_PUBLISHER, useValue: eventPublisher },
+      ],
+    }).compile();
+
+    service = module.get<SubscriptionsService>(SubscriptionsService);
   });
 
   it('emits renewal_failed event when checkout failure is recorded', async () => {
@@ -173,6 +162,60 @@ describe('SubscriptionsService', () => {
     });
   });
 
+  it('publishes a renewal event when confirming an existing subscription', () => {
+    const handler = jest.fn();
+    eventBus.subscribe('subscription.renewed', handler);
+
+    service.addSubscription(
+      'GFANADDRESS333333333333333333333333333333333333333333333333',
+      'GAAAAAAAAAAAAAAA',
+      1,
+      Math.floor(Date.now() / 1000) + 60,
+    );
+
+    const checkout = service.createCheckout(
+      'GFANADDRESS333333333333333333333333333333333333333333333333',
+      'GAAAAAAAAAAAAAAA',
+      1,
+    );
+
+    const result = service.confirmSubscription(checkout.id, 'tx-renew');
+
+    expect(result.lifecycleEvent).toBe('renewed');
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'subscription.renewed',
+        fan: checkout.fanAddress,
+        creator: checkout.creatorAddress,
+      }),
+    );
+  });
+
+  it('publishes a cancelled event when subscription is cancelled', () => {
+    const handler = jest.fn();
+    eventBus.subscribe('subscription.cancelled', handler);
+
+    const subscription = service.addSubscription(
+      'GFANADDRESS444444444444444444444444444444444444444444444444',
+      'GAAAAAAAAAAAAAAA',
+      1,
+      Math.floor(Date.now() / 1000) + 60,
+    );
+
+    const result = service.cancelSubscription(
+      'GFANADDRESS444444444444444444444444444444444444444444444444',
+      'GAAAAAAAAAAAAAAA',
+    );
+
+    expect(result.subscriptionId).toBe(subscription.id);
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'subscription.cancelled',
+        subscriptionId: subscription.id,
+      }),
+    );
+  });
+
   describe('assertNetworkMatch (network mismatch detection)', () => {
     it('does not throw when requestNetwork matches server network', () => {
       expect(() => service.assertNetworkMatch(SERVER_NETWORK)).not.toThrow();
@@ -231,6 +274,64 @@ describe('SubscriptionsService', () => {
     });
   });
 
+  describe('getFanDashboardSummary', () => {
+    const fan = `G${'D'.repeat(55)}`;
+    const creator1 = `G${'E'.repeat(55)}`;
+    const creator2 = `G${'F'.repeat(55)}`;
+
+    it('returns empty summary when fan has no active subscriptions', () => {
+      const result = service.getFanDashboardSummary(fan);
+      expect(result.fan).toBe(fan);
+      expect(result.totalActive).toBe(0);
+      expect(result.subscriptions).toEqual([]);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
+      expect(result.totalPages).toBe(0);
+    });
+
+    it('returns only active subscriptions with correct renewsAt', () => {
+      const futureExpiry = Math.floor(Date.now() / 1000) + 86400;
+      const pastExpiry = Math.floor(Date.now() / 1000) - 86400;
+      service.addSubscription(fan, creator1, 1, futureExpiry);
+      service.addSubscription(fan, creator2, 1, pastExpiry);
+
+      const result = service.getFanDashboardSummary(fan);
+      expect(result.totalActive).toBe(1);
+      expect(result.subscriptions).toHaveLength(1);
+      expect(result.subscriptions[0].creatorId).toBe(creator1);
+      expect(result.subscriptions[0].renewsAtUnix).toBe(futureExpiry);
+      expect(result.subscriptions[0].status).toBe('active');
+    });
+
+    it('paginates active subscriptions', () => {
+      const expiry = Math.floor(Date.now() / 1000) + 86400;
+      service.addSubscription(fan, `G${'G'.repeat(55)}`, 1, expiry);
+      service.addSubscription(fan, `G${'H'.repeat(55)}`, 1, expiry + 100);
+      service.addSubscription(fan, `G${'I'.repeat(55)}`, 1, expiry + 200);
+
+      const page1 = service.getFanDashboardSummary(fan, 1, 2);
+      expect(page1.totalActive).toBe(3);
+      expect(page1.subscriptions).toHaveLength(2);
+      expect(page1.totalPages).toBe(2);
+
+      const page2 = service.getFanDashboardSummary(fan, 2, 2);
+      expect(page2.subscriptions).toHaveLength(1);
+      expect(page2.page).toBe(2);
+    });
+
+    it('sorts subscriptions by soonest renewsAt first', () => {
+      const now = Math.floor(Date.now() / 1000);
+      const creatorA = `G${'J'.repeat(55)}`;
+      const creatorB = `G${'K'.repeat(55)}`;
+      service.addSubscription(fan, creatorA, 1, now + 7200);
+      service.addSubscription(fan, creatorB, 1, now + 3600);
+
+      const result = service.getFanDashboardSummary(fan);
+      expect(result.subscriptions[0].creatorId).toBe(creatorB);
+      expect(result.subscriptions[1].creatorId).toBe(creatorA);
+    });
+  });
+
   describe('getFanCreatorSubscriptionState', () => {
     const fan = `G${'A'.repeat(55)}`;
     const creator = `G${'B'.repeat(55)}`;
@@ -242,21 +343,21 @@ describe('SubscriptionsService', () => {
     });
 
     it('returns none when no subscription', async () => {
-      const r = await service.getFanCreatorSubscriptionState(fan, creator);
-      expect(r.indexedStatus).toBe('none');
-      expect(r.active).toBe(false);
-      expect(r.indexed).toBeNull();
-      expect(r.chain.configured).toBe(false);
+      const result = await service.getFanCreatorSubscriptionState(fan, creator);
+      expect(result.indexedStatus).toBe('none');
+      expect(result.active).toBe(false);
+      expect(result.indexed).toBeNull();
+      expect(result.chain.configured).toBe(false);
     });
 
     it('returns active with expiry when indexed subscription exists', async () => {
       const future = Math.floor(Date.now() / 1000) + 3600;
       service.addSubscription(fan, creator, 1, future);
-      const r = await service.getFanCreatorSubscriptionState(fan, creator);
-      expect(r.active).toBe(true);
-      expect(r.indexedStatus).toBe('active');
-      expect(r.indexed?.expiresAtUnix).toBe(future);
-      expect(r.indexed?.planId).toBe(1);
+      const result = await service.getFanCreatorSubscriptionState(fan, creator);
+      expect(result.active).toBe(true);
+      expect(result.indexedStatus).toBe('active');
+      expect(result.indexed?.expiresAtUnix).toBe(future);
+      expect(result.indexed?.planId).toBe(1);
     });
   });
 });

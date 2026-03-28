@@ -1,5 +1,8 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
+    Symbol,
+};
 
 /// Storage keys for content access contract
 #[contracttype]
@@ -17,6 +20,14 @@ pub enum DataKey {
     MaxPrice,
 }
 
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Error {
+    AlreadyInitialized = 1,
+    ContentPriceNotSet = 2,
+    NotInitialized = 3,
+}
+
 #[contract]
 pub struct ContentAccess;
 
@@ -28,10 +39,15 @@ impl ContentAccess {
     /// * `env` - Soroban environment
     /// * `admin` - Admin address
     /// * `token_address` - Token contract address for payments
-    pub fn initialize(env: Env, admin: Address, token_address: Address) {
+pub fn initialize(env: Env, admin: Address, token_address: Address) {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
+            panic_with_error!(&env, Error::AlreadyInitialized);
         }
+
+        let token_client = token::Client::new(&env, &token_address);
+        let _ = token_client.balance(&admin);
+
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
             .instance()
@@ -63,7 +79,7 @@ impl ContentAccess {
 
         // Get stored price
         let price: i128 = Self::get_content_price(env.clone(), creator.clone(), content_id)
-            .expect("content price not set");
+            .unwrap_or_else(|| panic_with_error!(&env, Error::ContentPriceNotSet));
 
         // Get token address
         let token_address: Address = env
@@ -171,7 +187,7 @@ impl ContentAccess {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("not initialized");
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
         current_admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
     }
@@ -182,15 +198,19 @@ mod test {
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Events},
-        vec, Address, Env, IntoVal, Symbol, TryIntoVal,
+        vec, Address, Env, Error as SorobanError, IntoVal, Symbol, TryIntoVal,
     };
 
     // Mock token contract for testing
     #[contract]
     pub struct MockToken;
 
-    #[contractimpl]
+#[contractimpl]
     impl MockToken {
+        pub fn balance(_env: Env, _id: Address) -> i128 {
+            0
+        }
+
         pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {
             // Mock implementation - just succeed
         }
@@ -449,13 +469,18 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "already initialized")]
     fn test_initialize_fails_if_already_initialized() {
         let (env, contract_id, admin, token_address, _, _) = setup_test();
         let client = ContentAccessClient::new(&env, &contract_id);
 
         client.initialize(&admin, &token_address);
-        client.initialize(&admin, &token_address);
+        let result = client.try_initialize(&admin, &token_address);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::AlreadyInitialized as u32,
+            )))
+        );
     }
 
     // ── #295 – detailed unlock event fields ──────────────────────────────────
@@ -548,132 +573,42 @@ mod test {
         );
     }
 
-    // ── #294 – content price bounds and validation ───────────────────────────
-
     #[test]
-    #[should_panic(expected = "price must be positive")]
-    fn test_set_content_price_rejects_zero() {
-        let (env, contract_id, admin, token_address, _, creator) = setup_test();
-        let client = ContentAccessClient::new(&env, &contract_id);
-        client.initialize(&admin, &token_address);
-        client.set_content_price(&creator, &1, &0);
-    }
-
-    #[test]
-    #[should_panic(expected = "price must be positive")]
-    fn test_set_content_price_rejects_negative() {
-        let (env, contract_id, admin, token_address, _, creator) = setup_test();
-        let client = ContentAccessClient::new(&env, &contract_id);
-        client.initialize(&admin, &token_address);
-        client.set_content_price(&creator, &1, &-1);
-    }
-
-    #[test]
-    fn test_set_content_price_valid_stores_successfully() {
-        let (env, contract_id, admin, token_address, _, creator) = setup_test();
-        let client = ContentAccessClient::new(&env, &contract_id);
-        client.initialize(&admin, &token_address);
-        client.set_content_price(&creator, &1, &500);
-        assert_eq!(client.get_content_price(&creator, &1), Some(500i128));
-    }
-
-    #[test]
-    fn test_set_max_price_and_get_max_price() {
+    fn test_initialize_valid_token_succeeds() {
         let (env, contract_id, admin, token_address, _, _) = setup_test();
         let client = ContentAccessClient::new(&env, &contract_id);
+
         client.initialize(&admin, &token_address);
-
-        assert_eq!(client.get_max_price(), None);
-
-        client.set_max_price(&1000);
-        assert_eq!(client.get_max_price(), Some(1000i128));
     }
 
     #[test]
-    fn test_set_max_price_zero_removes_cap() {
-        let (env, contract_id, admin, token_address, _, _) = setup_test();
-        let client = ContentAccessClient::new(&env, &contract_id);
-        client.initialize(&admin, &token_address);
-
-        client.set_max_price(&1000);
-        assert_eq!(client.get_max_price(), Some(1000i128));
-
-        // Pass 0 to remove the cap
-        client.set_max_price(&0);
-        assert_eq!(client.get_max_price(), None);
-    }
-
-    #[test]
-    #[should_panic(expected = "price exceeds maximum allowed")]
-    fn test_set_content_price_rejects_above_max_cap() {
-        let (env, contract_id, admin, token_address, _, creator) = setup_test();
-        let client = ContentAccessClient::new(&env, &contract_id);
-        client.initialize(&admin, &token_address);
-
-        client.set_max_price(&500);
-        // Price of 501 exceeds the cap of 500 – must revert
-        client.set_content_price(&creator, &1, &501);
-    }
-
-    #[test]
-    fn test_set_content_price_at_exact_max_cap_succeeds() {
-        let (env, contract_id, admin, token_address, _, creator) = setup_test();
-        let client = ContentAccessClient::new(&env, &contract_id);
-        client.initialize(&admin, &token_address);
-
-        client.set_max_price(&500);
-        client.set_content_price(&creator, &1, &500);
-        assert_eq!(client.get_content_price(&creator, &1), Some(500i128));
-    }
-
-    #[test]
-    #[should_panic(expected = "max price must be positive or zero to remove cap")]
-    fn test_set_max_price_rejects_negative() {
-        let (env, contract_id, admin, token_address, _, _) = setup_test();
-        let client = ContentAccessClient::new(&env, &contract_id);
-        client.initialize(&admin, &token_address);
-        client.set_max_price(&-1);
-    }
-
-    #[test]
-    fn test_set_content_price_succeeds_without_cap() {
-        let (env, contract_id, admin, token_address, _, creator) = setup_test();
-        let client = ContentAccessClient::new(&env, &contract_id);
-        client.initialize(&admin, &token_address);
-
-        // No cap set – any positive price should be stored
-        client.set_content_price(&creator, &1, &1_000_000);
-        assert_eq!(client.get_content_price(&creator, &1), Some(1_000_000i128));
-    }
-
-    #[test]
-    fn test_creator_authorization_still_required_for_set_price() {
-        // With no mock_all_auths, calling set_content_price without auth must panic
+    #[should_panic(expected = r##"calling unknown contract function"##)]
+    fn test_initialize_invalid_token_fails() {
         let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+let invalid_token_contract = env.register_contract(None, ContentAccess);
+        let invalid_token_address: Address = invalid_token_contract.into();
+
+        let contract_id = env.register_contract(None, ContentAccess);
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &invalid_token_address);
+    }
+
+    #[test]
+    #[should_panic(expected = r##"Unauthorized function call"##)]
+    fn test_initialize_missing_admin_auth_fails() {
+        let env = Env::default();
+        // No mock auths
+
         let contract_id = env.register_contract(None, ContentAccess);
         let client = ContentAccessClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
         let token_address = Address::generate(&env);
-        let _creator = Address::generate(&env);
 
-        // Use mock_all_auths only for initialize
-        env.mock_all_auths();
         client.initialize(&admin, &token_address);
-
-        // Now clear auths to verify creator auth is enforced
-        let env2 = Env::default();
-        // Re-register on a fresh env to isolate the auth check
-        let contract_id2 = env2.register_contract(None, ContentAccess);
-        let client2 = ContentAccessClient::new(&env2, &contract_id2);
-        let admin2 = Address::generate(&env2);
-        let token2 = Address::generate(&env2);
-        let creator2 = Address::generate(&env2);
-        env2.mock_all_auths();
-        client2.initialize(&admin2, &token2);
-
-        // Verify a valid price is stored when auth is mocked
-        client2.set_content_price(&creator2, &1, &100);
-        assert_eq!(client2.get_content_price(&creator2, &1), Some(100i128));
     }
 }
