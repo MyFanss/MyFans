@@ -216,6 +216,115 @@ describe('SubscriptionsService', () => {
     );
   });
 
+  describe('listCreatorSubscribers', () => {
+    const creator = 'GCREATOR111111111111111111111111111111111111111111111111';
+
+    it('returns empty paginated response when creator has no subscribers', () => {
+      const result = service.listCreatorSubscribers(creator);
+
+      expect(result.data).toEqual([]);
+      expect(result.total).toBe(0);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
+      expect(result.totalPages).toBe(0);
+    });
+
+    it('returns creator subscribers with derived active/expired status', () => {
+      const futureExpiry = Math.floor(Date.now() / 1000) + 3600;
+      const pastExpiry = Math.floor(Date.now() / 1000) - 3600;
+
+      service.addSubscription(
+        'GFANACTIVE111111111111111111111111111111111111111111111111',
+        creator,
+        1,
+        futureExpiry,
+      );
+      service.addSubscription(
+        'GFANEXPIRED11111111111111111111111111111111111111111111111',
+        creator,
+        2,
+        pastExpiry,
+      );
+      service.addSubscription(
+        'GFANOTHERCR11111111111111111111111111111111111111111111111',
+        'GOTHERCREATOR111111111111111111111111111111111111111111111',
+        1,
+        futureExpiry,
+      );
+
+      const result = service.listCreatorSubscribers(creator);
+
+      expect(result.total).toBe(2);
+      expect(result.data).toHaveLength(2);
+      expect(result.data.map((sub) => sub.status).sort()).toEqual([
+        'active',
+        'expired',
+      ]);
+      expect(result.data.every((sub) => sub.creatorAddress === creator)).toBe(true);
+    });
+
+    it('filters by active and expired status', () => {
+      const futureExpiry = Math.floor(Date.now() / 1000) + 3600;
+      const pastExpiry = Math.floor(Date.now() / 1000) - 3600;
+
+      service.addSubscription(
+        'GFANACTIVEF11111111111111111111111111111111111111111111111',
+        creator,
+        1,
+        futureExpiry,
+      );
+      service.addSubscription(
+        'GFANEXPIREDF1111111111111111111111111111111111111111111111',
+        creator,
+        1,
+        pastExpiry,
+      );
+
+      const activeOnly = service.listCreatorSubscribers(creator, 'active');
+      const expiredOnly = service.listCreatorSubscribers(creator, 'expired');
+
+      expect(activeOnly.total).toBe(1);
+      expect(activeOnly.data[0].status).toBe('active');
+      expect(expiredOnly.total).toBe(1);
+      expect(expiredOnly.data[0].status).toBe('expired');
+    });
+
+    it('paginates creator subscribers', () => {
+      const futureExpiry = Math.floor(Date.now() / 1000) + 3600;
+
+      service.addSubscription(
+        'GFANPAGEA1111111111111111111111111111111111111111111111111',
+        creator,
+        1,
+        futureExpiry,
+      );
+      service.addSubscription(
+        'GFANPAGEB1111111111111111111111111111111111111111111111111',
+        creator,
+        1,
+        futureExpiry + 100,
+      );
+      service.addSubscription(
+        'GFANPAGEC1111111111111111111111111111111111111111111111111',
+        creator,
+        1,
+        futureExpiry + 200,
+      );
+
+      const page1 = service.listCreatorSubscribers(creator, undefined, 1, 2);
+      const page2 = service.listCreatorSubscribers(creator, undefined, 2, 2);
+
+      expect(page1.total).toBe(3);
+      expect(page1.data).toHaveLength(2);
+      expect(page1.totalPages).toBe(2);
+
+      expect(page2.total).toBe(3);
+      expect(page2.data).toHaveLength(1);
+      expect(page2.page).toBe(2);
+      expect(page2.totalPages).toBe(2);
+    });
+  });
+
   describe('assertNetworkMatch (network mismatch detection)', () => {
     it('does not throw when requestNetwork matches server network', () => {
       expect(() => service.assertNetworkMatch(SERVER_NETWORK)).not.toThrow();
