@@ -121,16 +121,24 @@ jobs:
           - name: rust-stable-cli-23
             rust: stable
             stellar_cli: "23.4.1"
+            install_targets: wasm32-unknown-unknown,wasm32v1-none
+            run_deploy_smoke: true
           - name: rust-stable-cli-25
             rust: stable
             stellar_cli: "25.2.0"
+            install_targets: wasm32-unknown-unknown,wasm32v1-none
+            run_deploy_smoke: true
           # Minimum supported toolchain in CI (keep aligned with Soroban SDK / MSRV)
           - name: rust-1.82-cli-23
             rust: "1.82"
             stellar_cli: "23.4.1"
+            install_targets: wasm32-unknown-unknown
+            run_deploy_smoke: false
           - name: rust-1.82-cli-25
             rust: "1.82"
             stellar_cli: "25.2.0"
+            install_targets: wasm32-unknown-unknown
+            run_deploy_smoke: false
     steps:
       - uses: actions/checkout@v4
 
@@ -143,7 +151,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-          targets: wasm32-unknown-unknown,wasm32v1-none
+          targets: ${{ matrix.install_targets }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -160,6 +168,7 @@ jobs:
         working-directory: contract
 
       - name: Cache stellar CLI binary
+        if: matrix.run_deploy_smoke
         id: stellar-cache
         uses: actions/cache@v4
         with:
@@ -167,10 +176,11 @@ jobs:
           key: stellar-cli-${{ matrix.stellar_cli }}-${{ runner.os }}-v1
 
       - name: Install Stellar CLI ${{ matrix.stellar_cli }}
-        if: steps.stellar-cache.outputs.cache-hit != 'true'
+        if: matrix.run_deploy_smoke && steps.stellar-cache.outputs.cache-hit != 'true'
         run: cargo install stellar-cli --locked --version ${{ matrix.stellar_cli }}
 
       - name: Deploy and verify on Futurenet (smoke)
+        if: matrix.run_deploy_smoke
         run: |
           ./scripts/deploy.sh \
             --network futurenet \
