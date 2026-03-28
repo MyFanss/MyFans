@@ -8,6 +8,10 @@ Use [`AUTH_MATRIX.md`](./AUTH_MATRIX.md) for method-by-method signer requirement
 
 When any contract interface or auth rule changes, update `AUTH_MATRIX.md` in the same PR.
 
+## Contract Interface Documentation
+
+See comprehensive method docs (args, auth, examples, events): [docs/interfaces/](docs/interfaces/)
+
 ## Contracts deployed by script
 
 1. `myfans-token`
