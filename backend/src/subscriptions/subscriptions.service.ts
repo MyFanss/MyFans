@@ -69,6 +69,7 @@ interface Plan {
   asset: string;
   amount: string;
   intervalDays: number;
+  updatedAt?: Date;
 }
 
 function generateId(): string {
@@ -119,6 +120,41 @@ export class SubscriptionsService {
       'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5',
       { name: 'Creator 2', description: 'Exclusive videos and photos' },
     );
+    
+    // Initialize default plans
+    this.initializePlans();
+  }
+
+  private initializePlans(): void {
+    const defaultPlans: Plan[] = [
+      {
+        id: 1,
+        creator: 'GAAAAAAAAAAAAAAA',
+        asset: 'XLM',
+        amount: '10',
+        intervalDays: 30,
+        updatedAt: new Date(),
+      },
+      {
+        id: 2,
+        creator: 'GAAAAAAAAAAAAAAA',
+        asset: 'USDC:GA7Z6G7T3LSSKDJPLAWJH25C4D4PQV4CEMM5S5E6LQD3VDF5W6G6F3K',
+        amount: '5',
+        intervalDays: 30,
+        updatedAt: new Date(),
+      },
+      {
+        id: 3,
+        creator:
+          'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5',
+        asset: 'XLM',
+        amount: '25',
+        intervalDays: 7,
+        updatedAt: new Date(),
+      },
+    ];
+    
+    defaultPlans.forEach(plan => this.plans.set(plan.id, plan));
   }
 
   assertNetworkMatch(requestNetwork: string | undefined): void {
