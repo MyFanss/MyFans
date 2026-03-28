@@ -23,7 +23,9 @@ import {
 import { UsersService } from './users.service';
 import { CreateUserDto } from './create-user.dto';
 import { UpdateUserDto } from './update-user.dto';
-import { UserProfileDto, PaginationDto, PaginatedUsersDto } from './user-profile.dto';
+import { PaginationDto, PaginatedResponseDto } from '../common/dto';
+import { UserProfileDto } from './user-profile.dto';
+import type PaginatedUsersDto = PaginatedResponseDto<UserProfileDto> & { data: UserProfileDto[] };
 
 @ApiTags('Users')
 @Controller('users')
