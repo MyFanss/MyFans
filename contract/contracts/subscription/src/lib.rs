@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
-    Symbol,
+    String, Symbol,
 };
 
 #[contracttype]
@@ -39,6 +39,14 @@ pub enum DataKey {
     Paused,
 }
 
+impl DataKey {
+    /// Canonical subscription storage key; serializes as [`DataKey::Sub`].
+    #[inline]
+    pub fn subscription(fan: Address, creator: Address) -> Self {
+        DataKey::Sub(fan, creator)
+    }
+}
+
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -47,6 +55,21 @@ pub enum Error {
     SubscriptionNotFound = 3,
     SubscriptionExpired = 4,
     AdminNotInitialized = 5,
+    InvalidFeeRecipient = 6,
+}
+
+/// Stellar "null" account (GAAA...WHF) — not a valid fee recipient.
+fn null_account_address(env: &Env) -> Address {
+    Address::from_string(&String::from_str(
+        env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    ))
+}
+
+fn require_valid_fee_recipient(env: &Env, addr: &Address) {
+    if addr == &null_account_address(env) {
+        panic_with_error!(env, Error::InvalidFeeRecipient);
+    }
 }
 
 #[contract]
@@ -65,6 +88,7 @@ impl MyfansContract {
         if env.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
+        require_valid_fee_recipient(&env, &fee_recipient);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         env.storage()
@@ -347,6 +371,41 @@ impl MyfansContract {
         env.storage().instance().set(&DataKey::Paused, &false);
         env.events()
             .publish((Symbol::new(&env, "unpaused"),), admin);
+    }
+
+    /// Rotate the protocol fee recipient (admin only).
+    ///
+    /// Rejects the Stellar null / burn strkey (`GAAA...WHF`). On success, emits
+    /// `fee_recipient_updated` (on-chain symbol; product docs: fee-recipient-updated)
+    /// with topics `(fee_recipient_updated, old_recipient, new_recipient)`.
+    pub fn set_fee_recipient(env: Env, new_fee_recipient: Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
+        admin.require_auth();
+
+        require_valid_fee_recipient(&env, &new_fee_recipient);
+
+        let old: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeRecipient)
+            .unwrap();
+
+        env.storage()
+            .instance()
+            .set(&DataKey::FeeRecipient, &new_fee_recipient);
+
+        env.events().publish(
+            (
+                Symbol::new(&env, "fee_recipient_updated"),
+                old,
+                new_fee_recipient,
+            ),
+            (),
+        );
     }
 
     /// Check if the contract is paused (view function)
