@@ -28,6 +28,11 @@ pub fn has_access(env: Env, buyer: Address, creator: Address, content_id: u64) -
 ```
 Check if buyer has access to specific content.
 
+#### admin
+```rust
+pub fn admin(env: Env) -> Address
+```
+Returns the configured admin address (view-only, no authorization).
 ## Acceptance Criteria Verification
 
 ### ✅ Buyer can unlock content
