@@ -135,3 +135,107 @@ fn test_rate_limit_after_window_succeeds() {
     assert_eq!(client.get_creator_id(&creator1), Some(111));
     assert_eq!(client.get_creator_id(&creator2), Some(222));
 }
+
+// ── unregister_creator tests ──────────────────────────────────────────────────
+
+#[test]
+fn test_admin_can_unregister_creator() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.register_creator(&creator, &creator, &42);
+    assert_eq!(client.get_creator_id(&creator), Some(42));
+
+    client.unregister_creator(&creator);
+    assert_eq!(client.get_creator_id(&creator), None);
+}
+
+#[test]
+#[should_panic(expected = "creator not registered")]
+fn test_unregister_non_existing_creator_reverts() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    client.initialize(&admin);
+    // never registered — should panic
+    client.unregister_creator(&creator);
+}
+
+#[test]
+fn test_creator_can_reregister_after_unregistration() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    client.register_creator(&creator, &creator, &1);
+    client.unregister_creator(&creator);
+    assert_eq!(client.get_creator_id(&creator), None);
+
+    // advance past rate limit window then re-register
+    env.ledger().with_mut(|li| li.sequence_number = 115);
+    client.register_creator(&creator, &creator, &2);
+    assert_eq!(client.get_creator_id(&creator), Some(2));
+}
+
+#[test]
+fn test_rate_limit_preserved_after_unregister() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator1 = Address::generate(&env);
+    let creator2 = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    client.register_creator(&admin, &creator1, &10);
+    client.unregister_creator(&creator1);
+
+    // advance past rate limit window — registration should succeed
+    env.ledger().with_mut(|li| li.sequence_number = 111);
+    client.register_creator(&admin, &creator2, &20);
+    assert_eq!(client.get_creator_id(&creator2), Some(20));
+}
+
+#[test]
+#[should_panic(expected = "rate limit")]
+fn test_rate_limit_still_enforced_after_unregister() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator1 = Address::generate(&env);
+    let creator2 = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    client.register_creator(&admin, &creator1, &10);
+    client.unregister_creator(&creator1);
+
+    // still within rate limit window — must be blocked
+    client.register_creator(&admin, &creator2, &20);
+}
