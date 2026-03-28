@@ -12,6 +12,7 @@ import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { CreatorsModule } from './creators/creators.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { AuthModule } from './auth/auth.module';
+import { ContentModule } from './content/content.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { AuthModule } from './auth/auth.module';
     CreatorsModule,
     SubscriptionsModule,
     HealthModule,
+    ContentModule,
   ],
   controllers: [AppController, ExampleController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
