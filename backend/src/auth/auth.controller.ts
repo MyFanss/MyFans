@@ -1,7 +1,10 @@
-import { BadRequestException, Body, Controller, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, HttpCode, HttpStatus, Post, UseInterceptors } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import { WalletAuthService } from './wallet-auth.service';
+import { RequestChallengeDto, VerifyChallengeDto } from './wallet-auth.dto';
 import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
 
 @ApiTags('auth')
@@ -14,6 +17,9 @@ export class AuthController {
 
   @Post('login')
   @Throttle({ auth: { limit: 5, ttl: 60000 } })
+  @ApiOperation({ summary: 'Authenticate with a Stellar wallet address' })
+  @ApiResponse({ status: 201, description: 'Session created' })
+  @ApiResponse({ status: 400, description: 'Invalid Stellar address' })
   async login(@Body() body: { address?: string }) {
     const address = body.address ?? '';
     if (!this.authService.validateStellarAddress(address)) {
@@ -30,6 +36,9 @@ export class AuthController {
     message: 'Use POST /v1/auth/login instead. Removal date: 2026-01-01.',
   })
   @UseInterceptors(new DeprecationInterceptor(new Reflector()))
+  @ApiOperation({ summary: '[Deprecated] Register with a Stellar wallet address', deprecated: true })
+  @ApiResponse({ status: 201, description: 'Session created' })
+  @ApiResponse({ status: 400, description: 'Invalid Stellar address' })
   async register(@Body() body: { address?: string }) {
     const address = body.address ?? '';
     if (!this.authService.validateStellarAddress(address)) {

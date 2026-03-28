@@ -11,6 +11,8 @@ import { SubscriptionIndexRepository } from './repositories/subscription-index.r
 import { SubscriptionEventPollerService } from './services/subscription-event-poller.service';
 import { SUBSCRIPTION_EVENT_PUBLISHER } from './events';
 import { FanBearerGuard } from './guards/fan-bearer.guard';
+import { GatedContentGuard } from './gated-content.guard';
+import { SubscriptionCacheService } from './subscription-cache.service';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
 import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionsService } from './subscriptions.service';
