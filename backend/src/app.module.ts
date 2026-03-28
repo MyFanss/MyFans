@@ -17,7 +17,11 @@ import { ModerationModule } from './moderation/moderation.module';
 
 @Module({
   imports: [
-    ThrottlerModule.forRoot([{ name: 'auth', ttl: 60000, limit: 5 }]),
+    ThrottlerModule.forRoot([
+      { name: 'short', ttl: 60000, limit: 10 },
+      { name: 'medium', ttl: 60000, limit: 50 },
+      { name: 'long', ttl: 60000, limit: 100 },
+    ]),
     LoggingModule,
     AuthModule,
     CreatorsModule,

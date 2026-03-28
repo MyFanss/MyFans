@@ -353,3 +353,62 @@ fn test_multiple_initializations_with_different_envs() {
     assert_eq!(client2.symbol(), symbol2);
     assert_eq!(client2.decimals(), 8);
 }
+
+// ── Issue #276 – Enforce mint admin authorization ────────────────────────────
+
+/// Admin can mint: balance and total supply increase, mint event fired.
+#[test]
+fn test_mint_admin_can_mint() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0,
+    );
+
+    let recipient = Address::generate(&env);
+    let mint_amount: i128 = 500_000;
+
+    // Admin-authorized mint must succeed
+    client.mint(&recipient, &mint_amount);
+
+    assert_eq!(client.balance(&recipient), mint_amount);
+    assert_eq!(client.total_supply(), mint_amount);
+}
+
+/// Non-admin caller: `admin.require_auth()` panics because no matching auth
+/// is mocked for the stored admin, which is the expected behaviour.
+#[test]
+#[should_panic]
+fn test_mint_non_admin_is_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0,
+    );
+
+    // Clear ALL mocked auths. After this, admin.require_auth() inside mint
+    // will find no matching mock and Soroban will panic (auth failure).
+    env.mock_auths(&[]);
+
+    let non_admin = Address::generate(&env);
+    // This must panic – the admin's auth is no longer mocked.
+    client.mint(&non_admin, &100);
+}
