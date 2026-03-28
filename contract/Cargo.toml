@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    ".",
+    "contracts/myfans-contract",
     "contracts/content-access",
     "contracts/content-likes",
     "contracts/creator-deposits",
@@ -26,25 +26,6 @@ publish = false
 
 [workspace.dependencies]
 soroban-sdk = "21.7.0"
-
-[package]
-name = "myfans-contract"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-license.workspace = true
-repository.workspace = true
-description.workspace = true
-publish.workspace = true
-
-[lib]
-crate-type = ["cdylib"]
-
-[dependencies]
-soroban-sdk = { workspace = true }
-
-[dev-dependencies]
-soroban-sdk = { workspace = true, features = ["testutils"] }
 
 [profile.release]
 opt-level = "z"
