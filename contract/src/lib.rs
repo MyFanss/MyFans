@@ -1,5 +1,8 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
+    Symbol,
+};
 
 #[contracttype]
 pub struct Plan {
@@ -39,6 +42,17 @@ pub enum DataKey {
     Paused,
 }
 
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Error {
+    CreatorAlreadyRegistered = 1,
+    NotInitialized = 2,
+    CreatorNotRegistered = 3,
+    Paused = 4,
+    SubscriptionDoesNotExist = 5,
+    AdminNotInitialized = 6,
+}
+
 pub mod treasury;
 
 #[contract]
@@ -67,7 +81,7 @@ impl MyfansContract {
             .instance()
             .has(&DataKey::Creator(creator.clone()))
         {
-            panic!("creator already registered");
+            panic_with_error!(&env, Error::CreatorAlreadyRegistered);
         }
 
         // Get and increment creator count
@@ -106,7 +120,7 @@ impl MyfansContract {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("not initialized");
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
         admin.require_auth();
 
         // Check if creator is registered
@@ -114,7 +128,7 @@ impl MyfansContract {
             .storage()
             .instance()
             .get(&DataKey::Creator(creator_address.clone()))
-            .expect("creator not registered");
+            .unwrap_or_else(|| panic_with_error!(&env, Error::CreatorNotRegistered));
 
         // Update verification status
         creator_info.is_verified = verified;
@@ -150,7 +164,9 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false);
-        assert!(!paused, "contract is paused");
+        if paused {
+            panic_with_error!(&env, Error::Paused);
+        }
 
         let count: u32 = env
             .storage()
@@ -178,7 +194,9 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false);
-        assert!(!paused, "contract is paused");
+        if paused {
+            panic_with_error!(&env, Error::Paused);
+        }
 
         let plan: Plan = env
             .storage()
@@ -255,14 +273,16 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false);
-        assert!(!paused, "contract is paused");
+        if paused {
+            panic_with_error!(&env, Error::Paused);
+        }
 
         if !env
             .storage()
             .instance()
             .has(&DataKey::Sub(fan.clone(), creator.clone()))
         {
-            panic!("subscription does not exist");
+            panic_with_error!(&env, Error::SubscriptionDoesNotExist);
         }
         env.storage()
             .instance()
@@ -277,7 +297,7 @@ impl MyfansContract {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("admin not initialized");
+            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
         admin.require_auth();
 
         env.storage().instance().set(&DataKey::Paused, &true);
@@ -291,7 +311,7 @@ impl MyfansContract {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("admin not initialized");
+            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
         admin.require_auth();
 
         env.storage().instance().set(&DataKey::Paused, &false);
