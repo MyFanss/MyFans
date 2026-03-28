@@ -534,6 +534,46 @@ mod test {
         client.initialize(&admin, &token_address);
     }
 
+    // ── Issue #318: set_content_price auth tests ──────────────────────────────
+
+    /// Authorized creator can set their own content price.
+    #[test]
+    fn test_set_content_price_by_creator_succeeds() {
+        let (env, contract_id, admin, token_address, _, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &42, &500);
+
+        assert_eq!(client.get_content_price(&creator, &42), Some(500));
+    }
+
+    /// Unauthorized caller (not the creator) cannot set the price.
+    #[test]
+    #[should_panic(expected = "Unauthorized")]
+    fn test_set_content_price_unauthorized_fails() {
+        let env = Env::default();
+        // No mock_all_auths — auth is enforced
+
+        let contract_id = env.register_contract(None, ContentAccess);
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let token_id = env.register_contract(None, MockToken);
+
+        // Initialize with mocked auth only for this call
+        env.mock_all_auths();
+        client.initialize(&admin, &token_id);
+
+        // Now drop mocked auths by using a fresh env reference
+        let env2 = Env::default();
+        let client2 = ContentAccessClient::new(&env2, &contract_id);
+
+        let creator = Address::generate(&env2);
+        // No auth provided — must panic
+        client2.set_content_price(&creator, &1, &100);
+    }
+
     #[test]
     #[should_panic(expected = r##"calling unknown contract function"##)]
     fn test_initialize_invalid_token_fails() {
