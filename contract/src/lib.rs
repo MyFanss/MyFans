@@ -53,6 +53,7 @@ pub enum Error {
     AdminNotInitialized = 6,
 }
 
+pub mod events;
 pub mod treasury;
 
 #[contract]
@@ -214,9 +215,15 @@ impl MyfansContract {
         let creator_amount = plan.amount - fee;
 
         let token_client = token::Client::new(&env, &plan.asset);
+
+        // Creator leg — emit standardized "transfer" event
         token_client.transfer(&fan, &plan.creator, &creator_amount);
+        events::emit_transfer(&env, &plan.asset, &fan, &plan.creator, creator_amount);
+
+        // Fee leg — emit standardized "transfer_from" event (same schema)
         if fee > 0 {
             token_client.transfer(&fan, &fee_recipient, &fee);
+            events::emit_transfer_from(&env, &plan.asset, &fan, &fee_recipient, fee);
         }
 
         let expiry = env.ledger().timestamp() + (plan.interval_days as u64 * 86400);
@@ -230,6 +237,16 @@ impl MyfansContract {
             .set(&DataKey::Sub(fan.clone(), plan.creator.clone()), &sub);
         env.events()
             .publish((Symbol::new(&env, "subscribed"), plan_id), fan);
+    }
+
+    /// Get a plan by ID (view function)
+    pub fn get_plan(env: Env, plan_id: u32) -> Option<Plan> {
+        env.storage().instance().get(&DataKey::Plan(plan_id))
+    }
+
+    /// Get the total number of plans (view function)
+    pub fn get_plan_count(env: Env) -> u32 {
+        env.storage().instance().get(&DataKey::PlanCount).unwrap_or(0)
     }
 
     pub fn is_subscriber(env: Env, fan: Address, creator: Address) -> bool {
