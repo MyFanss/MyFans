@@ -208,6 +208,30 @@ test.describe('Settings Delete Modal Accessibility', () => {
       await expect(errorElement).toBeVisible();
     }
   });
+
+  test('should require DELETE token and password, then complete deletion', async ({ page }) => {
+    await page.click('button:has-text("Delete account")');
+    const modal = page.locator('[role="dialog"]');
+    await expect(modal).toBeVisible();
+
+    const submitButton = modal.locator('button[type="submit"]');
+    await expect(submitButton).toBeDisabled();
+
+    await modal.locator('input[placeholder*="DELETE"]').fill('DELETE');
+    await expect(submitButton).toBeDisabled();
+
+    await modal.locator('input[type="password"]').fill('correct-password');
+    await expect(submitButton).toBeEnabled();
+
+    await page.route('**/api/users/me', async (route) => {
+      await route.fulfill({ status: 204, body: '' });
+    });
+
+    await submitButton.click();
+
+    const successMessage = page.locator('[role="status"]');
+    await expect(successMessage).toHaveText(/Your deletion request has been successfully submitted/i);
+  });
 });
 
 test.describe('Subscription Cancel Modal Accessibility', () => {
