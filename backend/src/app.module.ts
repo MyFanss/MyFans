@@ -1,16 +1,19 @@
-import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
-import { ThrottlerModule } from '@nestjs/throttler';
-import { ThrottlerGuard } from './auth/throttler.guard';
 import { APP_GUARD } from '@nestjs/core';
+import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { HealthModule } from './health/health.module';
+import { AuthModule } from './auth/auth.module';
+import { ThrottlerGuard } from './auth/throttler.guard';
 import { LoggingModule } from './common/logging.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { CreatorsModule } from './creators/creators.module';
+import { HealthModule } from './health/health.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { AuthModule } from './auth/auth.module';
+import { ModerationModule } from './moderation/moderation.module';
 
 @Module({
   imports: [
@@ -23,7 +26,9 @@ import { AuthModule } from './auth/auth.module';
     AuthModule,
     CreatorsModule,
     SubscriptionsModule,
+    NotificationsModule,
     HealthModule,
+    ModerationModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

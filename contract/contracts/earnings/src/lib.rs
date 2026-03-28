@@ -8,6 +8,12 @@ enum DataKey {
     Earnings(Address),
 }
 
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Error {
+    AlreadyInitialized = 1,
+}
+
 #[contract]
 pub struct Earnings;
 
@@ -15,7 +21,7 @@ pub struct Earnings;
 impl Earnings {
     pub fn init(env: Env, admin: Address) {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
+            panic_with_error!(&env, Error::AlreadyInitialized);
         }
 
         admin.require_auth();
