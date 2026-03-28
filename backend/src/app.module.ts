@@ -12,10 +12,10 @@ import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { CreatorsModule } from './creators/creators.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { AuthModule } from './auth/auth.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
-  imports: [
-    ThrottlerModule.forRoot([{ name: 'auth', ttl: 60000, limit: 5 }]),
+  imports: [    ScheduleModule.forRoot(),    ThrottlerModule.forRoot([{ name: 'auth', ttl: 60000, limit: 5 }]),
     LoggingModule,
     AuthModule,
     CreatorsModule,
