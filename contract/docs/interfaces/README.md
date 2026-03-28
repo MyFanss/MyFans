@@ -5,14 +5,17 @@ Comprehensive documentation for all public contract methods, including arguments
 ## Available Interfaces
 - [MyFans Main (contract/src/lib.rs)](myfans-main.md)
 - [Content Access](content-access.md)
-- [Subscription](subscription.md)
 - [Creator Deposits](creator-deposits.md)
 - [Content Likes](content-likes.md)
 - [Creator Registry](creator-registry.md)
+- [Creator Earnings](creator-earnings.md)
 - [Earnings](earnings.md)
+- [Subscription](subscription.md)
 - [MyFans Token](myfans-token.md)
-- [Treasury (src)](treasury-src.md)
-- [Treasury (contracts)](treasury-contracts.md)
+- [Treasury Contracts](treasury-contracts.md)
+- [Treasury src](treasury-src.md)
+
+**All public contract methods documented with args, auth, examples, events. Examples runnable via `--dry-run`.**
 
 ## Usage
 Examples assume local deployment (`contract/deployed-local.json`). Replace:
