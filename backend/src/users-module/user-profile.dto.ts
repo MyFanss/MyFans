@@ -50,19 +50,4 @@ export class PaginationDto {
   limit?: number = 20;
 }
 
-export class PaginatedUsersDto {
-  @ApiProperty({ type: [UserProfileDto] })
-  data: UserProfileDto[];
-
-  @ApiProperty()
-  total: number;
-
-  @ApiProperty()
-  page: number;
-
-  @ApiProperty()
-  limit: number;
-
-  @ApiProperty()
-  totalPages: number;
-}
+// PaginatedUsersDto is now compatible with PaginatedResponseDto<UserProfileDto>
