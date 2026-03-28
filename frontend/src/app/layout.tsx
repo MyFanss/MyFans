@@ -67,6 +67,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <NoFlashScript />
       </head>
       <body>
+        <ThemeProvider>
+          <FeatureFlagsProvider>
         <ContractConfigBootstrap>
           <ThemeProvider>
             <ConsentProvider>
@@ -77,6 +79,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </ToastProvider>
               </FavoritesProvider>
             </ConsentProvider>
+          </FeatureFlagsProvider>
+        </ThemeProvider>
           </ThemeProvider>
         </ContractConfigBootstrap>
       </body>
