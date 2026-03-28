@@ -1,35 +1,45 @@
-# API Client Implementation TODO
+# Subscription Contract Event Indexer Implementation
+Current Status: [x] Started
 
-Current working directory: `c:/Users/FAUZIYAT/Desktop/MyFans`
+**Completed:**
+- ✅ SubscriptionIndexEntity created
+- ✅ SubscriptionIndexRepository created
 
-## Approved Plan Steps (Frontend)
+## Breakdown of Approved Plan (Logical Steps)
 
-### 1. **Create API Utilities** (retry, headers, errors)
-   - File: `frontend/src/lib/api-utils.ts` ✅
+### 1. Database Layer ✅ Complete
+   - ✅ Create `backend/src/subscriptions/entities/subscription-index.entity.ts`
+   - ✅ Create `backend/src/subscriptions/repositories/subscription-index.repository.ts`
+   - ✅ Update `backend/src/subscriptions/subscriptions.module.ts` (add TypeOrmModule.forFeature([SubscriptionIndexEntity]))
 
-### 2. **Define API Types** 
-   - Edit: `frontend/src/types/index.ts` (add exports) ✅
-   - New: `frontend/src/types/api.ts` ✅
-   - `npm run lint` (if needed)
+### 2. Event Poller Service ✅ Complete (skeleton)
+    - ✅ Create `backend/src/subscriptions/services/subscription-event-poller.service.ts` 
+    - ✅ Integrate to module + ScheduleModule/ConfigModule
+    - [ ] Full Soroban getEvents impl (read SorobanRpcService)
+    - [ ] Expiry view invoke
+    - [ ] Add idempotent upsert + DomainEvent publish ✅
+    - [ ] Checkpoint handling ✅
 
-### 3. **Create Main API Client**
-   - File: `frontend/src/clients/api-client.ts` ✅
+### 3. Update Core Services ✅ Complete
+   - ✅ Refactor `backend/src/subscriptions/subscriptions.service.ts` (Maps → DB repo)
+     - ✅ Add repo inject + remove subscription Map
+     - ✅ Replace methods (add/renew → upsert mock, isSubscriber/get → repo)
+     - ✅ listSubscriptions, dashboard → repo queries
+   - ✅ Update `backend/src/subscriptions/subscription-lifecycle-indexer.service.ts` (HTTP → DB upsert)
+   - ✅ Update `backend/src/subscriptions/subscription-reconciler.service.ts` (use repo)
 
-### 4. **Update Clients Index**
-   - Edit: `frontend/src/clients/index.ts` ✅
+### 4. Module Updates
+   - [ ] Add ScheduleModule to `backend/src/subscriptions/subscriptions.module.ts`
+   - [ ] Config: CONTRACT_ID in env/ConfigService
 
-### 5. **Add Unit Tests**
-   - File: `frontend/src/clients/api-client.test.ts` ✅
-   - Run: `npm run test`
+### 5. Testing & Migration
+   - [ ] Unit tests for poller/parser/repo
+   - [ ] TypeORM migration generation
+   - [ ] Manual test: deploy, poll events, verify DB/no dups
 
-### 6. **Environment Setup**
-   - Add to `.env.local`: `NEXT_PUBLIC_API_URL=http://localhost:3000/api` ✅
-   - Verify: Backend running on port 3000? (manual)
+### 6. Completion
+   - [ ] Update TODO.md ✅
+   - [ ] attempt_completion
 
-### 7. **Verification** ✅
-   - Tests pass (run `cd frontend && npm test`)
-   - Lint: `cd frontend && npm run lint`
-   - Usage: Import `useApiClient()` in components
-
-**Next Step**: Start with #1 after confirmation.
+**Progress: 0/20 steps complete**
 

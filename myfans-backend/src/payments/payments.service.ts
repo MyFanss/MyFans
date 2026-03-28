@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Payment } from './entities/payment.entity';
@@ -12,6 +12,17 @@ export class PaymentsService {
   ) {}
 
   async recordPayment(dto: CreatePaymentDto): Promise<Payment> {
+    if (dto.payment_reference) {
+      const existing = await this.paymentsRepository.findOne({
+        where: { payment_reference: dto.payment_reference },
+      });
+      if (existing) {
+        throw new ConflictException(
+          `Duplicate payment_reference: ${dto.payment_reference}`,
+        );
+      }
+    }
+
     const payment = this.paymentsRepository.create({
       ...dto,
       amount: dto.amount.toString(),

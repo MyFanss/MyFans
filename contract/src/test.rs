@@ -1,6 +1,6 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, Env};
+use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, Env, Error as SorobanError};
 
 #[test]
 fn test_subscription_flow() {
@@ -96,7 +96,6 @@ fn test_get_subscription_expiry_none_when_no_subscription() {
 }
 
 #[test]
-#[should_panic(expected = "subscription does not exist")]
 fn test_cancel_nonexistent_panics() {
     let env = Env::default();
     env.mock_all_auths();
@@ -112,7 +111,13 @@ fn test_cancel_nonexistent_panics() {
     let creator = Address::generate(&env);
 
     // No subscription exists → should panic
-    client.cancel(&fan, &creator);
+    let result = client.try_cancel(&fan, &creator);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::SubscriptionDoesNotExist as u32,
+        )))
+    );
 }
 
 #[test]
@@ -304,7 +309,6 @@ fn test_register_multiple_creators() {
 }
 
 #[test]
-#[should_panic(expected = "creator already registered")]
 fn test_register_creator_twice_panics() {
     let env = Env::default();
     env.mock_all_auths();
@@ -320,7 +324,13 @@ fn test_register_creator_twice_panics() {
 
     client.register_creator(&creator);
     // Should panic on second registration
-    client.register_creator(&creator);
+    let result = client.try_register_creator(&creator);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::CreatorAlreadyRegistered as u32,
+        )))
+    );
 }
 
 #[test]
@@ -408,7 +418,6 @@ fn test_get_creator_returns_none_for_non_registered() {
 }
 
 #[test]
-#[should_panic(expected = "creator not registered")]
 fn test_set_verified_panics_for_non_registered_creator() {
     let env = Env::default();
     env.mock_all_auths();
@@ -423,7 +432,13 @@ fn test_set_verified_panics_for_non_registered_creator() {
     client.init(&admin, &250, &fee_recipient);
 
     // Should panic because creator is not registered
-    client.set_verified(&non_registered, &true);
+    let result = client.try_set_verified(&non_registered, &true);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::CreatorNotRegistered as u32,
+        )))
+    );
 }
 
 #[test]
@@ -525,7 +540,6 @@ fn test_pause_and_unpause_work() {
 }
 
 #[test]
-#[should_panic(expected = "contract is paused")]
 fn test_transfer_fails_when_paused() {
     let env = Env::default();
     env.mock_all_auths();
@@ -549,11 +563,14 @@ fn test_transfer_fails_when_paused() {
     client.pause();
 
     // Attempt to subscribe (transfer) should fail with "contract is paused"
-    client.subscribe(&fan, &plan_id);
+    let result = client.try_subscribe(&fan, &plan_id);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
 }
 
 #[test]
-#[should_panic(expected = "contract is paused")]
 fn test_mint_fails_when_paused() {
     let env = Env::default();
     env.mock_all_auths();
@@ -573,11 +590,14 @@ fn test_mint_fails_when_paused() {
     assert!(client.is_paused());
 
     // Attempt to create_plan (mint) should fail with "contract is paused"
-    client.create_plan(&creator, &asset, &1000, &30);
+    let result = client.try_create_plan(&creator, &asset, &1000, &30);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
 }
 
 #[test]
-#[should_panic(expected = "contract is paused")]
 fn test_burn_fails_when_paused() {
     let env = Env::default();
     env.mock_all_auths();
@@ -613,7 +633,11 @@ fn test_burn_fails_when_paused() {
     assert!(client.is_paused());
 
     // Attempt to cancel (burn) should fail with "contract is paused"
-    client.cancel(&fan, &creator);
+    let result = client.try_cancel(&fan, &creator);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
 }
 
 #[test]

@@ -26,7 +26,6 @@ fn test_transfer() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")]
 fn test_transfer_insufficient_balance() {
     let env = Env::default();
     env.mock_all_auths();
@@ -41,7 +40,10 @@ fn test_transfer_insufficient_balance() {
     let user2 = Address::generate(&env);
 
     client.mint(&user1, &100);
-    client.transfer(&user1, &user2, &101);
+    assert_eq!(
+        client.try_transfer(&user1, &user2, &101),
+        Err(Ok(Error::InsufficientBalance))
+    );
 }
 
 #[test]
@@ -74,7 +76,6 @@ fn test_approve_and_transfer_from() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #2)")]
 fn test_transfer_from_insufficient_allowance() {
     let env = Env::default();
     env.mock_all_auths();
@@ -91,11 +92,13 @@ fn test_transfer_from_insufficient_allowance() {
 
     client.mint(&owner, &1000);
     client.approve(&owner, &spender, &100, &100);
-    client.transfer_from(&spender, &owner, &receiver, &101);
+    assert_eq!(
+        client.try_transfer_from(&spender, &owner, &receiver, &101),
+        Err(Ok(Error::InsufficientAllowance))
+    );
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #3)")]
 fn test_transfer_from_expired_allowance() {
     let env = Env::default();
     env.mock_all_auths();
@@ -121,7 +124,10 @@ fn test_transfer_from_expired_allowance() {
     // Advance ledger sequence to 21
     env.ledger().with_mut(|li| li.sequence_number = 21);
 
-    client.transfer_from(&spender, &owner, &receiver, &100);
+    assert_eq!(
+        client.try_transfer_from(&spender, &owner, &receiver, &100),
+        Err(Ok(Error::AllowanceExpired))
+    );
 }
 
 #[test]
@@ -180,6 +186,23 @@ fn test_burn_insufficient_balance() {
     let user = Address::generate(&env);
     client.mint(&user, &100);
     client.burn(&user, &101);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #4)")]
+fn test_burn_invalid_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
+    let user = Address::generate(&env);
+    client.mint(&user, &100);
+    client.burn(&user, &0);
 }
 
 // Helper function to create a non-zero address
@@ -264,7 +287,7 @@ fn test_non_admin_cannot_set_admin() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = generate_address(&env);
-    let non_admin = generate_address(&env);
+    let _non_admin = generate_address(&env);
     let name = String::from_str(&env, "MyFans Token");
     let symbol = String::from_str(&env, "MFAN");
     let decimals: u32 = 7;
@@ -329,4 +352,63 @@ fn test_multiple_initializations_with_different_envs() {
     assert_eq!(client2.admin(), admin2);
     assert_eq!(client2.symbol(), symbol2);
     assert_eq!(client2.decimals(), 8);
+}
+
+// ── Issue #276 – Enforce mint admin authorization ────────────────────────────
+
+/// Admin can mint: balance and total supply increase, mint event fired.
+#[test]
+fn test_mint_admin_can_mint() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0,
+    );
+
+    let recipient = Address::generate(&env);
+    let mint_amount: i128 = 500_000;
+
+    // Admin-authorized mint must succeed
+    client.mint(&recipient, &mint_amount);
+
+    assert_eq!(client.balance(&recipient), mint_amount);
+    assert_eq!(client.total_supply(), mint_amount);
+}
+
+/// Non-admin caller: `admin.require_auth()` panics because no matching auth
+/// is mocked for the stored admin, which is the expected behaviour.
+#[test]
+#[should_panic]
+fn test_mint_non_admin_is_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0,
+    );
+
+    // Clear ALL mocked auths. After this, admin.require_auth() inside mint
+    // will find no matching mock and Soroban will panic (auth failure).
+    env.mock_auths(&[]);
+
+    let non_admin = Address::generate(&env);
+    // This must panic – the admin's auth is no longer mocked.
+    client.mint(&non_admin, &100);
 }
