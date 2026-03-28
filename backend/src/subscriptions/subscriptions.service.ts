@@ -71,6 +71,8 @@ interface Plan {
   intervalDays: number;
 }
 
+type SubscriberListStatus = 'active' | 'expired';
+
 function generateId(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
@@ -376,11 +378,9 @@ export class SubscriptionsService {
       (sub) => sub.fan === fan,
     );
 
-    const nowSecs = Date.now() / 1000;
+    const nowSecs = Math.floor(Date.now() / 1000);
     userSubs.forEach((sub) => {
-      if (sub.status === 'active' && sub.expiry <= nowSecs) {
-        sub.status = 'expired';
-      }
+      this.getDerivedSubscriberStatus(sub, nowSecs);
     });
 
     if (status) {
@@ -428,6 +428,42 @@ export class SubscriptionsService {
 
     const total = results.length;
     const paginatedResults = results.slice((page - 1) * limit, page * limit);
+    return new PaginatedResponseDto(paginatedResults, total, page, limit);
+  }
+
+  listCreatorSubscribers(
+    creator: string,
+    status?: SubscriberListStatus,
+    page: number = 1,
+    limit: number = 20,
+  ) {
+    const nowSecs = Math.floor(Date.now() / 1000);
+    let subscribers = Array.from(this.subscriptions.values())
+      .filter((sub) => sub.creator === creator)
+      .map((sub) => {
+        const derivedStatus = this.getDerivedSubscriberStatus(sub, nowSecs);
+        return {
+          id: sub.id,
+          fanAddress: sub.fan,
+          creatorAddress: sub.creator,
+          planId: sub.planId,
+          status: derivedStatus,
+          expiresAt: new Date(sub.expiry * 1000).toISOString(),
+          createdAt: sub.createdAt.toISOString(),
+        };
+      });
+
+    if (status) {
+      subscribers = subscribers.filter((sub) => sub.status === status);
+    }
+
+    subscribers.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+
+    const total = subscribers.length;
+    const paginatedResults = subscribers.slice((page - 1) * limit, page * limit);
     return new PaginatedResponseDto(paginatedResults, total, page, limit);
   }
 
@@ -637,6 +673,21 @@ export class SubscriptionsService {
 
   private calculateFee(amount: string): string {
     return ((parseFloat(amount) * this.platformFeeBps) / 10000).toFixed(7);
+  }
+
+  private getDerivedSubscriberStatus(
+    sub: Subscription,
+    nowSecs: number,
+  ): SubscriberListStatus {
+    if (sub.status === 'active' && sub.expiry > nowSecs) {
+      return 'active';
+    }
+
+    if (sub.status === 'active' && sub.expiry <= nowSecs) {
+      sub.status = 'expired';
+    }
+
+    return 'expired';
   }
 
   private getIntervalText(days: number): string {
