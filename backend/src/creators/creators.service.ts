@@ -1,10 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PaginationDto, PaginatedResponseDto } from '../common/dto';
-import { SearchCreatorsDto } from './dto/search-creators.dto';
-import { PublicCreatorDto } from './dto/public-creator.dto';
+import { PaginatedResponseDto, PaginationDto } from '../common/dto';
+import { EventBus } from '../events/event-bus';
+import { PlanCreatedEvent } from '../events/domain-events';
 import { User } from '../users/entities/user.entity';
+import { PlanDto } from './dto/plan.dto';
+import { PublicCreatorDto } from './dto/public-creator.dto';
+import { SearchCreatorsDto } from './dto/search-creators.dto';
 
 export interface Plan {
   id: number;
@@ -22,11 +25,21 @@ export class CreatorsService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @Optional()
+    private readonly eventBus?: EventBus,
   ) {}
 
-  createPlan(creator: string, asset: string, amount: string, intervalDays: number): Plan {
+  createPlan(
+    creator: string,
+    asset: string,
+    amount: string,
+    intervalDays: number,
+  ): Plan {
     const plan = { id: ++this.planCounter, creator, asset, amount, intervalDays };
     this.plans.set(plan.id, plan);
+    this.eventBus?.publish(
+      new PlanCreatedEvent(plan.id, creator, asset, amount),
+    );
     return plan;
   }
 
@@ -35,26 +48,35 @@ export class CreatorsService {
   }
 
   getCreatorPlans(creator: string): Plan[] {
-    return Array.from(this.plans.values()).filter(p => p.creator === creator);
+    return Array.from(this.plans.values()).filter((p) => p.creator === creator);
   }
 
-  findAllPlans(pagination: PaginationDto): PaginatedResponseDto<Plan> {
+  findAllPlans(pagination: PaginationDto): PaginatedResponseDto<PlanDto> {
     const { page = 1, limit = 20 } = pagination;
     const allPlans = Array.from(this.plans.values());
     const total = allPlans.length;
-    const data = allPlans.slice((page - 1) * limit, page * limit);
+    const data = allPlans
+      .slice((page - 1) * limit, page * limit)
+      .map((plan) => Object.assign(new PlanDto(), plan));
     return new PaginatedResponseDto(data, total, page, limit);
   }
 
-  findCreatorPlans(creator: string, pagination: PaginationDto): PaginatedResponseDto<Plan> {
+  findCreatorPlans(
+    creator: string,
+    pagination: PaginationDto,
+  ): PaginatedResponseDto<PlanDto> {
     const { page = 1, limit = 20 } = pagination;
     const creatorPlans = this.getCreatorPlans(creator);
     const total = creatorPlans.length;
-    const data = creatorPlans.slice((page - 1) * limit, page * limit);
+    const data = creatorPlans
+      .slice((page - 1) * limit, page * limit)
+      .map((plan) => Object.assign(new PlanDto(), plan));
     return new PaginatedResponseDto(data, total, page, limit);
   }
 
-  async searchCreators(searchDto: SearchCreatorsDto): Promise<PaginatedResponseDto<PublicCreatorDto>> {
+  async searchCreators(
+    searchDto: SearchCreatorsDto,
+  ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
     const { page = 1, limit = 20, q } = searchDto;
     const trimmed = q?.trim();
 
@@ -73,7 +95,10 @@ export class CreatorsService {
     }
 
     const total = await qb.getCount();
-    const { entities, raw } = await qb.skip((page - 1) * limit).take(limit).getRawAndEntities();
+    const { entities, raw } = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getRawAndEntities();
 
     const data = entities.map((user, i) => {
       const dto = new PublicCreatorDto(user);

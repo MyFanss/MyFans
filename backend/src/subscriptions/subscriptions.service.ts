@@ -1,26 +1,28 @@
 import {
-  Injectable,
-  Logger,
-  Optional,
-  Inject,
-  NotFoundException,
   BadRequestException,
   HttpException,
   HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { PaginatedResponseDto } from '../common/dto';
+import { isStellarAccountAddress } from '../common/utils/stellar-address';
 import { EventBus } from '../events/event-bus';
 import {
+  SubscriptionCancelledEvent,
   SubscriptionCreatedEvent,
   SubscriptionExpiredEvent,
+  SubscriptionRenewedEvent,
 } from '../events/domain-events';
-import type { SubscriptionEventPublisher } from './events';
 import {
+  RenewalFailurePayload,
   SUBSCRIPTION_EVENT_PUBLISHER,
   SUBSCRIPTION_RENEWAL_FAILED,
-  RenewalFailurePayload,
 } from './events';
-import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
-import { isStellarAccountAddress } from '../common/utils/stellar-address';
+import type { SubscriptionEventPublisher } from './events';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
 
 export enum CheckoutStatus {
@@ -80,15 +82,12 @@ function generateId(): string {
 
 @Injectable()
 export class SubscriptionsService {
-  private subscriptions: Map<string, Subscription> = new Map();
-  private checkouts: Map<string, Checkout> = new Map();
-  private plans: Map<number, Plan> = new Map();
-  private checkoutExpiryMinutes = 15;
+  private readonly subscriptions: Map<string, Subscription> = new Map();
+  private readonly checkouts: Map<string, Checkout> = new Map();
+  private readonly checkoutExpiryMinutes = 15;
   private readonly logger = new Logger(SubscriptionsService.name);
-
-  private platformFeeBps = 500;
-
-  private supportedAssets: {
+  private readonly platformFeeBps = 500;
+  private readonly supportedAssets: {
     code: string;
     issuer?: string;
     isNative: boolean;
@@ -100,8 +99,7 @@ export class SubscriptionsService {
       isNative: false,
     },
   ];
-
-  private creatorProfiles: Map<
+  private readonly creatorProfiles: Map<
     string,
     { name: string; description?: string }
   > = new Map();
@@ -111,7 +109,8 @@ export class SubscriptionsService {
     @Optional()
     @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
     private readonly subscriptionEventPublisher?: SubscriptionEventPublisher,
-    private readonly chainReader: SubscriptionChainReaderService,
+    @Optional()
+    private readonly chainReader?: SubscriptionChainReaderService,
   ) {
     this.creatorProfiles.set('GAAAAAAAAAAAAAAA', {
       name: 'Creator 1',
@@ -184,26 +183,91 @@ export class SubscriptionsService {
     planId: number,
     expiry: number,
   ) {
-    const id = generateId();
-    this.subscriptions.set(this.getKey(fan, creator), {
-      id,
+    const subscription: Subscription = {
+      id: generateId(),
       fan,
       creator,
       planId,
       expiry,
-      status: 'active',
+      status: expiry > Date.now() / 1000 ? 'active' : 'expired',
       createdAt: new Date(),
-    });
+    };
 
+    this.subscriptions.set(this.getKey(fan, creator), subscription);
     this.eventBus.publish(
       new SubscriptionCreatedEvent(fan, creator, planId, expiry),
     );
+
+    return subscription;
+  }
+
+  renewSubscription(
+    fan: string,
+    creator: string,
+    planId: number,
+    expiry: number,
+  ) {
+    const key = this.getKey(fan, creator);
+    const existing = this.subscriptions.get(key);
+
+    if (!existing) {
+      return this.addSubscription(fan, creator, planId, expiry);
+    }
+
+    existing.planId = planId;
+    existing.expiry = expiry;
+    existing.status = 'active';
+
+    this.eventBus.publish(
+      new SubscriptionRenewedEvent(
+        existing.id,
+        fan,
+        creator,
+        planId,
+        expiry,
+      ),
+    );
+
+    return existing;
   }
 
   expireSubscription(fan: string, creator: string) {
-    this.subscriptions.delete(this.getKey(fan, creator));
+    const key = this.getKey(fan, creator);
+    const existing = this.subscriptions.get(key);
+    if (existing) {
+      existing.status = 'expired';
+    }
 
     this.eventBus.publish(new SubscriptionExpiredEvent(fan, creator));
+  }
+
+  cancelSubscription(fan: string, creator: string) {
+    const subscription = this.subscriptions.get(this.getKey(fan, creator));
+    if (!subscription) {
+      throw new NotFoundException('Subscription not found');
+    }
+
+    subscription.status = 'cancelled';
+    subscription.expiry = Math.floor(Date.now() / 1000);
+
+    this.eventBus.publish(
+      new SubscriptionCancelledEvent(
+        subscription.id,
+        fan,
+        creator,
+        subscription.planId,
+      ),
+    );
+
+    return {
+      success: true,
+      subscriptionId: subscription.id,
+      fan,
+      creator,
+      status: subscription.status,
+      cancelledAt: new Date().toISOString(),
+      message: 'Subscription cancelled successfully',
+    };
   }
 
   isSubscriber(fan: string, creator: string): boolean {
@@ -215,11 +279,6 @@ export class SubscriptionsService {
     return this.subscriptions.get(this.getKey(fan, creator));
   }
 
-  /**
-   * Fan–creator subscription state: in-memory index used by checkout flows, plus
-   * optional on-chain `is_subscriber` when a subscription contract id is configured
-   * (`CONTRACT_ID_SUBSCRIPTION` or `CONTRACT_ID_MYFANS`).
-   */
   async getFanCreatorSubscriptionState(fan: string, creator: string) {
     if (fan === creator) {
       throw new BadRequestException(
@@ -262,23 +321,24 @@ export class SubscriptionsService {
       };
     }
 
-    const contractId = this.chainReader.getConfiguredContractId();
+    const contractId = this.chainReader?.getConfiguredContractId();
     let chain: {
       configured: boolean;
       isSubscriber: boolean | null;
       error?: string;
     };
-    if (!contractId) {
+
+    if (!contractId || !this.chainReader) {
       chain = { configured: false, isSubscriber: null };
     } else {
-      const r = await this.chainReader.readIsSubscriber(
+      const result = await this.chainReader.readIsSubscriber(
         contractId,
         fan,
         creator,
       );
-      chain = r.ok
-        ? { configured: true, isSubscriber: r.isSubscriber }
-        : { configured: true, isSubscriber: null, error: r.error };
+      chain = result.ok
+        ? { configured: true, isSubscriber: result.isSubscriber }
+        : { configured: true, isSubscriber: null, error: result.error };
     }
 
     return {
@@ -288,6 +348,56 @@ export class SubscriptionsService {
       indexedStatus,
       indexed,
       chain,
+    };
+  }
+
+  getFanDashboardSummary(
+    fan: string,
+    page: number = 1,
+    limit: number = 20,
+  ) {
+    const nowSecs = Date.now() / 1000;
+    const activeSubs = Array.from(this.subscriptions.values()).filter(
+      (sub) => sub.fan === fan && sub.status === 'active' && sub.expiry > nowSecs,
+    );
+
+    activeSubs.sort((a, b) => a.expiry - b.expiry);
+
+    const total = activeSubs.length;
+    const paginated = activeSubs.slice((page - 1) * limit, page * limit);
+
+    const subscriptions = paginated.map((sub) => {
+      const plan = this.getPlanMock(sub.planId);
+      const creatorProfile = this.creatorProfiles.get(sub.creator);
+      return {
+        id: sub.id,
+        creatorId: sub.creator,
+        creatorName: creatorProfile?.name ?? 'Unknown Creator',
+        planName: plan
+          ? `${this.getIntervalText(plan.intervalDays)} Subscription`
+          : 'Subscription',
+        price: plan ? parseFloat(plan.amount) : 0,
+        currency: plan ? plan.asset.split(':')[0] : 'XLM',
+        interval:
+          plan?.intervalDays === 365
+            ? 'year'
+            : plan?.intervalDays === 7
+              ? 'week'
+              : 'month',
+        renewsAt: new Date(sub.expiry * 1000).toISOString(),
+        renewsAtUnix: sub.expiry,
+        status: sub.status,
+        createdAt: sub.createdAt.toISOString(),
+      };
+    });
+
+    return {
+      fan,
+      totalActive: total,
+      subscriptions,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
     };
   }
 
@@ -308,15 +418,15 @@ export class SubscriptionsService {
         sub.status = 'expired';
       }
     });
-    if (status) userSubs = userSubs.filter(sub => sub.status === status);
 
     if (status) {
       userSubs = userSubs.filter((sub) => sub.status === status);
     }
 
-    let results = userSubs.map((sub) => {
+    const results = userSubs.map((sub) => {
       const plan = this.getPlanMock(sub.planId);
       const creatorProfile = this.creatorProfiles.get(sub.creator);
+
       return {
         id: sub.id,
         creatorId: sub.creator,
@@ -368,7 +478,9 @@ export class SubscriptionsService {
     this.assertNetworkMatch(requestNetwork);
 
     const plan = this.getPlanMock(planId);
-    if (!plan) throw new NotFoundException('Plan not found');
+    if (!plan) {
+      throw new NotFoundException('Plan not found');
+    }
 
     const amount = plan.amount;
     const fee = this.calculateFee(amount);
@@ -391,6 +503,7 @@ export class SubscriptionsService {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+
     this.checkouts.set(checkout.id, checkout);
     return checkout;
   }
@@ -405,15 +518,18 @@ export class SubscriptionsService {
       checkout.status = CheckoutStatus.EXPIRED;
       throw new BadRequestException('Checkout session has expired');
     }
+
     return checkout;
   }
 
   getPlanSummary(planId: number) {
     const plan = this.getPlanMock(planId);
-    if (!plan) throw new NotFoundException('Plan not found');
+    if (!plan) {
+      throw new NotFoundException('Plan not found');
+    }
+
     const creatorProfile = this.creatorProfiles.get(plan.creator);
     const intervalText = this.getIntervalText(plan.intervalDays);
-
     const assetParts = plan.asset.split(':');
     const assetCode = assetParts[0];
     const assetIssuer = assetParts[1] || undefined;
@@ -451,21 +567,22 @@ export class SubscriptionsService {
     const balance = this.getMockBalance(fanAddress, assetCode);
     const balanceNum = parseFloat(balance);
     const requiredNum = parseFloat(requiredAmount);
-    if (balanceNum >= requiredNum) return { valid: true, balance };
-    return { valid: false, balance, shortfall: (requiredNum - balanceNum).toFixed(7) };
+
+    if (balanceNum >= requiredNum) {
+      return { valid: true, balance };
+    }
+
+    return {
+      valid: false,
+      balance,
+      shortfall: (requiredNum - balanceNum).toFixed(7),
+    };
   }
 
   getWalletStatus(fanAddress: string) {
-    const balances = this.supportedAssets.map((asset) => ({
-      code: asset.code,
-      issuer: asset.issuer,
-      balance: this.getMockBalance(fanAddress, asset.code),
-      isNative: asset.isNative,
-    }));
-
     return {
       address: fanAddress,
-      balances: this.supportedAssets.map(asset => ({
+      balances: this.supportedAssets.map((asset) => ({
         code: asset.code,
         issuer: asset.issuer,
         balance: this.getMockBalance(fanAddress, asset.code),
@@ -492,23 +609,30 @@ export class SubscriptionsService {
 
   confirmSubscription(checkoutId: string, txHash?: string) {
     const checkout = this.getCheckout(checkoutId);
+    const existingSubscription = this.getSubscription(
+      checkout.fanAddress,
+      checkout.creatorAddress,
+    );
 
     checkout.status = CheckoutStatus.COMPLETED;
     checkout.txHash = txHash || `tx_${Date.now()}`;
     checkout.updatedAt = new Date();
 
     const explorerUrl = `https://stellar.expert/explorer/testnet/tx/${checkout.txHash}`;
-
-    const plan = this.getPlanMock(checkout.planId);
-    const intervalDays = plan?.intervalDays ?? 30;
-    const expiry = this.calculateExpiryTimestamp(intervalDays);
-
-    this.addSubscription(
-      checkout.fanAddress,
-      checkout.creatorAddress,
-      checkout.planId,
-      expiry,
-    );
+    const expiry = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+    const subscription = existingSubscription
+      ? this.renewSubscription(
+          checkout.fanAddress,
+          checkout.creatorAddress,
+          checkout.planId,
+          expiry,
+        )
+      : this.addSubscription(
+          checkout.fanAddress,
+          checkout.creatorAddress,
+          checkout.planId,
+          expiry,
+        );
 
     return {
       success: true,
@@ -516,7 +640,11 @@ export class SubscriptionsService {
       status: checkout.status,
       txHash: checkout.txHash,
       explorerUrl,
-      message: 'Subscription created successfully!',
+      subscriptionId: subscription.id,
+      lifecycleEvent: existingSubscription ? 'renewed' : 'created',
+      message: existingSubscription
+        ? 'Subscription renewed successfully!'
+        : 'Subscription created successfully!',
     };
   }
 
@@ -533,14 +661,13 @@ export class SubscriptionsService {
     checkout.error = error;
     checkout.updatedAt = new Date();
     this.emitRenewalFailureEvent(checkout, error);
+
     return {
       success: false,
       checkoutId: checkout.id,
       status: checkout.status,
-      error: error,
-      message: isRejected
-        ? 'Transaction was rejected'
-        : 'Transaction failed',
+      error,
+      message: isRejected ? 'Transaction was rejected' : 'Transaction failed',
     };
   }
 
@@ -564,95 +691,31 @@ export class SubscriptionsService {
   }
 
   private getPlanMock(planId: number): Plan | undefined {
-    return this.plans.get(planId);
+    const plans: Plan[] = [
+      { id: 1, creator: 'GAAAAAAAAAAAAAAA', asset: 'XLM', amount: '10', intervalDays: 30 },
+      {
+        id: 2,
+        creator: 'GAAAAAAAAAAAAAAA',
+        asset: 'USDC:GA7Z6G7T3LSSKDJPLAWJH25C4D4PQV4CEMM5S5E6LQD3VDF5W6G6F3K',
+        amount: '5',
+        intervalDays: 30,
+      },
+      {
+        id: 3,
+        creator: 'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5',
+        asset: 'XLM',
+        amount: '25',
+        intervalDays: 7,
+      },
+    ];
+    return plans.find((p) => p.id === planId);
   }
 
-  /**
-   * Update an existing subscription plan
-   * Only the creator who owns the plan can update it
-   * Existing subscriptions remain unaffected
-   * @param planId - ID of the plan to update
-   * @param creatorAddress - Address of the creator attempting the update
-   * @param updates - Object containing amount and/or intervalDays to update
-   * @returns Updated plan
-   * @throws Error if plan not found, creator not authorized, or invalid updates
-   */
-  updatePlan(
-    planId: number,
-    creatorAddress: string,
-    updates: { amount?: string; intervalDays?: number },
-  ): Plan {
-    const plan = this.plans.get(planId);
-    
-    if (!plan) {
-      throw new NotFoundException(`Plan ${planId} not found`);
-    }
-    
-    if (plan.creator !== creatorAddress) {
-      throw new Error('Unauthorized: Only the plan creator can update this plan');
-    }
-    
-    // Validate updates
-    if (updates.amount !== undefined) {
-      const amount = parseFloat(updates.amount);
-      if (isNaN(amount) || amount <= 0) {
-        throw new BadRequestException('Amount must be a positive number');
-      }
-    }
-    
-    if (updates.intervalDays !== undefined) {
-      if (!Number.isInteger(updates.intervalDays) || updates.intervalDays <= 0) {
-        throw new BadRequestException('Interval days must be a positive integer');
-      }
-    }
-    
-    // Update the plan
-    const updatedPlan: Plan = {
-      ...plan,
-      ...(updates.amount !== undefined && { amount: updates.amount }),
-      ...(updates.intervalDays !== undefined && { intervalDays: updates.intervalDays }),
-      updatedAt: new Date(),
-    };
-    
-    this.plans.set(planId, updatedPlan);
-    
-    this.logger.log(
-      `Plan ${planId} updated by ${creatorAddress}: ${JSON.stringify(updates)}`,
+  /** Returns completed checkouts for analytics aggregation. */
+  getCompletedPayments(): Checkout[] {
+    return Array.from(this.checkouts.values()).filter(
+      (c) => c.status === CheckoutStatus.COMPLETED,
     );
-    
-    return updatedPlan;
-  }
-
-  /**
-   * Get a plan by ID
-   * @param planId - ID of the plan
-   * @returns Plan or undefined if not found
-   */
-  getPlan(planId: number): Plan | undefined {
-    return this.plans.get(planId);
-  }
-
-  /**
-   * List all plans for a creator
-   * @param creatorAddress - Address of the creator
-   * @returns Array of plans owned by the creator
-   */
-  listCreatorPlans(creatorAddress: string): Plan[] {
-    return Array.from(this.plans.values()).filter(
-      plan => plan.creator === creatorAddress,
-    );
-  }
-
-  private calculateExpiryTimestamp(intervalDays: number): number {
-    const nowSec = Math.floor(Date.now() / 1000);
-    const intervalSec = intervalDays * 24 * 60 * 60;
-    
-    // Check for overflow: ensure result doesn't exceed max safe integer
-    if (nowSec > Number.MAX_SAFE_INTEGER - intervalSec) {
-      throw new Error('Expiry calculation would overflow');
-    }
-    
-    return nowSec + intervalSec;
   }
 
   private emitRenewalFailureEvent(checkout: Checkout, reason: string): void {
@@ -662,11 +725,16 @@ export class SubscriptionsService {
       timestamp: new Date().toISOString(),
       userId: checkout.fanAddress,
     };
+
     Promise.resolve()
-      .then(() => this.subscriptionEventPublisher?.emit(SUBSCRIPTION_RENEWAL_FAILED, payload))
+      .then(() =>
+        this.subscriptionEventPublisher?.emit(
+          SUBSCRIPTION_RENEWAL_FAILED,
+          payload,
+        ),
+      )
       .catch((error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : String(error);
+        const message = error instanceof Error ? error.message : String(error);
         this.logger.error(`Failed to emit renewal failure event: ${message}`);
       });
   }

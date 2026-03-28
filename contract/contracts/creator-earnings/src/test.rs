@@ -5,7 +5,7 @@ use soroban_sdk::token::{Client as TokenClient, StellarAssetClient};
 use soroban_sdk::{
     testutils::{Address as _, Events},
     xdr::SorobanAuthorizationEntry,
-    Address, Env, Symbol, TryIntoVal,
+    Address, Env, Error as SorobanError, Symbol, TryIntoVal,
 };
 
 fn setup<'a>(
@@ -84,17 +84,21 @@ fn withdraw_reduces_balance_and_transfers_tokens() {
 }
 
 #[test]
-#[should_panic(expected = "insufficient balance")]
 fn withdraw_insufficient_balance_reverts() {
     let env = Env::default();
 
     let (_admin, creator, _depositor, client, _, _) = setup(&env);
 
-    client.withdraw(&creator, &100);
+    let result = client.try_withdraw(&creator, &100);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InsufficientBalance as u32,
+        )))
+    );
 }
 
 #[test]
-#[should_panic(expected = "not authorized")]
 fn unauthorized_deposit_reverts() {
     let env = Env::default();
 
@@ -106,7 +110,13 @@ fn unauthorized_deposit_reverts() {
     token_admin_client.mint(&unauthorized, &500);
 
     // Unauthorized address not added via add_authorized
-    client.deposit(&unauthorized, &creator, &100);
+    let result = client.try_deposit(&unauthorized, &creator, &100);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::NotAuthorized as u32,
+        )))
+    );
 }
 
 /// Only the creator (or admin) can withdraw. Non-creator cannot withdraw; balance (stake) unchanged.
