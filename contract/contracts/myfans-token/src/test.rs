@@ -277,6 +277,149 @@ fn generate_address(env: &Env) -> Address {
     Address::generate(env)
 }
 
+// ── Issue #314: clear_allowance ──────────────────────────────────────────────
+
+#[test]
+fn test_clear_allowance_resets_to_zero() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "T"), &String::from_str(&env, "T"), &7, &0);
+
+    let owner = Address::generate(&env);
+    let spender = Address::generate(&env);
+
+    client.mint(&owner, &1000);
+    client.approve(&owner, &spender, &500, &100);
+    assert_eq!(client.allowance(&owner, &spender), 500);
+
+    client.clear_allowance(&owner, &spender);
+    assert_eq!(client.allowance(&owner, &spender), 0);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn test_clear_allowance_unauthorized_fails() {
+    let env = Env::default();
+    // No mock_all_auths — auth is enforced
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    env.mock_all_auths();
+    client.initialize(&admin, &String::from_str(&env, "T"), &String::from_str(&env, "T"), &7, &0);
+    let owner = Address::generate(&env);
+    let spender = Address::generate(&env);
+    client.mint(&owner, &1000);
+    client.approve(&owner, &spender, &500, &100);
+
+    // Drop mock auths so the next call is unauthenticated
+    let env2 = Env::default();
+    let client2 = MyFansTokenClient::new(&env2, &contract_id);
+    client2.clear_allowance(&owner, &spender);
+}
+
+// ── Issue #317: fuzz-style balance tests ─────────────────────────────────────
+
+/// Deterministic seed-driven fuzz: random transfer sequences must never
+/// produce a negative balance and must conserve total supply.
+#[test]
+fn test_fuzz_transfer_balances_invariant() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "T"), &String::from_str(&env, "T"), &7, &0);
+
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+    let carol = Address::generate(&env);
+
+    client.mint(&alice, &1000);
+    client.mint(&bob, &1000);
+    client.mint(&carol, &1000);
+
+    // Deterministic sequence (seed = fixed amounts)
+    let transfers: &[(i128, bool)] = &[
+        (100, true),  // alice -> bob
+        (200, false), // bob -> carol
+        (50, true),   // alice -> bob
+        (300, false), // bob -> carol
+        (150, true),  // alice -> bob
+        (400, false), // bob -> carol
+        (100, true),  // alice -> bob
+    ];
+
+    for (amount, alice_to_bob) in transfers {
+        if *alice_to_bob {
+            let _ = client.try_transfer(&alice, &bob, amount);
+        } else {
+            let _ = client.try_transfer(&bob, &carol, amount);
+        }
+        // Invariant: no negative balances
+        assert!(client.balance(&alice) >= 0);
+        assert!(client.balance(&bob) >= 0);
+        assert!(client.balance(&carol) >= 0);
+    }
+
+    // Total supply conserved
+    let total = client.balance(&alice) + client.balance(&bob) + client.balance(&carol);
+    assert_eq!(total, 3000);
+}
+
+/// Fuzz-style approve + transfer_from: allowance and balances stay consistent.
+#[test]
+fn test_fuzz_approve_transfer_from_invariant() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "T"), &String::from_str(&env, "T"), &7, &0);
+
+    let owner = Address::generate(&env);
+    let spender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.mint(&owner, &10_000);
+
+    // Deterministic sequence of (approve_amount, spend_amount) pairs
+    let rounds: &[(i128, i128)] = &[
+        (1000, 300),
+        (500, 500),
+        (2000, 999),
+        (100, 50),
+        (800, 800),
+    ];
+
+    for (approve_amt, spend_amt) in rounds {
+        client.approve(&owner, &spender, approve_amt, &10_000);
+        assert_eq!(client.allowance(&owner, &spender), *approve_amt);
+
+        let _ = client.try_transfer_from(&spender, &owner, &receiver, spend_amt);
+
+        // Invariant: no negative balances
+        assert!(client.balance(&owner) >= 0);
+        assert!(client.balance(&receiver) >= 0);
+        // Allowance never goes negative
+        assert!(client.allowance(&owner, &spender) >= 0);
+    }
+
+    // Total supply conserved
+    let total = client.balance(&owner) + client.balance(&receiver);
+    assert_eq!(total, 10_000);
+}
+
 #[test]
 fn test_initialize() {
     let env = Env::default();
