@@ -796,3 +796,116 @@ fn test_set_fee_recipient_requires_admin_authorization() {
         "set_fee_recipient must fail without authorization entry"
     );
 }
+
+// ── set_fee_bps (admin protocol fee bounds) ───────────────────────────────────
+
+#[test]
+fn test_set_fee_bps_admin_updates_storage_emits_event_and_fees() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    client.set_fee_bps(&250u32);
+
+    let stored: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::FeeBps)
+            .unwrap()
+    });
+    assert_eq!(stored, 250);
+
+    let ev = find_event(&env, "fee_updated").expect("fee_updated event not emitted");
+    assert_eq!(ev.1.len(), 1, "topics: name only");
+    let (old_bps, new_bps): (u32, u32) = ev.2.try_into_val(&env).unwrap();
+    assert_eq!(old_bps, 500);
+    assert_eq!(new_bps, 250);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &10000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    assert_eq!(token.balance(&fee_recipient), 25);
+    assert_eq!(token.balance(&creator), 975);
+}
+
+#[test]
+fn test_set_fee_bps_accepts_boundary_10000() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    client.set_fee_bps(&10_000u32);
+
+    let stored: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::FeeBps)
+            .unwrap()
+    });
+    assert_eq!(stored, 10_000);
+}
+
+#[test]
+fn test_set_fee_bps_rejects_over_10000() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &100, &fee_recipient, &token.address, &1000);
+
+    let r = client.try_set_fee_bps(&10_001u32);
+    assert_eq!(
+        r,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidFeeBps as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_init_rejects_fee_bps_over_10000() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let r = client.try_init(&admin, &10_001u32, &fee_recipient, &token.address, &1000);
+    assert_eq!(
+        r,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidFeeBps as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_set_fee_bps_non_admin_rejected() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    let attacker = Address::generate(&env);
+    let contract_id = client.address.clone();
+    let invoke = MockAuthInvoke {
+        contract: &contract_id,
+        fn_name: "set_fee_bps",
+        args: vec![&env, 100u32.into_val(&env)],
+        sub_invokes: &[],
+    };
+    env.mock_auths(&[MockAuth {
+        address: &attacker,
+        invoke: &invoke,
+    }]);
+
+    let r = client.try_set_fee_bps(&100u32);
+    assert!(r.is_err(), "only admin may update fee bps");
+}
+
+#[test]
+fn test_set_fee_bps_requires_admin_authorization() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    let empty: &[SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+
+    let r = client.try_set_fee_bps(&100u32);
+    assert!(r.is_err(), "set_fee_bps must fail without authorization entry");
+}

@@ -56,6 +56,7 @@ pub enum Error {
     SubscriptionExpired = 4,
     AdminNotInitialized = 5,
     InvalidFeeRecipient = 6,
+    InvalidFeeBps = 7,
 }
 
 /// Stellar "null" account (GAAA...WHF) — not a valid fee recipient.
@@ -69,6 +70,13 @@ fn null_account_address(env: &Env) -> Address {
 fn require_valid_fee_recipient(env: &Env, addr: &Address) {
     if addr == &null_account_address(env) {
         panic_with_error!(env, Error::InvalidFeeRecipient);
+    }
+}
+
+/// Protocol fee in basis points must not exceed 100% (10_000 bps).
+fn require_valid_fee_bps(env: &Env, fee_bps: u32) {
+    if fee_bps > 10_000 {
+        panic_with_error!(env, Error::InvalidFeeBps);
     }
 }
 
@@ -89,6 +97,7 @@ impl MyfansContract {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
         require_valid_fee_recipient(&env, &fee_recipient);
+        require_valid_fee_bps(&env, fee_bps);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         env.storage()
@@ -406,6 +415,33 @@ impl MyfansContract {
             ),
             (),
         );
+    }
+
+    /// Update protocol fee basis points (admin only). `new_fee_bps` must be <= 10_000.
+    ///
+    /// Emits `fee_updated` (on-chain symbol; product docs: fee-updated) with data `(old_bps, new_bps)`.
+    pub fn set_fee_bps(env: Env, new_fee_bps: u32) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
+        admin.require_auth();
+
+        require_valid_fee_bps(&env, new_fee_bps);
+
+        let old: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeBps)
+            .unwrap_or(0);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::FeeBps, &new_fee_bps);
+
+        env.events()
+            .publish((Symbol::new(&env, "fee_updated"),), (old, new_fee_bps));
     }
 
     /// Check if the contract is paused (view function)
