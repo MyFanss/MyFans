@@ -35,4 +35,8 @@ export class CreatePaymentDto {
   @IsOptional()
   @IsString()
   tx_hash?: string;
+
+  @IsOptional()
+  @IsString()
+  payment_reference?: string;
 }
