@@ -90,6 +90,10 @@ cargo test
 3. **test_expire_subscription_emits_event** - Verifies SubscriptionExpired event
 4. **test_subscription_lifecycle** - Full lifecycle test
 
+## Interface Docs
+
+Full method reference: [../docs/interfaces/subscription.md](../docs/interfaces/subscription.md)
+
 ## Usage Example
 
 ```rust
