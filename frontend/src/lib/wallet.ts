@@ -23,7 +23,10 @@ interface LobstrWallet extends BaseWallet {
 /** WalletConnect interface */
 interface WalletConnectWallet extends BaseWallet {
   getPublicKey: () => Promise<string>;
-  signTransaction: (xdr: string) => Promise<string>;
+  signTransaction: (
+    xdr: string,
+    opts?: { network?: string; networkPassphrase?: string },
+  ) => Promise<string>;
 }
 
 /** Window with wallet extensions */
@@ -158,7 +161,10 @@ export async function connectWalletLegacy(): Promise<string | null> {
  * @returns Signed transaction XDR
  * @throws AppError if signing fails
  */
-export async function signTransaction(xdr: string, walletType: 'freighter' | 'lobstr' | 'walletconnect'): Promise<string> {
+export async function signTransaction(
+  xdr: string,
+  opts?: { network?: string; networkPassphrase?: string },
+): Promise<string> {
   if (typeof window === 'undefined') {
     throw createAppError('WALLET_NOT_FOUND', {
       message: 'Window is not defined',
@@ -178,17 +184,12 @@ export async function signTransaction(xdr: string, walletType: 'freighter' | 'lo
   }
 
   try {
-    switch (walletType) {
-      case 'freighter':
-        return await signWithFreighter(xdr);
-      case 'lobstr':
-        return await signWithLobstr(xdr);
-      case 'walletconnect':
-        return await signWithWalletConnect(xdr);
-      default:
-        throw createAppError('UNSUPPORTED_WALLET', {
-          message: `Unsupported wallet type: ${walletType}`,
-        });
+    const signedXdr = await freighter.signTransaction(xdr, opts);
+
+    if (!signedXdr) {
+      throw createAppError('WALLET_SIGNATURE_FAILED', {
+        message: 'No signed transaction returned',
+      });
     }
   } catch (err) {
     // Re-throw AppError as-is

@@ -1,19 +1,45 @@
-# Issue #364: Backend Pagination Utility Standardization
+# Subscription Contract Event Indexer Implementation
+Current Status: [x] Started
 
-## Steps:
-- [ ] 1. Create branch `blackboxai/issue-364-pagination-std` ✅
-- [x] 2. Refactor comments.service.ts (findAll, findByPost) ✅
+**Completed:**
+- ✅ SubscriptionIndexEntity created
+- ✅ SubscriptionIndexRepository created
 
-- [x] 4. Refactor users-module/users.service.ts (findAll) ✅
-- [ ] 5. Refactor conversations.service.ts (findAll, getMessages)
-- [ ] 6. Refactor moderation.service.ts (findAll)
-- [ ] 7. Refactor creators.service.ts (searchCreators, plans methods)
-- [ ] 8. Handle in-memory services (analytics, subscriptions) if needed
-- [ ] 9. Add tests/docs
-- [ ] 10. Lint/test: npm test, cargo test
-- [ ] 11. Commit changes
-- [ ] 12. Create PR with gh pr create
-- [ ] 13. Verify CI passes
+## Breakdown of Approved Plan (Logical Steps)
 
-**Acceptance**: All list endpoints use shared utils, consistent PaginatedResponseDto schema.
+### 1. Database Layer ✅ Complete
+   - ✅ Create `backend/src/subscriptions/entities/subscription-index.entity.ts`
+   - ✅ Create `backend/src/subscriptions/repositories/subscription-index.repository.ts`
+   - ✅ Update `backend/src/subscriptions/subscriptions.module.ts` (add TypeOrmModule.forFeature([SubscriptionIndexEntity]))
+
+### 2. Event Poller Service ✅ Complete (skeleton)
+    - ✅ Create `backend/src/subscriptions/services/subscription-event-poller.service.ts` 
+    - ✅ Integrate to module + ScheduleModule/ConfigModule
+    - [ ] Full Soroban getEvents impl (read SorobanRpcService)
+    - [ ] Expiry view invoke
+    - [ ] Add idempotent upsert + DomainEvent publish ✅
+    - [ ] Checkpoint handling ✅
+
+### 3. Update Core Services ✅ Complete
+   - ✅ Refactor `backend/src/subscriptions/subscriptions.service.ts` (Maps → DB repo)
+     - ✅ Add repo inject + remove subscription Map
+     - ✅ Replace methods (add/renew → upsert mock, isSubscriber/get → repo)
+     - ✅ listSubscriptions, dashboard → repo queries
+   - ✅ Update `backend/src/subscriptions/subscription-lifecycle-indexer.service.ts` (HTTP → DB upsert)
+   - ✅ Update `backend/src/subscriptions/subscription-reconciler.service.ts` (use repo)
+
+### 4. Module Updates
+   - [ ] Add ScheduleModule to `backend/src/subscriptions/subscriptions.module.ts`
+   - [ ] Config: CONTRACT_ID in env/ConfigService
+
+### 5. Testing & Migration
+   - [ ] Unit tests for poller/parser/repo
+   - [ ] TypeORM migration generation
+   - [ ] Manual test: deploy, poll events, verify DB/no dups
+
+### 6. Completion
+   - [ ] Update TODO.md ✅
+   - [ ] attempt_completion
+
+**Progress: 0/20 steps complete**
 
