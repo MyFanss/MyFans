@@ -111,4 +111,15 @@ describe('AppController (e2e)', () => {
         });
     });
   });
+
+  describe('Database health endpoint', () => {
+    it('GET /health/db returns 200 with status ok when DB is reachable', () => {
+      return request(app.getHttpServer())
+        .get('/health/db')
+        .expect(200)
+        .expect((res) => {
+          expect(res.body).toEqual({ status: 'ok', db: 'connected' });
+        });
+    });
+  });
 });
