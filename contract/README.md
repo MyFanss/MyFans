@@ -93,7 +93,7 @@ By default, deployment outputs are written to:
 - `contract/deployed.json`
 - `contract/.env.deployed`
 
-Both include contract addresses/IDs and network metadata.
+Both include contract addresses/IDs and network metadata. `deployed.json` includes a `schemaVersion` field (e.g., `"1.0.0"`) for compatibility.
 
 Override paths with:
 

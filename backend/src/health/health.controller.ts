@@ -11,11 +11,24 @@ export class HealthController {
         return this.healthService.getHealth();
     }
 
+    @Get('detailed')
+    async getDetailedHealth(@Res() res: Response) {
+        const health = await this.healthService.getDetailedHealth();
+        if (health.status === 'down') {
+            return res.status(503).json(health);
+        } else if (health.status === 'degraded') {
+            return res.status(200).json(health); // Degraded is still operational
+        }
+        return res.status(200).json(health);
+    }
+
     @Get('db')
     async getDbHealth(@Res() res: Response) {
         const health = await this.healthService.checkDatabase();
         if (health.status === 'down') {
             return res.status(503).json(health);
+        } else if (health.status === 'degraded') {
+            return res.status(200).json(health);
         }
         return res.status(200).json(health);
     }
@@ -34,6 +47,8 @@ export class HealthController {
         const health = await this.healthService.checkSorobanRpc();
         if (health.status === 'down') {
             return res.status(503).json(health);
+        } else if (health.status === 'degraded') {
+            return res.status(200).json(health);
         }
         return res.status(200).json(health);
     }
@@ -43,6 +58,8 @@ export class HealthController {
         const health = await this.healthService.checkSorobanContract();
         if (health.status === 'down') {
             return res.status(503).json(health);
+        } else if (health.status === 'degraded') {
+            return res.status(200).json(health);
         }
         return res.status(200).json(health);
     }

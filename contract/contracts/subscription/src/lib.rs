@@ -1,7 +1,11 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
+    Symbol,
+};
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Plan {
     pub creator: Address,
     pub asset: Address,
@@ -10,6 +14,7 @@ pub struct Plan {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Subscription {
     pub fan: Address,
     pub plan_id: u32,
@@ -17,18 +22,31 @@ pub struct Subscription {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Admin,
     FeeBps,
     FeeRecipient,
     PlanCount,
     Plan(u32),
+    // Canonical storage name: `subscription`.
+    // Keep the legacy `Sub` variant to preserve deployed key serialization.
     Sub(Address, Address),
     CreatorSubscriptionCount(Address),
     AcceptedToken(Address),
     Token,
     Price,
     Paused,
+}
+
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Error {
+    AlreadyInitialized = 1,
+    Paused = 2,
+    SubscriptionNotFound = 3,
+    SubscriptionExpired = 4,
+    AdminNotInitialized = 5,
 }
 
 #[contract]
@@ -45,7 +63,7 @@ impl MyfansContract {
         price: i128,
     ) {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
+            panic_with_error!(&env, Error::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
@@ -70,7 +88,9 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false);
-        assert!(!paused, "contract is paused");
+        if paused {
+            panic_with_error!(&env, Error::Paused);
+        }
 
         let count: u32 = env
             .storage()
@@ -99,7 +119,9 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false);
-        assert!(!paused, "contract is paused");
+        if paused {
+            panic_with_error!(&env, Error::Paused);
+        }
 
         let plan: Plan = env
             .storage()
@@ -128,9 +150,10 @@ impl MyfansContract {
             plan_id,
             expiry: expiry as u64,
         };
-        env.storage()
-            .instance()
-            .set(&DataKey::Sub(fan.clone(), plan.creator.clone()), &sub);
+        env.storage().instance().set(
+            &DataKey::subscription(fan.clone(), plan.creator.clone()),
+            &sub,
+        );
         // topics: (name, fan, creator)  data: plan_id
         env.events().publish(
             (
@@ -146,7 +169,7 @@ impl MyfansContract {
         if let Some(sub) = env
             .storage()
             .instance()
-            .get::<DataKey, Subscription>(&DataKey::Sub(fan, creator))
+            .get::<DataKey, Subscription>(&DataKey::subscription(fan, creator))
         {
             env.ledger().sequence() <= sub.expiry as u32
         } else {
@@ -162,15 +185,21 @@ impl MyfansContract {
         token: Address,
     ) {
         fan.require_auth();
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        assert!(!paused, "contract is paused");
 
         let sub: Subscription = env
             .storage()
             .instance()
             .get(&DataKey::Sub(fan.clone(), creator.clone()))
-            .expect("subscription not found");
+            .unwrap_or_else(|| panic_with_error!(&env, Error::SubscriptionNotFound));
 
         if env.ledger().sequence() > sub.expiry as u32 {
-            panic!("subscription expired");
+            panic_with_error!(&env, Error::SubscriptionExpired);
         }
 
         let plan: Plan = env
@@ -202,9 +231,10 @@ impl MyfansContract {
             expiry: new_expiry,
         };
 
-        env.storage()
-            .instance()
-            .set(&DataKey::Sub(fan.clone(), creator.clone()), &updated_sub);
+        env.storage().instance().set(
+            &DataKey::subscription(fan.clone(), creator.clone()),
+            &updated_sub,
+        );
 
         // topics: (name, fan, creator)  data: plan_id
         env.events().publish(
@@ -220,11 +250,13 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false);
-        assert!(!paused, "contract is paused");
+        if paused {
+            panic_with_error!(&env, Error::Paused);
+        }
 
         env.storage()
             .instance()
-            .remove(&DataKey::Sub(fan.clone(), creator.clone()));
+            .remove(&DataKey::subscription(fan.clone(), creator.clone()));
         // topics: (name, fan, creator)  data: true
         env.events()
             .publish((Symbol::new(&env, "cancelled"), fan.clone(), creator), true);
@@ -232,6 +264,12 @@ impl MyfansContract {
 
     pub fn create_subscription(env: Env, fan: Address, creator: Address, duration_ledgers: u32) {
         fan.require_auth();
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        assert!(!paused, "contract is paused");
 
         let token: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         let price: i128 = env.storage().instance().get(&DataKey::Price).unwrap();
@@ -261,7 +299,7 @@ impl MyfansContract {
 
         env.storage()
             .instance()
-            .set(&DataKey::Sub(fan.clone(), creator.clone()), &sub);
+            .set(&DataKey::subscription(fan.clone(), creator.clone()), &sub);
 
         let mut current_count: u32 = env
             .storage()
@@ -289,7 +327,7 @@ impl MyfansContract {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("admin not initialized");
+            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
         admin.require_auth();
 
         env.storage().instance().set(&DataKey::Paused, &true);
@@ -303,7 +341,7 @@ impl MyfansContract {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("admin not initialized");
+            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
         admin.require_auth();
 
         env.storage().instance().set(&DataKey::Paused, &false);
