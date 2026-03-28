@@ -1,12 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Cron, CronExpression } from '@nestjs/schedule';
-import { PaginationDto, PaginatedResponseDto } from '../common/dto';
-import { SearchCreatorsDto } from './dto/search-creators.dto';
-import { PublicCreatorDto } from './dto/public-creator.dto';
+import { PaginatedResponseDto, PaginationDto } from '../common/dto';
+import { EventBus } from '../events/event-bus';
+import { PlanCreatedEvent } from '../events/domain-events';
 import { User } from '../users/entities/user.entity';
-import { SubscriptionChainReaderService } from '../subscriptions/subscription-chain-reader.service';
+import { PlanDto } from './dto/plan.dto';
+import { PublicCreatorDto } from './dto/public-creator.dto';
+import { SearchCreatorsDto } from './dto/search-creators.dto';
 
 export interface Plan {
   id: number;
@@ -27,12 +28,21 @@ export class CreatorsService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-    private readonly chainReader: SubscriptionChainReaderService,
+    @Optional()
+    private readonly eventBus?: EventBus,
   ) {}
 
-  createPlan(creator: string, asset: string, amount: string, intervalDays: number): Plan {
+  createPlan(
+    creator: string,
+    asset: string,
+    amount: string,
+    intervalDays: number,
+  ): Plan {
     const plan = { id: ++this.planCounter, creator, asset, amount, intervalDays };
     this.plans.set(plan.id, plan);
+    this.eventBus?.publish(
+      new PlanCreatedEvent(plan.id, creator, asset, amount),
+    );
     return plan;
   }
 
@@ -41,40 +51,44 @@ export class CreatorsService {
   }
 
   getCreatorPlans(creator: string): Plan[] {
-    return Array.from(this.plans.values()).filter(p => p.creator === creator);
+    return Array.from(this.plans.values()).filter((p) => p.creator === creator);
   }
 
-  findAllPlans(pagination: PaginationDto): PaginatedResponseDto<Plan> {
+  findAllPlans(pagination: PaginationDto): PaginatedResponseDto<PlanDto> {
     const { page = 1, limit = 20 } = pagination;
     const allPlans = Array.from(this.plans.values());
     const total = allPlans.length;
-    const data = allPlans.slice((page - 1) * limit, page * limit);
+    const data = allPlans
+      .slice((page - 1) * limit, page * limit)
+      .map((plan) => Object.assign(new PlanDto(), plan));
     return new PaginatedResponseDto(data, total, page, limit);
   }
 
-  findCreatorPlans(creator: string, pagination: PaginationDto): PaginatedResponseDto<Plan> {
+  findCreatorPlans(
+    creator: string,
+    pagination: PaginationDto,
+  ): PaginatedResponseDto<PlanDto> {
     const { page = 1, limit = 20 } = pagination;
     const creatorPlans = this.getCreatorPlans(creator);
     const total = creatorPlans.length;
-    const data = creatorPlans.slice((page - 1) * limit, page * limit);
+    const data = creatorPlans
+      .slice((page - 1) * limit, page * limit)
+      .map((plan) => Object.assign(new PlanDto(), plan));
     return new PaginatedResponseDto(data, total, page, limit);
   }
 
-  @Cron(CronExpression.EVERY_HOUR)
-  async handlePlanReconciliation() {
-    this.logger.log('Starting plan metadata reconciliation with chain');
-    try {
-      await this.reconcilePlansWithChain();
-      this.logger.log('Plan metadata reconciliation completed successfully');
-    } catch (error) {
-      this.logger.error('Plan metadata reconciliation failed', error);
-    }
-  }
-    const contractId = this.chainReader.getConfiguredContractId();
-    if (!contractId) {
-      console.warn('No contract ID configured, skipping plan reconciliation');
-      return;
-    }
+  async searchCreators(
+    searchDto: SearchCreatorsDto,
+  ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
+    const { page = 1, limit = 20, q } = searchDto;
+    const trimmed = q?.trim();
+
+    const qb = this.userRepository
+      .createQueryBuilder('user')
+      .leftJoin('user.creator', 'creator')
+      .addSelect('creator.bio', 'creator_bio')
+      .where('user.is_creator = :isCreator', { isCreator: true })
+      .orderBy('user.username', 'ASC');
 
     // Get plan count from chain
     const countResult = await this.chainReader.readPlanCount(contractId);
@@ -83,26 +97,11 @@ export class CreatorsService {
       return;
     }
 
-    const chainPlanCount = countResult.count;
-
-    // Read all chain plans
-    const chainPlans: Map<number, Plan> = new Map();
-    for (let id = 1; id <= chainPlanCount; id++) {
-      const planResult = await this.chainReader.readPlan(contractId, id);
-      if (planResult.ok) {
-        chainPlans.set(id, {
-          id,
-          creator: planResult.plan.creator,
-          asset: planResult.plan.asset,
-          amount: planResult.plan.amount,
-          intervalDays: planResult.plan.intervalDays,
-          syncStatus: 'synced',
-          lastSyncedAt: new Date(),
-        });
-      } else {
-        console.error(`Failed to read plan ${id} from chain:`, planResult.error);
-      }
-    }
+    const total = await qb.getCount();
+    const { entities, raw } = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getRawAndEntities();
 
     // Compare with backend plans
     for (const [id, backendPlan] of this.plans) {

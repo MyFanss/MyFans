@@ -34,6 +34,10 @@ All tests are located in `src/test.rs`:
 2. **test_withdraw_insufficient_balance**: Verifies withdrawal reverts when balance is insufficient
 3. **test_unauthorized_withdraw_reverts**: Verifies non-admin cannot withdraw
 
+## Interface Docs
+
+Full method reference: [../docs/interfaces/treasury-contracts.md](../docs/interfaces/treasury-contracts.md)
+
 ## Building and Testing
 
 ```bash

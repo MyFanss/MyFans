@@ -8,6 +8,10 @@ Use [`AUTH_MATRIX.md`](./AUTH_MATRIX.md) for method-by-method signer requirement
 
 When any contract interface or auth rule changes, update `AUTH_MATRIX.md` in the same PR.
 
+## Contract Interface Documentation
+
+See comprehensive method docs (args, auth, examples, events): [docs/interfaces/](docs/interfaces/)
+
 ## Contracts deployed by script
 
 1. `myfans-token`
@@ -93,7 +97,7 @@ By default, deployment outputs are written to:
 - `contract/deployed.json`
 - `contract/.env.deployed`
 
-Both include contract addresses/IDs and network metadata.
+Both include contract addresses/IDs and network metadata. `deployed.json` includes a `schemaVersion` field (e.g., `"1.0.0"`) for compatibility.
 
 Override paths with:
 

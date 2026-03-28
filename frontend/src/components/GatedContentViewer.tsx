@@ -3,8 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { SubscriptionStatusBadge } from '@/components/subscription/SubscriptionStatusBadge';
 import { Skeleton } from '@/components/ui/states';
 import { useToast } from '@/contexts/ToastContext';
+import {
+  getSubscriptionStatusCopy,
+  type SubscriptionStatus,
+} from '@/lib/subscription-status';
 import type { AppError } from '@/types/errors';
 
 export type ContentType = 'image' | 'video' | 'audio' | 'text' | 'live';
@@ -25,6 +30,8 @@ export interface GatedContentViewerProps {
   description?: string;
   /** Whether the current user has subscribed */
   isSubscribed: boolean;
+  /** Current subscription status for the viewer */
+  subscriptionStatus?: SubscriptionStatus | null;
   /** Whether the content requires subscription to access */
   isGated: boolean;
   /** External loading state */
@@ -84,6 +91,7 @@ export function GatedContentViewer({
   thumbnailUrl,
   description,
   isSubscribed,
+  subscriptionStatus = null,
   isGated,
   isLoading: externalLoading = false,
   error: externalError = null,
@@ -96,9 +104,11 @@ export function GatedContentViewer({
   onShare,
 }: GatedContentViewerProps) {
   const { showError } = useToast();
+  const subscriptionCopy = subscriptionStatus
+    ? getSubscriptionStatusCopy(subscriptionStatus)
+    : null;
   const [isLiked, setIsLiked] = useState(false);
   const [contentImageLoaded, setContentImageLoaded] = useState<Record<string, boolean>>({});
-  const [relatedLoaded, setRelatedLoaded] = useState<Record<string, boolean>>({});
   
   // Internal access state
   const [internalStatus, setInternalStatus] = useState<AccessStatus>('loading');
@@ -475,6 +485,20 @@ export function GatedContentViewer({
                 {creator.name}
               </h3>
               <p className="text-sm text-gray-500 mb-6">@{creator.username}</p>
+
+              {subscriptionStatus && subscriptionCopy && (
+                <div className="mb-5 w-full rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                    Your subscription
+                  </p>
+                  <div className="mt-3 flex flex-col items-center gap-2">
+                    <SubscriptionStatusBadge status={subscriptionStatus} />
+                    <p className="text-center text-xs leading-5 text-gray-600 dark:text-gray-300">
+                      {subscriptionCopy.helperText}
+                    </p>
+                  </div>
+                </div>
+              )}
               
               {!isSubscribed && (
                 <button
