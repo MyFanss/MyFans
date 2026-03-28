@@ -1,5 +1,6 @@
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { StartupProbeService } from './health/startup-probe.service';
 import { getDataSourceToken } from '@nestjs/typeorm';
@@ -31,6 +32,18 @@ async function bootstrap() {
 
   // Global validation pipe
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  // OpenAPI / Swagger
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('MyFans API')
+    .setDescription('MyFans backend REST API')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api/docs', app, document, {
+    jsonDocumentUrl: 'api/docs/json',
+  });
 
   const probeService = app.get(StartupProbeService);
 

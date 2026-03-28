@@ -43,9 +43,10 @@ export class GatedContentGuard implements CanActivate {
     if (!fan) throw new UnauthorizedException('Authentication required');
 
     // ── 2. Resolve creator address (literal or route param) ───────────────
-    const creator = creatorMeta.startsWith(':')
-      ? (req.params[creatorMeta.slice(1)] ?? '')
+    const creatorParam = creatorMeta.startsWith(':')
+      ? req.params[creatorMeta.slice(1)]
       : creatorMeta;
+    const creator = Array.isArray(creatorParam) ? creatorParam[0] : (creatorParam ?? '');
 
     if (!isStellarAccountAddress(creator)) {
       throw new ForbiddenException('Invalid creator address');

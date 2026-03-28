@@ -5,6 +5,8 @@ import { SubscriptionLifecycleIndexerController } from './subscription-lifecycle
 import { SubscriptionLifecycleIndexerService } from './subscription-lifecycle-indexer.service';
 import { SUBSCRIPTION_EVENT_PUBLISHER } from './events';
 import { FanBearerGuard } from './guards/fan-bearer.guard';
+import { GatedContentGuard } from './gated-content.guard';
+import { SubscriptionCacheService } from './subscription-cache.service';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
 import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionsService } from './subscriptions.service';

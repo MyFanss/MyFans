@@ -682,6 +682,11 @@ export class SubscriptionsService {
     );
   }
 
+  /** Returns all subscriptions for internal use (reconciler, dashboard). */
+  getAllSubscriptionsInternal(): { id: string; fan: string; creator: string; planId: number; expiry: number; status: string; createdAt: Date }[] {
+    return Array.from(this.subscriptions.values());
+  }
+
   private emitRenewalFailureEvent(checkout: Checkout, reason: string): void {
     const payload: RenewalFailurePayload = {
       subscriptionId: checkout.id,
