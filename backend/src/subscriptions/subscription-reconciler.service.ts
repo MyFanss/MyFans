@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { SubscriptionsService } from './subscriptions.service';
+import { SubscriptionsService, Subscription } from './subscriptions.service';
+import { SubscriptionIndexRepository } from './repositories/subscription-index.repository';
+import { SubscriptionStatus } from './entities/subscription-index.entity';
 import { SorobanRpcService } from '../common/services/soroban-rpc.service';
 import { JobLoggerService } from '../common/services/job-logger.service';
 
@@ -18,7 +20,7 @@ export interface ReconcileRecord {
   subscriptionId: string;
   fan: string;
   creator: string;
-  localStatus: string;
+  localStatus: SubscriptionStatus;
   localExpiry: number;
   chainExpiry: number | null;
   staleCriteria: string;
@@ -26,6 +28,14 @@ export interface ReconcileRecord {
   applied: boolean;
   error?: string;
 }
+
+type ReconcileSub = {
+  id: string;
+  fan: string;
+  creator: string;
+  expiryUnix: number;
+  status: SubscriptionStatus;
+};
 
 /** A subscription is stale when:
  *  1. status='active' but expiry is in the past (missed expiry update), OR
@@ -38,6 +48,7 @@ export class SubscriptionReconcilerService {
 
   constructor(
     private readonly subscriptions: SubscriptionsService,
+    private readonly indexRepo: SubscriptionIndexRepository,
     private readonly soroban: SorobanRpcService,
     private readonly jobLogger: JobLoggerService,
   ) {}
@@ -67,7 +78,7 @@ export class SubscriptionReconcilerService {
     };
 
     try {
-      const allSubs = this.getAllSubscriptions();
+      const allSubs = await this.indexRepo.findAllForReconciler();
       result.totalScanned = allSubs.length;
 
       const chainAvailable = await this.isChainAvailable();
@@ -91,7 +102,7 @@ export class SubscriptionReconcilerService {
   }
 
   private async evaluateSubscription(
-    sub: { id: string; fan: string; creator: string; expiry: number; status: string },
+    sub: SubscriptionIndexEntity,
     chainAvailable: boolean,
     dryRun: boolean,
   ): Promise<ReconcileRecord> {
@@ -101,7 +112,7 @@ export class SubscriptionReconcilerService {
       fan: sub.fan,
       creator: sub.creator,
       localStatus: sub.status,
-      localExpiry: sub.expiry,
+      localExpiry: Number(sub.expiryUnix),
       chainExpiry: null,
       staleCriteria: 'none',
       action: 'none',
@@ -110,7 +121,7 @@ export class SubscriptionReconcilerService {
 
     try {
       // Criteria 1: active but past expiry in DB
-      if (sub.status === 'active' && sub.expiry < nowSecs) {
+      if (sub.status === SubscriptionStatus.ACTIVE && sub.expiryUnix < nowSecs) {
         record.staleCriteria = 'active-past-expiry';
         record.action = 'expire';
       }
@@ -120,10 +131,10 @@ export class SubscriptionReconcilerService {
         const chainExpiry = await this.queryChainExpiry(sub.fan, sub.creator);
         record.chainExpiry = chainExpiry;
 
-        if (sub.status === 'active' && chainExpiry !== null && chainExpiry < nowSecs) {
+        if (sub.status === SubscriptionStatus.ACTIVE && chainExpiry !== null && chainExpiry < nowSecs) {
           record.staleCriteria = 'active-chain-expired';
           record.action = 'expire';
-        } else if (sub.status === 'expired' && chainExpiry !== null && chainExpiry > nowSecs) {
+        } else if (sub.status === SubscriptionStatus.EXPIRED && chainExpiry !== null && chainExpiry > nowSecs) {
           record.staleCriteria = 'expired-chain-active';
           record.action = 'activate';
         }
@@ -147,18 +158,18 @@ export class SubscriptionReconcilerService {
     return record;
   }
 
-  private applyRepair(
+  private async applyRepair(
     fan: string,
     creator: string,
     action: 'expire' | 'activate',
     chainExpiry: number | null,
-  ): void {
+  ): Promise<void> {
     if (action === 'expire') {
-      this.subscriptions.expireSubscription(fan, creator);
+      await this.subscriptions.expireSubscription(fan, creator);
     } else if (action === 'activate' && chainExpiry !== null) {
-      const sub = this.subscriptions.getSubscription(fan, creator);
+      const sub = await this.subscriptions.getSubscription(fan, creator);
       if (sub) {
-        this.subscriptions.addSubscription(fan, creator, sub.planId, chainExpiry);
+        await this.subscriptions.renewSubscription(fan, creator, sub.planId, chainExpiry);
       }
     }
   }
