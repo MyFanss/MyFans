@@ -16,6 +16,7 @@ import { SubscriptionCacheService } from './subscription-cache.service';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
 import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionsService } from './subscriptions.service';
+import { RPC_BALANCE_ADAPTER, MockRpcAdapter } from './rpc-adapter';
 
 @Module({
   imports: [
