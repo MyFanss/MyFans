@@ -8,11 +8,12 @@ import { ThrottlerGuard } from './auth/throttler.guard';
 import { LoggingModule } from './common/logging.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
+import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 import { CreatorsModule } from './creators/creators.module';
 import { HealthModule } from './health/health.module';
+import { MetricsModule } from './metrics/metrics.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
-import { AuthModule } from './auth/auth.module';
 import { ModerationModule } from './moderation/moderation.module';
 
 @Module({
@@ -23,6 +24,7 @@ import { ModerationModule } from './moderation/moderation.module';
       { name: 'long', ttl: 60000, limit: 100 },
     ]),
     LoggingModule,
+    MetricsModule,
     AuthModule,
     CreatorsModule,
     SubscriptionsModule,
@@ -36,7 +38,7 @@ import { ModerationModule } from './moderation/moderation.module';
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
-      .apply(CorrelationIdMiddleware, LoggingMiddleware)
+      .apply(CorrelationIdMiddleware, LoggingMiddleware, MetricsMiddleware)
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }
 }
