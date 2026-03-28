@@ -15,10 +15,13 @@ export interface Plan {
   asset: string;
   amount: string;
   intervalDays: number;
+  syncStatus?: 'synced' | 'stale' | 'missing' | 'unknown';
+  lastSyncedAt?: Date;
 }
 
 @Injectable()
 export class CreatorsService {
+  private readonly logger = new Logger(CreatorsService.name);
   private plans: Map<number, Plan> = new Map();
   private planCounter = 0;
 
@@ -87,11 +90,11 @@ export class CreatorsService {
       .where('user.is_creator = :isCreator', { isCreator: true })
       .orderBy('user.username', 'ASC');
 
-    if (trimmed) {
-      qb.andWhere(
-        '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
-        { search: `${trimmed.toLowerCase()}%` },
-      );
+    // Get plan count from chain
+    const countResult = await this.chainReader.readPlanCount(contractId);
+    if (!countResult.ok) {
+      console.error('Failed to read plan count from chain:', countResult.error);
+      return;
     }
 
     const total = await qb.getCount();
@@ -100,12 +103,29 @@ export class CreatorsService {
       .take(limit)
       .getRawAndEntities();
 
-    const data = entities.map((user, i) => {
-      const dto = new PublicCreatorDto(user);
-      dto.bio = raw[i]?.creator_bio ?? null;
-      return dto;
-    });
+    // Compare with backend plans
+    for (const [id, backendPlan] of this.plans) {
+      const chainPlan = chainPlans.get(id);
+      if (!chainPlan) {
+        // Plan exists in backend but not on chain - mark as stale
+        backendPlan.syncStatus = 'stale';
+        backendPlan.lastSyncedAt = new Date();
+      } else {
+        // Check if data matches
+        const matches =
+          backendPlan.creator === chainPlan.creator &&
+          backendPlan.asset === chainPlan.asset &&
+          backendPlan.amount === chainPlan.amount &&
+          backendPlan.intervalDays === chainPlan.intervalDays;
+        backendPlan.syncStatus = matches ? 'synced' : 'stale';
+        backendPlan.lastSyncedAt = new Date();
+        // Remove from chainPlans as it's matched
+        chainPlans.delete(id);
+      }
+    }
 
-    return new PaginatedResponseDto(data, total, page, limit);
+    // Remaining chainPlans are missing from backend - add them
+    for (const [id, chainPlan] of chainPlans) {
+      this.plans.set(id, { ...chainPlan, syncStatus: 'missing' });
+    }
   }
-}

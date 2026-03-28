@@ -14,6 +14,7 @@ import { MessagesModule } from './messages/messages.module';
 import { PaymentsModule } from './payments/payments.module';
 import { CommentsModule } from './comments/comments.module';
 import { AuthModule } from './auth/auth.module';
+import { TokenTransfersModule } from './token-transfers/token-transfers.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import { redisStore } from 'cache-manager-redis-yet';
 
@@ -75,6 +76,7 @@ import { redisStore } from 'cache-manager-redis-yet';
     PaymentsModule,
     CommentsModule,
     AuthModule,
+    TokenTransfersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
