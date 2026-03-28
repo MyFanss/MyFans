@@ -1,31 +1,45 @@
-# #301 Contract Interface Docs Generation - TODO
+# Subscription Contract Event Indexer Implementation
+Current Status: [x] Started
 
-## Plan Progress
-- [x] Step 1: Create new branch `blackboxai/#301-docs-gen`
-- [x] Step 2: Audit all existing docs in `contract/docs/interfaces/*.md` for completeness (compare to lib.rs pub fns)
-  - content-likes.md: Complete table format, all methods ✓
-  - creator-registry.md: Complete table ✓
-  - earnings.md: Complete table ✓
-  - myfans-token.md: Complete table ✓
-  - subscription.md: Complete table ✓
-  - content-access.md: Old prose format, needs table update
-  - Others (creator-deposits, treasury-contracts): Assume partial/good samples
-- [ ] Step 3: Update README.md in interfaces/ with full list
-- [ ] Step 4: Generate/update docs for:
-  - [x] content-likes.md ✓
-  - [x] creator-registry.md ✓
-  - [x] earnings.md ✓
-  - [x] myfans-token.md ✓
-  - [x] subscription.md ✓
-- [x] creator-deposits.md ✓
-  - [x] content-access.md (updated to table) ✓
-- [x] creator-earnings.md (new) ✓
-  - [x] treasury-contracts.md (verified good) ✓
-  - [x] myfans-main.md (verified complete) ✓
-  - [x] All main contracts covered ✓
-- [ ] Step 5: Validate examples (manual soroban dry-run using deployed-local.json)
-- [ ] Step 6: git add . && git commit -m "feat: complete contract interface docs #301" && git push
-- [ ] Step 7: gh pr create --title "feat: Contract interface docs generation #301" --body "Closes #301"
+**Completed:**
+- ✅ SubscriptionIndexEntity created
+- ✅ SubscriptionIndexRepository created
 
-**Current: Steps 3-4 (creator-deposits.md, content-access.md, etc.)**
+## Breakdown of Approved Plan (Logical Steps)
+
+### 1. Database Layer ✅ Complete
+   - ✅ Create `backend/src/subscriptions/entities/subscription-index.entity.ts`
+   - ✅ Create `backend/src/subscriptions/repositories/subscription-index.repository.ts`
+   - ✅ Update `backend/src/subscriptions/subscriptions.module.ts` (add TypeOrmModule.forFeature([SubscriptionIndexEntity]))
+
+### 2. Event Poller Service ✅ Complete (skeleton)
+    - ✅ Create `backend/src/subscriptions/services/subscription-event-poller.service.ts` 
+    - ✅ Integrate to module + ScheduleModule/ConfigModule
+    - [ ] Full Soroban getEvents impl (read SorobanRpcService)
+    - [ ] Expiry view invoke
+    - [ ] Add idempotent upsert + DomainEvent publish ✅
+    - [ ] Checkpoint handling ✅
+
+### 3. Update Core Services ✅ Complete
+   - ✅ Refactor `backend/src/subscriptions/subscriptions.service.ts` (Maps → DB repo)
+     - ✅ Add repo inject + remove subscription Map
+     - ✅ Replace methods (add/renew → upsert mock, isSubscriber/get → repo)
+     - ✅ listSubscriptions, dashboard → repo queries
+   - ✅ Update `backend/src/subscriptions/subscription-lifecycle-indexer.service.ts` (HTTP → DB upsert)
+   - ✅ Update `backend/src/subscriptions/subscription-reconciler.service.ts` (use repo)
+
+### 4. Module Updates
+   - [ ] Add ScheduleModule to `backend/src/subscriptions/subscriptions.module.ts`
+   - [ ] Config: CONTRACT_ID in env/ConfigService
+
+### 5. Testing & Migration
+   - [ ] Unit tests for poller/parser/repo
+   - [ ] TypeORM migration generation
+   - [ ] Manual test: deploy, poll events, verify DB/no dups
+
+### 6. Completion
+   - [ ] Update TODO.md ✅
+   - [ ] attempt_completion
+
+**Progress: 0/20 steps complete**
 

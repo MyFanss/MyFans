@@ -238,6 +238,7 @@ mkdir -p "$(dirname "$OUTPUT_JSON")" "$(dirname "$OUTPUT_ENV")"
 
 cat > "$OUTPUT_JSON" <<JSON
 {
+  "schemaVersion": "1.0.0",
   "network": "$NETWORK",
   "rpcUrl": "$RPC_URL",
   "networkPassphrase": "$NETWORK_PASSPHRASE",

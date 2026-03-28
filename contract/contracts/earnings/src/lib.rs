@@ -1,8 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env,
-};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
 
 #[contracttype]
 enum DataKey {
@@ -53,6 +51,32 @@ impl Earnings {
             .instance()
             .get(&DataKey::Earnings(creator))
             .unwrap_or(0)
+    }
+
+    /// Withdraw `amount` from `creator`'s recorded earnings.
+    ///
+    /// - Creator must authorize.
+    /// - Panics with "insufficient balance" if amount > recorded earnings.
+    /// - Emits `withdraw` event: topics `(symbol, creator)`, data `amount`.
+    pub fn withdraw(env: Env, creator: Address, amount: i128) {
+        creator.require_auth();
+
+        let current: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::Earnings(creator.clone()))
+            .unwrap_or(0);
+
+        if amount > current {
+            panic!("insufficient balance");
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::Earnings(creator.clone()), &(current - amount));
+
+        env.events()
+            .publish((Symbol::new(&env, "withdraw"), creator), amount);
     }
 }
 

@@ -31,8 +31,29 @@ export class User {
   @Column({ name: 'display_name', type: 'varchar', nullable: true })
   display_name!: string | null;
 
-  @Column({ name: 'avatar_url', type: 'varchar', nullable: true })
+  @Column({ name: 'avatar_url', type: 'varchar', length: 2048, nullable: true })
   avatar_url!: string | null;
+
+  /** Public website (https only in API validation) */
+  @Column({ name: 'website_url', type: 'varchar', length: 2048, nullable: true })
+  website_url!: string | null;
+
+  /** X/Twitter handle (stored without @) */
+  @Column({ name: 'x_handle', type: 'varchar', length: 32, nullable: true })
+  x_handle!: string | null;
+
+  /** Instagram handle (stored without @) */
+  @Column({
+    name: 'instagram_handle',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  instagram_handle!: string | null;
+
+  /** Additional link (e.g. Linktree) */
+  @Column({ name: 'other_url', type: 'varchar', length: 2048, nullable: true })
+  other_url!: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   created_at!: Date;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useImageUpload } from '@/hooks/useImageUpload';
-import { ImageUpload } from '@/components/ui';
+import { ImageUpload } from '@/components/ui/ImageUpload';
 
 export default function ContentPage() {
   const { upload } = useImageUpload({ endpoint: '/api/content/upload' });

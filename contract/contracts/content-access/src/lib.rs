@@ -1,8 +1,18 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
-    Symbol,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, BytesN,
+    Env, Symbol,
 };
+
+/// Metadata for a piece of content in a creator's catalog.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContentInfo {
+    /// Price in the contract's configured token (stroops / smallest unit).
+    pub price: i128,
+    /// Whether the content is currently available for purchase.
+    pub is_active: bool,
+}
 
 /// Storage keys for content access contract
 #[contracttype]
@@ -14,8 +24,10 @@ pub enum DataKey {
     TokenAddress,
     /// Access record: (buyer, creator, content_id) -> true
     Access(Address, Address, u64),
-    /// Content price: (creator, content_id) -> price
+    /// Content price: (creator, content_id) -> price  [legacy u64 key]
     ContentPrice(Address, u64),
+    /// Optional maximum price cap set by admin
+    MaxPrice,
 }
 
 #[contracterror]
@@ -37,10 +49,15 @@ impl ContentAccess {
     /// * `env` - Soroban environment
     /// * `admin` - Admin address
     /// * `token_address` - Token contract address for payments
-    pub fn initialize(env: Env, admin: Address, token_address: Address) {
+pub fn initialize(env: Env, admin: Address, token_address: Address) {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
+
+        let token_client = token::Client::new(&env, &token_address);
+        let _ = token_client.balance(&admin);
+
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
             .instance()
@@ -123,10 +140,55 @@ impl ContentAccess {
     }
 
     /// Set the price for a creator's content. Creator must authorize.
+    ///
+    /// # Panics
+    /// - If `price` is not strictly positive (≤ 0).
+    /// - If a max-price cap is configured and `price` exceeds it.
     pub fn set_content_price(env: Env, creator: Address, content_id: u64, price: i128) {
         creator.require_auth();
+
+        if price <= 0 {
+            panic!("price must be positive");
+        }
+
+        if let Some(max_price) = env
+            .storage()
+            .instance()
+            .get::<DataKey, i128>(&DataKey::MaxPrice)
+        {
+            if price > max_price {
+                panic!("price exceeds maximum allowed");
+            }
+        }
+
         let key = DataKey::ContentPrice(creator, content_id);
         env.storage().instance().set(&key, &price);
+    }
+
+    /// Set a global maximum price cap. Only admin may call this.
+    ///
+    /// Pass `0` to remove the cap entirely.
+    pub fn set_max_price(env: Env, max_price: i128) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+        admin.require_auth();
+
+        if max_price == 0 {
+            env.storage().instance().remove(&DataKey::MaxPrice);
+        } else {
+            if max_price < 0 {
+                panic!("max price must be positive or zero to remove cap");
+            }
+            env.storage().instance().set(&DataKey::MaxPrice, &max_price);
+        }
+    }
+
+    /// Get the configured max-price cap, or `None` if no cap is set.
+    pub fn get_max_price(env: Env) -> Option<i128> {
+        env.storage().instance().get(&DataKey::MaxPrice)
     }
 
     /// Set a new admin address. Current admin must authorize.
@@ -139,7 +201,18 @@ impl ContentAccess {
         current_admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
     }
+
+    /// Returns the configured admin address.
+    /// No authorization required (view-only).
+    pub fn admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
+    }
 }
+
+mod content_query_test;
 
 #[cfg(test)]
 mod test {
@@ -153,8 +226,12 @@ mod test {
     #[contract]
     pub struct MockToken;
 
-    #[contractimpl]
+#[contractimpl]
     impl MockToken {
+        pub fn balance(_env: Env, _id: Address) -> i128 {
+            0
+        }
+
         pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {
             // Mock implementation - just succeed
         }
@@ -396,6 +473,27 @@ mod test {
     }
 
     #[test]
+    fn test_admin_view_returns_configured_admin() {
+        let (env, contract_id, admin, token_address, _, _) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+
+        let fetched_admin = client.admin();
+        assert_eq!(fetched_admin, admin);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_admin_view_uninitialized_panics() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, ContentAccess);
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.admin();
+    }
+
+    #[test]
     #[should_panic] // Status codes in Soroban tests can be tricky
     fn test_set_admin_fails_if_not_authorized() {
         let env = Env::default();
@@ -456,7 +554,11 @@ mod test {
         let event = unlock_event.unwrap();
 
         // ── topics ────────────────────────────────────────────────────────────
-        assert_eq!(event.1.len(), 3, "expected 3 topics: (name, buyer, creator)");
+        assert_eq!(
+            event.1.len(),
+            3,
+            "expected 3 topics: (name, buyer, creator)"
+        );
 
         let topic_name: Symbol = event.1.get(0).unwrap().try_into_val(&env).unwrap();
         assert_eq!(topic_name, Symbol::new(&env, "content_unlocked"));
@@ -468,8 +570,7 @@ mod test {
         assert_eq!(event_creator, creator, "creator mismatch in topics");
 
         // ── data: (content_id, amount) ────────────────────────────────────────
-        let (event_content_id, event_amount): (u64, i128) =
-            event.2.try_into_val(&env).unwrap();
+        let (event_content_id, event_amount): (u64, i128) = event.2.try_into_val(&env).unwrap();
         assert_eq!(event_content_id, 42u64, "content_id mismatch in data");
         assert_eq!(event_amount, 750i128, "amount mismatch in data");
     }
@@ -508,6 +609,48 @@ mod test {
             .count();
 
         assert_eq!(count_after_first, 1);
-        assert_eq!(count_after_second, 1, "duplicate unlock must not emit a second event");
+        assert_eq!(
+            count_after_second, 1,
+            "duplicate unlock must not emit a second event"
+        );
+    }
+
+    #[test]
+    fn test_initialize_valid_token_succeeds() {
+        let (env, contract_id, admin, token_address, _, _) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+    }
+
+    #[test]
+    #[should_panic(expected = r##"calling unknown contract function"##)]
+    fn test_initialize_invalid_token_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+let invalid_token_contract = env.register_contract(None, ContentAccess);
+        let invalid_token_address: Address = invalid_token_contract.into();
+
+        let contract_id = env.register_contract(None, ContentAccess);
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &invalid_token_address);
+    }
+
+    #[test]
+    #[should_panic(expected = r##"Unauthorized function call"##)]
+    fn test_initialize_missing_admin_auth_fails() {
+        let env = Env::default();
+        // No mock auths
+
+        let contract_id = env.register_contract(None, ContentAccess);
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let token_address = Address::generate(&env);
+
+        client.initialize(&admin, &token_address);
     }
 }

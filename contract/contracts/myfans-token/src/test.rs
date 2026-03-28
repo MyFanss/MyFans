@@ -10,11 +10,15 @@ fn test_transfer() {
     let contract_id = env.register_contract(None, MyFansToken);
     let client = MyFansTokenClient::new(&env, &contract_id);
 
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
     let user1 = Address::generate(&env);
     let user2 = Address::generate(&env);
 
     client.mint(&user1, &1000);
     assert_eq!(client.balance(&user1), 1000);
+    assert_eq!(client.total_supply(), 1000);
 
     client.transfer(&user1, &user2, &600);
     assert_eq!(client.balance(&user1), 400);
@@ -28,6 +32,9 @@ fn test_transfer_insufficient_balance() {
 
     let contract_id = env.register_contract(None, MyFansToken);
     let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
 
     let user1 = Address::generate(&env);
     let user2 = Address::generate(&env);
@@ -47,6 +54,9 @@ fn test_approve_and_transfer_from() {
     let contract_id = env.register_contract(None, MyFansToken);
     let client = MyFansTokenClient::new(&env, &contract_id);
 
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
     let owner = Address::generate(&env);
     let spender = Address::generate(&env);
     let receiver = Address::generate(&env);
@@ -62,6 +72,7 @@ fn test_approve_and_transfer_from() {
     assert_eq!(client.balance(&owner), 800);
     assert_eq!(client.balance(&receiver), 200);
     assert_eq!(client.allowance(&owner, &spender), 300);
+    assert_eq!(client.total_supply(), 1000);
 }
 
 #[test]
@@ -75,6 +86,9 @@ fn test_transfer_from_insufficient_allowance() {
     let owner = Address::generate(&env);
     let spender = Address::generate(&env);
     let receiver = Address::generate(&env);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
 
     client.mint(&owner, &1000);
     client.approve(&owner, &spender, &100, &100);
@@ -95,6 +109,9 @@ fn test_transfer_from_expired_allowance() {
     let owner = Address::generate(&env);
     let spender = Address::generate(&env);
     let receiver = Address::generate(&env);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
 
     client.mint(&owner, &1000);
 
@@ -131,6 +148,61 @@ fn test_allowance_view_expired() {
 
     env.ledger().with_mut(|li| li.sequence_number = 21);
     assert_eq!(client.allowance(&owner, &spender), 0);
+}
+
+#[test]
+fn test_burn() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
+    let user = Address::generate(&env);
+    client.mint(&user, &1000);
+    assert_eq!(client.balance(&user), 1000);
+    assert_eq!(client.total_supply(), 1000);
+
+    client.burn(&user, &400);
+    assert_eq!(client.balance(&user), 600);
+    assert_eq!(client.total_supply(), 600);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_burn_insufficient_balance() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
+    let user = Address::generate(&env);
+    client.mint(&user, &100);
+    client.burn(&user, &101);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #4)")]
+fn test_burn_invalid_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
+    let user = Address::generate(&env);
+    client.mint(&user, &100);
+    client.burn(&user, &0);
 }
 
 // Helper function to create a non-zero address
@@ -280,4 +352,63 @@ fn test_multiple_initializations_with_different_envs() {
     assert_eq!(client2.admin(), admin2);
     assert_eq!(client2.symbol(), symbol2);
     assert_eq!(client2.decimals(), 8);
+}
+
+// ── Issue #276 – Enforce mint admin authorization ────────────────────────────
+
+/// Admin can mint: balance and total supply increase, mint event fired.
+#[test]
+fn test_mint_admin_can_mint() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0,
+    );
+
+    let recipient = Address::generate(&env);
+    let mint_amount: i128 = 500_000;
+
+    // Admin-authorized mint must succeed
+    client.mint(&recipient, &mint_amount);
+
+    assert_eq!(client.balance(&recipient), mint_amount);
+    assert_eq!(client.total_supply(), mint_amount);
+}
+
+/// Non-admin caller: `admin.require_auth()` panics because no matching auth
+/// is mocked for the stored admin, which is the expected behaviour.
+#[test]
+#[should_panic]
+fn test_mint_non_admin_is_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0,
+    );
+
+    // Clear ALL mocked auths. After this, admin.require_auth() inside mint
+    // will find no matching mock and Soroban will panic (auth failure).
+    env.mock_auths(&[]);
+
+    let non_admin = Address::generate(&env);
+    // This must panic – the admin's auth is no longer mocked.
+    client.mint(&non_admin, &100);
 }

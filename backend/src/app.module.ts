@@ -1,29 +1,44 @@
-import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
-import { NotificationsModule } from './notifications/notifications.module';
-import { HealthModule } from './health/health.module';
+import { ThrottlerGuard } from './auth/throttler.guard';
+import { LoggingModule } from './common/logging.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
+import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 import { CreatorsModule } from './creators/creators.module';
+import { HealthModule } from './health/health.module';
+import { MetricsModule } from './metrics/metrics.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { ModerationModule } from './moderation/moderation.module';
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot([
+      { name: 'short', ttl: 60000, limit: 10 },
+      { name: 'medium', ttl: 60000, limit: 50 },
+      { name: 'long', ttl: 60000, limit: 100 },
+    ]),
+    LoggingModule,
+    MetricsModule,
     AuthModule,
     CreatorsModule,
     SubscriptionsModule,
     NotificationsModule,
     HealthModule,
+    ModerationModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
-      .apply(CorrelationIdMiddleware, LoggingMiddleware)
+      .apply(CorrelationIdMiddleware, LoggingMiddleware, MetricsMiddleware)
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }
 }

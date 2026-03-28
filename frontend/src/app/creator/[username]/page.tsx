@@ -2,7 +2,6 @@ import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import Image from 'next/image';
 import {
   getAllCreators,
   getCreatorByUsername,
@@ -12,7 +11,9 @@ import {
   getCurrencySymbol,
   type CreatorProfile,
 } from '@/lib/creator-profile';
-import { BookmarkButton } from '@/components/BookmarkButton';
+import { getMockViewerSubscriptionStatus } from '@/lib/subscription-status';
+import { createCreatorMetadata } from '@/lib/metadata';
+import { CreatorHero } from '@/components/creator/CreatorHero';
 import { PlanCard } from '@/components/cards';
 import { ContentCard } from '@/components/cards';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -51,7 +52,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   }
 
-  const plans = getCreatorPlans(username);
+  const plans = await getCreatorPlans(username);
   return createCreatorMetadata(creator, plans, getCurrencySymbol);
 }
 
@@ -61,6 +62,7 @@ export default async function CreatorProfilePage({ params }: PageProps) {
   if (!creator) {
     notFound();
   }
+  const viewerSubscriptionStatus = getMockViewerSubscriptionStatus(username);
 
   /**
    * Critical-path data fetched in parallel.
@@ -74,7 +76,10 @@ export default async function CreatorProfilePage({ params }: PageProps) {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <CreatorHero creator={creator} />
+        <CreatorHero
+          creator={creator}
+          viewerSubscriptionStatus={viewerSubscriptionStatus}
+        />
         <main className="max-w-5xl mx-auto px-4 py-8 sm:px-6">
           {/* Plans — critical path, rendered immediately */}
           <section className="mb-10" aria-labelledby="plans-heading">
@@ -187,66 +192,5 @@ function PostsSkeleton() {
         />
       ))}
     </div>
-  );
-}
-
-function CreatorHero({ creator }: { creator: CreatorProfile }) {
-  return (
-    <header className="relative">
-      <div className="h-40 sm:h-52 bg-gradient-to-br from-primary-500 to-primary-800 dark:from-primary-700 dark:to-primary-900" />
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 -mt-16 sm:-mt-20 relative">
-        <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-          <div className="flex-shrink-0 w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-white dark:border-gray-900 bg-gray-200 dark:bg-gray-700 overflow-hidden flex items-center justify-center">
-            {creator.avatarUrl ? (
-              <Image
-                src={creator.avatarUrl}
-                alt=""
-                width={128}
-                height={128}
-                className="w-full h-full object-cover"
-                priority
-              />
-            ) : (
-              <span className="text-3xl sm:text-4xl font-bold text-gray-500 dark:text-gray-400">
-                {creator.displayName.charAt(0)}
-              </span>
-            )}
-          </div>
-          <div className="pb-1 flex-1 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-                {creator.displayName}
-              </h1>
-              <p className="text-gray-500 dark:text-gray-400">@{creator.username}</p>
-              <p className="mt-2 text-sm font-medium text-gray-600 dark:text-gray-300">
-                {creator.subscriberCount.toLocaleString()} subscribers
-              </p>
-              {creator.bio && (
-                <p className="mt-2 text-gray-600 dark:text-gray-300 max-w-2xl">{creator.bio}</p>
-              )}
-              {creator.socialLinks.length > 0 && (
-                <ul className="mt-3 flex flex-wrap gap-3" aria-label="Social links">
-                  {creator.socialLinks.map((link) => (
-                    <li key={link.platform}>
-                      <a
-                        href={link.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
-                      >
-                        {link.label ?? link.platform}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="flex-shrink-0">
-              <BookmarkButton creatorId={creator.id} showLabel className="shadow-sm shadow-black/5" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </header>
   );
 }

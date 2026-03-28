@@ -22,6 +22,10 @@ See comprehensive method docs (args, auth, examples, events): [docs/interfaces/]
 
 The deploy script applies this order to keep initialization/dependency flow deterministic.
 
+## Workspace layout and versions
+
+The workspace root is `contract/Cargo.toml`. Shared crate metadata (`version`, `edition`, `authors`, `license`, `repository`, `description`, `publish`) lives under `[workspace.package]`. The Soroban SDK pin is declared once in `[workspace.dependencies]` (`soroban-sdk`) and referenced from each crate with `soroban-sdk = { workspace = true }`. After dependency changes, refresh the lockfile with `cargo update -p <crate>` as needed and verify with `cargo check --workspace`.
+
 ## Prerequisites
 
 - Rust stable
@@ -93,7 +97,7 @@ By default, deployment outputs are written to:
 - `contract/deployed.json`
 - `contract/.env.deployed`
 
-Both include contract addresses/IDs and network metadata.
+Both include contract addresses/IDs and network metadata. `deployed.json` includes a `schemaVersion` field (e.g., `"1.0.0"`) for compatibility.
 
 Override paths with:
 
