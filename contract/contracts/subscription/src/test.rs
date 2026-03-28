@@ -565,3 +565,116 @@ fn test_cancel_after_snapshot_restore() {
         "cancel after restore: subscription should be removed"
     );
 }
+
+// ── #287 – paused state enforcement ──────────────────────────────────────────
+
+/// Helper: initialise contract, create a plan, mint tokens to fan, then pause.
+fn setup_paused() -> (
+    Env,
+    MyfansContractClient<'static>,
+    Address,
+    Address,
+    Address,
+    token::Client<'static>,
+    token::StellarAssetClient<'static>,
+) {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &50000);
+    client.pause(&admin);
+    (env, client, admin, creator, fan, token, token_admin)
+}
+
+#[test]
+#[should_panic(expected = "contract is paused")]
+fn test_create_plan_fails_when_paused() {
+    let (_env, client, _admin, creator, _fan, token, _token_admin) = setup_paused();
+    client.create_plan(&creator, &token.address, &1000, &30);
+}
+
+#[test]
+#[should_panic(expected = "contract is paused")]
+fn test_subscribe_fails_when_paused() {
+    let (env, client, admin, creator, fan, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    token_admin.mint(&fan, &50000);
+    // create plan before pausing
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.pause(&admin);
+    client.subscribe(&fan, &plan_id, &token.address);
+}
+
+#[test]
+#[should_panic(expected = "contract is paused")]
+fn test_extend_subscription_fails_when_paused() {
+    let (env, client, admin, creator, fan, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    token_admin.mint(&fan, &50000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    client.pause(&admin);
+    client.extend_subscription(&fan, &creator, &17280, &token.address);
+}
+
+#[test]
+#[should_panic(expected = "contract is paused")]
+fn test_cancel_fails_when_paused() {
+    let (env, client, admin, creator, fan, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    token_admin.mint(&fan, &50000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    client.pause(&admin);
+    client.cancel(&fan, &creator);
+}
+
+#[test]
+#[should_panic(expected = "contract is paused")]
+fn test_create_subscription_fails_when_paused() {
+    let (_env, client, _admin, creator, fan, _token, _token_admin) = setup_paused();
+    client.create_subscription(&fan, &creator, &518400);
+}
+
+/// Views must remain available while paused.
+#[test]
+fn test_views_available_when_paused() {
+    let (env, client, admin, creator, fan, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    token_admin.mint(&fan, &50000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    client.pause(&admin);
+
+    // is_paused view works
+    assert!(client.is_paused());
+    // is_subscriber view works
+    assert!(client.is_subscriber(&fan, &creator));
+}
+
+/// Mutations succeed again after unpause.
+#[test]
+fn test_mutations_succeed_after_unpause() {
+    let (env, client, admin, creator, fan, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    token_admin.mint(&fan, &50000);
+
+    client.pause(&admin);
+    assert!(client.is_paused());
+
+    client.unpause(&admin);
+    assert!(!client.is_paused());
+
+    // mutations work again
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    assert!(client.is_subscriber(&fan, &creator));
+}
