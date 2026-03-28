@@ -1,27 +1,57 @@
-import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import type { Request, Response, NextFunction } from 'express';
 import { AppModule } from './app.module';
 import { StartupProbeService } from './health/startup-probe.service';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { validateRequiredSecrets } from './common/secrets-validation';
+import { CorsService } from './common/services/cors.service';
+import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  validateRequiredSecrets();
+
+  const corsService = new CorsService();
+  const corsOptions = corsService.getCorsOptions();
+
+  const app = await NestFactory.create(AppModule, {
+    cors: corsOptions,
+  });
+
+  // Apply security headers middleware
+  const securityHeadersMiddleware = new SecurityHeadersMiddleware();
+  app.use((req, res, next) => securityHeadersMiddleware.use(req, res, next));
+
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: '1',
+  });
+
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader(
+      'Strict-Transport-Security',
+      'max-age=31536000; includeSubDomains',
+    );
+    next();
+  });
 
   const probeService = app.get(StartupProbeService);
 
-  // DB probe — uses TypeORM DataSource if available
   let dbResult: { ok: boolean; error?: string };
   try {
     const dataSource = app.get<DataSource>(getDataSourceToken());
     dbResult = await probeService.probeDb(() => dataSource.query('SELECT 1'));
   } catch {
-    // TypeORM not configured (e.g. test env) — skip DB probe
     dbResult = { ok: true };
   }
   probeService.handleResult('DB', dbResult);
 
-  // RPC probe
   const rpcResult = await probeService.probeRpc();
   probeService.handleResult('RPC', rpcResult);
 

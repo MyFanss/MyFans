@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import Image from 'next/image';
 import { Search, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import Badge from '../ui/Badge';
 
@@ -137,9 +138,9 @@ export default function SubscribersTable() {
   return (
     <div className="space-y-3 sm:space-y-4 max-w-full overflow-hidden">
       {/* Controls */}
-      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-between items-stretch sm:items-end">
-        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full sm:w-auto">
-          <div className="relative w-full sm:w-72">
+      <div className="flex flex-col md:flex-row gap-3 md:gap-4 justify-between items-stretch md:items-end">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full md:w-auto">
+          <div className="relative w-full sm:flex-1 md:w-72">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Search className="h-4 w-4 text-gray-400" />
             </div>
@@ -148,14 +149,14 @@ export default function SubscribersTable() {
               placeholder="Search by name or email..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-3 py-2.5 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors min-h-[44px] sm:min-h-0"
+              className="w-full pl-10 pr-3 py-2.5 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors min-h-11 sm:min-h-0"
             />
           </div>
-          <div className="w-full sm:w-48">
+          <div className="w-full sm:w-48 md:w-52">
             <select 
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full pl-3 pr-10 py-2.5 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors appearance-none min-h-[44px] sm:min-h-0"
+              className="w-full pl-3 pr-10 py-2.5 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors appearance-none min-h-11 sm:min-h-0"
               style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.25rem' }}
             >
               <option value="All">All Statuses</option>
@@ -167,7 +168,7 @@ export default function SubscribersTable() {
         </div>
         <button 
           onClick={handleExportCSV}
-          className="flex items-center gap-2 px-4 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors w-full sm:w-auto justify-center min-h-[44px] sm:min-h-0"
+          className="flex items-center gap-2 px-4 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors w-full md:w-auto justify-center min-h-11 md:min-h-0"
         >
           <Download className="w-4 h-4" />
           Export CSV
@@ -177,7 +178,7 @@ export default function SubscribersTable() {
       {/* Table / Cards */}
       <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden max-w-full">
         {/* Desktop Table */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden lg:block overflow-x-auto" data-testid="subscribers-desktop-table-wrap">
           <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
             <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-800/50 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
               <tr>
@@ -203,7 +204,7 @@ export default function SubscribersTable() {
                 <tr key={sub.id} className={`${idx !== paginatedData.length - 1 ? 'border-b border-gray-200 dark:border-gray-800' : ''} hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors`}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-3">
-                      <img className="w-10 h-10 rounded-full object-cover" src={sub.avatar} alt={sub.name} />
+                      <Image className="w-10 h-10 rounded-full object-cover" src={sub.avatar} alt={sub.name} width={40} height={40} />
                       <div>
                         <div className="font-medium text-gray-900 dark:text-white">{sub.name}</div>
                         <div className="text-xs text-gray-500">{sub.email}</div>
@@ -237,23 +238,23 @@ export default function SubscribersTable() {
         </div>
 
         {/* Mobile Cards */}
-        <div className="md:hidden flex flex-col divide-y divide-gray-200 dark:divide-gray-800">
+        <div className="lg:hidden flex flex-col divide-y divide-gray-200 dark:divide-gray-800" data-testid="subscribers-mobile-cards-wrap">
           {paginatedData.length > 0 ? paginatedData.map((sub) => (
             <div key={sub.id} className="p-4 flex flex-col gap-3 touch-manipulation">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <img className="w-12 h-12 flex-shrink-0 rounded-full object-cover" src={sub.avatar} alt={sub.name} />
+                  <Image className="w-12 h-12 shrink-0 rounded-full object-cover" src={sub.avatar} alt={sub.name} width={48} height={48} />
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-gray-900 dark:text-white truncate">{sub.name}</div>
                     <div className="text-sm text-gray-500 truncate">{sub.email}</div>
                   </div>
                 </div>
-                <div className="flex-shrink-0">
+                <div className="shrink-0">
                   {getStatusBadge(sub.status)}
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
                 <div>
                   <div className="text-gray-500 text-xs uppercase tracking-wider mb-1">Plan</div>
                   <div className="font-medium text-gray-900 dark:text-white">{sub.plan}</div>
@@ -262,6 +263,10 @@ export default function SubscribersTable() {
                 <div>
                   <div className="text-gray-500 text-xs uppercase tracking-wider mb-1">Total Paid</div>
                   <div className="font-medium text-gray-900 dark:text-white">${sub.totalPaid.toFixed(2)}</div>
+                </div>
+                <div className="sm:block hidden">
+                  <div className="text-gray-500 text-xs uppercase tracking-wider mb-1">Status</div>
+                  {getStatusBadge(sub.status)}
                 </div>
                 <div>
                   <div className="text-gray-500 text-xs uppercase tracking-wider mb-1">Joined</div>
@@ -290,7 +295,7 @@ export default function SubscribersTable() {
               <button 
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
-                className="p-2 sm:p-1 rounded-md text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed border border-transparent hover:border-gray-200 dark:hover:border-gray-600 transition-colors min-w-[44px] min-h-[44px] sm:min-w-[auto] sm:min-h-[auto] flex items-center justify-center"
+                className="p-2 sm:p-1 rounded-md text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed border border-transparent hover:border-gray-200 dark:hover:border-gray-600 transition-colors min-w-11 min-h-11 sm:min-w-auto sm:min-h-auto flex items-center justify-center"
                 aria-label="Previous Page"
               >
                 <ChevronLeft className="w-5 h-5" />
@@ -298,7 +303,7 @@ export default function SubscribersTable() {
               <button 
                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
-                className="p-2 sm:p-1 rounded-md text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed border border-transparent hover:border-gray-200 dark:hover:border-gray-600 transition-colors min-w-[44px] min-h-[44px] sm:min-w-[auto] sm:min-h-[auto] flex items-center justify-center"
+                className="p-2 sm:p-1 rounded-md text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed border border-transparent hover:border-gray-200 dark:hover:border-gray-600 transition-colors min-w-11 min-h-11 sm:min-w-auto sm:min-h-auto flex items-center justify-center"
                 aria-label="Next Page"
               >
                 <ChevronRight className="w-5 h-5" />

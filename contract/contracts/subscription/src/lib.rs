@@ -5,6 +5,7 @@ use soroban_sdk::{
 };
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Plan {
     pub creator: Address,
     pub asset: Address,
@@ -13,6 +14,7 @@ pub struct Plan {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Subscription {
     pub fan: Address,
     pub plan_id: u32,
@@ -20,12 +22,15 @@ pub struct Subscription {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Admin,
     FeeBps,
     FeeRecipient,
     PlanCount,
     Plan(u32),
+    // Canonical storage name: `subscription`.
+    // Keep the legacy `Sub` variant to preserve deployed key serialization.
     Sub(Address, Address),
     CreatorSubscriptionCount(Address),
     AcceptedToken(Address),
@@ -101,8 +106,9 @@ impl MyfansContract {
         };
         env.storage().instance().set(&DataKey::Plan(plan_id), &plan);
         env.storage().instance().set(&DataKey::PlanCount, &plan_id);
+        // topics: (name, creator)  data: plan_id
         env.events()
-            .publish((Symbol::new(&env, "plan_created"), plan_id), creator);
+            .publish((Symbol::new(&env, "plan_created"), creator), plan_id);
         plan_id
     }
 
@@ -144,18 +150,26 @@ impl MyfansContract {
             plan_id,
             expiry: expiry as u64,
         };
-        env.storage()
-            .instance()
-            .set(&DataKey::Sub(fan.clone(), plan.creator.clone()), &sub);
-        env.events()
-            .publish((Symbol::new(&env, "subscribed"), plan_id), fan);
+        env.storage().instance().set(
+            &DataKey::subscription(fan.clone(), plan.creator.clone()),
+            &sub,
+        );
+        // topics: (name, fan, creator)  data: plan_id
+        env.events().publish(
+            (
+                Symbol::new(&env, "subscribed"),
+                fan.clone(),
+                plan.creator.clone(),
+            ),
+            plan_id,
+        );
     }
 
     pub fn is_subscriber(env: Env, fan: Address, creator: Address) -> bool {
         if let Some(sub) = env
             .storage()
             .instance()
-            .get::<DataKey, Subscription>(&DataKey::Sub(fan, creator))
+            .get::<DataKey, Subscription>(&DataKey::subscription(fan, creator))
         {
             env.ledger().sequence() <= sub.expiry as u32
         } else {
@@ -171,6 +185,12 @@ impl MyfansContract {
         token: Address,
     ) {
         fan.require_auth();
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        assert!(!paused, "contract is paused");
 
         let sub: Subscription = env
             .storage()
@@ -211,12 +231,16 @@ impl MyfansContract {
             expiry: new_expiry,
         };
 
-        env.storage()
-            .instance()
-            .set(&DataKey::Sub(fan.clone(), creator), &updated_sub);
+        env.storage().instance().set(
+            &DataKey::subscription(fan.clone(), creator.clone()),
+            &updated_sub,
+        );
 
-        env.events()
-            .publish((Symbol::new(&env, "extended"), sub.plan_id), fan);
+        // topics: (name, fan, creator)  data: plan_id
+        env.events().publish(
+            (Symbol::new(&env, "extended"), fan.clone(), creator),
+            sub.plan_id,
+        );
     }
 
     pub fn cancel(env: Env, fan: Address, creator: Address) {
@@ -232,12 +256,20 @@ impl MyfansContract {
 
         env.storage()
             .instance()
-            .remove(&DataKey::Sub(fan.clone(), creator));
-        env.events().publish((Symbol::new(&env, "cancelled"),), fan);
+            .remove(&DataKey::subscription(fan.clone(), creator.clone()));
+        // topics: (name, fan, creator)  data: true
+        env.events()
+            .publish((Symbol::new(&env, "cancelled"), fan.clone(), creator), true);
     }
 
     pub fn create_subscription(env: Env, fan: Address, creator: Address, duration_ledgers: u32) {
         fan.require_auth();
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        assert!(!paused, "contract is paused");
 
         let token: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         let price: i128 = env.storage().instance().get(&DataKey::Price).unwrap();
@@ -267,7 +299,7 @@ impl MyfansContract {
 
         env.storage()
             .instance()
-            .set(&DataKey::Sub(fan.clone(), creator.clone()), &sub);
+            .set(&DataKey::subscription(fan.clone(), creator.clone()), &sub);
 
         let mut current_count: u32 = env
             .storage()
@@ -276,9 +308,16 @@ impl MyfansContract {
             .unwrap_or(0);
 
         current_count += 1;
-        env.storage()
-            .instance()
-            .set(&DataKey::CreatorSubscriptionCount(creator), &current_count);
+        env.storage().instance().set(
+            &DataKey::CreatorSubscriptionCount(creator.clone()),
+            &current_count,
+        );
+
+        // topics: (name, fan, creator)  data: 0u32 (direct sub — no plan)
+        env.events().publish(
+            (Symbol::new(&env, "subscribed"), fan.clone(), creator),
+            0u32,
+        );
     }
 
     /// Pause the contract (admin only)

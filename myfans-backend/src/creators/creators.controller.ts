@@ -1,9 +1,11 @@
 import {
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Body,
   Query,
@@ -18,6 +20,7 @@ import { User } from '../users/entities/user.entity';
 import { CreatorsService } from './creators.service';
 import { FindCreatorsQueryDto } from './dto/find-creators-query.dto';
 import { OnboardCreatorDto } from './dto/onboard-creator.dto';
+import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 
 @Controller('creators')
 export class CreatorsController {
@@ -27,6 +30,18 @@ export class CreatorsController {
   @UseGuards(AuthGuard)
   onboard(@Body() dto: OnboardCreatorDto, @CurrentUser() user: User) {
     return this.creatorsService.onboard(user.id, dto);
+  }
+
+  @Patch('me')
+  @UseGuards(AuthGuard)
+  updateMyProfile(
+    @Body() dto: UpdateCreatorProfileDto,
+    @CurrentUser() user: User,
+  ) {
+    if (!user.is_creator) {
+      throw new ForbiddenException('User is not a creator');
+    }
+    return this.creatorsService.updateMyProfile(user.id, dto);
   }
 
   @Get()

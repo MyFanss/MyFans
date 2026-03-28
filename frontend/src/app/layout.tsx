@@ -2,11 +2,11 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { FavoritesProvider } from '@/hooks/useFavorites';
+import { ConsentProvider } from '@/contexts/ConsentContext';
 import { NoFlashScript } from '@/components/NoFlashScript';
+import { ContractConfigBootstrap } from '@/components/ContractConfigBootstrap';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { ToastContainer } from '@/components/ui/Toast';
-import NavLayout from '@/components/navigation/NavLayout';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export const metadata: Metadata = {
   title: {
@@ -67,12 +67,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <NoFlashScript />
       </head>
       <body>
-        <ThemeProvider>
-          <ToastProvider>
-            {children}
-            <ToastContainer />
-          </ToastProvider>
-        </ThemeProvider>
+        <ContractConfigBootstrap>
+          <ThemeProvider>
+            <ConsentProvider>
+              <FavoritesProvider>
+                <ToastProvider>
+                  {children}
+                  <ToastContainer />
+                </ToastProvider>
+              </FavoritesProvider>
+            </ConsentProvider>
+          </ThemeProvider>
+        </ContractConfigBootstrap>
       </body>
     </html>
   );

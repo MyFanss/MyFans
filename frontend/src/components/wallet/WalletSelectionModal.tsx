@@ -5,12 +5,16 @@ import { WalletOption } from './WalletOption';
 import { ConnectedWalletView } from './ConnectedWalletView';
 import type { WalletType, WalletConnectionState } from '@/types/wallet';
 import { useToast } from '@/contexts/ToastContext';
+import { connectWallet } from '@/lib/wallet';
+import { errorToastWithCause } from '@/lib/error-copy';
 
 interface WalletSelectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConnect?: (address: string, walletType: WalletType) => void;
   onDisconnect?: () => void;
+  isWalletInstalled?: (walletType: WalletType) => boolean;
+  getInstallUrl?: (walletType: WalletType) => string | null;
 }
 
 export function WalletSelectionModal({
@@ -18,8 +22,10 @@ export function WalletSelectionModal({
   onClose,
   onConnect,
   onDisconnect,
+  isWalletInstalled = () => true, // Default to true for backward compatibility
+  getInstallUrl = () => null, // Default to null for backward compatibility
 }: WalletSelectionModalProps) {
-  const { showLoading, showSuccess, showError, dismiss } = useToast();
+  const { showLoading, showSuccess, showError, showInfo, dismiss } = useToast();
   const [connectionState, setConnectionState] = useState<WalletConnectionState>({
     status: 'disconnected',
   });
@@ -106,11 +112,27 @@ export function WalletSelectionModal({
   }, [handleClose, isOpen]);
 
   const handleWalletSelect = useCallback(async (walletType: WalletType) => {
+    // Check if wallet is installed first
+    if (!isWalletInstalled(walletType)) {
+      const installUrl = getInstallUrl(walletType);
+      if (installUrl) {
+        // Open installation URL in new tab
+        window.open(installUrl, '_blank', 'noopener,noreferrer');
+        
+        // Show info toast
+        showInfo(
+          'Installing wallet',
+          `Opening ${walletType} installation page. Please return here after installation.`
+        );
+        return;
+      }
+    }
+
     setConnectionState({ status: 'connecting', walletType });
     const loadingToastId = showLoading(`Connecting ${walletType} wallet...`, 'Approve the connection in your wallet app.');
 
     try {
-      const address = await connectToWallet(walletType);
+      const address = await connectWallet(walletType);
       dismiss(loadingToastId);
       setConnectionState({
         status: 'connected',
@@ -129,12 +151,20 @@ export function WalletSelectionModal({
         error: errorMessage,
         walletType,
       });
-      showError('WALLET_CONNECTION_FAILED', {
-        message: 'Wallet connection failed',
-        description: errorMessage,
-      });
+      showError('WALLET_CONNECTION_FAILED', errorToastWithCause('WALLET_CONNECTION_FAILED', error));
     }
-  }, [dismiss, onConnect, showError, showLoading, showSuccess]);
+  }, [dismiss, onConnect, showError, showLoading, showSuccess, showInfo]);
+
+  const handleInstallWallet = useCallback((walletType: WalletType) => {
+    const installUrl = getInstallUrl(walletType);
+    if (installUrl) {
+      window.open(installUrl, '_blank', 'noopener,noreferrer');
+      showInfo(
+        'Installing wallet',
+        `Opening ${walletType} installation page. Please return here after installation.`
+      );
+    }
+  }, [showInfo]);
 
   const handleDisconnect = useCallback(() => {
     setConnectionState({ status: 'disconnected' });
@@ -226,7 +256,10 @@ export function WalletSelectionModal({
               isConnecting={
                 connectionState.status === 'connecting' && connectionState.walletType === 'freighter'
               }
+              isInstalled={isWalletInstalled('freighter')}
+              installUrl={getInstallUrl('freighter') || undefined}
               onSelect={() => handleWalletSelect('freighter')}
+              onInstall={() => handleInstallWallet('freighter')}
               disabled={connectionState.status === 'connecting'}
             />
 
@@ -238,7 +271,10 @@ export function WalletSelectionModal({
               isConnecting={
                 connectionState.status === 'connecting' && connectionState.walletType === 'lobstr'
               }
+              isInstalled={isWalletInstalled('lobstr')}
+              installUrl={getInstallUrl('lobstr') || undefined}
               onSelect={() => handleWalletSelect('lobstr')}
+              onInstall={() => handleInstallWallet('lobstr')}
               disabled={connectionState.status === 'connecting'}
             />
 
@@ -251,7 +287,10 @@ export function WalletSelectionModal({
                 connectionState.status === 'connecting' &&
                 connectionState.walletType === 'walletconnect'
               }
+              isInstalled={isWalletInstalled('walletconnect')}
+              installUrl={getInstallUrl('walletconnect') || undefined}
               onSelect={() => handleWalletSelect('walletconnect')}
+              onInstall={() => handleInstallWallet('walletconnect')}
               disabled={connectionState.status === 'connecting'}
             />
 
@@ -297,64 +336,3 @@ export function WalletSelectionModal({
   );
 }
 
-// Wallet connection helper
-async function connectToWallet(walletType: WalletType): Promise<string> {
-  // Add timeout
-  const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('Connection timeout')), 30000)
-  );
-
-  const connection = (async () => {
-    switch (walletType) {
-      case 'freighter':
-        return await connectFreighter();
-      case 'lobstr':
-        return await connectLobstr();
-      case 'walletconnect':
-        return await connectWalletConnect();
-      default:
-        throw new Error('Unsupported wallet type');
-    }
-  })();
-
-  return Promise.race([connection, timeout]);
-}
-
-async function connectFreighter(): Promise<string> {
-  if (typeof window === 'undefined') {
-    throw new Error('Window is not defined');
-  }
-
-  const freighter = (window as Window & { freighter?: FreighterApi }).freighter;
-
-  if (!freighter) {
-    throw new Error('Freighter wallet not found. Please install the extension.');
-  }
-
-  try {
-    const publicKey = await freighter.getPublicKey();
-    if (!publicKey) {
-      throw new Error('No public key returned');
-    }
-    return publicKey;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('rejected')) {
-      throw new Error('Connection rejected by user');
-    }
-    throw error;
-  }
-}
-
-interface FreighterApi {
-  getPublicKey: () => Promise<string>;
-}
-
-async function connectLobstr(): Promise<string> {
-  // Placeholder for Lobstr integration
-  throw new Error('Lobstr wallet integration coming soon');
-}
-
-async function connectWalletConnect(): Promise<string> {
-  // Placeholder for WalletConnect integration
-  throw new Error('WalletConnect integration coming soon');
-}
