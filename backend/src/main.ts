@@ -2,6 +2,8 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { Request, Response, NextFunction } from 'express';
 import { AppModule } from './app.module';
+import { CorrelationExceptionFilter } from './common/filters/correlation-exception.filter';
+import { RequestContextService } from './common/services/request-context.service';
 import { StartupProbeService } from './health/startup-probe.service';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
