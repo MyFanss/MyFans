@@ -16,6 +16,8 @@ pub enum DataKey {
     Access(Address, Address, u64),
     /// Content price: (creator, content_id) -> price
     ContentPrice(Address, u64),
+    /// Optional maximum price cap set by admin
+    MaxPrice,
 }
 
 #[contracterror]
@@ -128,10 +130,55 @@ pub fn initialize(env: Env, admin: Address, token_address: Address) {
     }
 
     /// Set the price for a creator's content. Creator must authorize.
+    ///
+    /// # Panics
+    /// - If `price` is not strictly positive (≤ 0).
+    /// - If a max-price cap is configured and `price` exceeds it.
     pub fn set_content_price(env: Env, creator: Address, content_id: u64, price: i128) {
         creator.require_auth();
+
+        if price <= 0 {
+            panic!("price must be positive");
+        }
+
+        if let Some(max_price) = env
+            .storage()
+            .instance()
+            .get::<DataKey, i128>(&DataKey::MaxPrice)
+        {
+            if price > max_price {
+                panic!("price exceeds maximum allowed");
+            }
+        }
+
         let key = DataKey::ContentPrice(creator, content_id);
         env.storage().instance().set(&key, &price);
+    }
+
+    /// Set a global maximum price cap. Only admin may call this.
+    ///
+    /// Pass `0` to remove the cap entirely.
+    pub fn set_max_price(env: Env, max_price: i128) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+        admin.require_auth();
+
+        if max_price == 0 {
+            env.storage().instance().remove(&DataKey::MaxPrice);
+        } else {
+            if max_price < 0 {
+                panic!("max price must be positive or zero to remove cap");
+            }
+            env.storage().instance().set(&DataKey::MaxPrice, &max_price);
+        }
+    }
+
+    /// Get the configured max-price cap, or `None` if no cap is set.
+    pub fn get_max_price(env: Env) -> Option<i128> {
+        env.storage().instance().get(&DataKey::MaxPrice)
     }
 
     /// Set a new admin address. Current admin must authorize.
