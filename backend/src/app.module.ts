@@ -12,6 +12,7 @@ import { PostsModule } from './posts/posts.module';
 import { CommentsModule } from './comments/comments.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { LikesModule } from './likes/likes.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { Post } from './posts/entities/post.entity';
 import { Comment } from './comments/entities/comment.entity';
 import { Conversation } from './conversations/entities/conversation.entity';
@@ -37,6 +38,7 @@ import { Like } from './likes/entities/like.entity';
     CommentsModule,
     ConversationsModule,
     LikesModule,
+    SubscriptionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
