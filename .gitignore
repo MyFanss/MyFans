@@ -41,3 +41,9 @@ out/
 *.pem
 .vercel
 coverage/
+
+# Test snapshots & reports
+**/__snapshots__/
+frontend/playwright-report/
+frontend/test-results/
+**/*.snap

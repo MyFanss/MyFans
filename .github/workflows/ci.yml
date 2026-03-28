@@ -73,6 +73,20 @@ jobs:
           DB_PASSWORD: postgres
           DB_NAME: myfans
 
+      - name: Validate OpenAPI schema generation
+        run: npm run generate:openapi
+        working-directory: backend
+        env:
+          JWT_SECRET: ci-test-secret
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: myfans
+          SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
+          STELLAR_NETWORK: testnet
+          WEBHOOK_SECRET: ci-test-secret
+
       - name: Run E2E tests
         run: npm run test:e2e
         working-directory: backend
