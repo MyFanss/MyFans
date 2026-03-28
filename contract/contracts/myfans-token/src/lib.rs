@@ -226,6 +226,22 @@ impl MyFansToken {
         Ok(())
     }
 
+    /// Zero out the allowance for (from, spender). `from` must authorize.
+    pub fn clear_allowance(env: Env, from: Address, spender: Address) {
+        from.require_auth();
+        let key = DataKey::Allowance(AllowanceValueKey {
+            from: from.clone(),
+            spender: spender.clone(),
+        });
+        let data = AllowanceData {
+            amount: 0,
+            expiration_ledger: env.ledger().sequence(),
+        };
+        env.storage().temporary().set(&key, &data);
+        env.events()
+            .publish((symbol_short!("approve"), from, spender), 0i128);
+    }
+
     pub fn allowance(env: Env, from: Address, spender: Address) -> i128 {
         let key = DataKey::Allowance(AllowanceValueKey { from, spender });
         let data: Option<AllowanceData> = env.storage().temporary().get(&key);
