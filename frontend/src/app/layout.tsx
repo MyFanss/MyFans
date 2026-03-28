@@ -70,14 +70,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <ThemeProvider>
-          <ConsentProvider>
-            <FavoritesProvider>
-              <ToastProvider>
-                {children}
-                <ToastContainer />
-              </ToastProvider>
-            </FavoritesProvider>
-          </ConsentProvider>
+          <FeatureFlagsProvider>
+            <ConsentProvider>
+              <FavoritesProvider>
+                <ToastProvider>
+                  {children}
+                  <ToastContainer />
+                </ToastProvider>
+              </FavoritesProvider>
+            </ConsentProvider>
+          </FeatureFlagsProvider>
         </ThemeProvider>
       </body>
     </html>
