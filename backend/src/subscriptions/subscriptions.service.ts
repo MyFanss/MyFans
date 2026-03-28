@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
+import { RpcBalanceAdapter, RPC_BALANCE_ADAPTER } from './rpc-adapter';
 
 /** Checkout status enum */
 export enum CheckoutStatus {
@@ -69,7 +70,10 @@ export class SubscriptionsService {
   // Mock creator profiles
   private creatorProfiles: Map<string, { name: string; description?: string }> = new Map();
 
-  constructor() {
+  constructor(
+    @Inject(RPC_BALANCE_ADAPTER)
+    private readonly rpcAdapter: RpcBalanceAdapter,
+  ) {
     // Set up mock creator profiles
     this.creatorProfiles.set('GAAAAAAAAAAAAAAA', { name: 'Creator 1', description: 'Premium content creator' });
     this.creatorProfiles.set('GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5', { name: 'Creator 2', description: 'Exclusive videos and photos' });
@@ -204,8 +208,8 @@ export class SubscriptionsService {
    * Validate user balance
    */
   validateBalance(fanAddress: string, assetCode: string, requiredAmount: string): { valid: boolean; balance: string; shortfall?: string } {
-    // Mock balance check - in real app, query Stellar blockchain
-    const balance = this.getMockBalance(fanAddress, assetCode);
+    // RPC balance check adapter injection (mocked in tests)
+    const balance = this.rpcAdapter.getBalance(fanAddress, assetCode);
     const balanceNum = parseFloat(balance);
     const requiredNum = parseFloat(requiredAmount);
 
@@ -227,7 +231,7 @@ export class SubscriptionsService {
     const balances = this.supportedAssets.map(asset => ({
       code: asset.code,
       issuer: asset.issuer,
-      balance: this.getMockBalance(fanAddress, asset.code),
+      balance: this.rpcAdapter.getBalance(fanAddress, asset.code),
       isNative: asset.isNative,
     }));
 
@@ -322,18 +326,6 @@ export class SubscriptionsService {
     if (days === 30) return 'Monthly';
     if (days === 365) return 'Yearly';
     return `${days} days`;
-  }
-
-  private getMockBalance(address: string, assetCode: string): string {
-    // Mock different balances based on address for testing
-    // In real app, query Stellar blockchain
-    if (assetCode === 'XLM') {
-      return '1000.0000000'; // Mock XLM balance
-    }
-    if (assetCode === 'USDC') {
-      return '50.0000000'; // Mock USDC balance
-    }
-    return '0.0000000';
   }
 
   private getPlanMock(planId: number): Plan | undefined {
