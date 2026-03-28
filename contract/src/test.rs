@@ -24,6 +24,49 @@ fn test_subscription_flow() {
 }
 
 #[test]
+fn test_get_plan() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let asset = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &250, &fee_recipient);
+    let plan_id = client.create_plan(&creator, &asset, &1000, &30);
+    let plan = client.get_plan(&plan_id).unwrap();
+
+    assert_eq!(plan.creator, creator);
+    assert_eq!(plan.asset, asset);
+    assert_eq!(plan.amount, 1000);
+    assert_eq!(plan.interval_days, 30);
+}
+
+#[test]
+fn test_get_plan_count() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let asset = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &250, &fee_recipient);
+    assert_eq!(client.get_plan_count(), 0);
+
+    client.create_plan(&creator, &asset, &1000, &30);
+    assert_eq!(client.get_plan_count(), 1);
+}
+
+#[test]
 fn test_is_subscribed_false_when_no_subscription() {
     let env = Env::default();
     env.mock_all_auths();

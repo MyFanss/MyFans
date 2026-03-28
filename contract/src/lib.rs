@@ -214,6 +214,16 @@ impl MyfansContract {
             .publish((Symbol::new(&env, "subscribed"), plan_id), fan);
     }
 
+    /// Get a plan by ID (view function)
+    pub fn get_plan(env: Env, plan_id: u32) -> Option<Plan> {
+        env.storage().instance().get(&DataKey::Plan(plan_id))
+    }
+
+    /// Get the total number of plans (view function)
+    pub fn get_plan_count(env: Env) -> u32 {
+        env.storage().instance().get(&DataKey::PlanCount).unwrap_or(0)
+    }
+
     pub fn is_subscriber(env: Env, fan: Address, creator: Address) -> bool {
         if let Some(sub) = env
             .storage()
