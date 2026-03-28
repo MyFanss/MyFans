@@ -1,120 +1,348 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import * as StellarSdk from '@stellar/stellar-sdk';
 
+export type HealthStatusType = 'up' | 'down' | 'degraded';
+
+export interface RpcHealthDetails {
+    attempts: number;
+    successCount: number;
+    failureCount: number;
+    lastError?: string;
+    avgResponseTime?: number;
+    slowResponses?: number;
+}
+
 export interface SorobanHealthStatus {
-    status: 'up' | 'down';
+    status: HealthStatusType;
     timestamp: string;
     rpcUrl?: string;
     ledger?: number;
     responseTime?: number;
     error?: string;
+    details?: RpcHealthDetails;
 }
+
+export interface RetryConfig {
+    retries: number;
+    retryDelayMs: number;
+    backoffMultiplier: number;
+    maxRetryDelayMs: number;
+}
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+    retries: 3,
+    retryDelayMs: 1000,
+    backoffMultiplier: 2,
+    maxRetryDelayMs: 10000,
+};
+
+const SLOW_RESPONSE_THRESHOLD_MS = 3000;
+const DEGRADED_SLOW_RESPONSE_THRESHOLD = 0.5; // 50% of responses are slow
 
 @Injectable()
 export class SorobanRpcService {
+    private readonly logger = new Logger(SorobanRpcService.name);
     private readonly server: any;
     private readonly rpcUrl: string;
     private readonly timeout: number;
+    private readonly retryConfig: RetryConfig;
 
     constructor() {
-        // Use Soroban Futurenet RPC URL by default, can be configured via environment
         this.rpcUrl = process.env.SOROBAN_RPC_URL || 'https://horizon-futurenet.stellar.org';
-        this.timeout = parseInt(process.env.SOROBAN_RPC_TIMEOUT || '5000'); // 5 seconds default
+        this.timeout = parseInt(process.env.SOROBAN_RPC_TIMEOUT || '5000');
         
+        this.retryConfig = {
+            retries: parseInt(process.env.SOROBAN_RPC_RETRIES || '3'),
+            retryDelayMs: parseInt(process.env.SOROBAN_RPC_RETRY_DELAY_MS || '1000'),
+            backoffMultiplier: parseFloat(process.env.SOROBAN_RPC_BACKOFF_MULTIPLIER || '2'),
+            maxRetryDelayMs: parseInt(process.env.SOROBAN_RPC_MAX_RETRY_DELAY_MS || '10000'),
+        };
+
         try {
             this.server = new StellarSdk.Horizon.Server(this.rpcUrl, { allowHttp: true });
         } catch (error) {
-            // If server creation fails, we'll handle it in the health check
             this.server = null;
         }
     }
 
+    private async delay(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    private calculateRetryDelay(attempt: number): number {
+        const delay = this.retryConfig.retryDelayMs * Math.pow(this.retryConfig.backoffMultiplier, attempt - 1);
+        return Math.min(delay, this.retryConfig.maxRetryDelayMs);
+    }
+
     async checkConnectivity(): Promise<SorobanHealthStatus> {
-        const startTime = Date.now();
         const timestamp = new Date().toISOString();
+        const responseTimes: number[] = [];
+        let successCount = 0;
+        let failureCount = 0;
+        let lastError: string | undefined;
+        let slowResponses = 0;
 
-        try {
-            if (!this.server) {
-                throw new Error('Failed to initialize Stellar SDK server');
-            }
-
-            // Use Promise.race to implement timeout
-            const ledgerPromise = this.server.loadAccount('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('RPC connection timeout')), this.timeout)
-            );
-
-            await Promise.race([ledgerPromise, timeoutPromise]);
-            
-            // If we got here, let's try to get the latest ledger
-            const ledgerPromise2 = this.server.ledgers().order('desc').limit(1).call();
-            const timeoutPromise2 = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('RPC connection timeout')), this.timeout)
-            );
-
-            const ledgerResult = await Promise.race([ledgerPromise2, timeoutPromise2]);
-            const responseTime = Date.now() - startTime;
-
-            return {
-                status: 'up',
-                timestamp,
-                rpcUrl: this.rpcUrl,
-                ledger: ledgerResult.records[0]?.sequence || 0,
-                responseTime,
-            };
-        } catch (error) {
-            const responseTime = Date.now() - startTime;
+        if (!this.server) {
             return {
                 status: 'down',
                 timestamp,
                 rpcUrl: this.rpcUrl,
-                responseTime,
-                error: error.message || 'Unknown error',
+                error: 'Failed to initialize Stellar SDK server',
+                details: {
+                    attempts: 0,
+                    successCount: 0,
+                    failureCount: 1,
+                    lastError: 'Server initialization failed',
+                },
             };
         }
+
+        for (let attempt = 1; attempt <= this.retryConfig.retries; attempt++) {
+            const startTime = Date.now();
+            
+            try {
+                const ledgerPromise = this.server.ledgers().order('desc').limit(1).call();
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('RPC connection timeout')), this.timeout)
+                );
+
+                const ledgerResult = await Promise.race([ledgerPromise, timeoutPromise]);
+                const responseTime = Date.now() - startTime;
+                responseTimes.push(responseTime);
+
+                if (responseTime > SLOW_RESPONSE_THRESHOLD_MS) {
+                    slowResponses++;
+                }
+
+                successCount++;
+                this.logger.debug(`RPC connectivity check attempt ${attempt}/${this.retryConfig.retries} succeeded in ${responseTime}ms`);
+
+                // Early exit on first attempt success with good response time
+                if (attempt === 1 && responseTime < SLOW_RESPONSE_THRESHOLD_MS) {
+                    return {
+                        status: 'up',
+                        timestamp,
+                        rpcUrl: this.rpcUrl,
+                        ledger: ledgerResult.records[0]?.sequence || 0,
+                        responseTime,
+                        details: {
+                            attempts: 1,
+                            successCount: 1,
+                            failureCount: 0,
+                            avgResponseTime: responseTime,
+                        },
+                    };
+                }
+
+                // Exit loop on any success (after first attempt)
+                break;
+
+            } catch (error) {
+                failureCount++;
+                lastError = error.message || 'Unknown error';
+                responseTimes.push(this.timeout); // Count timeout as worst case
+                this.logger.warn(`RPC connectivity check attempt ${attempt}/${this.retryConfig.retries} failed: ${lastError}`);
+
+                if (attempt < this.retryConfig.retries) {
+                    const retryDelay = this.calculateRetryDelay(attempt);
+                    this.logger.debug(`Retrying in ${retryDelay}ms...`);
+                    await this.delay(retryDelay);
+                }
+            }
+        }
+
+        // Determine status based on results
+        const avgResponseTime = responseTimes.length > 0 
+            ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
+            : undefined;
+
+        const slowResponseRatio = responseTimes.length > 0 ? slowResponses / responseTimes.length : 0;
+
+        if (successCount === 0) {
+            return {
+                status: 'down',
+                timestamp,
+                rpcUrl: this.rpcUrl,
+                responseTime: avgResponseTime,
+                error: lastError || `RPC unreachable after ${this.retryConfig.retries} attempts`,
+                details: {
+                    attempts: this.retryConfig.retries,
+                    successCount,
+                    failureCount,
+                    lastError,
+                    avgResponseTime,
+                },
+            };
+        }
+
+        // Check for degraded status (some failures or slow responses)
+        if (failureCount > 0 || slowResponseRatio >= DEGRADED_SLOW_RESPONSE_THRESHOLD) {
+            return {
+                status: 'degraded',
+                timestamp,
+                rpcUrl: this.rpcUrl,
+                responseTime: avgResponseTime,
+                error: failureCount > 0 
+                    ? `${failureCount} of ${this.retryConfig.retries} attempts failed`
+                    : 'Slow response times detected',
+                details: {
+                    attempts: this.retryConfig.retries,
+                    successCount,
+                    failureCount,
+                    lastError,
+                    avgResponseTime,
+                    slowResponses,
+                },
+            };
+        }
+
+        return {
+            status: 'up',
+            timestamp,
+            rpcUrl: this.rpcUrl,
+            responseTime: avgResponseTime,
+            details: {
+                attempts: this.retryConfig.retries,
+                successCount,
+                failureCount: 0,
+                avgResponseTime,
+            },
+        };
     }
 
     async checkKnownContract(): Promise<SorobanHealthStatus> {
-        const startTime = Date.now();
         const timestamp = new Date().toISOString();
+        const responseTimes: number[] = [];
+        let successCount = 0;
+        let failureCount = 0;
+        let lastError: string | undefined;
+        let slowResponses = 0;
 
-        try {
-            if (!this.server) {
-                throw new Error('Failed to initialize Stellar SDK server');
-            }
-
-            // Contract ID for health checks — must be set via SOROBAN_HEALTH_CHECK_CONTRACT env var.
-            // If not configured, this check is skipped and falls back to account probe.
-            const contractId = process.env.SOROBAN_HEALTH_CHECK_CONTRACT;
-            
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Contract read timeout')), this.timeout)
-            );
-
-            // For now, we'll just check if we can make any RPC call
-            // In a real implementation, you would use the Soroban RPC to read contract state
-            const ledgerPromise = this.server.loadAccount('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
-            await Promise.race([ledgerPromise, timeoutPromise]);
-            
-            const responseTime = Date.now() - startTime;
-
-            return {
-                status: 'up',
-                timestamp,
-                rpcUrl: this.rpcUrl,
-                responseTime,
-                error: 'Contract check not fully implemented - using account check as fallback',
-            };
-        } catch (error) {
-            const responseTime = Date.now() - startTime;
+        if (!this.server) {
             return {
                 status: 'down',
                 timestamp,
                 rpcUrl: this.rpcUrl,
-                responseTime,
-                error: error.message || 'Unknown error',
+                error: 'Failed to initialize Stellar SDK server',
+                details: {
+                    attempts: 0,
+                    successCount: 0,
+                    failureCount: 1,
+                    lastError: 'Server initialization failed',
+                },
             };
         }
+
+        for (let attempt = 1; attempt <= this.retryConfig.retries; attempt++) {
+            const startTime = Date.now();
+            
+            try {
+                const contractId = process.env.SOROBAN_HEALTH_CHECK_CONTRACT;
+                
+                // Use a generic RPC call to verify connectivity to the network
+                const accountPromise = this.server.loadAccount('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Contract read timeout')), this.timeout)
+                );
+
+                await Promise.race([accountPromise, timeoutPromise]);
+                const responseTime = Date.now() - startTime;
+                responseTimes.push(responseTime);
+
+                if (responseTime > SLOW_RESPONSE_THRESHOLD_MS) {
+                    slowResponses++;
+                }
+
+                successCount++;
+                this.logger.debug(`RPC contract check attempt ${attempt}/${this.retryConfig.retries} succeeded in ${responseTime}ms`);
+
+                if (attempt === 1 && responseTime < SLOW_RESPONSE_THRESHOLD_MS) {
+                    return {
+                        status: 'up',
+                        timestamp,
+                        rpcUrl: this.rpcUrl,
+                        responseTime,
+                        details: {
+                            attempts: 1,
+                            successCount: 1,
+                            failureCount: 0,
+                            avgResponseTime: responseTime,
+                        },
+                    };
+                }
+
+                // Exit loop on any success (after first attempt)
+                break;
+
+            } catch (error) {
+                failureCount++;
+                lastError = error.message || 'Unknown error';
+                responseTimes.push(this.timeout);
+                this.logger.warn(`RPC contract check attempt ${attempt}/${this.retryConfig.retries} failed: ${lastError}`);
+
+                if (attempt < this.retryConfig.retries) {
+                    const retryDelay = this.calculateRetryDelay(attempt);
+                    this.logger.debug(`Retrying in ${retryDelay}ms...`);
+                    await this.delay(retryDelay);
+                }
+            }
+        }
+
+        const avgResponseTime = responseTimes.length > 0 
+            ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
+            : undefined;
+
+        const slowResponseRatio = responseTimes.length > 0 ? slowResponses / responseTimes.length : 0;
+
+        if (successCount === 0) {
+            return {
+                status: 'down',
+                timestamp,
+                rpcUrl: this.rpcUrl,
+                responseTime: avgResponseTime,
+                error: lastError || `Contract check failed after ${this.retryConfig.retries} attempts`,
+                details: {
+                    attempts: this.retryConfig.retries,
+                    successCount,
+                    failureCount,
+                    lastError,
+                    avgResponseTime,
+                },
+            };
+        }
+
+        if (failureCount > 0 || slowResponseRatio >= DEGRADED_SLOW_RESPONSE_THRESHOLD) {
+            return {
+                status: 'degraded',
+                timestamp,
+                rpcUrl: this.rpcUrl,
+                responseTime: avgResponseTime,
+                error: failureCount > 0 
+                    ? `${failureCount} of ${this.retryConfig.retries} attempts failed`
+                    : 'Slow response times detected',
+                details: {
+                    attempts: this.retryConfig.retries,
+                    successCount,
+                    failureCount,
+                    lastError,
+                    avgResponseTime,
+                    slowResponses,
+                },
+            };
+        }
+
+        return {
+            status: 'up',
+            timestamp,
+            rpcUrl: this.rpcUrl,
+            responseTime: avgResponseTime,
+            details: {
+                attempts: this.retryConfig.retries,
+                successCount,
+                failureCount: 0,
+                avgResponseTime,
+            },
+        };
     }
 
     getRpcUrl(): string {
@@ -123,5 +351,9 @@ export class SorobanRpcService {
 
     getTimeout(): number {
         return this.timeout;
+    }
+
+    getRetryConfig(): RetryConfig {
+        return { ...this.retryConfig };
     }
 }

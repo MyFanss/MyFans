@@ -2,6 +2,8 @@
 
 This document is the source of truth for signer requirements on public methods exposed by the deployed MyFans Soroban contracts.
 
+Storage-key naming and compatibility guidance lives in [STORAGE_KEYS.md](./STORAGE_KEYS.md).
+
 ## Scope
 
 Contracts covered here (deployed by `contract/scripts/deploy.sh`):
