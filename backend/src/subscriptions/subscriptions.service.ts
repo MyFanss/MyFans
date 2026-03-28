@@ -1,7 +1,30 @@
-import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
-import { RpcBalanceAdapter, RPC_BALANCE_ADAPTER } from './rpc-adapter';
+import {
+  BadRequestException,
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
+import { PaginatedResponseDto } from '../common/dto';
+import { isStellarAccountAddress } from '../common/utils/stellar-address';
+import { EventBus } from '../events/event-bus';
+import {
+  SubscriptionCancelledEvent,
+  SubscriptionCreatedEvent,
+  SubscriptionExpiredEvent,
+  SubscriptionRenewedEvent,
+} from '../events/domain-events';
+import {
+  RenewalFailurePayload,
+  SUBSCRIPTION_EVENT_PUBLISHER,
+  SUBSCRIPTION_RENEWAL_FAILED,
+} from './events';
+import type { SubscriptionEventPublisher } from './events';
+import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
 
-/** Checkout status enum */
 export enum CheckoutStatus {
   PENDING = 'pending',
   COMPLETED = 'completed',
@@ -10,11 +33,16 @@ export enum CheckoutStatus {
   EXPIRED = 'expired',
 }
 
+export const SERVER_NETWORK = process.env.STELLAR_NETWORK ?? 'testnet';
+
 interface Subscription {
+  id: string;
   fan: string;
   creator: string;
   planId: number;
   expiry: number;
+  status: 'active' | 'expired' | 'cancelled';
+  createdAt: Date;
 }
 
 interface Checkout {
@@ -43,7 +71,6 @@ interface Plan {
   intervalDays: number;
 }
 
-/** Generate a simple UUID */
 function generateId(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
@@ -54,37 +81,157 @@ function generateId(): string {
 
 @Injectable()
 export class SubscriptionsService {
-  private subscriptions: Map<string, Subscription> = new Map();
-  private checkouts: Map<string, Checkout> = new Map();
-  private checkoutExpiryMinutes = 15;
-  
-  // Mock platform fee (in basis points, e.g., 500 = 5%)
-  private platformFeeBps = 500;
-  
-  // Mock supported assets
-  private supportedAssets: { code: string; issuer?: string; isNative: boolean }[] = [
+  private readonly subscriptions: Map<string, Subscription> = new Map();
+  private readonly checkouts: Map<string, Checkout> = new Map();
+  private readonly checkoutExpiryMinutes = 15;
+  private readonly logger = new Logger(SubscriptionsService.name);
+  private readonly platformFeeBps = 500;
+  private readonly supportedAssets: {
+    code: string;
+    issuer?: string;
+    isNative: boolean;
+  }[] = [
     { code: 'XLM', isNative: true },
-    { code: 'USDC', issuer: 'GA7Z6G7T3LSSKDAWJH25C4JPLD4PQV4CEMM5S5E6LQD3VDF5W6G6F3K', isNative: false },
+    {
+      code: 'USDC',
+      issuer: 'GA7Z6G7T3LSSKDAWJH25C4JPLD4PQV4CEMM5S5E6LQD3VDF5W6G6F3K',
+      isNative: false,
+    },
   ];
-
-  // Mock creator profiles
-  private creatorProfiles: Map<string, { name: string; description?: string }> = new Map();
+  private readonly creatorProfiles: Map<
+    string,
+    { name: string; description?: string }
+  > = new Map();
 
   constructor(
-    @Inject(RPC_BALANCE_ADAPTER)
-    private readonly rpcAdapter: RpcBalanceAdapter,
+    private readonly eventBus: EventBus,
+    @Optional()
+    @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
+    private readonly subscriptionEventPublisher?: SubscriptionEventPublisher,
+    @Optional()
+    private readonly chainReader?: SubscriptionChainReaderService,
   ) {
-    // Set up mock creator profiles
-    this.creatorProfiles.set('GAAAAAAAAAAAAAAA', { name: 'Creator 1', description: 'Premium content creator' });
-    this.creatorProfiles.set('GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5', { name: 'Creator 2', description: 'Exclusive videos and photos' });
+    this.creatorProfiles.set('GAAAAAAAAAAAAAAA', {
+      name: 'Creator 1',
+      description: 'Premium content creator',
+    });
+    this.creatorProfiles.set(
+      'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5',
+      { name: 'Creator 2', description: 'Exclusive videos and photos' },
+    );
+  }
+
+  assertNetworkMatch(requestNetwork: string | undefined): void {
+    if (!requestNetwork) return;
+    const normalised = requestNetwork.trim().toLowerCase();
+    if (normalised !== SERVER_NETWORK.toLowerCase()) {
+      throw new HttpException(
+        {
+          error: 'NETWORK_MISMATCH',
+          message: 'Wallet network does not match server network',
+          expectedNetwork: SERVER_NETWORK,
+          currentNetwork: requestNetwork,
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   private getKey(fan: string, creator: string): string {
     return `${fan}:${creator}`;
   }
 
-  addSubscription(fan: string, creator: string, planId: number, expiry: number) {
-    this.subscriptions.set(this.getKey(fan, creator), { fan, creator, planId, expiry });
+  addSubscription(
+    fan: string,
+    creator: string,
+    planId: number,
+    expiry: number,
+  ) {
+    const subscription: Subscription = {
+      id: generateId(),
+      fan,
+      creator,
+      planId,
+      expiry,
+      status: expiry > Date.now() / 1000 ? 'active' : 'expired',
+      createdAt: new Date(),
+    };
+
+    this.subscriptions.set(this.getKey(fan, creator), subscription);
+    this.eventBus.publish(
+      new SubscriptionCreatedEvent(fan, creator, planId, expiry),
+    );
+
+    return subscription;
+  }
+
+  renewSubscription(
+    fan: string,
+    creator: string,
+    planId: number,
+    expiry: number,
+  ) {
+    const key = this.getKey(fan, creator);
+    const existing = this.subscriptions.get(key);
+
+    if (!existing) {
+      return this.addSubscription(fan, creator, planId, expiry);
+    }
+
+    existing.planId = planId;
+    existing.expiry = expiry;
+    existing.status = 'active';
+
+    this.eventBus.publish(
+      new SubscriptionRenewedEvent(
+        existing.id,
+        fan,
+        creator,
+        planId,
+        expiry,
+      ),
+    );
+
+    return existing;
+  }
+
+  expireSubscription(fan: string, creator: string) {
+    const key = this.getKey(fan, creator);
+    const existing = this.subscriptions.get(key);
+    if (existing) {
+      existing.status = 'expired';
+    }
+
+    this.eventBus.publish(new SubscriptionExpiredEvent(fan, creator));
+  }
+
+  cancelSubscription(fan: string, creator: string) {
+    const subscription = this.subscriptions.get(this.getKey(fan, creator));
+    if (!subscription) {
+      throw new NotFoundException('Subscription not found');
+    }
+
+    subscription.status = 'cancelled';
+    subscription.expiry = Math.floor(Date.now() / 1000);
+
+    this.eventBus.publish(
+      new SubscriptionCancelledEvent(
+        subscription.id,
+        fan,
+        creator,
+        subscription.planId,
+      ),
+    );
+
+    return {
+      success: true,
+      subscriptionId: subscription.id,
+      fan,
+      creator,
+      status: subscription.status,
+      cancelledAt: new Date().toISOString(),
+      message: 'Subscription cancelled successfully',
+    };
   }
 
   isSubscriber(fan: string, creator: string): boolean {
@@ -96,30 +243,213 @@ export class SubscriptionsService {
     return this.subscriptions.get(this.getKey(fan, creator));
   }
 
-  // ==================== Checkout Methods ====================
+  async getFanCreatorSubscriptionState(fan: string, creator: string) {
+    if (fan === creator) {
+      throw new BadRequestException(
+        'creator must be different from the authenticated fan address',
+      );
+    }
+    if (!isStellarAccountAddress(creator)) {
+      throw new BadRequestException('creator must be a valid Stellar G-address');
+    }
 
-  /**
-   * Create a new checkout session
-   */
+    const active = this.isSubscriber(fan, creator);
+    const sub = this.getSubscription(fan, creator);
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    let indexedStatus: 'none' | 'active' | 'expired' = 'none';
+    let indexed: {
+      subscriptionId: string;
+      planId: number;
+      status: Subscription['status'];
+      expiresAt: string;
+      expiresAtUnix: number;
+      createdAt: string;
+    } | null = null;
+
+    if (sub) {
+      if (sub.status === 'cancelled') {
+        indexedStatus = 'expired';
+      } else if (sub.expiry > nowSec && sub.status === 'active') {
+        indexedStatus = 'active';
+      } else {
+        indexedStatus = 'expired';
+      }
+      indexed = {
+        subscriptionId: sub.id,
+        planId: sub.planId,
+        status: sub.status,
+        expiresAt: new Date(sub.expiry * 1000).toISOString(),
+        expiresAtUnix: sub.expiry,
+        createdAt: sub.createdAt.toISOString(),
+      };
+    }
+
+    const contractId = this.chainReader?.getConfiguredContractId();
+    let chain: {
+      configured: boolean;
+      isSubscriber: boolean | null;
+      error?: string;
+    };
+
+    if (!contractId || !this.chainReader) {
+      chain = { configured: false, isSubscriber: null };
+    } else {
+      const result = await this.chainReader.readIsSubscriber(
+        contractId,
+        fan,
+        creator,
+      );
+      chain = result.ok
+        ? { configured: true, isSubscriber: result.isSubscriber }
+        : { configured: true, isSubscriber: null, error: result.error };
+    }
+
+    return {
+      fan,
+      creator,
+      active,
+      indexedStatus,
+      indexed,
+      chain,
+    };
+  }
+
+  getFanDashboardSummary(
+    fan: string,
+    page: number = 1,
+    limit: number = 20,
+  ) {
+    const nowSecs = Date.now() / 1000;
+    const activeSubs = Array.from(this.subscriptions.values()).filter(
+      (sub) => sub.fan === fan && sub.status === 'active' && sub.expiry > nowSecs,
+    );
+
+    activeSubs.sort((a, b) => a.expiry - b.expiry);
+
+    const total = activeSubs.length;
+    const paginated = activeSubs.slice((page - 1) * limit, page * limit);
+
+    const subscriptions = paginated.map((sub) => {
+      const plan = this.getPlanMock(sub.planId);
+      const creatorProfile = this.creatorProfiles.get(sub.creator);
+      return {
+        id: sub.id,
+        creatorId: sub.creator,
+        creatorName: creatorProfile?.name ?? 'Unknown Creator',
+        planName: plan
+          ? `${this.getIntervalText(plan.intervalDays)} Subscription`
+          : 'Subscription',
+        price: plan ? parseFloat(plan.amount) : 0,
+        currency: plan ? plan.asset.split(':')[0] : 'XLM',
+        interval:
+          plan?.intervalDays === 365
+            ? 'year'
+            : plan?.intervalDays === 7
+              ? 'week'
+              : 'month',
+        renewsAt: new Date(sub.expiry * 1000).toISOString(),
+        renewsAtUnix: sub.expiry,
+        status: sub.status,
+        createdAt: sub.createdAt.toISOString(),
+      };
+    });
+
+    return {
+      fan,
+      totalActive: total,
+      subscriptions,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  listSubscriptions(
+    fan: string,
+    status?: string,
+    sort?: string,
+    page: number = 1,
+    limit: number = 20,
+  ) {
+    let userSubs = Array.from(this.subscriptions.values()).filter(
+      (sub) => sub.fan === fan,
+    );
+
+    const nowSecs = Date.now() / 1000;
+    userSubs.forEach((sub) => {
+      if (sub.status === 'active' && sub.expiry <= nowSecs) {
+        sub.status = 'expired';
+      }
+    });
+
+    if (status) {
+      userSubs = userSubs.filter((sub) => sub.status === status);
+    }
+
+    const results = userSubs.map((sub) => {
+      const plan = this.getPlanMock(sub.planId);
+      const creatorProfile = this.creatorProfiles.get(sub.creator);
+
+      return {
+        id: sub.id,
+        creatorId: sub.creator,
+        creatorName: creatorProfile?.name || 'Unknown Creator',
+        creatorUsername: sub.creator.substring(0, 8),
+        planName: plan
+          ? `${this.getIntervalText(plan.intervalDays)} Subscription`
+          : 'Subscription',
+        price: plan ? parseFloat(plan.amount) : 0,
+        currency: plan ? plan.asset.split(':')[0] : 'XLM',
+        interval:
+          plan && plan.intervalDays === 30
+            ? 'month'
+            : plan && plan.intervalDays === 365
+              ? 'year'
+              : 'month',
+        currentPeriodEnd: new Date(sub.expiry * 1000).toISOString(),
+        status: sub.status,
+        createdAt: sub.createdAt.toISOString(),
+      };
+    });
+
+    if (sort === 'created') {
+      results.sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+    } else {
+      results.sort(
+        (a, b) =>
+          new Date(a.currentPeriodEnd).getTime() -
+          new Date(b.currentPeriodEnd).getTime(),
+      );
+    }
+
+    const total = results.length;
+    const paginatedResults = results.slice((page - 1) * limit, page * limit);
+    return new PaginatedResponseDto(paginatedResults, total, page, limit);
+  }
+
   createCheckout(
     fanAddress: string,
     creatorAddress: string,
     planId: number,
-    assetCode: string = 'XLM',
+    assetCode = 'XLM',
     assetIssuer?: string,
+    requestNetwork?: string,
   ): Checkout {
-    // Validate plan exists (mock validation)
+    this.assertNetworkMatch(requestNetwork);
+
     const plan = this.getPlanMock(planId);
     if (!plan) {
       throw new NotFoundException('Plan not found');
     }
 
-    // Calculate fees
     const amount = plan.amount;
     const fee = this.calculateFee(amount);
     const total = (parseFloat(amount) + parseFloat(fee)).toFixed(7);
 
-    // Create checkout
     const checkout: Checkout = {
       id: generateId(),
       fanAddress,
@@ -131,7 +461,9 @@ export class SubscriptionsService {
       fee,
       total,
       status: CheckoutStatus.PENDING,
-      expiresAt: new Date(Date.now() + this.checkoutExpiryMinutes * 60 * 1000),
+      expiresAt: new Date(
+        Date.now() + this.checkoutExpiryMinutes * 60 * 1000,
+      ),
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -140,16 +472,12 @@ export class SubscriptionsService {
     return checkout;
   }
 
-  /**
-   * Get checkout by ID
-   */
   getCheckout(checkoutId: string): Checkout {
     const checkout = this.checkouts.get(checkoutId);
     if (!checkout) {
       throw new NotFoundException('Checkout not found');
     }
 
-    // Check if expired
     if (new Date() > checkout.expiresAt) {
       checkout.status = CheckoutStatus.EXPIRED;
       throw new BadRequestException('Checkout session has expired');
@@ -158,9 +486,6 @@ export class SubscriptionsService {
     return checkout;
   }
 
-  /**
-   * Get plan summary
-   */
   getPlanSummary(planId: number) {
     const plan = this.getPlanMock(planId);
     if (!plan) {
@@ -169,8 +494,6 @@ export class SubscriptionsService {
 
     const creatorProfile = this.creatorProfiles.get(plan.creator);
     const intervalText = this.getIntervalText(plan.intervalDays);
-
-    // Parse asset code and issuer from the asset string
     const assetParts = plan.asset.split(':');
     const assetCode = assetParts[0];
     const assetIssuer = assetParts[1] || undefined;
@@ -189,27 +512,23 @@ export class SubscriptionsService {
     };
   }
 
-  /**
-   * Get price breakdown
-   */
   getPriceBreakdown(checkoutId: string) {
     const checkout = this.getCheckout(checkoutId);
-
     return {
       subtotal: checkout.amount,
       platformFee: checkout.fee,
-      networkFee: '0.00001', // Mock network fee
+      networkFee: '0.00001',
       total: checkout.total,
       currency: checkout.assetCode,
     };
   }
 
-  /**
-   * Validate user balance
-   */
-  validateBalance(fanAddress: string, assetCode: string, requiredAmount: string): { valid: boolean; balance: string; shortfall?: string } {
-    // RPC balance check adapter injection (mocked in tests)
-    const balance = this.rpcAdapter.getBalance(fanAddress, assetCode);
+  validateBalance(
+    fanAddress: string,
+    assetCode: string,
+    requiredAmount: string,
+  ): { valid: boolean; balance: string; shortfall?: string } {
+    const balance = this.getMockBalance(fanAddress, assetCode);
     const balanceNum = parseFloat(balance);
     const requiredNum = parseFloat(requiredAmount);
 
@@ -224,40 +543,27 @@ export class SubscriptionsService {
     };
   }
 
-  /**
-   * Get wallet status with balances
-   */
   getWalletStatus(fanAddress: string) {
-    const balances = this.supportedAssets.map(asset => ({
-      code: asset.code,
-      issuer: asset.issuer,
-      balance: this.rpcAdapter.getBalance(fanAddress, asset.code),
-      isNative: asset.isNative,
-    }));
-
     return {
       address: fanAddress,
-      balances,
+      balances: this.supportedAssets.map((asset) => ({
+        code: asset.code,
+        issuer: asset.issuer,
+        balance: this.getMockBalance(fanAddress, asset.code),
+        isNative: asset.isNative,
+      })),
       isConnected: !!fanAddress,
     };
   }
 
-  /**
-   * Get transaction preview
-   */
   getTransactionPreview(checkoutId: string) {
     const checkout = this.getCheckout(checkoutId);
-    const plan = this.getPlanMock(checkout.planId);
     const creatorProfile = this.creatorProfiles.get(checkout.creatorAddress);
-
     return {
       checkoutId: checkout.id,
       from: checkout.fanAddress,
       to: checkout.creatorAddress,
-      asset: {
-        code: checkout.assetCode,
-        issuer: checkout.assetIssuer,
-      },
+      asset: { code: checkout.assetCode, issuer: checkout.assetIssuer },
       amount: checkout.amount,
       fee: checkout.fee,
       total: checkout.total,
@@ -265,23 +571,32 @@ export class SubscriptionsService {
     };
   }
 
-  /**
-   * Confirm subscription (success callback)
-   */
   confirmSubscription(checkoutId: string, txHash?: string) {
     const checkout = this.getCheckout(checkoutId);
+    const existingSubscription = this.getSubscription(
+      checkout.fanAddress,
+      checkout.creatorAddress,
+    );
 
-    // Update checkout status
     checkout.status = CheckoutStatus.COMPLETED;
     checkout.txHash = txHash || `tx_${Date.now()}`;
     checkout.updatedAt = new Date();
 
-    // Generate explorer URL
     const explorerUrl = `https://stellar.expert/explorer/testnet/tx/${checkout.txHash}`;
-
-    // Create subscription
-    this.addSubscription(checkout.fanAddress, checkout.creatorAddress, checkout.planId, 
-      Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60); // 30 days
+    const expiry = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+    const subscription = existingSubscription
+      ? this.renewSubscription(
+          checkout.fanAddress,
+          checkout.creatorAddress,
+          checkout.planId,
+          expiry,
+        )
+      : this.addSubscription(
+          checkout.fanAddress,
+          checkout.creatorAddress,
+          checkout.planId,
+          expiry,
+        );
 
     return {
       success: true,
@@ -289,35 +604,39 @@ export class SubscriptionsService {
       status: checkout.status,
       txHash: checkout.txHash,
       explorerUrl,
-      message: 'Subscription created successfully!',
+      subscriptionId: subscription.id,
+      lifecycleEvent: existingSubscription ? 'renewed' : 'created',
+      message: existingSubscription
+        ? 'Subscription renewed successfully!'
+        : 'Subscription created successfully!',
     };
   }
 
-  /**
-   * Handle checkout failure/rejection
-   */
-  failCheckout(checkoutId: string, error: string, isRejected: boolean = false) {
+  failCheckout(
+    checkoutId: string,
+    error: string,
+    isRejected: boolean = false,
+  ) {
     const checkout = this.getCheckout(checkoutId);
 
-    checkout.status = isRejected ? CheckoutStatus.REJECTED : CheckoutStatus.FAILED;
+    checkout.status = isRejected
+      ? CheckoutStatus.REJECTED
+      : CheckoutStatus.FAILED;
     checkout.error = error;
     checkout.updatedAt = new Date();
+    this.emitRenewalFailureEvent(checkout, error);
 
     return {
       success: false,
       checkoutId: checkout.id,
       status: checkout.status,
-      error: error,
+      error,
       message: isRejected ? 'Transaction was rejected' : 'Transaction failed',
     };
   }
 
-  // ==================== Helper Methods ====================
-
   private calculateFee(amount: string): string {
-    const amountNum = parseFloat(amount);
-    const feeNum = (amountNum * this.platformFeeBps) / 10000;
-    return feeNum.toFixed(7);
+    return ((parseFloat(amount) * this.platformFeeBps) / 10000).toFixed(7);
   }
 
   private getIntervalText(days: number): string {
@@ -328,14 +647,59 @@ export class SubscriptionsService {
     return `${days} days`;
   }
 
+  private getMockBalance(address: string, assetCode: string): string {
+    void address;
+    if (assetCode === 'XLM') return '1000.0000000';
+    if (assetCode === 'USDC') return '50.0000000';
+    return '0.0000000';
+  }
+
   private getPlanMock(planId: number): Plan | undefined {
-    // Mock plans - in real app, fetch from database
     const plans: Plan[] = [
       { id: 1, creator: 'GAAAAAAAAAAAAAAA', asset: 'XLM', amount: '10', intervalDays: 30 },
-      { id: 2, creator: 'GAAAAAAAAAAAAAAA', asset: 'USDC:GA7Z6G7T3LSSKDJPLAWJH25C4D4PQV4CEMM5S5E6LQD3VDF5W6G6F3K', amount: '5', intervalDays: 30 },
-      { id: 3, creator: 'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5', asset: 'XLM', amount: '25', intervalDays: 7 },
+      {
+        id: 2,
+        creator: 'GAAAAAAAAAAAAAAA',
+        asset: 'USDC:GA7Z6G7T3LSSKDJPLAWJH25C4D4PQV4CEMM5S5E6LQD3VDF5W6G6F3K',
+        amount: '5',
+        intervalDays: 30,
+      },
+      {
+        id: 3,
+        creator: 'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5',
+        asset: 'XLM',
+        amount: '25',
+        intervalDays: 7,
+      },
     ];
-    return plans.find(p => p.id === planId);
+    return plans.find((p) => p.id === planId);
+  }
+
+  /** Returns completed checkouts for analytics aggregation. */
+  getCompletedPayments(): Checkout[] {
+    return Array.from(this.checkouts.values()).filter(
+      (c) => c.status === CheckoutStatus.COMPLETED,
+    );
+  }
+
+  private emitRenewalFailureEvent(checkout: Checkout, reason: string): void {
+    const payload: RenewalFailurePayload = {
+      subscriptionId: checkout.id,
+      reason,
+      timestamp: new Date().toISOString(),
+      userId: checkout.fanAddress,
+    };
+
+    Promise.resolve()
+      .then(() =>
+        this.subscriptionEventPublisher?.emit(
+          SUBSCRIPTION_RENEWAL_FAILED,
+          payload,
+        ),
+      )
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Failed to emit renewal failure event: ${message}`);
+      });
   }
 }
-

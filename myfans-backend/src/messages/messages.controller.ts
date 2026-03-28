@@ -15,6 +15,7 @@ import { GetMessagesQueryDto } from './dto/get-messages-query.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '../users/entities/user.entity';
+import { PaginationQueryDto } from '../common/dto';
 
 @Controller('conversations')
 @UseGuards(AuthGuard)
@@ -40,8 +41,11 @@ export class MessagesController {
   }
 
   @Get()
-  async listConversations(@CurrentUser() user: User) {
-    return this.messagesService.listConversations(user.id);
+  async listConversations(
+    @CurrentUser() user: User,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.messagesService.listConversations(user.id, query);
   }
 
   @Get(':id/messages')
