@@ -191,6 +191,15 @@ pub fn initialize(env: Env, admin: Address, token_address: Address) {
         current_admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
     }
+
+    /// Returns the configured admin address.
+    /// No authorization required (view-only).
+    pub fn admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
+    }
 }
 
 #[cfg(test)]
@@ -449,6 +458,27 @@ mod test {
         // Verify by setting it again with new admin
         let admin3 = Address::generate(&env);
         client.set_admin(&admin3);
+    }
+
+    #[test]
+    fn test_admin_view_returns_configured_admin() {
+        let (env, contract_id, admin, token_address, _, _) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+
+        let fetched_admin = client.admin();
+        assert_eq!(fetched_admin, admin);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_admin_view_uninitialized_panics() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, ContentAccess);
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.admin();
     }
 
     #[test]
