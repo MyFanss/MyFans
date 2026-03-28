@@ -694,3 +694,230 @@ fn test_operations_work_after_unpause() {
     let plan_id_2 = client.create_plan(&creator, &asset, &2000, &60);
     assert_eq!(plan_id_2, 2);
 }
+
+// ============================================================================
+// EVENT SHAPE TESTS — Issue #278
+// Verify that transfer and transfer_from emit identical (from, to, amount)
+// schemas so the indexer can parse both paths uniformly.
+// ============================================================================
+
+#[test]
+fn test_transfer_event_schema_emitted_on_subscribe() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+    let asset = Address::generate(&env);
+
+    // Register mock token contract so token::Client calls succeed
+    let token_id = env.register_contract(None, MockToken);
+    let token_client = MockTokenClient::new(&env, &token_id);
+
+    let client = MyfansContractClient::new(&env, &contract_id);
+    client.init(&admin, &500 /* 5% fee */, &fee_recipient);
+    client.create_plan(&creator, &token_id, &1000, &30);
+
+    // Subscribe — triggers both transfer legs
+    client.subscribe(&fan, &1);
+
+    // Collect all events emitted by the contract
+    let all_events = env.events().all();
+
+    // Filter to events from our contract
+    let contract_events: soroban_sdk::Vec<_> = all_events
+        .iter()
+        .filter(|(id, _topics, _data)| *id == contract_id)
+        .collect();
+
+    // We expect at least the two transfer events + the "subscribed" event
+    // Verify "transfer" event is present with correct topic key
+    let transfer_events: soroban_sdk::Vec<_> = contract_events
+        .iter()
+        .filter(|(_id, topics, _data)| {
+            if let soroban_sdk::Val::Symbol(sym) = topics.get(0).unwrap() {
+                sym == Symbol::new(&env, events::TOPIC_TRANSFER)
+            } else {
+                false
+            }
+        })
+        .collect();
+
+    assert!(
+        !transfer_events.is_empty(),
+        "expected at least one transfer event"
+    );
+
+    // Verify "transfer_from" event is present (fee leg)
+    let transfer_from_events: soroban_sdk::Vec<_> = contract_events
+        .iter()
+        .filter(|(_id, topics, _data)| {
+            if let soroban_sdk::Val::Symbol(sym) = topics.get(0).unwrap() {
+                sym == Symbol::new(&env, events::TOPIC_TRANSFER_FROM)
+            } else {
+                false
+            }
+        })
+        .collect();
+
+    assert!(
+        !transfer_from_events.is_empty(),
+        "expected at least one transfer_from event"
+    );
+}
+
+#[test]
+fn test_transfer_event_topic_key_is_stable() {
+    // Ensure the constant strings are exactly what the indexer expects
+    assert_eq!(events::TOPIC_TRANSFER, "transfer");
+    assert_eq!(events::TOPIC_TRANSFER_FROM, "transfer_from");
+}
+
+#[test]
+fn test_transfer_and_transfer_from_share_same_data_shape() {
+    // Both emit_transfer and emit_transfer_from publish (from, to, amount)
+    // as a 3-tuple.  This unit test drives emit_transfer and emit_transfer_from
+    // directly and verifies the data tuple is identical in structure.
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let addr_a = Address::generate(&env);
+    let addr_b = Address::generate(&env);
+    let addr_c = Address::generate(&env);
+    let asset = Address::generate(&env);
+
+    events::emit_transfer(&env, &asset, &addr_a, &addr_b, 500);
+    events::emit_transfer_from(&env, &asset, &addr_a, &addr_c, 50);
+
+    let all_events = env.events().all();
+
+    // Both events should parse to a (Address, Address, i128) data tuple
+    let transfer_evt = all_events
+        .iter()
+        .find(|(_id, topics, _data)| {
+            topics
+                .get(0)
+                .map(|v| {
+                    if let soroban_sdk::Val::Symbol(sym) = v {
+                        sym == Symbol::new(&env, events::TOPIC_TRANSFER)
+                    } else {
+                        false
+                    }
+                })
+                .unwrap_or(false)
+        })
+        .expect("transfer event not found");
+
+    let transfer_from_evt = all_events
+        .iter()
+        .find(|(_id, topics, _data)| {
+            topics
+                .get(0)
+                .map(|v| {
+                    if let soroban_sdk::Val::Symbol(sym) = v {
+                        sym == Symbol::new(&env, events::TOPIC_TRANSFER_FROM)
+                    } else {
+                        false
+                    }
+                })
+                .unwrap_or(false)
+        })
+        .expect("transfer_from event not found");
+
+    // Both events have the asset as topic[1]
+    let (_id1, topics1, data1) = transfer_evt;
+    let (_id2, topics2, data2) = transfer_from_evt;
+
+    // topic[1] = asset in both cases
+    assert_eq!(topics1.get(1), topics2.get(1), "asset topic must match");
+
+    // data is (from, to, amount) — both events must have a 3-element tuple
+    // We verify this by confirming they deserialize to the same shape
+    let (from1, to1, amount1): (Address, Address, i128) =
+        soroban_sdk::xdr::FromXdr::from_xdr(&env, &data1).expect("transfer data must be a 3-tuple");
+    let (from2, to2, amount2): (Address, Address, i128) =
+        soroban_sdk::xdr::FromXdr::from_xdr(&env, &data2)
+            .expect("transfer_from data must be a 3-tuple");
+
+    // Verify correct values were captured
+    assert_eq!(from1, addr_a);
+    assert_eq!(to1, addr_b);
+    assert_eq!(amount1, 500);
+
+    assert_eq!(from2, addr_a);
+    assert_eq!(to2, addr_c);
+    assert_eq!(amount2, 50);
+}
+
+#[test]
+fn test_zero_fee_emits_only_transfer_no_transfer_from() {
+    // When fee_bps = 0, the fee leg is skipped entirely.
+    // Only the "transfer" event should appear; "transfer_from" must be absent.
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let token_id = env.register_contract(None, MockToken);
+
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+
+    let client = MyfansContractClient::new(&env, &contract_id);
+    client.init(&admin, &0 /* zero fee */, &fee_recipient);
+    client.create_plan(&creator, &token_id, &1000, &30);
+    client.subscribe(&fan, &1);
+
+    let all_events = env.events().all();
+    let contract_events: soroban_sdk::Vec<_> = all_events
+        .iter()
+        .filter(|(id, _t, _d)| *id == contract_id)
+        .collect();
+
+    let has_transfer = contract_events.iter().any(|(_id, topics, _data)| {
+        topics
+            .get(0)
+            .map(|v| {
+                if let soroban_sdk::Val::Symbol(sym) = v {
+                    sym == Symbol::new(&env, events::TOPIC_TRANSFER)
+                } else {
+                    false
+                }
+            })
+            .unwrap_or(false)
+    });
+
+    let has_transfer_from = contract_events.iter().any(|(_id, topics, _data)| {
+        topics
+            .get(0)
+            .map(|v| {
+                if let soroban_sdk::Val::Symbol(sym) = v {
+                    sym == Symbol::new(&env, events::TOPIC_TRANSFER_FROM)
+                } else {
+                    false
+                }
+            })
+            .unwrap_or(false)
+    });
+
+    assert!(has_transfer, "transfer event must still fire when fee is 0");
+    assert!(
+        !has_transfer_from,
+        "transfer_from must NOT fire when fee is 0"
+    );
+}
+
+// Minimal mock token so subscribe() can call token::Client without a real token
+#[contract]
+pub struct MockToken;
+
+#[contractimpl]
+impl MockToken {
+    pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {}
+    pub fn transfer_from(_env: Env, _spender: Address, _from: Address, _to: Address, _amount: i128) {}
+}
