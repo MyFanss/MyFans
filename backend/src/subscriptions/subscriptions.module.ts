@@ -1,8 +1,14 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ConfigModule } from '@nestjs/config';
 import { LoggingModule } from '../common/logging.module';
 import { EventsModule } from '../events/events.module';
 import { SubscriptionLifecycleIndexerController } from './subscription-lifecycle-indexer.controller';
 import { SubscriptionLifecycleIndexerService } from './subscription-lifecycle-indexer.service';
+import { SubscriptionIndexEntity } from './entities/subscription-index.entity';
+import { SubscriptionIndexRepository } from './repositories/subscription-index.repository';
+import { SubscriptionEventPollerService } from './services/subscription-event-poller.service';
 import { SUBSCRIPTION_EVENT_PUBLISHER } from './events';
 import { FanBearerGuard } from './guards/fan-bearer.guard';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
@@ -10,9 +16,17 @@ import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionsService } from './subscriptions.service';
 
 @Module({
-  imports: [EventsModule, LoggingModule],
+  imports: [
+    ConfigModule,
+    ScheduleModule,
+    TypeOrmModule.forFeature([SubscriptionIndexEntity]),
+    EventsModule, 
+    LoggingModule,
+  ],
   controllers: [SubscriptionsController, SubscriptionLifecycleIndexerController],
   providers: [
+    SubscriptionIndexRepository,
+    SubscriptionEventPollerService,
     SubscriptionsService,
     SubscriptionChainReaderService,
     SubscriptionCacheService,
@@ -24,6 +38,6 @@ import { SubscriptionsService } from './subscriptions.service';
       useValue: { emit: () => undefined },
     },
   ],
-  exports: [SubscriptionsService, SubscriptionLifecycleIndexerService],
+  exports: [SubscriptionsService, SubscriptionLifecycleIndexerService, SubscriptionIndexRepository],
 })
 export class SubscriptionsModule {}
