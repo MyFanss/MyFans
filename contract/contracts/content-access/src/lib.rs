@@ -1,8 +1,18 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
-    Symbol,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, BytesN,
+    Env, Symbol,
 };
+
+/// Metadata for a piece of content in a creator's catalog.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContentInfo {
+    /// Price in the contract's configured token (stroops / smallest unit).
+    pub price: i128,
+    /// Whether the content is currently available for purchase.
+    pub is_active: bool,
+}
 
 /// Storage keys for content access contract
 #[contracttype]
@@ -14,8 +24,10 @@ pub enum DataKey {
     TokenAddress,
     /// Access record: (buyer, creator, content_id) -> true
     Access(Address, Address, u64),
-    /// Content price: (creator, content_id) -> price
+    /// Content price: (creator, content_id) -> price  [legacy u64 key]
     ContentPrice(Address, u64),
+    /// Content catalog entry: (creator, content_id_32) -> ContentInfo  [issue #312]
+    ContentCatalog(Address, BytesN<32>),
 }
 
 #[contracterror]
@@ -134,6 +146,34 @@ pub fn initialize(env: Env, admin: Address, token_address: Address) {
         env.storage().instance().set(&key, &price);
     }
 
+    /// Register (or update) a content item in the creator's catalog.
+    /// Creator must authorize. Stores price and active flag in persistent storage.
+    pub fn register_content(
+        env: Env,
+        creator: Address,
+        content_id: BytesN<32>,
+        price: i128,
+        is_active: bool,
+    ) {
+        creator.require_auth();
+        let key = DataKey::ContentCatalog(creator, content_id);
+        let info = ContentInfo { price, is_active };
+        env.storage().persistent().set(&key, &info);
+    }
+
+    /// Read-only catalog lookup for a creator's content item.
+    ///
+    /// Returns `Some(ContentInfo)` when the content exists, `None` otherwise.
+    /// No authorization required – safe for anonymous UI previews.
+    pub fn get_content_info(
+        env: Env,
+        creator: Address,
+        content_id: BytesN<32>,
+    ) -> Option<ContentInfo> {
+        let key = DataKey::ContentCatalog(creator, content_id);
+        env.storage().persistent().get(&key)
+    }
+
     /// Set a new admin address. Current admin must authorize.
     pub fn set_admin(env: Env, new_admin: Address) {
         let current_admin: Address = env
@@ -145,6 +185,8 @@ pub fn initialize(env: Env, admin: Address, token_address: Address) {
         env.storage().instance().set(&DataKey::Admin, &new_admin);
     }
 }
+
+mod content_query_test;
 
 #[cfg(test)]
 mod test {
