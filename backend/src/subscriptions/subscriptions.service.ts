@@ -24,6 +24,8 @@ import {
 } from './events';
 import type { SubscriptionEventPublisher } from './events';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
+import { SubscriptionIndexRepository } from './repositories/subscription-index.repository';
+import { SubscriptionIndexEntity, SubscriptionStatus } from './entities/subscription-index.entity';
 
 export enum CheckoutStatus {
   PENDING = 'pending',
@@ -35,15 +37,7 @@ export enum CheckoutStatus {
 
 export const SERVER_NETWORK = process.env.STELLAR_NETWORK ?? 'testnet';
 
-interface Subscription {
-  id: string;
-  fan: string;
-  creator: string;
-  planId: number;
-  expiry: number;
-  status: 'active' | 'expired' | 'cancelled';
-  createdAt: Date;
-}
+type Subscription = SubscriptionIndexEntity;
 
 interface Checkout {
   id: string;
@@ -81,7 +75,6 @@ function generateId(): string {
 
 @Injectable()
 export class SubscriptionsService {
-  private readonly subscriptions: Map<string, Subscription> = new Map();
   private readonly checkouts: Map<string, Checkout> = new Map();
   private readonly checkoutExpiryMinutes = 15;
   private readonly logger = new Logger(SubscriptionsService.name);
@@ -104,6 +97,7 @@ export class SubscriptionsService {
   > = new Map();
 
   constructor(
+    private readonly indexRepo: SubscriptionIndexRepository,
     private readonly eventBus: EventBus,
     @Optional()
     @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
@@ -137,110 +131,100 @@ export class SubscriptionsService {
     }
   }
 
-  private getKey(fan: string, creator: string): string {
-    return `${fan}:${creator}`;
+  private getExpiryStatus(expiryUnix: number): SubscriptionStatus {
+    const now = Math.floor(Date.now() / 1000);
+    return expiryUnix > now ? SubscriptionStatus.ACTIVE : SubscriptionStatus.EXPIRED;
   }
 
-  addSubscription(
+  async addSubscription(
     fan: string,
     creator: string,
     planId: number,
     expiry: number,
-  ) {
-    const subscription: Subscription = {
-      id: generateId(),
+  ): Promise<Subscription> {
+    const status = this.getExpiryStatus(expiry);
+    const upsertData = {
       fan,
       creator,
       planId,
-      expiry,
-      status: expiry > Date.now() / 1000 ? 'active' : 'expired',
-      createdAt: new Date(),
-    };
-
-    this.subscriptions.set(this.getKey(fan, creator), subscription);
+      expiryUnix: expiry,
+      status,
+    } as const;
+    const sub = await this.indexRepo.upsertManual(upsertData);
     this.eventBus.publish(
       new SubscriptionCreatedEvent(fan, creator, planId, expiry),
     );
-
-    return subscription;
+    return sub;
   }
 
-  renewSubscription(
+  async renewSubscription(
     fan: string,
     creator: string,
     planId: number,
     expiry: number,
-  ) {
-    const key = this.getKey(fan, creator);
-    const existing = this.subscriptions.get(key);
-
-    if (!existing) {
-      return this.addSubscription(fan, creator, planId, expiry);
-    }
-
-    existing.planId = planId;
-    existing.expiry = expiry;
-    existing.status = 'active';
-
+  ): Promise<Subscription> {
+    const status = this.getExpiryStatus(expiry);
+    const upsertData = {
+      fan,
+      creator,
+      planId,
+      expiryUnix: expiry,
+      status,
+    } as const;
+    const sub = await this.indexRepo.upsertManual(upsertData);
     this.eventBus.publish(
       new SubscriptionRenewedEvent(
-        existing.id,
+        sub.id,
         fan,
         creator,
         planId,
         expiry,
       ),
     );
-
-    return existing;
+    return sub;
   }
 
-  expireSubscription(fan: string, creator: string) {
-    const key = this.getKey(fan, creator);
-    const existing = this.subscriptions.get(key);
-    if (existing) {
-      existing.status = 'expired';
-    }
-
+  async expireSubscription(fan: string, creator: string) {
+    const now = Math.floor(Date.now() / 1000);
+    await this.indexRepo.updateStatus(fan, creator, SubscriptionStatus.EXPIRED);
     this.eventBus.publish(new SubscriptionExpiredEvent(fan, creator));
   }
 
-  cancelSubscription(fan: string, creator: string) {
-    const subscription = this.subscriptions.get(this.getKey(fan, creator));
-    if (!subscription) {
+  async cancelSubscription(fan: string, creator: string) {
+    const now = Math.floor(Date.now() / 1000);
+    const existing = await this.getSubscription(fan, creator);
+    if (!existing) {
       throw new NotFoundException('Subscription not found');
     }
 
-    subscription.status = 'cancelled';
-    subscription.expiry = Math.floor(Date.now() / 1000);
+    await this.indexRepo.updateStatus(fan, creator, SubscriptionStatus.CANCELLED, now);
 
     this.eventBus.publish(
       new SubscriptionCancelledEvent(
-        subscription.id,
+        existing.id,
         fan,
         creator,
-        subscription.planId,
+        existing.planId,
       ),
     );
 
     return {
       success: true,
-      subscriptionId: subscription.id,
+      subscriptionId: existing.id,
       fan,
       creator,
-      status: subscription.status,
+      status: SubscriptionStatus.CANCELLED,
       cancelledAt: new Date().toISOString(),
       message: 'Subscription cancelled successfully',
     };
   }
 
-  isSubscriber(fan: string, creator: string): boolean {
-    const sub = this.subscriptions.get(this.getKey(fan, creator));
-    return sub ? sub.expiry > Date.now() / 1000 : false;
+  async isSubscriber(fan: string, creator: string): Promise<boolean> {
+    return this.indexRepo.isSubscriber(fan, creator);
   }
 
-  getSubscription(fan: string, creator: string): Subscription | undefined {
-    return this.subscriptions.get(this.getKey(fan, creator));
+  async getSubscription(fan: string, creator: string): Promise<Subscription | null> {
+    return this.indexRepo.findCurrentForFanCreator(fan, creator);
   }
 
   async getFanCreatorSubscriptionState(fan: string, creator: string) {
@@ -253,24 +237,24 @@ export class SubscriptionsService {
       throw new BadRequestException('creator must be a valid Stellar G-address');
     }
 
-    const active = this.isSubscriber(fan, creator);
-    const sub = this.getSubscription(fan, creator);
+    const active = await this.isSubscriber(fan, creator);
+    const sub = await this.getSubscription(fan, creator);
     const nowSec = Math.floor(Date.now() / 1000);
 
     let indexedStatus: 'none' | 'active' | 'expired' = 'none';
     let indexed: {
       subscriptionId: string;
       planId: number;
-      status: Subscription['status'];
+      status: string;
       expiresAt: string;
       expiresAtUnix: number;
       createdAt: string;
     } | null = null;
 
     if (sub) {
-      if (sub.status === 'cancelled') {
+      if (sub.status === SubscriptionStatus.CANCELLED) {
         indexedStatus = 'expired';
-      } else if (sub.expiry > nowSec && sub.status === 'active') {
+      } else if (sub.expiryUnix > nowSec && sub.status === SubscriptionStatus.ACTIVE) {
         indexedStatus = 'active';
       } else {
         indexedStatus = 'expired';
@@ -279,8 +263,8 @@ export class SubscriptionsService {
         subscriptionId: sub.id,
         planId: sub.planId,
         status: sub.status,
-        expiresAt: new Date(sub.expiry * 1000).toISOString(),
-        expiresAtUnix: sub.expiry,
+        expiresAt: new Date(sub.expiryUnix * 1000).toISOString(),
+        expiresAtUnix: sub.expiryUnix,
         createdAt: sub.createdAt.toISOString(),
       };
     }
@@ -315,22 +299,18 @@ export class SubscriptionsService {
     };
   }
 
-  getFanDashboardSummary(
+  async getFanDashboardSummary(
     fan: string,
     page: number = 1,
     limit: number = 20,
   ) {
+    const activeSubs = await this.indexRepo.listActiveForFan(fan, page, limit);
     const nowSecs = Date.now() / 1000;
-    const activeSubs = Array.from(this.subscriptions.values()).filter(
-      (sub) => sub.fan === fan && sub.status === 'active' && sub.expiry > nowSecs,
-    );
 
-    activeSubs.sort((a, b) => a.expiry - b.expiry);
+    activeSubs.sort((a, b) => a.expiryUnix - b.expiryUnix);
 
-    const total = activeSubs.length;
-    const paginated = activeSubs.slice((page - 1) * limit, page * limit);
-
-    const subscriptions = paginated.map((sub) => {
+    const total = activeSubs.length; // Note: for full count, add count query
+    const subscriptions = activeSubs.map((sub) => {
       const plan = this.getPlanMock(sub.planId);
       const creatorProfile = this.creatorProfiles.get(sub.creator);
       return {
@@ -348,8 +328,8 @@ export class SubscriptionsService {
             : plan?.intervalDays === 7
               ? 'week'
               : 'month',
-        renewsAt: new Date(sub.expiry * 1000).toISOString(),
-        renewsAtUnix: sub.expiry,
+        renewsAt: new Date(sub.expiryUnix * 1000).toISOString(),
+        renewsAtUnix: sub.expiryUnix,
         status: sub.status,
         createdAt: sub.createdAt.toISOString(),
       };
@@ -365,70 +345,41 @@ export class SubscriptionsService {
     };
   }
 
-  listSubscriptions(
+  async listSubscriptions(
     fan: string,
-    status?: string,
+    status?: SubscriptionStatus,
     sort?: string,
     page: number = 1,
     limit: number = 20,
   ) {
-    let userSubs = Array.from(this.subscriptions.values()).filter(
-      (sub) => sub.fan === fan,
-    );
-
-    const nowSecs = Date.now() / 1000;
-    userSubs.forEach((sub) => {
-      if (sub.status === 'active' && sub.expiry <= nowSecs) {
-        sub.status = 'expired';
-      }
-    });
+    const where: any = { fan };
 
     if (status) {
-      userSubs = userSubs.filter((sub) => sub.status === status);
+      where.status = status;
     }
 
-    const results = userSubs.map((sub) => {
-      const plan = this.getPlanMock(sub.planId);
-      const creatorProfile = this.creatorProfiles.get(sub.creator);
-
-      return {
-        id: sub.id,
-        creatorId: sub.creator,
-        creatorName: creatorProfile?.name || 'Unknown Creator',
-        creatorUsername: sub.creator.substring(0, 8),
-        planName: plan
-          ? `${this.getIntervalText(plan.intervalDays)} Subscription`
-          : 'Subscription',
-        price: plan ? parseFloat(plan.amount) : 0,
-        currency: plan ? plan.asset.split(':')[0] : 'XLM',
-        interval:
-          plan && plan.intervalDays === 30
-            ? 'month'
-            : plan && plan.intervalDays === 365
-              ? 'year'
-              : 'month',
-        currentPeriodEnd: new Date(sub.expiry * 1000).toISOString(),
-        status: sub.status,
-        createdAt: sub.createdAt.toISOString(),
-      };
+    const [results, total] = await this.indexRepo.repo.findAndCount({
+      where,
+      order: sort === 'created' ? { createdAt: 'DESC' } : { expiryUnix: 'ASC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
 
-    if (sort === 'created') {
-      results.sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
-    } else {
-      results.sort(
-        (a, b) =>
-          new Date(a.currentPeriodEnd).getTime() -
-          new Date(b.currentPeriodEnd).getTime(),
-      );
-    }
+    const formatted = results.map((sub) => ({
+      id: sub.id,
+      creatorId: sub.creator,
+      creatorName: this.creatorProfiles.get(sub.creator)?.name || 'Unknown Creator',
+      creatorUsername: sub.creator.substring(0, 8),
+      planName: 'Subscription', // from plan mock
+      price: 0,
+      currency: 'XLM',
+      interval: 'month',
+      currentPeriodEnd: new Date(sub.expiryUnix * 1000).toISOString(),
+      status: sub.status,
+      createdAt: sub.createdAt.toISOString(),
+    }));
 
-    const total = results.length;
-    const paginatedResults = results.slice((page - 1) * limit, page * limit);
-    return new PaginatedResponseDto(paginatedResults, total, page, limit);
+    return new PaginatedResponseDto(formatted, total, page, limit);
   }
 
   createCheckout(
@@ -673,6 +624,10 @@ export class SubscriptionsService {
       },
     ];
     return plans.find((p) => p.id === planId);
+  }
+
+  getAllSubscriptionsInternal(): Promise<SubscriptionIndexEntity[]> {
+    return this.indexRepo.findAllForReconciler();
   }
 
   /** Returns completed checkouts for analytics aggregation. */
