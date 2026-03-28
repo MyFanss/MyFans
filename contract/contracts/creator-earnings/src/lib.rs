@@ -1,6 +1,9 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
+    Symbol,
+};
 
 #[contracttype]
 pub enum DataKey {
@@ -10,12 +13,14 @@ pub enum DataKey {
     AuthorizedDepositor(Address),
 }
 
-#[contracttype]
+#[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum EarningsError {
+pub enum Error {
     NotInitialized = 1,
     NotAuthorized = 2,
     InsufficientBalance = 3,
+    AlreadyInitialized = 4,
+    InvalidAmount = 5,
 }
 
 #[contract]
@@ -26,7 +31,7 @@ impl CreatorEarnings {
     /// Initialize contract with admin and accepted token
     pub fn initialize(env: Env, admin: Address, token_address: Address) {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
+            panic_with_error!(&env, Error::AlreadyInitialized);
         }
 
         admin.require_auth();
@@ -51,7 +56,7 @@ impl CreatorEarnings {
     /// Callable by authorized contracts or admin
     pub fn deposit(env: Env, from: Address, creator: Address, amount: i128) {
         if amount <= 0 {
-            panic!("invalid amount");
+            panic_with_error!(&env, Error::InvalidAmount);
         }
 
         from.require_auth();
@@ -81,7 +86,7 @@ impl CreatorEarnings {
     /// Withdraw earnings
     pub fn withdraw(env: Env, creator: Address, amount: i128) {
         if amount <= 0 {
-            panic!("invalid amount");
+            panic_with_error!(&env, Error::InvalidAmount);
         }
 
         creator.require_auth();
@@ -89,7 +94,7 @@ impl CreatorEarnings {
         let current_balance = Self::balance(env.clone(), creator.clone());
 
         if current_balance < amount {
-            panic!("insufficient balance");
+            panic_with_error!(&env, Error::InsufficientBalance);
         }
 
         let token_address: Address = Self::get_token(&env);
@@ -116,14 +121,14 @@ impl CreatorEarnings {
         env.storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("not initialized")
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
     }
 
     fn get_token(env: &Env) -> Address {
         env.storage()
             .instance()
             .get(&DataKey::Token)
-            .expect("not initialized")
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
     }
 
     fn require_authorized(env: &Env, caller: &Address) {
@@ -141,7 +146,7 @@ impl CreatorEarnings {
             return;
         }
 
-        panic!("not authorized");
+        panic_with_error!(env, Error::NotAuthorized);
     }
 }
 
