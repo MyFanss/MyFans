@@ -68,6 +68,10 @@ export class Payment {
   @Column({ name: 'tx_hash', type: 'varchar', nullable: true })
   tx_hash!: string | null;
 
+  @Index()
+  @Column({ name: 'payment_reference', type: 'varchar', nullable: true, unique: true })
+  payment_reference!: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   created_at!: Date;
 }

@@ -32,7 +32,7 @@ pub struct AllowanceData {
     pub expiration_ledger: u32,
 }
 
-/// Token contract errors (codes 1–3 match test expectations)
+/// Token contract errors (codes 1–7 match test expectations)
 #[contracterror]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -42,6 +42,7 @@ pub enum Error {
     InvalidAmount = 4,
     InvalidExpiration = 5,
     NoAllowance = 6,
+    Unauthorized = 7,          // mint: caller is not admin
 }
 
 #[contract]
@@ -231,14 +232,29 @@ impl MyFansToken {
         }
     }
 
-    pub fn mint(env: Env, to: Address, amount: i128) {
-        let admin = Self::admin(env.clone());
+    /// Mint new tokens to `to`. Only the contract admin may call this.
+    ///
+    /// # Errors
+    /// * [`Error::Unauthorized`] – caller is not the stored admin.
+    /// * [`Error::InvalidAmount`] – `amount` is zero or negative.
+    pub fn mint(env: Env, to: Address, amount: i128) -> Result<(), Error> {
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        // Read admin from storage and require their authorisation.
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not initialized");
         admin.require_auth();
 
         let balance = read_balance(&env, to.clone());
         write_balance(&env, to.clone(), balance + amount);
 
-        let total: i128 = env.storage()
+        let total: i128 = env
+            .storage()
             .instance()
             .get(&DataKey::TotalSupply)
             .unwrap_or(0);
@@ -247,6 +263,7 @@ impl MyFansToken {
             .set(&DataKey::TotalSupply, &(total + amount));
 
         env.events().publish((symbol_short!("mint"), to), amount);
+        Ok(())
     }
 
     pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), Error> {
@@ -310,3 +327,6 @@ fn write_balance(env: &Env, id: Address, amount: i128) {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod allowance_expiry_tests;

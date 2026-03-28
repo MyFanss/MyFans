@@ -12,6 +12,7 @@ export interface ContractIds {
 
 /** Shape written by contract/scripts/deploy.sh (deployed-local.json / deployed-testnet.json) */
 interface DeployArtifact {
+  schemaVersion?: string;
   contracts: {
     token?: string;
     creatorRegistry?: string;

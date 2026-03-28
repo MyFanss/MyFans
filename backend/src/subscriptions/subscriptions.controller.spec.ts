@@ -58,7 +58,10 @@ describe('SubscriptionsController (dashboard-summary)', () => {
 describe('SubscriptionsController (subscription-state)', () => {
   let controller: SubscriptionsController;
   let service: jest.Mocked<
-    Pick<SubscriptionsService, 'getFanCreatorSubscriptionState'>
+    Pick<
+      SubscriptionsService,
+      'getFanCreatorSubscriptionState' | 'listCreatorSubscribers'
+    >
   >;
 
   beforeEach(async () => {
@@ -70,6 +73,13 @@ describe('SubscriptionsController (subscription-state)', () => {
         indexedStatus: 'none',
         indexed: null,
         chain: { configured: false, isSubscriber: null },
+      }),
+      listCreatorSubscribers: jest.fn().mockReturnValue({
+        data: [],
+        total: 0,
+        page: 1,
+        limit: 20,
+        totalPages: 0,
       }),
     };
 
@@ -98,6 +108,22 @@ describe('SubscriptionsController (subscription-state)', () => {
       creator,
     );
     expect(result).toMatchObject({ indexedStatus: 'none' });
+  });
+
+  it('delegates creator subscriber list query to service', () => {
+    controller.listCreatorSubscribers({
+      creator,
+      status: 'active',
+      page: 2,
+      limit: 5,
+    });
+
+    expect(service.listCreatorSubscribers).toHaveBeenCalledWith(
+      creator,
+      'active',
+      2,
+      5,
+    );
   });
 });
 
