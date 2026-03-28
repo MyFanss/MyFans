@@ -2,6 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env,
+    Symbol,
 };
 
 /// Minimum number of ledgers between registrations per caller (anti-spam).
@@ -25,6 +26,7 @@ pub enum Error {
     Unauthorized = 3,
     RateLimited = 4,
     AlreadyRegistered = 5,
+    NotRegistered = 6,
 }
 
 #[contract]
@@ -71,6 +73,45 @@ impl CreatorRegistryContract {
 
         env.storage().persistent().set(&last_key, &current);
         env.storage().persistent().set(&key, &creator_id);
+    }
+
+    /// Update a creator_id for an already-registered creator
+    /// Authorized: admin or creator address
+    pub fn update_creator_id(
+        env: Env,
+        caller: Address,
+        creator_address: Address,
+        new_creator_id: u64,
+    ) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+
+        caller.require_auth();
+
+        if caller != admin && caller != creator_address {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+
+        let key = DataKey::Creator(creator_address.clone());
+        let old_creator_id: u64 = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotRegistered));
+
+        env.storage().persistent().set(&key, &new_creator_id);
+
+        env.events().publish(
+            (
+                Symbol::new(&env, "creator_updated"),
+                caller.clone(),
+                creator_address.clone(),
+            ),
+            (old_creator_id, new_creator_id),
+        );
     }
 
     /// Look up a creator_id by their registered address
