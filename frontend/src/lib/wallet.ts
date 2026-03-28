@@ -23,7 +23,10 @@ interface LobstrWallet extends BaseWallet {
 /** WalletConnect interface */
 interface WalletConnectWallet extends BaseWallet {
   getPublicKey: () => Promise<string>;
-  signTransaction: (xdr: string) => Promise<string>;
+  signTransaction: (
+    xdr: string,
+    opts?: { network?: string; networkPassphrase?: string },
+  ) => Promise<string>;
 }
 
 /** Window with wallet extensions */
