@@ -1,6 +1,11 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import {
+  validateHttpsUrl,
+  validateInstagramHandle,
+  validateXHandle,
+} from "@/lib/validation/profile";
 
 // Social platform types
 interface SocialLinks {
@@ -106,55 +111,28 @@ const ExclamationIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-// Validation functions
-const validateWebsite = (value: string): string | undefined => {
-  if (!value.trim()) return undefined;
-  const urlPattern =
-    /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/i;
-  if (!urlPattern.test(value)) {
-    return "Please enter a valid website URL";
-  }
-  return undefined;
-};
+const validateWebsite = (value: string): string | undefined =>
+  validateHttpsUrl(value, "Website");
 
-const validateX = (value: string): string | undefined => {
-  if (!value.trim()) return undefined;
-  // Handle format: @username or username
-  const xPattern = /^@?[\w]{1,15}$/;
-  if (!xPattern.test(value.replace(/^@/, ""))) {
-    return "Please enter a valid X handle";
-  }
-  return undefined;
-};
+const validateX = (value: string): string | undefined =>
+  validateXHandle(value);
 
-const validateInstagram = (value: string): string | undefined => {
-  if (!value.trim()) return undefined;
-  // Username format: letters, numbers, underscores, periods, max 30 chars
-  const instagramPattern = /^[\w.]{1,30}$/;
-  if (!instagramPattern.test(value)) {
-    return "Please enter a valid Instagram username";
-  }
-  return undefined;
-};
+const validateInstagram = (value: string): string | undefined =>
+  validateInstagramHandle(value);
 
-const validateOther = (value: string): string | undefined => {
-  if (!value.trim()) return undefined;
-  const urlPattern =
-    /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/i;
-  if (!urlPattern.test(value)) {
-    return "Please enter a valid URL";
-  }
-  return undefined;
-};
+const validateOther = (value: string): string | undefined =>
+  validateHttpsUrl(value, "Link");
 
 interface SocialLinksFormProps {
   initialValues?: Partial<SocialLinks>;
   onSubmit?: (links: SocialLinks) => void;
+  disabled?: boolean;
 }
 
 export function SocialLinksForm({
   initialValues,
   onSubmit,
+  disabled = false,
 }: SocialLinksFormProps) {
   const [links, setLinks] = useState<SocialLinks>({
     website: initialValues?.website || "",
@@ -234,6 +212,7 @@ export function SocialLinksForm({
             value={links.website}
             onChange={(e) => handleChange("website", e.target.value)}
             onBlur={() => handleBlur("website")}
+            disabled={disabled}
             placeholder="https://yourwebsite.com"
             className={`w-full rounded-xl border bg-white px-3 py-2.5 pr-10 text-slate-900 outline-none placeholder:text-slate-400 transition-colors focus:ring-2 focus:ring-slate-300 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:ring-slate-600 ${
               hasError("website")
@@ -275,6 +254,7 @@ export function SocialLinksForm({
             value={links.x}
             onChange={(e) => handleChange("x", e.target.value)}
             onBlur={() => handleBlur("x")}
+            disabled={disabled}
             placeholder="@yourhandle"
             className={`w-full rounded-xl border bg-white px-3 py-2.5 pr-10 text-slate-900 outline-none placeholder:text-slate-400 transition-colors focus:ring-2 focus:ring-slate-300 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:ring-slate-600 ${
               hasError("x")
@@ -314,6 +294,7 @@ export function SocialLinksForm({
             value={links.instagram}
             onChange={(e) => handleChange("instagram", e.target.value)}
             onBlur={() => handleBlur("instagram")}
+            disabled={disabled}
             placeholder="username"
             className={`w-full rounded-xl border bg-white px-3 py-2.5 pr-10 text-slate-900 outline-none placeholder:text-slate-400 transition-colors focus:ring-2 focus:ring-slate-300 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:ring-slate-600 ${
               hasError("instagram")
@@ -355,6 +336,7 @@ export function SocialLinksForm({
             value={links.other}
             onChange={(e) => handleChange("other", e.target.value)}
             onBlur={() => handleBlur("other")}
+            disabled={disabled}
             placeholder="https://linkedin.com/in/username"
             className={`w-full rounded-xl border bg-white px-3 py-2.5 pr-10 text-slate-900 outline-none placeholder:text-slate-400 transition-colors focus:ring-2 focus:ring-slate-300 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:ring-slate-600 ${
               hasError("other")
@@ -381,7 +363,7 @@ export function SocialLinksForm({
       {/* Submit Button */}
       <button
         type="submit"
-        disabled={submitted && !isValid}
+        disabled={disabled || (submitted && !isValid)}
         className="mt-2 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 dark:disabled:bg-slate-500"
       >
         Save Social Links

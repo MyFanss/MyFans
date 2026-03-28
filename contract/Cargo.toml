@@ -1,31 +1,50 @@
-[package]
-name = "myfans-contract"
+[workspace]
+resolver = "2"
+members = [
+    ".",
+    "contracts/content-access",
+    "contracts/content-likes",
+    "contracts/creator-deposits",
+    "contracts/creator-earnings",
+    "contracts/creator-registry",
+    "contracts/earnings",
+    "contracts/myfans-lib",
+    "contracts/myfans-token",
+    "contracts/subscription",
+    "contracts/test-consumer",
+    "contracts/treasury",
+]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
+authors = ["Mimah97 <e77377366@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Mimah97/MyFans"
+description = "MyFans Soroban smart contracts."
+publish = false
+
+[workspace.dependencies]
+soroban-sdk = "21.7.0"
+
+[package]
+name = "myfans-contract"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description.workspace = true
+publish.workspace = true
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-soroban-sdk = "21.7.0"
+soroban-sdk = { workspace = true }
 
 [dev-dependencies]
-soroban-sdk = { version = "21.7.0", features = ["testutils"] }
-
-[workspace]
-members = [
-    "contracts/content-access",
-    "contracts/content-likes",
-    "contracts/creator-deposits",
-    "contracts/creator-registry",
-    "contracts/myfans-lib",
-    "contracts/myfans-token",
-    "contracts/subscription",
-    "contracts/test-consumer",
-]
-
-[workspace.dependencies]
-soroban-sdk = "21.7.0"
+soroban-sdk = { workspace = true, features = ["testutils"] }
 
 [profile.release]
 opt-level = "z"
