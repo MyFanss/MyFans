@@ -1,12 +1,9 @@
 import { signTransaction } from '@/lib/wallet';
 import { createAppError } from '@/types/errors';
 
-export const STELLAR_CONFIG = {
-  network: process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet',
-  horizonUrl: process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org',
-  sorobanRpcUrl: process.env.NEXT_PUBLIC_SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org',
-  subscriptionContractId: process.env.NEXT_PUBLIC_SUBSCRIPTION_CONTRACT_ID || '',
-};
+export function getStellarConfig() {
+  return getStellarRuntimeConfig();
+}
 
 export interface CreateCreatorPlanInput {
   creatorAddress: string;
@@ -201,11 +198,20 @@ export async function buildSubscriptionTx(
     void _tokenAddress;
 
     const SDK = await import('@stellar/stellar-sdk');
-    const server = new SDK.Horizon.Server(STELLAR_CONFIG.horizonUrl);
+    const config = getStellarConfig();
+    const server = new SDK.Horizon.Server(config.horizonUrl);
     const account = await server.loadAccount(fanAddress);
-    const networkPassphrase = STELLAR_CONFIG.network === 'testnet' 
-      ? SDK.Networks.TESTNET 
-      : SDK.Networks.PUBLIC;
+    const networkPassphrase =
+      config.network === 'testnet'
+        ? SDK.Networks.TESTNET
+        : config.network === 'futurenet'
+          ? SDK.Networks.FUTURENET
+          : SDK.Networks.PUBLIC;
+
+    // These values will be consumed once the Soroban contract invocation is wired in.
+    void creatorAddress;
+    void planId;
+    void tokenAddress;
 
     // Build transaction (simplified - actual Soroban invocation needs contract bindings)
     const tx = new SDK.TransactionBuilder(account, {
@@ -244,6 +250,8 @@ export async function checkSubscription(_fanAddress: string, _creatorAddress: st
   void _creatorAddress;
 
   // Mock implementation - replace with actual Soroban RPC call
+  void fanAddress;
+  void creatorAddress;
   return false;
 }
 
