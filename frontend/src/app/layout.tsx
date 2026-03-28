@@ -1,14 +1,12 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { ThemeProvider } from '@/contexts/ThemeContext';
-import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext';
 import { FavoritesProvider } from '@/hooks/useFavorites';
 import { ConsentProvider } from '@/contexts/ConsentContext';
 import { NoFlashScript } from '@/components/NoFlashScript';
+import { ContractConfigBootstrap } from '@/components/ContractConfigBootstrap';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { ToastContainer } from '@/components/ui/Toast';
-import NavLayout from '@/components/navigation/NavLayout';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export const metadata: Metadata = {
   title: {
@@ -71,6 +69,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <ThemeProvider>
           <FeatureFlagsProvider>
+        <ContractConfigBootstrap>
+          <ThemeProvider>
             <ConsentProvider>
               <FavoritesProvider>
                 <ToastProvider>
@@ -81,6 +81,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </ConsentProvider>
           </FeatureFlagsProvider>
         </ThemeProvider>
+          </ThemeProvider>
+        </ContractConfigBootstrap>
       </body>
     </html>
   );

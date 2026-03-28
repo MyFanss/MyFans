@@ -2,6 +2,13 @@
 
 import React, { useState } from 'react';
 import { GatedContentViewer, ContentType } from '@/components/GatedContentViewer';
+import { SubscriptionStatusBadge } from '@/components/subscription/SubscriptionStatusBadge';
+import {
+  getMockViewerSubscriptionStatus,
+  getSubscriptionStatusCopy,
+  isSubscriptionActive,
+  type SubscriptionStatus,
+} from '@/lib/subscription-status';
 import Link from 'next/link';
 
 // Mock data - in real app, fetch from API based on params.id
@@ -16,7 +23,7 @@ const mockContentData = {
   creator: {
     id: 'creator-1',
     name: 'Alex Rivera',
-    username: 'alexrivera',
+    username: 'alex',
     avatarUrl: '/placeholder-2.jpg',
     isVerified: true,
   },
@@ -55,16 +62,23 @@ interface PageProps {
 }
 
 export default function ContentPage({ params }: PageProps) {
+  void params;
+
   // In a real app, you would fetch the content based on the ID
   const [content] = useState(mockContentData);
-  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>(
+    () => getMockViewerSubscriptionStatus(mockContentData.creator.username) ?? 'expired',
+  );
+  const isSubscribed = isSubscriptionActive(subscriptionStatus);
+  const subscriptionCopy = getSubscriptionStatusCopy(subscriptionStatus);
 
   const handleSubscribe = () => {
     // In real app, redirect to subscription page or open modal
-    setIsSubscribed(true);
+    setSubscriptionStatus('active');
   };
 
-  const handleLike = async (_liked: boolean): Promise<void> => {
+  const handleLike = async (liked: boolean): Promise<void> => {
+    void liked;
     console.log('Liked content:', content.id);
   };
 
@@ -90,18 +104,15 @@ export default function ContentPage({ params }: PageProps) {
             <Link href="/" className="text-xl font-bold text-primary-600">
               MyFans
             </Link>
-            <div className="flex items-center gap-4">
-              {isSubscribed ? (
-                <span className="text-sm text-green-600 font-medium">
-                  ✓ Subscribed
-                </span>
-              ) : (
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <SubscriptionStatusBadge status={subscriptionStatus} />
+              {!isSubscribed && (
                 <button
                   onClick={handleSubscribe}
                   type="button"
                   className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
                 >
-                  Subscribe
+                  {subscriptionCopy.ctaLabel}
                 </button>
               )}
             </div>
@@ -119,6 +130,7 @@ export default function ContentPage({ params }: PageProps) {
           thumbnailUrl={content.thumbnailUrl}
           description={content.description}
           isSubscribed={isSubscribed}
+          subscriptionStatus={subscriptionStatus}
           isGated={content.isGated}
           creator={content.creator}
           metadata={content.metadata}

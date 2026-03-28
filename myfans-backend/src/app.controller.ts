@@ -3,12 +3,15 @@ import { AppService } from './app.service';
 import { TestValidationDto } from './app/dto/test-validation.dto';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 
 @Controller()
 export class AppController {
   constructor(
     private readonly appService: AppService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   @Get()
@@ -33,6 +36,23 @@ export class AppController {
       return {
         status: 'error',
         redis: 'disconnected',
+        message: error?.message || 'Unknown error',
+      };
+    }
+  }
+
+  @Get('health/db')
+  async getHealthDb() {
+    try {
+      if (!this.dataSource.isInitialized) {
+        return { status: 'error', db: 'disconnected', message: 'DataSource not initialized' };
+      }
+      await this.dataSource.query('SELECT 1');
+      return { status: 'ok', db: 'connected' };
+    } catch (error: any) {
+      return {
+        status: 'error',
+        db: 'disconnected',
         message: error?.message || 'Unknown error',
       };
     }
