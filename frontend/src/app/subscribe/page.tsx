@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import WalletConnect from '@/components/WalletConnect';
+import { BookmarkButton } from '@/components/BookmarkButton';
 import { CreatorCard } from '@/components/cards';
-import { CardSkeletonGrid, EmptyState, SuccessAnimation } from '@/components/ui/states';
+import { CardSkeletonGrid, EmptyState } from '@/components/ui/states';
+import { useToast } from '@/contexts/ToastContext';
 
 interface Creator {
   id: string;
@@ -42,40 +44,6 @@ const CREATOR_DATA: Creator[] = [
 ];
 
 export default function SubscribePage() {
-  const [query, setQuery] = useState('');
-  const [isLoadingCreators, setIsLoadingCreators] = useState(true);
-  const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState('');
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoadingCreators(false), 1100);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (!successMessage) return;
-    const timer = setTimeout(() => setSuccessMessage(''), 2400);
-    return () => clearTimeout(timer);
-  }, [successMessage]);
-
-  const filteredCreators = useMemo(() => {
-    const value = query.trim().toLowerCase();
-    if (!value) return CREATOR_DATA;
-    return CREATOR_DATA.filter(
-      (creator) =>
-        creator.name.toLowerCase().includes(value) ||
-        creator.username.toLowerCase().includes(value) ||
-        creator.bio.toLowerCase().includes(value),
-    );
-  }, [query]);
-
-  const handleSubscribe = async (creator: Creator) => {
-    setIsSubscribing(creator.id);
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    setIsSubscribing(null);
-    setSuccessMessage(`Subscribed to ${creator.name}`);
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 p-8">
       <header className="mb-8 flex items-center justify-between">
@@ -88,19 +56,18 @@ export default function SubscribePage() {
           <h2 className="text-lg font-semibold text-slate-900">Find a Creator</h2>
           <p className="mt-1 text-sm text-slate-600">Browse current creators and start supporting your favorites.</p>
 
+          <label htmlFor="creator-search" className="sr-only">
+            Search creators
+          </label>
           <input
-            className="mt-4 w-full rounded border border-slate-300 p-2"
+            id="creator-search"
+            className="mt-4 w-full rounded border border-slate-300 p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by name, handle, or content"
             type="text"
             value={query}
           />
 
-          {successMessage ? (
-            <div className="mt-4">
-              <SuccessAnimation message={successMessage} />
-            </div>
-          ) : null}
         </section>
 
         <section>
@@ -120,7 +87,7 @@ export default function SubscribePage() {
                 <CreatorCard
                   actionButton={
                     <button
-                      className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                      className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:bg-emerald-300"
                       disabled={isSubscribing === creator.id}
                       onClick={() => handleSubscribe(creator)}
                       type="button"
@@ -130,6 +97,11 @@ export default function SubscribePage() {
                   }
                   bio={creator.bio}
                   key={creator.id}
+                  headerAccessory={
+                    <FeatureGate flag={FeatureFlag.BOOKMARKS}>
+                      <BookmarkButton creatorId={creator.id} />
+                    </FeatureGate>
+                  }
                   name={creator.name}
                   subscriberCount={creator.subscriberCount}
                   subscriptionPrice={creator.subscriptionPrice}

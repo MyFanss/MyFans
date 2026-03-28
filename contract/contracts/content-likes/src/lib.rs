@@ -1,5 +1,15 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, Address, Env, Map, Symbol};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, panic_with_error, Address, Env, Map, Symbol, Vec,
+};
+
+const MAX_PAGE_LIMIT: u32 = 100;
+
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Error {
+    NotLiked = 1,
+}
 
 #[contract]
 pub struct ContentLikes;
@@ -45,6 +55,16 @@ impl ContentLikes {
                 .instance()
                 .set(&count_key, &(current_count + 1));
 
+            // Maintain user_likes index for list_likes_by_user
+            let user_likes_key = ("user_likes", user.clone());
+            let mut list: Vec<u32> = env
+                .storage()
+                .instance()
+                .get(&user_likes_key)
+                .unwrap_or_else(|| Vec::new(&env));
+            list.push_back(content_id);
+            env.storage().instance().set(&user_likes_key, &list);
+
             // Publish event
             env.events()
                 .publish((Symbol::new(&env, "liked"), content_id), user);
@@ -78,7 +98,7 @@ impl ContentLikes {
 
         // Verify user has liked (revert if not)
         if likes.get(user.clone()).is_none() {
-            panic!("User has not liked this content");
+            panic_with_error!(&env, Error::NotLiked);
         }
 
         // Remove user from map
@@ -92,6 +112,22 @@ impl ContentLikes {
                 .instance()
                 .set(&count_key, &(current_count - 1));
         }
+
+        // Maintain user_likes index: remove content_id from user's list
+        let user_likes_key = ("user_likes", user.clone());
+        let list: Vec<u32> = env
+            .storage()
+            .instance()
+            .get(&user_likes_key)
+            .unwrap_or_else(|| Vec::new(&env));
+        let mut new_list = Vec::new(&env);
+        for i in 0..list.len() {
+            let id = list.get(i).unwrap();
+            if id != content_id {
+                new_list.push_back(id);
+            }
+        }
+        env.storage().instance().set(&user_likes_key, &new_list);
 
         // Publish event
         env.events()
@@ -130,12 +166,50 @@ impl ContentLikes {
 
         likes.get(user).is_some()
     }
+
+    /// List content IDs liked by a user with pagination (bounded iteration).
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `user` - Address of the user
+    /// * `cursor` - Index to start from (0 for first page)
+    /// * `limit` - Max number of items to return (capped at MAX_PAGE_LIMIT)
+    ///
+    /// # Returns
+    /// (page of content_ids, has_more)
+    pub fn list_likes_by_user(
+        env: Env,
+        user: Address,
+        cursor: u32,
+        limit: u32,
+    ) -> (Vec<u32>, bool) {
+        let limit = core::cmp::min(limit, MAX_PAGE_LIMIT);
+        let user_likes_key = ("user_likes", user);
+        let list: Vec<u32> = env
+            .storage()
+            .instance()
+            .get(&user_likes_key)
+            .unwrap_or_else(|| Vec::new(&env));
+
+        let len = list.len();
+        if cursor >= len || limit == 0 {
+            return (Vec::new(&env), false);
+        }
+
+        let end = core::cmp::min(cursor + limit, len);
+        let mut page = Vec::new(&env);
+        for i in cursor..end {
+            page.push_back(list.get(i).unwrap());
+        }
+        let has_more = end < len;
+        (page, has_more)
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{testutils::Address as _, Error as SorobanError};
 
     #[test]
     fn test_like_and_unlike() {
@@ -221,7 +295,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "User has not liked this content")]
     fn test_unlike_when_not_liked_reverts() {
         let env = Env::default();
         env.mock_all_auths();
@@ -232,11 +305,16 @@ mod test {
         let content_id = 5u32;
 
         // Try to unlike without liking first
-        client.unlike(&user, &content_id);
+        let result = client.try_unlike(&user, &content_id);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::NotLiked as u32,
+            )))
+        );
     }
 
     #[test]
-    #[should_panic(expected = "User has not liked this content")]
     fn test_unlike_twice_reverts() {
         let env = Env::default();
         env.mock_all_auths();
@@ -251,7 +329,13 @@ mod test {
         client.unlike(&user, &content_id);
 
         // Try to unlike again (should panic)
-        client.unlike(&user, &content_id);
+        let result = client.try_unlike(&user, &content_id);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::NotLiked as u32,
+            )))
+        );
     }
 
     #[test]
@@ -300,5 +384,56 @@ mod test {
         // Query content that was never liked
         assert_eq!(client.like_count(&content_id), 0);
         assert!(!client.has_liked(&user, &content_id));
+    }
+
+    #[test]
+    fn test_list_likes_by_user_empty() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+
+        let (page, has_more) = client.list_likes_by_user(&user, &0, &10);
+        assert_eq!(page.len(), 0);
+        assert!(!has_more);
+    }
+
+    #[test]
+    fn test_list_likes_by_user_one_page() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        client.like(&user, &1u32);
+        client.like(&user, &2u32);
+        client.like(&user, &3u32);
+
+        let (page, has_more) = client.list_likes_by_user(&user, &0, &10);
+        assert_eq!(page.len(), 3);
+        assert_eq!(page.get(0).unwrap(), 1);
+        assert_eq!(page.get(1).unwrap(), 2);
+        assert_eq!(page.get(2).unwrap(), 3);
+        assert!(!has_more);
+    }
+
+    #[test]
+    fn test_list_likes_by_user_over_limit_clamped() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        client.like(&user, &1u32);
+        client.like(&user, &2u32);
+
+        // Request limit > MAX_PAGE_LIMIT (100); contract clamps to 100, we get 2 items
+        let (page, has_more) = client.list_likes_by_user(&user, &0, &1000);
+        assert_eq!(page.len(), 2);
+        assert!(!has_more);
     }
 }

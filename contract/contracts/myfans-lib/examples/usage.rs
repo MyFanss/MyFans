@@ -1,5 +1,3 @@
-#![no_std]
-
 //! Example contract demonstrating myfans-lib usage
 //!
 //! This shows how to import and use SubscriptionStatus and ContentType
@@ -58,5 +56,3 @@ mod test {
         assert!(!client.requires_payment(&ContentType::Free));
     }
 }
-
-fn main() {}

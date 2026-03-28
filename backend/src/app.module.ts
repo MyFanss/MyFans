@@ -1,47 +1,33 @@
-import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { APP_GUARD } from '@nestjs/core';
+import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { User } from './users/entities/user.entity';
-import { HealthModule } from './health/health.module';
+import { AuthModule } from './auth/auth.module';
+import { ThrottlerGuard } from './auth/throttler.guard';
 import { LoggingModule } from './common/logging.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { CreatorsModule } from './creators/creators.module';
-import { PostsModule } from './posts/posts.module';
-import { CommentsModule } from './comments/comments.module';
-import { ConversationsModule } from './conversations/conversations.module';
-import { LikesModule } from './likes/likes.module';
+import { HealthModule } from './health/health.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
-import { Post } from './posts/entities/post.entity';
-import { Comment } from './comments/entities/comment.entity';
-import { Conversation } from './conversations/entities/conversation.entity';
-import { Message } from './conversations/entities/message.entity';
-import { Like } from './likes/entities/like.entity';
+import { AuthModule } from './auth/auth.module';
+import { ModerationModule } from './moderation/moderation.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432'),
-      username: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'postgres',
-      database: process.env.DB_NAME || 'myfans',
-      entities: [User, Post, Comment, Conversation, Message, Like],
-      synchronize: true,
-    }),
-    HealthModule,
+    ThrottlerModule.forRoot([{ name: 'auth', ttl: 60000, limit: 5 }]),
     LoggingModule,
+    AuthModule,
     CreatorsModule,
-    PostsModule,
-    CommentsModule,
-    ConversationsModule,
-    LikesModule,
     SubscriptionsModule,
+    NotificationsModule,
+    HealthModule,
+    ModerationModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
