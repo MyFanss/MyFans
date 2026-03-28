@@ -2,6 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env,
+    Symbol,
 };
 
 /// Minimum number of ledgers between registrations per caller (anti-spam).
@@ -25,6 +26,7 @@ pub enum Error {
     Unauthorized = 3,
     RateLimited = 4,
     AlreadyRegistered = 5,
+    NotRegistered = 6,
 }
 
 #[contract]
