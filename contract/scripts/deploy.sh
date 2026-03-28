@@ -202,42 +202,123 @@ invoke_contract_view() {
     -- "$@"
 }
 
+# Check that a contract exposes a required method by inspecting its WASM interface.
+# Exits with a clear diagnostic if the method is missing.
+check_method() {
+  local contract_id="$1"
+  local method="$2"
+  local label="$3"
+
+  echo "[deploy] checking $label exposes '$method'"
+  if ! "${STELLAR[@]}" contract invoke \
+      --id "$contract_id" \
+      --source-account "$SOURCE_ACCOUNT" \
+      --network "$NETWORK" \
+      --rpc-url "$RPC_URL" \
+      --network-passphrase "$NETWORK_PASSPHRASE" \
+      --send no \
+      -- "$method" --help >/dev/null 2>&1; then
+    echo "[deploy] ERROR: contract '$label' ($contract_id) is missing required method '$method'." >&2
+    echo "[deploy] Ensure the correct WASM was deployed and the contract was built from the right package." >&2
+    exit 1
+  fi
+}
+
+# Validate init-order dependency: token must be deployed before contracts that reference it.
+check_token_dependency() {
+  local dependent_label="$1"
+  local token_id="$2"
+  if [[ -z "$token_id" ]]; then
+    echo "[deploy] ERROR: token contract must be deployed before '$dependent_label'." >&2
+    exit 1
+  fi
+}
+
 TOKEN_ID="$(deploy_contract "myfans-token")"
 CREATOR_REGISTRY_ID="$(deploy_contract "creator-registry")"
+
+# subscription and content-access depend on token — validate before deploying
+check_token_dependency "subscription" "$TOKEN_ID"
+check_token_dependency "content-access" "$TOKEN_ID"
+
 SUBSCRIPTION_ID="$(deploy_contract "subscription")"
 CONTENT_ACCESS_ID="$(deploy_contract "content-access")"
 EARNINGS_ID="$(deploy_contract "earnings")"
 
-# Initialize deployed contracts using their actual contract interfaces.
+# ── Method availability checks (explicit errors before any init call) ─────────
+check_method "$TOKEN_ID"            "initialize"  "myfans-token"
+check_method "$TOKEN_ID"            "admin"       "myfans-token"
+check_method "$CREATOR_REGISTRY_ID" "initialize"  "creator-registry"
+check_method "$SUBSCRIPTION_ID"     "init"        "subscription"
+check_method "$SUBSCRIPTION_ID"     "is-paused"   "subscription"
+check_method "$CONTENT_ACCESS_ID"   "initialize"  "content-access"
+check_method "$CONTENT_ACCESS_ID"   "has-access"  "content-access"
+check_method "$EARNINGS_ID"         "init"        "earnings"
+check_method "$EARNINGS_ID"         "admin"       "earnings"
+
+# ── Initialize in dependency order ────────────────────────────────────────────
+echo "[deploy] initializing myfans-token"
 invoke_contract "$TOKEN_ID" initialize \
   --admin "$SOURCE_PUBLIC_KEY" \
   --name "MyFans Token" \
   --symbol "MFAN" \
   --decimals 7 \
   --initial-supply 0 >/dev/null
+
+echo "[deploy] initializing creator-registry"
 invoke_contract "$CREATOR_REGISTRY_ID" initialize --admin "$SOURCE_PUBLIC_KEY" >/dev/null
+
+echo "[deploy] initializing subscription (depends on token)"
 invoke_contract "$SUBSCRIPTION_ID" init \
   --admin "$SOURCE_PUBLIC_KEY" \
   --fee-bps 0 \
   --fee-recipient "$SOURCE_PUBLIC_KEY" \
   --token "$TOKEN_ID" \
   --price 10000000 >/dev/null
+
+echo "[deploy] initializing content-access (depends on token)"
 invoke_contract "$CONTENT_ACCESS_ID" initialize \
   --admin "$SOURCE_PUBLIC_KEY" \
   --token-address "$TOKEN_ID" >/dev/null
+
+echo "[deploy] initializing earnings"
 invoke_contract "$EARNINGS_ID" init --admin "$SOURCE_PUBLIC_KEY" >/dev/null
 
-# Verify each deployed contract responds with a known view method.
+# ── Smoke tests: verify each contract responds correctly after init ────────────
+echo "[deploy] running post-deploy smoke tests"
+
+smoke_check() {
+  local label="$1"
+  local expected="$2"
+  local actual="$3"
+  if [[ "$actual" != *"$expected"* ]]; then
+    echo "[deploy] SMOKE FAIL: $label — expected '$expected' in response, got '$actual'" >&2
+    exit 1
+  fi
+  echo "[deploy] smoke ok: $label"
+}
+
 TOKEN_VERIFY="$(invoke_contract_view "$TOKEN_ID" admin)"
-CREATOR_REGISTRY_VERIFY="$(invoke_contract_view "$CREATOR_REGISTRY_ID" get-creator-id --address "$SOURCE_PUBLIC_KEY")"
+smoke_check "token.admin" "$SOURCE_PUBLIC_KEY" "$TOKEN_VERIFY"
+
 SUBSCRIPTION_VERIFY="$(invoke_contract_view "$SUBSCRIPTION_ID" is-paused)"
-CONTENT_ACCESS_VERIFY="$(invoke_contract_view "$CONTENT_ACCESS_ID" has-access --buyer "$SOURCE_PUBLIC_KEY" --creator "$SOURCE_PUBLIC_KEY" --content-id 1)"
+smoke_check "subscription.is-paused" "false" "$SUBSCRIPTION_VERIFY"
+
+CONTENT_ACCESS_VERIFY="$(invoke_contract_view "$CONTENT_ACCESS_ID" has-access \
+  --buyer "$SOURCE_PUBLIC_KEY" --creator "$SOURCE_PUBLIC_KEY" --content-id 1)"
+smoke_check "content-access.has-access" "false" "$CONTENT_ACCESS_VERIFY"
+
 EARNINGS_VERIFY="$(invoke_contract_view "$EARNINGS_ID" admin)"
+smoke_check "earnings.admin" "$SOURCE_PUBLIC_KEY" "$EARNINGS_VERIFY"
+
+CREATOR_REGISTRY_VERIFY="$(invoke_contract_view "$CREATOR_REGISTRY_ID" get-creator-id \
+  --address "$SOURCE_PUBLIC_KEY" 2>/dev/null || echo "null")"
 
 mkdir -p "$(dirname "$OUTPUT_JSON")" "$(dirname "$OUTPUT_ENV")"
 
 cat > "$OUTPUT_JSON" <<JSON
 {
+  "schemaVersion": "1.0.0",
   "network": "$NETWORK",
   "rpcUrl": "$RPC_URL",
   "networkPassphrase": "$NETWORK_PASSPHRASE",

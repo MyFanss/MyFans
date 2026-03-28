@@ -24,6 +24,9 @@ All requirements have been implemented and tested successfully.
   - Returns true if buyer has unlocked content
   - Returns false otherwise
   - O(1) lookup
+- ✅ **admin(env) → Address**
+  - Returns configured admin address
+  - No authorization required (view-only)
 
 ### Acceptance Criteria
 

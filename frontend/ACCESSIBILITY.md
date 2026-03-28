@@ -52,9 +52,9 @@ We aim to meet WCAG 2.1 AA standards for all user-facing components.
 
 ### Testing
 - [x] Automated accessibility linting (eslint-plugin-jsx-a11y)
-- [x] Axe-core integration for runtime testing
-- [x] Keyboard navigation testing
-- [x] Screen reader testing
+- [ ] Axe-core integration for runtime testing (planned for future)
+- [ ] Keyboard navigation testing (planned for future)
+- [ ] Screen reader testing (planned for future)
 
 ## Tools and Resources
 
@@ -66,12 +66,11 @@ We aim to meet WCAG 2.1 AA standards for all user-facing components.
 ## Running Accessibility Tests
 
 ```bash
-# Run all accessibility tests
-npm run test:a11y
-
 # Run linting with accessibility rules
 npm run lint
 ```
+
+Note: Automated accessibility testing with Jest and axe-core is planned for future implementation.
 
 ## Common Issues and Fixes
 
