@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 
 export interface BaseCardProps {
@@ -71,7 +73,7 @@ export const BaseCard: React.FC<BaseCardProps> = ({
   as: Component = 'div',
 }) => {
   const baseStyles = 'rounded-xl overflow-hidden grid-safe';
-  
+
   const combinedStyles = `
     ${baseStyles}
     ${variantStyles[variant]}

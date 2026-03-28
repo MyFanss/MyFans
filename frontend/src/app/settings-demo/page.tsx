@@ -63,7 +63,7 @@ export default function SocialLinksDemoPage() {
       ) : (
         <div className="text-center py-12">
           <p className="text-slate-600 dark:text-slate-400">
-            This section is under construction. Click "Social Links" to test the
+            This section is under construction. Click &quot;Social Links&quot; to test the
             form.
           </p>
         </div>

@@ -1,0 +1,21 @@
+{
+  "network": "futurenet",
+  "rpcUrl": "https://rpc-futurenet.stellar.org:443",
+  "networkPassphrase": "Test SDF Future Network ; October 2022",
+  "sourceAccount": "GBF2SFW76UZVFXDTGDGAC2KERBJOSRUO7K45ZGGUA55BA6AZJN2PQXHR",
+  "deployedAt": "2026-03-24T10:40:31Z",
+  "contracts": {
+    "token": "CC3KRIRFHMF5U2HEQBDDOL5OZUZ3SOJJIJE7EHFP3C6SJLONGJE4WNFF",
+    "creatorRegistry": "CCBZ6F3E4LT25O633WFDXVAOTQT6IT25K5TBYFG4VMA4O7EDL6JXN67D",
+    "subscriptions": "CDV2DF2BV3R7UM4LPETP77DAERE4DYX3FLC7HRVJV3KVHON7ZGLFLQ4U",
+    "contentAccess": "CCQQRSVNHDUQAEXNUZ6IPCPW23RR52C5YQ2SLXVOSR3HZA3TRS6ZT7NC",
+    "earnings": "CCK3EFATET2MILFOVS7MFHKKFHVQDD64WHSNHTUQUCK7QHV6UXWG57QT"
+  },
+  "verification": {
+    "tokenAdmin": "GBF2SFW76UZVFXDTGDGAC2KERBJOSRUO7K45ZGGUA55BA6AZJN2PQXHR",
+    "creatorRegistryLookup": "null",
+    "subscriptionsPaused": "false",
+    "contentAccessHasAccess": "false",
+    "earningsAdmin": "GBF2SFW76UZVFXDTGDGAC2KERBJOSRUO7K45ZGGUA55BA6AZJN2PQXHR"
+  }
+}
