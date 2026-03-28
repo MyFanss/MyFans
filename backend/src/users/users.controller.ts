@@ -66,4 +66,3 @@ export class UsersController {
     await this.usersService.remove(userId);
   }
 }
-
