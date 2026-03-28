@@ -11,6 +11,7 @@ import {
   SubscriptionRenewedEvent,
 } from '../../events/domain-events';
 import { ConfigService } from '@nestjs/config';
+import { resolveSubscriptionContractId } from '../../common/contract-deployed-env';
 import { SubscriptionIndexRepository, UpsertEventData, SubscriptionStatus } from '../repositories/subscription-index.repository';
 import { SorobanRpcService } from '../../common/services/soroban-rpc.service'; // Assumed to exist
 
@@ -30,7 +31,15 @@ export class SubscriptionEventPollerService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    this.contractId = this.configService.getOrThrow('SUBSCRIPTION_CONTRACT_ID');
+    const id =
+      resolveSubscriptionContractId() ??
+      this.configService.get<string>('SUBSCRIPTION_CONTRACT_ID')?.trim();
+    if (!id) {
+      throw new Error(
+        'Missing subscription contract ID. Set CONTRACT_ID_SUBSCRIPTION (preferred) or SUBSCRIPTION_CONTRACT_ID.',
+      );
+    }
+    this.contractId = id;
     this.logger.log(`Poller initialized for contract: ${this.contractId}`);
   }
 
