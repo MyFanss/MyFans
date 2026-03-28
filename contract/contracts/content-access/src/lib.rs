@@ -1,8 +1,18 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
-    Symbol,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, BytesN,
+    Env, Symbol,
 };
+
+/// Metadata for a piece of content in a creator's catalog.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContentInfo {
+    /// Price in the contract's configured token (stroops / smallest unit).
+    pub price: i128,
+    /// Whether the content is currently available for purchase.
+    pub is_active: bool,
+}
 
 /// Storage keys for content access contract
 #[contracttype]
@@ -14,7 +24,7 @@ pub enum DataKey {
     TokenAddress,
     /// Access record: (buyer, creator, content_id) -> true
     Access(Address, Address, u64),
-    /// Content price: (creator, content_id) -> price
+    /// Content price: (creator, content_id) -> price  [legacy u64 key]
     ContentPrice(Address, u64),
     /// Optional maximum price cap set by admin
     MaxPrice,
@@ -201,6 +211,8 @@ pub fn initialize(env: Env, admin: Address, token_address: Address) {
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
     }
 }
+
+mod content_query_test;
 
 #[cfg(test)]
 mod test {
