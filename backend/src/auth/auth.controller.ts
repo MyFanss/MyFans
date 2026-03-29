@@ -6,6 +6,8 @@ import { AuthService } from './auth.service';
 import { WalletAuthService } from './wallet-auth.service';
 import { RequestChallengeDto, VerifyChallengeDto } from './wallet-auth.dto';
 import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
+import { PublicGuard } from '../auth-module/guards/public.guard';
+import { IS_PUBLIC_KEY } from '../common/decorators/public.decorator';
 
 @ApiTags('auth')
 @Controller({ path: 'auth', version: '1' })
