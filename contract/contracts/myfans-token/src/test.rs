@@ -47,6 +47,48 @@ fn test_transfer_insufficient_balance() {
 }
 
 #[test]
+fn test_transfer_fails_for_zero_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+
+    client.mint(&user1, &100);
+    assert_eq!(
+        client.try_transfer(&user1, &user2, &0),
+        Err(Ok(Error::InvalidAmount))
+    );
+}
+
+#[test]
+fn test_transfer_fails_for_negative_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+
+    client.mint(&user1, &100);
+    assert_eq!(
+        client.try_transfer(&user1, &user2, &-100),
+        Err(Ok(Error::InvalidAmount))
+    );
+}
+
+#[test]
 fn test_approve_and_transfer_from() {
     let env = Env::default();
     env.mock_all_auths();
@@ -162,6 +204,52 @@ fn test_transfer_from_insufficient_allowance() {
     assert_eq!(
         client.try_transfer_from(&spender, &owner, &receiver, &101),
         Err(Ok(Error::InsufficientAllowance))
+    );
+}
+
+#[test]
+fn test_transfer_from_fails_for_zero_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let spender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
+    client.mint(&owner, &1000);
+    client.approve(&owner, &spender, &100, &100);
+    assert_eq!(
+        client.try_transfer_from(&spender, &owner, &receiver, &0),
+        Err(Ok(Error::InvalidAmount))
+    );
+}
+
+#[test]
+fn test_transfer_from_fails_for_negative_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let spender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+
+    client.mint(&owner, &1000);
+    client.approve(&owner, &spender, &100, &100);
+    assert_eq!(
+        client.try_transfer_from(&spender, &owner, &receiver, &-100),
+        Err(Ok(Error::InvalidAmount))
     );
 }
 

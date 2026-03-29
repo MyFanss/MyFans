@@ -94,6 +94,17 @@ impl CreatorRegistryContract {
         env.storage().persistent().remove(&key);
     }
 
+    /// Read-only getter for the configured admin address.
+    ///
+    /// Any caller may invoke this view function. It panics with
+    /// `Error::NotInitialized` if the contract was never initialized.
+    pub fn admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
+    }
+
     /// Look up a creator_id by their registered address
     pub fn get_creator_id(env: Env, address: Address) -> Option<u64> {
         env.storage().persistent().get(&DataKey::Creator(address))
