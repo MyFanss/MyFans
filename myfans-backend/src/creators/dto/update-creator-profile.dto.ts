@@ -36,4 +36,10 @@ export class UpdateCreatorProfileDto {
   @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
   @MaxLength(2048)
   banner_url?: string;
+
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  @MaxLength(255)
+  wallet_address?: string;
 }

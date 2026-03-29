@@ -69,6 +69,7 @@ export class CreatorsService {
       bio: dto.bio ?? null,
       subscription_price: String(dto.subscription_price ?? 0),
       currency: dto.currency ?? 'XLM',
+      wallet_address: dto.wallet_address ?? null,
       is_verified: false,
       followers_count: 0,
     });
@@ -103,6 +104,8 @@ export class CreatorsService {
     }
     if (dto.currency !== undefined) patch.currency = dto.currency;
     if (dto.banner_url !== undefined) patch.banner_url = dto.banner_url;
+    if (dto.wallet_address !== undefined)
+      patch.wallet_address = dto.wallet_address;
 
     if (Object.keys(patch).length > 0) {
       await this.creatorRepo.update(creator.id, patch);
@@ -254,6 +257,7 @@ export class CreatorsService {
       banner_url: creator.banner_url ?? null,
       subscription_price: creator.subscription_price,
       currency: creator.currency,
+      wallet_address: creator.wallet_address ?? null,
       is_verified: creator.is_verified,
       post_count: 0,
       subscriber_count: 0,

@@ -26,4 +26,9 @@ export class OnboardCreatorDto {
   @IsOptional()
   @IsEnum(CreatorCurrency)
   currency?: CreatorCurrency = CreatorCurrency.XLM;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  wallet_address?: string;
 }
