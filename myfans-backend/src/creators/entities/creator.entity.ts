@@ -59,6 +59,14 @@ export class Creator {
   @UpdateDateColumn({ name: 'updated_at' })
   updated_at!: Date;
 
+  @Column({
+    name: 'wallet_address',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  wallet_address!: string | null;
+
   @OneToMany(() => Subscription, (sub) => sub.creator)
   subscriptions?: Subscription[];
 
