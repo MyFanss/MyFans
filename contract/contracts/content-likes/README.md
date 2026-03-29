@@ -60,6 +60,10 @@ This contract manages user likes for content items, storing:
 - Set operations: O(log n) complexity
 - Recommended: < 100k total likes per contract instance
 
+## Interface Docs
+
+Full method reference: [../docs/interfaces/content-likes.md](../docs/interfaces/content-likes.md)
+
 ## Testing
 
 Run tests with:

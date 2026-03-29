@@ -1,10 +1,11 @@
 #![no_std]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
-    Symbol,
+    String, Symbol,
 };
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Plan {
     pub creator: Address,
     pub asset: Address,
@@ -13,6 +14,7 @@ pub struct Plan {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Subscription {
     pub fan: Address,
     pub plan_id: u32,
@@ -20,18 +22,29 @@ pub struct Subscription {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Admin,
     FeeBps,
     FeeRecipient,
     PlanCount,
     Plan(u32),
+    // Canonical storage name: `subscription`.
+    // Keep the legacy `Sub` variant to preserve deployed key serialization.
     Sub(Address, Address),
     CreatorSubscriptionCount(Address),
     AcceptedToken(Address),
     Token,
     Price,
     Paused,
+}
+
+impl DataKey {
+    /// Canonical subscription storage key; serializes as [`DataKey::Sub`].
+    #[inline]
+    pub fn subscription(fan: Address, creator: Address) -> Self {
+        DataKey::Sub(fan, creator)
+    }
 }
 
 #[contracterror]
@@ -42,6 +55,29 @@ pub enum Error {
     SubscriptionNotFound = 3,
     SubscriptionExpired = 4,
     AdminNotInitialized = 5,
+    InvalidFeeRecipient = 6,
+    InvalidFeeBps = 7,
+}
+
+/// Stellar "null" account (GAAA...WHF) — not a valid fee recipient.
+fn null_account_address(env: &Env) -> Address {
+    Address::from_string(&String::from_str(
+        env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    ))
+}
+
+fn require_valid_fee_recipient(env: &Env, addr: &Address) {
+    if addr == &null_account_address(env) {
+        panic_with_error!(env, Error::InvalidFeeRecipient);
+    }
+}
+
+/// Protocol fee in basis points must not exceed 100% (10_000 bps).
+fn require_valid_fee_bps(env: &Env, fee_bps: u32) {
+    if fee_bps > 10_000 {
+        panic_with_error!(env, Error::InvalidFeeBps);
+    }
 }
 
 #[contract]
@@ -60,6 +96,8 @@ impl MyfansContract {
         if env.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
+        require_valid_fee_recipient(&env, &fee_recipient);
+        require_valid_fee_bps(&env, fee_bps);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         env.storage()
@@ -145,9 +183,10 @@ impl MyfansContract {
             plan_id,
             expiry: expiry as u64,
         };
-        env.storage()
-            .instance()
-            .set(&DataKey::Sub(fan.clone(), plan.creator.clone()), &sub);
+        env.storage().instance().set(
+            &DataKey::subscription(fan.clone(), plan.creator.clone()),
+            &sub,
+        );
         // topics: (name, fan, creator)  data: plan_id
         env.events().publish(
             (
@@ -159,11 +198,18 @@ impl MyfansContract {
         );
     }
 
+    pub fn admin(env: Env) -> Address {
+    env.storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized))
+    }
+
     pub fn is_subscriber(env: Env, fan: Address, creator: Address) -> bool {
         if let Some(sub) = env
             .storage()
             .instance()
-            .get::<DataKey, Subscription>(&DataKey::Sub(fan, creator))
+            .get::<DataKey, Subscription>(&DataKey::subscription(fan, creator))
         {
             env.ledger().sequence() <= sub.expiry as u32
         } else {
@@ -179,6 +225,12 @@ impl MyfansContract {
         token: Address,
     ) {
         fan.require_auth();
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        assert!(!paused, "contract is paused");
 
         let sub: Subscription = env
             .storage()
@@ -219,9 +271,10 @@ impl MyfansContract {
             expiry: new_expiry,
         };
 
-        env.storage()
-            .instance()
-            .set(&DataKey::Sub(fan.clone(), creator.clone()), &updated_sub);
+        env.storage().instance().set(
+            &DataKey::subscription(fan.clone(), creator.clone()),
+            &updated_sub,
+        );
 
         // topics: (name, fan, creator)  data: plan_id
         env.events().publish(
@@ -243,7 +296,7 @@ impl MyfansContract {
 
         env.storage()
             .instance()
-            .remove(&DataKey::Sub(fan.clone(), creator.clone()));
+            .remove(&DataKey::subscription(fan.clone(), creator.clone()));
         // topics: (name, fan, creator)  data: true
         env.events()
             .publish((Symbol::new(&env, "cancelled"), fan.clone(), creator), true);
@@ -251,6 +304,12 @@ impl MyfansContract {
 
     pub fn create_subscription(env: Env, fan: Address, creator: Address, duration_ledgers: u32) {
         fan.require_auth();
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        assert!(!paused, "contract is paused");
 
         let token: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         let price: i128 = env.storage().instance().get(&DataKey::Price).unwrap();
@@ -280,7 +339,7 @@ impl MyfansContract {
 
         env.storage()
             .instance()
-            .set(&DataKey::Sub(fan.clone(), creator.clone()), &sub);
+            .set(&DataKey::subscription(fan.clone(), creator.clone()), &sub);
 
         let mut current_count: u32 = env
             .storage()
@@ -328,6 +387,68 @@ impl MyfansContract {
         env.storage().instance().set(&DataKey::Paused, &false);
         env.events()
             .publish((Symbol::new(&env, "unpaused"),), admin);
+    }
+
+    /// Rotate the protocol fee recipient (admin only).
+    ///
+    /// Rejects the Stellar null / burn strkey (`GAAA...WHF`). On success, emits
+    /// `fee_recipient_updated` (on-chain symbol; product docs: fee-recipient-updated)
+    /// with topics `(fee_recipient_updated, old_recipient, new_recipient)`.
+    pub fn set_fee_recipient(env: Env, new_fee_recipient: Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
+        admin.require_auth();
+
+        require_valid_fee_recipient(&env, &new_fee_recipient);
+
+        let old: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeRecipient)
+            .unwrap();
+
+        env.storage()
+            .instance()
+            .set(&DataKey::FeeRecipient, &new_fee_recipient);
+
+        env.events().publish(
+            (
+                Symbol::new(&env, "fee_recipient_updated"),
+                old,
+                new_fee_recipient,
+            ),
+            (),
+        );
+    }
+
+    /// Update protocol fee basis points (admin only). `new_fee_bps` must be <= 10_000.
+    ///
+    /// Emits `fee_updated` (on-chain symbol; product docs: fee-updated) with data `(old_bps, new_bps)`.
+    pub fn set_fee_bps(env: Env, new_fee_bps: u32) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
+        admin.require_auth();
+
+        require_valid_fee_bps(&env, new_fee_bps);
+
+        let old: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeBps)
+            .unwrap_or(0);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::FeeBps, &new_fee_bps);
+
+        env.events()
+            .publish((Symbol::new(&env, "fee_updated"),), (old, new_fee_bps));
     }
 
     /// Check if the contract is paused (view function)

@@ -73,6 +73,20 @@ jobs:
           DB_PASSWORD: postgres
           DB_NAME: myfans
 
+      - name: Validate OpenAPI schema generation
+        run: npm run generate:openapi
+        working-directory: backend
+        env:
+          JWT_SECRET: ci-test-secret
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: myfans
+          SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
+          STELLAR_NETWORK: testnet
+          WEBHOOK_SECRET: ci-test-secret
+
       - name: Run E2E tests
         run: npm run test:e2e
         working-directory: backend
@@ -108,6 +122,43 @@ jobs:
       - name: Security audit (contracts)
         # Fail on high/critical RustSec advisories as configured in contract/audit.toml.
         run: cargo audit
+        working-directory: contract
+
+  contracts-abi:
+    name: Contracts (ABI snapshot check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev libudev-dev pkg-config
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown,wasm32v1-none
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract
+          prefix-key: contracts-abi
+
+      - name: Cache stellar CLI binary
+        id: stellar-abi-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/stellar
+          key: stellar-cli-25.2.0-${{ runner.os }}-v1
+
+      - name: Install Stellar CLI
+        if: steps.stellar-abi-cache.outputs.cache-hit != 'true'
+        run: cargo install stellar-cli --locked --version 25.2.0
+
+      - name: Check ABI snapshots
+        run: ./scripts/snapshot-abi.sh --check
         working-directory: contract
 
   contracts:

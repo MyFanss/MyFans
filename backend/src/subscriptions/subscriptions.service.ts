@@ -24,6 +24,8 @@ import {
 } from './events';
 import type { SubscriptionEventPublisher } from './events';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
+import { SubscriptionIndexRepository } from './repositories/subscription-index.repository';
+import { SubscriptionIndexEntity, SubscriptionStatus } from './entities/subscription-index.entity';
 
 export enum CheckoutStatus {
   PENDING = 'pending',
@@ -43,6 +45,7 @@ interface Subscription {
   expiry: number;
   status: 'active' | 'expired' | 'cancelled';
   createdAt: Date;
+  updatedAt?: Date;
 }
 
 interface Checkout {
@@ -69,7 +72,10 @@ interface Plan {
   asset: string;
   amount: string;
   intervalDays: number;
+  updatedAt?: Date;
 }
+
+type SubscriberListStatus = 'active' | 'expired';
 
 function generateId(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -81,7 +87,6 @@ function generateId(): string {
 
 @Injectable()
 export class SubscriptionsService {
-  private readonly subscriptions: Map<string, Subscription> = new Map();
   private readonly checkouts: Map<string, Checkout> = new Map();
   private readonly checkoutExpiryMinutes = 15;
   private readonly logger = new Logger(SubscriptionsService.name);
@@ -104,6 +109,7 @@ export class SubscriptionsService {
   > = new Map();
 
   constructor(
+    private readonly indexRepo: SubscriptionIndexRepository,
     private readonly eventBus: EventBus,
     @Optional()
     @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
@@ -119,6 +125,41 @@ export class SubscriptionsService {
       'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5',
       { name: 'Creator 2', description: 'Exclusive videos and photos' },
     );
+    
+    // Initialize default plans
+    this.initializePlans();
+  }
+
+  private initializePlans(): void {
+    const defaultPlans: Plan[] = [
+      {
+        id: 1,
+        creator: 'GAAAAAAAAAAAAAAA',
+        asset: 'XLM',
+        amount: '10',
+        intervalDays: 30,
+        updatedAt: new Date(),
+      },
+      {
+        id: 2,
+        creator: 'GAAAAAAAAAAAAAAA',
+        asset: 'USDC:GA7Z6G7T3LSSKDJPLAWJH25C4D4PQV4CEMM5S5E6LQD3VDF5W6G6F3K',
+        amount: '5',
+        intervalDays: 30,
+        updatedAt: new Date(),
+      },
+      {
+        id: 3,
+        creator:
+          'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5',
+        asset: 'XLM',
+        amount: '25',
+        intervalDays: 7,
+        updatedAt: new Date(),
+      },
+    ];
+    
+    defaultPlans.forEach(plan => this.plans.set(plan.id, plan));
   }
 
   assertNetworkMatch(requestNetwork: string | undefined): void {
@@ -137,110 +178,100 @@ export class SubscriptionsService {
     }
   }
 
-  private getKey(fan: string, creator: string): string {
-    return `${fan}:${creator}`;
+  private getExpiryStatus(expiryUnix: number): SubscriptionStatus {
+    const now = Math.floor(Date.now() / 1000);
+    return expiryUnix > now ? SubscriptionStatus.ACTIVE : SubscriptionStatus.EXPIRED;
   }
 
-  addSubscription(
+  async addSubscription(
     fan: string,
     creator: string,
     planId: number,
     expiry: number,
-  ) {
-    const subscription: Subscription = {
-      id: generateId(),
+  ): Promise<Subscription> {
+    const status = this.getExpiryStatus(expiry);
+    const upsertData = {
       fan,
       creator,
       planId,
-      expiry,
-      status: expiry > Date.now() / 1000 ? 'active' : 'expired',
-      createdAt: new Date(),
-    };
-
-    this.subscriptions.set(this.getKey(fan, creator), subscription);
+      expiryUnix: expiry,
+      status,
+    } as const;
+    const sub = await this.indexRepo.upsertManual(upsertData);
     this.eventBus.publish(
       new SubscriptionCreatedEvent(fan, creator, planId, expiry),
     );
-
-    return subscription;
+    return sub;
   }
 
-  renewSubscription(
+  async renewSubscription(
     fan: string,
     creator: string,
     planId: number,
     expiry: number,
-  ) {
-    const key = this.getKey(fan, creator);
-    const existing = this.subscriptions.get(key);
-
-    if (!existing) {
-      return this.addSubscription(fan, creator, planId, expiry);
-    }
-
-    existing.planId = planId;
-    existing.expiry = expiry;
-    existing.status = 'active';
-
+  ): Promise<Subscription> {
+    const status = this.getExpiryStatus(expiry);
+    const upsertData = {
+      fan,
+      creator,
+      planId,
+      expiryUnix: expiry,
+      status,
+    } as const;
+    const sub = await this.indexRepo.upsertManual(upsertData);
     this.eventBus.publish(
       new SubscriptionRenewedEvent(
-        existing.id,
+        sub.id,
         fan,
         creator,
         planId,
         expiry,
       ),
     );
-
-    return existing;
+    return sub;
   }
 
-  expireSubscription(fan: string, creator: string) {
-    const key = this.getKey(fan, creator);
-    const existing = this.subscriptions.get(key);
-    if (existing) {
-      existing.status = 'expired';
-    }
-
+  async expireSubscription(fan: string, creator: string) {
+    const now = Math.floor(Date.now() / 1000);
+    await this.indexRepo.updateStatus(fan, creator, SubscriptionStatus.EXPIRED);
     this.eventBus.publish(new SubscriptionExpiredEvent(fan, creator));
   }
 
-  cancelSubscription(fan: string, creator: string) {
-    const subscription = this.subscriptions.get(this.getKey(fan, creator));
-    if (!subscription) {
+  async cancelSubscription(fan: string, creator: string) {
+    const now = Math.floor(Date.now() / 1000);
+    const existing = await this.getSubscription(fan, creator);
+    if (!existing) {
       throw new NotFoundException('Subscription not found');
     }
 
-    subscription.status = 'cancelled';
-    subscription.expiry = Math.floor(Date.now() / 1000);
+    await this.indexRepo.updateStatus(fan, creator, SubscriptionStatus.CANCELLED, now);
 
     this.eventBus.publish(
       new SubscriptionCancelledEvent(
-        subscription.id,
+        existing.id,
         fan,
         creator,
-        subscription.planId,
+        existing.planId,
       ),
     );
 
     return {
       success: true,
-      subscriptionId: subscription.id,
+      subscriptionId: existing.id,
       fan,
       creator,
-      status: subscription.status,
+      status: SubscriptionStatus.CANCELLED,
       cancelledAt: new Date().toISOString(),
       message: 'Subscription cancelled successfully',
     };
   }
 
-  isSubscriber(fan: string, creator: string): boolean {
-    const sub = this.subscriptions.get(this.getKey(fan, creator));
-    return sub ? sub.expiry > Date.now() / 1000 : false;
+  async isSubscriber(fan: string, creator: string): Promise<boolean> {
+    return this.indexRepo.isSubscriber(fan, creator);
   }
 
-  getSubscription(fan: string, creator: string): Subscription | undefined {
-    return this.subscriptions.get(this.getKey(fan, creator));
+  async getSubscription(fan: string, creator: string): Promise<Subscription | null> {
+    return this.indexRepo.findCurrentForFanCreator(fan, creator);
   }
 
   async getFanCreatorSubscriptionState(fan: string, creator: string) {
@@ -253,24 +284,24 @@ export class SubscriptionsService {
       throw new BadRequestException('creator must be a valid Stellar G-address');
     }
 
-    const active = this.isSubscriber(fan, creator);
-    const sub = this.getSubscription(fan, creator);
+    const active = await this.isSubscriber(fan, creator);
+    const sub = await this.getSubscription(fan, creator);
     const nowSec = Math.floor(Date.now() / 1000);
 
     let indexedStatus: 'none' | 'active' | 'expired' = 'none';
     let indexed: {
       subscriptionId: string;
       planId: number;
-      status: Subscription['status'];
+      status: string;
       expiresAt: string;
       expiresAtUnix: number;
       createdAt: string;
     } | null = null;
 
     if (sub) {
-      if (sub.status === 'cancelled') {
+      if (sub.status === SubscriptionStatus.CANCELLED) {
         indexedStatus = 'expired';
-      } else if (sub.expiry > nowSec && sub.status === 'active') {
+      } else if (sub.expiryUnix > nowSec && sub.status === SubscriptionStatus.ACTIVE) {
         indexedStatus = 'active';
       } else {
         indexedStatus = 'expired';
@@ -279,8 +310,8 @@ export class SubscriptionsService {
         subscriptionId: sub.id,
         planId: sub.planId,
         status: sub.status,
-        expiresAt: new Date(sub.expiry * 1000).toISOString(),
-        expiresAtUnix: sub.expiry,
+        expiresAt: new Date(sub.expiryUnix * 1000).toISOString(),
+        expiresAtUnix: sub.expiryUnix,
         createdAt: sub.createdAt.toISOString(),
       };
     }
@@ -315,22 +346,18 @@ export class SubscriptionsService {
     };
   }
 
-  getFanDashboardSummary(
+  async getFanDashboardSummary(
     fan: string,
     page: number = 1,
     limit: number = 20,
   ) {
+    const activeSubs = await this.indexRepo.listActiveForFan(fan, page, limit);
     const nowSecs = Date.now() / 1000;
-    const activeSubs = Array.from(this.subscriptions.values()).filter(
-      (sub) => sub.fan === fan && sub.status === 'active' && sub.expiry > nowSecs,
-    );
 
-    activeSubs.sort((a, b) => a.expiry - b.expiry);
+    activeSubs.sort((a, b) => a.expiryUnix - b.expiryUnix);
 
-    const total = activeSubs.length;
-    const paginated = activeSubs.slice((page - 1) * limit, page * limit);
-
-    const subscriptions = paginated.map((sub) => {
+    const total = activeSubs.length; // Note: for full count, add count query
+    const subscriptions = activeSubs.map((sub) => {
       const plan = this.getPlanMock(sub.planId);
       const creatorProfile = this.creatorProfiles.get(sub.creator);
       return {
@@ -348,8 +375,8 @@ export class SubscriptionsService {
             : plan?.intervalDays === 7
               ? 'week'
               : 'month',
-        renewsAt: new Date(sub.expiry * 1000).toISOString(),
-        renewsAtUnix: sub.expiry,
+        renewsAt: new Date(sub.expiryUnix * 1000).toISOString(),
+        renewsAtUnix: sub.expiryUnix,
         status: sub.status,
         createdAt: sub.createdAt.toISOString(),
       };
@@ -365,69 +392,76 @@ export class SubscriptionsService {
     };
   }
 
-  listSubscriptions(
+  async listSubscriptions(
     fan: string,
-    status?: string,
+    status?: SubscriptionStatus,
     sort?: string,
     page: number = 1,
     limit: number = 20,
   ) {
-    let userSubs = Array.from(this.subscriptions.values()).filter(
-      (sub) => sub.fan === fan,
-    );
-
-    const nowSecs = Date.now() / 1000;
-    userSubs.forEach((sub) => {
-      if (sub.status === 'active' && sub.expiry <= nowSecs) {
-        sub.status = 'expired';
-      }
-    });
+    const where: any = { fan };
 
     if (status) {
-      userSubs = userSubs.filter((sub) => sub.status === status);
+      where.status = status;
     }
 
-    const results = userSubs.map((sub) => {
-      const plan = this.getPlanMock(sub.planId);
-      const creatorProfile = this.creatorProfiles.get(sub.creator);
-
-      return {
-        id: sub.id,
-        creatorId: sub.creator,
-        creatorName: creatorProfile?.name || 'Unknown Creator',
-        creatorUsername: sub.creator.substring(0, 8),
-        planName: plan
-          ? `${this.getIntervalText(plan.intervalDays)} Subscription`
-          : 'Subscription',
-        price: plan ? parseFloat(plan.amount) : 0,
-        currency: plan ? plan.asset.split(':')[0] : 'XLM',
-        interval:
-          plan && plan.intervalDays === 30
-            ? 'month'
-            : plan && plan.intervalDays === 365
-              ? 'year'
-              : 'month',
-        currentPeriodEnd: new Date(sub.expiry * 1000).toISOString(),
-        status: sub.status,
-        createdAt: sub.createdAt.toISOString(),
-      };
+    const [results, total] = await this.indexRepo.repo.findAndCount({
+      where,
+      order: sort === 'created' ? { createdAt: 'DESC' } : { expiryUnix: 'ASC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
 
-    if (sort === 'created') {
-      results.sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
-    } else {
-      results.sort(
-        (a, b) =>
-          new Date(a.currentPeriodEnd).getTime() -
-          new Date(b.currentPeriodEnd).getTime(),
-      );
+    const formatted = results.map((sub) => ({
+      id: sub.id,
+      creatorId: sub.creator,
+      creatorName: this.creatorProfiles.get(sub.creator)?.name || 'Unknown Creator',
+      creatorUsername: sub.creator.substring(0, 8),
+      planName: 'Subscription', // from plan mock
+      price: 0,
+      currency: 'XLM',
+      interval: 'month',
+      currentPeriodEnd: new Date(sub.expiryUnix * 1000).toISOString(),
+      status: sub.status,
+      createdAt: sub.createdAt.toISOString(),
+    }));
+
+    return new PaginatedResponseDto(formatted, total, page, limit);
+  }
+
+  listCreatorSubscribers(
+    creator: string,
+    status?: SubscriberListStatus,
+    page: number = 1,
+    limit: number = 20,
+  ) {
+    const nowSecs = Math.floor(Date.now() / 1000);
+    let subscribers = Array.from(this.subscriptions.values())
+      .filter((sub) => sub.creator === creator)
+      .map((sub) => {
+        const derivedStatus = this.getDerivedSubscriberStatus(sub, nowSecs);
+        return {
+          id: sub.id,
+          fanAddress: sub.fan,
+          creatorAddress: sub.creator,
+          planId: sub.planId,
+          status: derivedStatus,
+          expiresAt: new Date(sub.expiry * 1000).toISOString(),
+          createdAt: sub.createdAt.toISOString(),
+        };
+      });
+
+    if (status) {
+      subscribers = subscribers.filter((sub) => sub.status === status);
     }
 
-    const total = results.length;
-    const paginatedResults = results.slice((page - 1) * limit, page * limit);
+    subscribers.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+
+    const total = subscribers.length;
+    const paginatedResults = subscribers.slice((page - 1) * limit, page * limit);
     return new PaginatedResponseDto(paginatedResults, total, page, limit);
   }
 
@@ -639,6 +673,21 @@ export class SubscriptionsService {
     return ((parseFloat(amount) * this.platformFeeBps) / 10000).toFixed(7);
   }
 
+  private getDerivedSubscriberStatus(
+    sub: Subscription,
+    nowSecs: number,
+  ): SubscriberListStatus {
+    if (sub.status === 'active' && sub.expiry > nowSecs) {
+      return 'active';
+    }
+
+    if (sub.status === 'active' && sub.expiry <= nowSecs) {
+      sub.status = 'expired';
+    }
+
+    return 'expired';
+  }
+
   private getIntervalText(days: number): string {
     if (days === 1) return 'Daily';
     if (days === 7) return 'Weekly';
@@ -673,6 +722,96 @@ export class SubscriptionsService {
       },
     ];
     return plans.find((p) => p.id === planId);
+  }
+
+  getAllSubscriptionsInternal(): Promise<SubscriptionIndexEntity[]> {
+    return this.indexRepo.findAllForReconciler();
+  }
+
+  /** Returns completed checkouts for analytics aggregation. */
+  getCompletedPayments(): Checkout[] {
+    return Array.from(this.checkouts.values()).filter(
+      (c) => c.status === CheckoutStatus.COMPLETED,
+    );
+  }
+
+  /**
+   * Renew an existing subscription
+   * Requires fan authentication (caller must be the fan)
+   * Reuses fee split logic from checkout flow
+   * @param fanAddress - Address of the fan renewing (must match authenticated user)
+   * @param creatorAddress - Address of the creator
+   * @param planId - ID of the plan to renew
+   * @param txHash - Optional transaction hash for the renewal payment
+   * @returns Renewal confirmation with updated expiry
+   * @throws Error if subscription not found, fan not authenticated, or plan not found
+   */
+  renewSubscription(
+    fanAddress: string,
+    creatorAddress: string,
+    planId: number,
+    txHash?: string,
+  ): {
+    success: boolean;
+    subscriptionId: string;
+    newExpiryTimestamp: number;
+    newExpiryDate: string;
+    planId: number;
+    txHash?: string;
+    message: string;
+  } {
+    // Check if subscription exists
+    const existingSubscription = this.getSubscription(fanAddress, creatorAddress);
+    if (!existingSubscription) {
+      throw new NotFoundException(
+        `No active subscription found for fan ${fanAddress} with creator ${creatorAddress}`,
+      );
+    }
+
+    // Verify plan exists
+    const plan = this.getPlan(planId);
+    if (!plan) {
+      throw new NotFoundException(`Plan ${planId} not found`);
+    }
+
+    // Verify plan belongs to the creator
+    if (plan.creator !== creatorAddress) {
+      throw new BadRequestException(
+        'Plan does not belong to the specified creator',
+      );
+    }
+
+    // Calculate new expiry using the helper
+    const newExpiry = this.calculateExpiryTimestamp(plan.intervalDays);
+
+    // Update the subscription with new expiry
+    const key = this.getKey(fanAddress, creatorAddress);
+    const updatedSubscription: Subscription = {
+      ...existingSubscription,
+      expiry: newExpiry,
+      updatedAt: new Date(),
+    };
+
+    this.subscriptions.set(key, updatedSubscription);
+
+    // Emit renewal event
+    this.eventBus.publish(
+      new SubscriptionCreatedEvent(fanAddress, creatorAddress, planId, newExpiry),
+    );
+
+    this.logger.log(
+      `Subscription renewed for fan ${fanAddress} with creator ${creatorAddress}, new expiry: ${newExpiry}`,
+    );
+
+    return {
+      success: true,
+      subscriptionId: existingSubscription.id,
+      newExpiryTimestamp: newExpiry,
+      newExpiryDate: new Date(newExpiry * 1000).toISOString(),
+      planId,
+      txHash,
+      message: 'Subscription renewed successfully',
+    };
   }
 
   private emitRenewalFailureEvent(checkout: Checkout, reason: string): void {

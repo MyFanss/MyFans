@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
+import { contractIdsFromDeployedEnv } from '../common/contract-deployed-env';
 
 export interface ContractIds {
   myfans: string;
@@ -12,6 +13,7 @@ export interface ContractIds {
 
 /** Shape written by contract/scripts/deploy.sh (deployed-local.json / deployed-testnet.json) */
 interface DeployArtifact {
+  schemaVersion?: string;
   contracts: {
     token?: string;
     creatorRegistry?: string;
@@ -35,27 +37,7 @@ interface FlatArtifact {
 }
 
 function fromEnv(): ContractIds | null {
-  const {
-    CONTRACT_ID_MYFANS,
-    CONTRACT_ID_MYFANS_TOKEN,
-    CONTRACT_ID_CREATOR_REGISTRY,
-    CONTRACT_ID_SUBSCRIPTIONS,
-    CONTRACT_ID_CONTENT_ACCESS,
-    CONTRACT_ID_EARNINGS,
-  } = process.env;
-
-  // Only use env path if at least the primary IDs are set
-  if (CONTRACT_ID_MYFANS && CONTRACT_ID_MYFANS_TOKEN) {
-    return {
-      myfans: CONTRACT_ID_MYFANS,
-      myfansToken: CONTRACT_ID_MYFANS_TOKEN,
-      creatorRegistry: CONTRACT_ID_CREATOR_REGISTRY ?? '',
-      subscriptions: CONTRACT_ID_SUBSCRIPTIONS ?? '',
-      contentAccess: CONTRACT_ID_CONTENT_ACCESS ?? '',
-      earnings: CONTRACT_ID_EARNINGS ?? '',
-    };
-  }
-  return null;
+  return contractIdsFromDeployedEnv();
 }
 
 function parseDeployArtifact(raw: string): ContractIds {
@@ -88,7 +70,7 @@ function parseDeployArtifact(raw: string): ContractIds {
 
 /**
  * Resolution order:
- *  1. Env vars (CONTRACT_ID_MYFANS + CONTRACT_ID_MYFANS_TOKEN required)
+ *  1. Env vars — see contract/docs/DEPLOYED_ENV.md (canonical CONTRACT_ID_* + aliases)
  *  2. CONTRACT_IDS_PATH env var (explicit path — used by CI)
  *  3. contract/deployed-<STELLAR_NETWORK>.json  (e.g. deployed-testnet.json)
  *  4. contract/deployed-local.json
@@ -136,7 +118,8 @@ export function loadContractIds(): ContractIds {
   }
 
   throw new Error(
-    'Cannot load contract IDs. Set CONTRACT_ID_MYFANS / CONTRACT_ID_MYFANS_TOKEN env vars, ' +
-    'CONTRACT_IDS_PATH, or provide a deploy artifact in contract/.',
+    'Cannot load contract IDs. Set CONTRACT_ID_MYFANS + CONTRACT_ID_MYFANS_TOKEN, or ' +
+      'CONTRACT_ID_MYFANS_TOKEN + CONTRACT_ID_SUBSCRIPTION (and optional registry/access/earnings), ' +
+      'CONTRACT_IDS_PATH, or provide a deploy artifact in contract/. See contract/docs/DEPLOYED_ENV.md.',
   );
 }
