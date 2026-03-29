@@ -55,7 +55,7 @@ Contracts covered here (deployed by `contract/scripts/deploy.sh`):
 | `subscribe(env, fan, plan_id, _token)` | `fan` | `fan` signs and subscribes to `plan_id`. | Another address tries to subscribe using `fan` as parameter without `fan` auth. |
 | `is_subscriber(env, fan, creator)` | `none` | Any caller checks subscription status. | Expecting signer/auth to be required for read. |
 | `extend_subscription(env, fan, creator, extra_ledgers, token)` | `fan` | `fan` signs and extends active subscription. | Third party extends `fan` subscription without `fan` auth. |
-| `cancel(env, fan, creator)` | `fan` | `fan` signs and cancels own subscription. | Creator tries to cancel fan subscription without `fan` auth. |
+| `cancel(env, fan, creator, reason)` | `fan` | `fan` signs and cancels own subscription with reason code. | Creator tries to cancel fan subscription without `fan` auth. |
 | `create_subscription(env, fan, creator, duration_ledgers)` | `fan` | `fan` signs and creates direct subscription. | Third party creates subscription for `fan` without `fan` auth. |
 | `pause(env)` | `admin` | Current admin signs and pauses contract. | Non-admin caller pauses contract. |
 | `unpause(env)` | `admin` | Current admin signs and unpauses contract. | Non-admin caller unpauses contract. |
