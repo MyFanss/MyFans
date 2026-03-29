@@ -127,4 +127,59 @@ describe('CreatorsController (e2e)', () => {
         });
       });
   });
+
+  it('PATCH /creators/me updates wallet_address successfully', async () => {
+    const user = userRepo.create({
+      email: 'creator_wallet@test.com',
+      username: 'walletcreator',
+      is_creator: true,
+    });
+    await userRepo.save(user);
+
+    const creator = creatorRepo.create({
+      user_id: user.id,
+      bio: 'Ready to earn',
+      subscription_price: '5',
+      currency: 'XLM',
+    });
+    await creatorRepo.save(creator);
+
+    const testWallet =
+      'GBQW3WBDN7Y3Z4P2M65P67V5V37VXY7VFVU5TYA3N4A3I2YJ6B7E3E5Z';
+    return request(app.getHttpServer())
+      .patch('/creators/me')
+      .set('Authorization', `Bearer ${user.id}`)
+      .set('X-User-Id', user.id)
+      .send({ wallet_address: testWallet })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.wallet_address).toBe(testWallet);
+      });
+  });
+
+  it('POST /creators/onboard sets wallet_address', async () => {
+    const user = userRepo.create({
+      email: 'new_creator@test.com',
+      username: 'futurecreator',
+      is_creator: false,
+    });
+    await userRepo.save(user);
+
+    const testWallet =
+      'GCO2YWW5V3O3VMBQ3J2E3A3V5Y6K7N5L2F3K6U2D5U2Z5G4V6R7R5V6L';
+    return request(app.getHttpServer())
+      .post('/creators/onboard')
+      .set('Authorization', `Bearer ${user.id}`)
+      .set('X-User-Id', user.id)
+      .send({
+        bio: 'Just stepping in!',
+        subscription_price: 10,
+        currency: 'USDC',
+        wallet_address: testWallet,
+      })
+      .expect(201)
+      .expect((res) => {
+        expect(res.body.wallet_address).toBe(testWallet);
+      });
+  });
 });
