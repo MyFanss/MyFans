@@ -25,11 +25,12 @@ import { QueryFlagsDto } from './dto/query-flags.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth-module/guards/roles.guard';
 import { Roles } from '../auth-module/decorators/roles.decorator';
-import { UserRole } from '../users/entities/user.entity';
+import { UserRole } from '../../common/enums/user-role.enum';
 
 @ApiTags('moderation')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
 @Controller({ path: 'moderation', version: '1' })
 export class ModerationController {
   constructor(private readonly moderationService: ModerationService) {}

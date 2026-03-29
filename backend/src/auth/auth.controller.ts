@@ -1,8 +1,12 @@
-import { BadRequestException, Body, Controller, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
+import { PublicGuard } from '../auth-module/guards/public.guard';
+import { IS_PUBLIC_KEY } from '../common/decorators/public.decorator';
 
+@UseGuards(PublicGuard)
+@SetMetadata(IS_PUBLIC_KEY, true)
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
   constructor(private authService: AuthService) {}

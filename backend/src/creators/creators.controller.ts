@@ -9,6 +9,7 @@ import { PublicCreatorDto } from './dto/public-creator.dto';
 import { DashboardQueryDto } from './dto/creator-dashboard.dto';
 
 @ApiTags('creators')
+@UseGuards(JwtAuthGuard)
 @Controller({ path: 'creators', version: '1' })
 export class CreatorsController {
   constructor(
