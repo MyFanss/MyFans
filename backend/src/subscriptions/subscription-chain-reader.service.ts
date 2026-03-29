@@ -8,9 +8,19 @@ import {
   scValToNative,
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
+import { CircuitOpenError, withRetry } from '../common/utils/rpc-retry';
+import { resolveSubscriptionContractId } from '../common/contract-deployed-env';
 
 export type ChainReadResult =
   | { ok: true; isSubscriber: boolean }
+  | { ok: false; error: string };
+
+export type ChainPlanReadResult =
+  | { ok: true; plan: { creator: string; asset: string; amount: string; intervalDays: number } }
+  | { ok: false; error: string };
+
+export type ChainPlanCountReadResult =
+  | { ok: true; count: number }
   | { ok: false; error: string };
 
 /**
@@ -22,9 +32,9 @@ export class SubscriptionChainReaderService {
   private readonly logger = new Logger(SubscriptionChainReaderService.name);
 
   getConfiguredContractId(): string | undefined {
-    const direct = process.env.CONTRACT_ID_SUBSCRIPTION?.trim();
-    if (direct) return direct;
-    return process.env.CONTRACT_ID_MYFANS?.trim();
+    return (
+      resolveSubscriptionContractId() ?? process.env.CONTRACT_ID_MYFANS?.trim()
+    );
   }
 
   private getRpcUrl(): string {
@@ -82,7 +92,15 @@ export class SubscriptionChainReaderService {
         .setTimeout(30)
         .build();
 
-      const sim = await server.simulateTransaction(tx);
+      const sim = await withRetry(
+        'soroban-rpc',
+        () => server.simulateTransaction(tx),
+        {
+          isPermanentError: (e) =>
+            e instanceof CircuitOpenError ||
+            (e instanceof Error && /invalid contract|not found/i.test(e.message)),
+        },
+      );
 
       if (rpc.Api.isSimulationError(sim)) {
         return { ok: false, error: sim.error };
@@ -100,6 +118,117 @@ export class SubscriptionChainReaderService {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Chain read is_subscriber failed: ${message}`);
+      return { ok: false, error: message };
+    }
+  }
+
+  /**
+   * Simulates `get_plan(plan_id)` on the deployed contract.
+   */
+  async readPlan(
+    contractId: string,
+    planId: number,
+  ): Promise<ChainPlanReadResult> {
+    const rpcUrl = this.getRpcUrl();
+    const server = new rpc.Server(rpcUrl, {
+      allowHttp: rpcUrl.startsWith('http://'),
+    });
+
+    try {
+      const contract = new Contract(contractId);
+      const op = contract.call('get_plan', new Api.UInt32Val(planId).toScVal());
+
+      const source = new Account(
+        'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
+        '1',
+      );
+
+      const tx = new TransactionBuilder(source, {
+        fee: '100000',
+        networkPassphrase: this.getNetworkPassphrase(),
+      })
+        .addOperation(op)
+        .setTimeout(30)
+        .build();
+
+      const sim = await server.simulateTransaction(tx);
+
+      if (Api.isSimulationError(sim)) {
+        return { ok: false, error: sim.error };
+      }
+
+      if (!sim.result?.retval) {
+        return {
+          ok: false,
+          error: 'Simulation succeeded but returned no retval (unexpected).',
+        };
+      }
+
+      const native = scValToNative(sim.result.retval);
+      if (native === null) {
+        return { ok: false, error: 'Plan not found' };
+      }
+      const plan = native as { creator: string; asset: string; amount: bigint; interval_days: number };
+      return {
+        ok: true,
+        plan: {
+          creator: plan.creator,
+          asset: plan.asset,
+          amount: plan.amount.toString(),
+          intervalDays: plan.interval_days,
+        },
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Chain read get_plan failed: ${message}`);
+      return { ok: false, error: message };
+    }
+  }
+
+  /**
+   * Simulates `get_plan_count()` on the deployed contract.
+   */
+  async readPlanCount(contractId: string): Promise<ChainPlanCountReadResult> {
+    const rpcUrl = this.getRpcUrl();
+    const server = new rpc.Server(rpcUrl, {
+      allowHttp: rpcUrl.startsWith('http://'),
+    });
+
+    try {
+      const contract = new Contract(contractId);
+      const op = contract.call('get_plan_count');
+
+      const source = new Account(
+        'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
+        '1',
+      );
+
+      const tx = new TransactionBuilder(source, {
+        fee: '100000',
+        networkPassphrase: this.getNetworkPassphrase(),
+      })
+        .addOperation(op)
+        .setTimeout(30)
+        .build();
+
+      const sim = await server.simulateTransaction(tx);
+
+      if (Api.isSimulationError(sim)) {
+        return { ok: false, error: sim.error };
+      }
+
+      if (!sim.result?.retval) {
+        return {
+          ok: false,
+          error: 'Simulation succeeded but returned no retval (unexpected).',
+        };
+      }
+
+      const native = scValToNative(sim.result.retval);
+      return { ok: true, count: Number(native) };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Chain read get_plan_count failed: ${message}`);
       return { ok: false, error: message };
     }
   }

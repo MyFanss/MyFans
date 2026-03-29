@@ -150,3 +150,83 @@ fn test_rate_limit_after_window_succeeds() {
     assert_eq!(client.get_creator_id(&creator1), Some(111));
     assert_eq!(client.get_creator_id(&creator2), Some(222));
 }
+
+#[test]
+fn test_registration_ledger_key_helper_keeps_legacy_variant() {
+    let env = Env::default();
+    let caller = Address::generate(&env);
+
+    assert_eq!(
+        DataKey::registration_ledger(caller.clone()),
+        DataKey::LastRegLedger(caller)
+    );
+}
+
+#[test]
+fn test_update_creator_id_authorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.register_creator(&creator, &creator, &111);
+
+    client.update_creator_id(&creator, &creator, &222);
+
+    assert_eq!(client.get_creator_id(&creator), Some(222));
+
+    let events = env.events().all();
+    let found = events.iter().any(|event| {
+        let topic: soroban_sdk::Symbol = event.1.get(0).unwrap().try_into_val(&env).unwrap();
+        topic == soroban_sdk::Symbol::new(&env, "creator_updated")
+    });
+    assert!(found, "creator_updated event not emitted");
+}
+
+#[test]
+fn test_update_creator_id_unauthorized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let rando = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.register_creator(&creator, &creator, &111);
+
+    let result = client.try_update_creator_id(&rando, &creator, &222);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::Unauthorized as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_update_creator_id_not_registered_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let result = client.try_update_creator_id(&admin, &creator, &222);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::NotRegistered as u32,
+        )))
+    );
+}
