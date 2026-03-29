@@ -11,7 +11,7 @@ Advanced subscription with ledger expiry.
 | `subscribe` | `fan: Address, plan_id: u32, token: Address` | `()` | fan | `soroban contract invoke ... subscribe -- FAN 1 TOKEN` | `("subscribed", plan_id) -> fan` |
 | `is_subscriber` | `fan: Address, creator: Address` | `bool` | none | `soroban contract invoke ... is_subscriber -- FAN CREATOR` | None |
 | `extend_subscription` | `fan: Address, creator: Address, extra_ledgers: u32, token: Address` | `()` | fan | `soroban contract invoke ... extend_subscription -- FAN CREATOR 100 TOKEN` | `("extended", plan_id) -> fan` |
-| `cancel` | `fan: Address, creator: Address` | `()` | fan | `soroban contract invoke ... cancel -- FAN CREATOR` | `("cancelled",) -> fan` |
+| `cancel` | `fan: Address, creator: Address, reason: u32` | `()` | fan | `soroban contract invoke ... cancel -- FAN CREATOR 0` | `("cancelled", fan, creator) -> (true, reason)` |
 | `create_subscription` | `fan: Address, creator: Address, duration_ledgers: u32` | `()` | fan | `soroban contract invoke ... create_subscription -- FAN CREATOR 17280` | None (internal) |
 | `pause` / `unpause` | `()` | `()` | admin | `soroban contract invoke ... pause --` | `("paused" / "unpaused",) -> admin` |
 | `is_paused` | `()` | `bool` | none | `soroban contract invoke ... is_paused` | None |
