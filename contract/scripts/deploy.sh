@@ -21,6 +21,7 @@ SOURCE_ACCOUNT="myfans-deployer"
 OUTPUT_JSON="$ROOT_DIR/deployed.json"
 OUTPUT_ENV="$ROOT_DIR/.env.deployed"
 AUTO_FUND="true"
+DRY_RUN="false"
 
 usage() {
   cat <<USAGE
@@ -34,6 +35,7 @@ Options:
   --out <path>                           Output JSON path (default: contract/deployed.json)
   --env-out <path>                       Output env path (default: contract/.env.deployed)
   --no-fund                              Disable auto funding on futurenet/testnet
+  --dry-run                              Validate build and config without submitting transactions
   -h, --help                             Show this help
 USAGE
 }
@@ -71,6 +73,10 @@ while [[ $# -gt 0 ]]; do
       AUTO_FUND="false"
       shift
       ;;
+    --dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -105,6 +111,9 @@ esac
 RPC_URL="${RPC_URL:-$DEFAULT_RPC_URL}"
 NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE:-$DEFAULT_NETWORK_PASSPHRASE}"
 
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo "[deploy] *** DRY-RUN MODE — no transactions will be submitted ***"
+fi
 echo "[deploy] network=$NETWORK"
 echo "[deploy] rpc=$RPC_URL"
 
@@ -150,6 +159,30 @@ PACKAGES=(
 for package in "${PACKAGES[@]}"; do
   "${STELLAR[@]}" -q contract build --manifest-path "$ROOT_DIR/Cargo.toml" --package "$package"
 done
+
+# ── Dry-run: validate WASM artifacts exist, then exit ────────────────────────
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo "[deploy] validating WASM artifacts"
+  dry_run_ok=true
+  for package in "${PACKAGES[@]}"; do
+    wasm_name="${package//-/_}.wasm"
+    wasm_path="$(find "$ROOT_DIR/target" -type f -path "*/release/$wasm_name" -print -quit)"
+    if [[ -z "$wasm_path" ]]; then
+      echo "[deploy] ERROR: WASM not found for package '$package'" >&2
+      dry_run_ok=false
+    else
+      echo "[deploy] found: $wasm_path"
+    fi
+  done
+
+  if [[ "$dry_run_ok" != "true" ]]; then
+    echo "[deploy] dry-run FAILED — missing WASM artifacts" >&2
+    exit 1
+  fi
+
+  echo "[deploy] dry-run passed — build and config are valid"
+  exit 0
+fi
 
 deploy_contract() {
   local package="$1"
