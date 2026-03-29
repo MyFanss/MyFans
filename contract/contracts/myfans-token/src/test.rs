@@ -1,5 +1,5 @@
 use super::*;
-use soroban_sdk::testutils::{Address as _, Ledger};
+use soroban_sdk::testutils::{Address as _, Events as _, Ledger};
 use soroban_sdk::{Address, Env};
 
 #[test]
@@ -104,7 +104,7 @@ fn test_transfer_from_event_includes_spender() {
     // Find the xfer_from event
     let xfer_from_event = events.iter().find(|e| {
         e.1.first()
-            .and_then(|t| t.try_into_val(&env).ok())
+            .and_then(|t: soroban_sdk::Val| t.try_into_val(&env).ok())
             .map(|s: soroban_sdk::Symbol| s == symbol_short!("xfer_from"))
             .unwrap_or(false)
     });
@@ -133,7 +133,7 @@ fn test_transfer_from_event_includes_spender() {
     let events2 = env.events().all();
     let xfer_from_count = events2.iter().filter(|e| {
         e.1.first()
-            .and_then(|t| t.try_into_val(&env).ok())
+            .and_then(|t: soroban_sdk::Val| t.try_into_val(&env).ok())
             .map(|s: soroban_sdk::Symbol| s == symbol_short!("xfer_from"))
             .unwrap_or(false)
     }).count();
@@ -562,6 +562,93 @@ fn test_multiple_initializations_with_different_envs() {
     assert_eq!(client2.admin(), admin2);
     assert_eq!(client2.symbol(), symbol2);
     assert_eq!(client2.decimals(), 8);
+}
+
+// ── Issue #280 – Admin token metadata update ────────────────────────────────
+
+/// Admin can update name and symbol via set_metadata.
+#[test]
+fn test_set_metadata_admin_can_update() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "OldName"),
+        &String::from_str(&env, "OLD"),
+        &7,
+        &0,
+    );
+
+    assert_eq!(client.name(), String::from_str(&env, "OldName"));
+    assert_eq!(client.symbol(), String::from_str(&env, "OLD"));
+
+    client.set_metadata(
+        &String::from_str(&env, "NewName"),
+        &String::from_str(&env, "NEW"),
+    );
+
+    assert_eq!(client.name(), String::from_str(&env, "NewName"));
+    assert_eq!(client.symbol(), String::from_str(&env, "NEW"));
+}
+
+/// Non-admin caller must be rejected by require_auth.
+#[test]
+#[should_panic]
+fn test_set_metadata_non_admin_is_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "OldName"),
+        &String::from_str(&env, "OLD"),
+        &7,
+        &0,
+    );
+
+    // Clear mocked auths so admin.require_auth() fails
+    env.mock_auths(&[]);
+
+    client.set_metadata(
+        &String::from_str(&env, "Hacked"),
+        &String::from_str(&env, "HACK"),
+    );
+}
+
+/// Decimals must remain immutable after set_metadata.
+#[test]
+fn test_set_metadata_decimals_unchanged() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Token"),
+        &String::from_str(&env, "TKN"),
+        &7,
+        &0,
+    );
+
+    client.set_metadata(
+        &String::from_str(&env, "Updated"),
+        &String::from_str(&env, "UPD"),
+    );
+
+    // Decimals must remain unchanged
+    assert_eq!(client.decimals(), 7);
 }
 
 // ── Issue #276 – Enforce mint admin authorization ────────────────────────────

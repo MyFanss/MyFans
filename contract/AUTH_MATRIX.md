@@ -27,6 +27,7 @@ Contracts covered here (deployed by `contract/scripts/deploy.sh`):
 | `initialize(env, admin, name, symbol, decimals, initial_supply)` | `none` | Any caller invokes once to set initial config. | Expecting non-admin caller to be rejected (it is not rejected by auth checks). |
 | `admin(env)` | `none` | Any caller reads current admin. | Expecting signer/auth to be required for read. |
 | `set_admin(env, new_admin)` | `admin` | Current admin signs and sets `new_admin`. | Non-admin signs, tries to rotate admin. |
+| `set_metadata(env, new_name, new_symbol)` | `admin` | Current admin signs and updates token name/symbol. | Non-admin signs and tries to update metadata. |
 | `name(env)` | `none` | Any caller reads token name. | Expecting signer/auth to be required for read. |
 | `symbol(env)` | `none` | Any caller reads token symbol. | Expecting signer/auth to be required for read. |
 | `decimals(env)` | `none` | Any caller reads token decimals. | Expecting signer/auth to be required for read. |

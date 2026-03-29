@@ -106,6 +106,29 @@ impl MyFansToken {
         env.storage().instance().set(&DataKey::Admin, &new_admin);
     }
 
+    /// Update token name and symbol. Only admin can call this.
+    /// Decimals remain immutable.
+    ///
+    /// # Arguments
+    /// * `new_name` - New token name
+    /// * `new_symbol` - New token symbol
+    pub fn set_metadata(env: Env, new_name: String, new_symbol: String) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not initialized");
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Name, &new_name);
+        env.storage().instance().set(&DataKey::Symbol, &new_symbol);
+
+        env.events().publish(
+            (symbol_short!("meta_upd"),),
+            (new_name, new_symbol),
+        );
+    }
+
     /// Get the token name (view function)
     pub fn name(env: Env) -> String {
         env.storage()
