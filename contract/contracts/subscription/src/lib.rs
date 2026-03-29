@@ -198,6 +198,13 @@ impl MyfansContract {
         );
     }
 
+    pub fn admin(env: Env) -> Address {
+    env.storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized))
+    }
+
     pub fn is_subscriber(env: Env, fan: Address, creator: Address) -> bool {
         if let Some(sub) = env
             .storage()
