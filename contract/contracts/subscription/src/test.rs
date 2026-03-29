@@ -909,3 +909,68 @@ fn test_set_fee_bps_requires_admin_authorization() {
     let r = client.try_set_fee_bps(&100u32);
     assert!(r.is_err(), "set_fee_bps must fail without authorization entry");
 }
+
+// ── admin() view ──────────────────────────────────────────────────────────
+
+/// admin() returns the address that was passed to init().
+#[test]
+fn admin_returns_initialized_address() {
+    let (env, client, admin, _token_client, token_admin_client) = setup_test();
+
+    // init the contract using the existing test setup pattern
+    let fee_recipient = Address::generate(&env);
+    token_admin_client.mint(&admin, &1_000i128);
+
+    client.init(
+        &admin,
+        &0u32,
+        &fee_recipient,
+        &_token_client.address,
+        &1_000i128,
+    );
+
+    assert_eq!(
+        client.admin(),
+        admin,
+        "admin() must return the address set during init"
+    );
+}
+
+/// admin() requires no auth — calling it without any auth context must succeed.
+#[test]
+fn admin_requires_no_auth() {
+    let (env, client, admin, _token_client, _token_admin_client) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(
+        &admin,
+        &0u32,
+        &fee_recipient,
+        &_token_client.address,
+        &1_000i128,
+    );
+
+    // No specific auth configured — must still succeed
+    assert_eq!(client.admin(), admin);
+}
+
+/// admin() is stable across unrelated state changes (pause/unpause).
+#[test]
+fn admin_is_stable_after_pause_and_unpause() {
+    let (env, client, admin, _token_client, _token_admin_client) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(
+        &admin,
+        &0u32,
+        &fee_recipient,
+        &_token_client.address,
+        &1_000i128,
+    );
+
+    client.pause();
+    assert_eq!(client.admin(), admin, "admin() must be unchanged after pause");
+
+    client.unpause();
+    assert_eq!(client.admin(), admin, "admin() must be unchanged after unpause");
+}
