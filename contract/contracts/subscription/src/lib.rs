@@ -283,7 +283,17 @@ impl MyfansContract {
         );
     }
 
-    pub fn cancel(env: Env, fan: Address, creator: Address) {
+    /// Cancel a subscription.
+    ///
+    /// # Arguments
+    /// * `fan` - The subscriber address (must authorize)
+    /// * `creator` - The creator address
+    /// * `reason` - Reason code for cancellation (e.g. 0 = user-initiated,
+    ///   1 = too expensive, 2 = content quality, 3 = switching creator, 4 = other)
+    ///
+    /// Event: `cancelled` — topics: `(name, fan, creator)` data: `(true, reason)`
+    /// Backward-compatible: topics unchanged; data is now a tuple instead of bare `true`.
+    pub fn cancel(env: Env, fan: Address, creator: Address, reason: u32) {
         fan.require_auth();
         let paused: bool = env
             .storage()
@@ -297,9 +307,11 @@ impl MyfansContract {
         env.storage()
             .instance()
             .remove(&DataKey::subscription(fan.clone(), creator.clone()));
-        // topics: (name, fan, creator)  data: true
-        env.events()
-            .publish((Symbol::new(&env, "cancelled"), fan.clone(), creator), true);
+        // topics: (name, fan, creator)  data: (true, reason)
+        env.events().publish(
+            (Symbol::new(&env, "cancelled"), fan.clone(), creator),
+            (true, reason),
+        );
     }
 
     pub fn create_subscription(env: Env, fan: Address, creator: Address, duration_ledgers: u32) {
