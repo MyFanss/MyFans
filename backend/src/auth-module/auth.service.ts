@@ -18,4 +18,8 @@ export class AuthService {
       throw e;
     }
   }
+
+  async findById(id: string) {
+    return this.usersService.findOne(id);
+  }
 }
