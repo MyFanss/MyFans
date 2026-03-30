@@ -426,6 +426,71 @@ export async function submitTransaction(signedXdr: string) {
   }
 }
 
+export interface CancelSubscriptionInput {
+  fanAddress: string;
+  creatorAddress: string;
+  /** 0 = user-initiated, 1 = too expensive, 2 = content quality, 3 = switching creator, 4 = other */
+  reason?: number;
+}
+
+export async function buildCancelSubscriptionTx({
+  fanAddress,
+  creatorAddress,
+  reason = 0,
+}: CancelSubscriptionInput): Promise<string> {
+  const config = getStellarConfig();
+  if (!config.subscriptionContractId) {
+    throw createAppError('TX_BUILD_FAILED', {
+      message: 'Subscription contract is not configured',
+      description: 'Set NEXT_PUBLIC_SUBSCRIPTION_CONTRACT_ID before cancelling on Soroban.',
+    });
+  }
+
+  try {
+    const SDK = await getStellarSdk();
+    const server = await getRpcServer();
+    const account = await server.getAccount(fanAddress);
+    const networkPassphrase = await getNetworkPassphrase();
+    const contract = new SDK.Contract(config.subscriptionContractId);
+
+    const tx = new SDK.TransactionBuilder(account, {
+      fee: SDK.BASE_FEE,
+      networkPassphrase,
+    })
+      .addOperation(
+        contract.call(
+          'cancel',
+          SDK.Address.fromString(fanAddress).toScVal(),
+          SDK.Address.fromString(creatorAddress).toScVal(),
+          SDK.nativeToScVal(reason, { type: 'u32' }),
+        ),
+      )
+      .setTimeout(60)
+      .build();
+
+    const preparedTx = await server.prepareTransaction(tx);
+    return preparedTx.toXDR();
+  } catch (err) {
+    throw createAppError('TX_BUILD_FAILED', {
+      message: err instanceof Error ? err.message : 'Failed to build cancel transaction',
+      cause: err instanceof Error ? err : undefined,
+    });
+  }
+}
+
+export async function cancelSubscriptionOnSoroban(
+  input: CancelSubscriptionInput,
+): Promise<{ txHash: string }> {
+  const xdr = await buildCancelSubscriptionTx(input);
+  const networkPassphrase = await getNetworkPassphrase();
+  const signedXdr = await signTransaction(xdr, {
+    network: getStellarConfig().network,
+    networkPassphrase,
+  });
+  const txHash = await submitTransaction(signedXdr);
+  return { txHash };
+}
+
 export async function checkSubscription(_fanAddress: string, _creatorAddress: string): Promise<boolean> {
   void _fanAddress;
   void _creatorAddress;
