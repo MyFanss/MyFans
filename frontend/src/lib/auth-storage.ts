@@ -22,3 +22,7 @@ export function resolveUserId(): string | null {
   if (fromEnv) return fromEnv;
   return getStoredUserId();
 }
+
+export function hasStoredUserId(): boolean {
+  return Boolean(resolveUserId());
+}
