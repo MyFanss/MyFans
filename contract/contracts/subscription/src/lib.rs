@@ -473,4 +473,5 @@ impl MyfansContract {
 }
 
 #[cfg(test)]
+#[cfg(test)]
 mod test;
