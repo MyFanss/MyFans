@@ -2,6 +2,7 @@
 
 use super::*;
 use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, Env, Error as SorobanError};
+use super::Error as ContractError;
 
 #[test]
 fn test_initialize() {
@@ -241,5 +242,216 @@ fn test_update_creator_id_not_registered_fails() {
         Err(Ok(SorobanError::from_contract_error(
             Error::NotRegistered as u32,
         )))
+    );
+}
+
+// ─── Rate limit boundary tests (issue #320) ───────────────────────────────────
+
+/// Advance the ledger sequence by `n` ledgers.
+fn advance(env: &Env, n: u32) {
+    env.ledger().with_mut(|li| {
+        li.sequence_number += n;
+    });
+}
+
+/// Before boundary: second registration attempted one ledger before the window
+/// closes (current < last + 10) must be rejected with RateLimited.
+///
+/// Sequence timeline:
+///   ledger 100 — first registration  (last = 100)
+///   ledger 109 — second attempt      (109 < 100 + 10 = 110) → blocked
+#[test]
+fn rate_limit_before_boundary_is_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator_a = Address::generate(&env);
+    let creator_b = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    client.register_creator(&admin, &creator_a, &1u64);
+
+    // Advance to ledger 109 — one before the window closes
+    advance(&env, 9);
+    assert_eq!(env.ledger().sequence(), 109);
+
+    let result = client.try_register_creator(&admin, &creator_b, &2u64);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            ContractError::RateLimited as u32,
+        ))),
+        "registration one ledger before boundary must be rate-limited"
+    );
+}
+
+/// At boundary: second registration at exactly last + RATE_LIMIT_LEDGERS must succeed.
+///
+/// Sequence timeline:
+///   ledger 100 — first registration  (last = 100)
+///   ledger 110 — second attempt      (110 < 110) → false → allowed
+#[test]
+fn rate_limit_at_boundary_is_allowed() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator_a = Address::generate(&env);
+    let creator_b = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    client.register_creator(&admin, &creator_a, &1u64);
+
+    // Advance to exactly ledger 110 — the boundary
+    advance(&env, 10);
+    assert_eq!(env.ledger().sequence(), 110);
+
+    client.register_creator(&admin, &creator_b, &2u64);
+
+    assert_eq!(
+        client.get_creator_id(&creator_b),
+        Some(2u64),
+        "creator_b must be registered at the boundary ledger"
+    );
+}
+
+/// After boundary: second registration one ledger past the boundary must succeed.
+///
+/// Sequence timeline:
+///   ledger 100 — first registration  (last = 100)
+///   ledger 111 — second attempt      (111 < 110) → false → allowed
+#[test]
+fn rate_limit_after_boundary_is_allowed() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator_a = Address::generate(&env);
+    let creator_b = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    client.register_creator(&admin, &creator_a, &1u64);
+
+    // Advance to ledger 111 — one past the boundary
+    advance(&env, 11);
+    assert_eq!(env.ledger().sequence(), 111);
+
+    client.register_creator(&admin, &creator_b, &2u64);
+
+    assert_eq!(
+        client.get_creator_id(&creator_b),
+        Some(2u64),
+        "creator_b must be registered one ledger past the boundary"
+    );
+}
+
+/// Error code is deterministic: RateLimited maps to discriminant 4.
+/// Pins the wire value so any enum reordering is caught immediately.
+#[test]
+fn rate_limited_error_code_is_4() {
+    assert_eq!(ContractError::RateLimited as u32, 4);
+}
+
+/// Rate limit is per-caller: two different callers can each register
+/// in the same ledger without triggering the limit for each other.
+#[test]
+fn rate_limit_is_per_caller_not_global() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let caller_b = Address::generate(&env);
+    let creator_a = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+
+    // admin registers creator_a
+    client.register_creator(&admin, &creator_a, &1u64);
+
+    // caller_b registers themselves — separate LastRegLedger key, no prior entry
+    client.register_creator(&caller_b, &caller_b, &2u64);
+
+    assert_eq!(
+        client.get_creator_id(&caller_b),
+        Some(2u64),
+        "caller_b must be registered independently of admin's rate limit"
+    );
+}
+
+/// First-ever registration by a caller has no prior ledger stamp and must
+/// always succeed regardless of the current sequence number.
+#[test]
+fn first_registration_is_never_rate_limited() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    // Jump to a high ledger — no prior registration so limit cannot apply
+    env.ledger().with_mut(|li| li.sequence_number = 99_999);
+
+    client.register_creator(&admin, &creator, &99u64);
+
+    assert_eq!(
+        client.get_creator_id(&creator),
+        Some(99u64),
+        "first registration must always succeed regardless of ledger"
+    );
+}
+
+/// Consecutive rejections before the boundary are idempotent — trying twice
+/// at ledger 109 produces RateLimited both times and does not advance the stamp.
+#[test]
+fn repeated_attempts_before_boundary_all_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator_a = Address::generate(&env);
+    let creator_b = Address::generate(&env);
+    let creator_c = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    client.register_creator(&admin, &creator_a, &1u64);
+
+    advance(&env, 9); // ledger 109
+    assert_eq!(env.ledger().sequence(), 109);
+
+    let first_attempt = client.try_register_creator(&admin, &creator_b, &2u64);
+    let second_attempt = client.try_register_creator(&admin, &creator_c, &3u64);
+
+    assert_eq!(
+        first_attempt,
+        Err(Ok(SorobanError::from_contract_error(
+            ContractError::RateLimited as u32,
+        ))),
+        "first attempt at ledger 109 must be rate-limited"
+    );
+    assert_eq!(
+        second_attempt,
+        Err(Ok(SorobanError::from_contract_error(
+            ContractError::RateLimited as u32,
+        ))),
+        "second attempt at ledger 109 must also be rate-limited"
     );
 }
