@@ -17,6 +17,19 @@ fn test_initialize() {
 }
 
 #[test]
+fn test_admin_getter_returns_initialized_admin() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let fetched_admin = client.admin();
+    assert_eq!(fetched_admin, admin);
+}
+
+#[test]
 fn test_register_and_lookup_self() {
     let env = Env::default();
     env.mock_all_auths();
