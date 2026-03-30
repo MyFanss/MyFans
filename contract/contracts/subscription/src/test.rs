@@ -6,7 +6,7 @@ use soroban_sdk::{
     token,
     vec,
     xdr::{ScAddress, SorobanAuthorizationEntry},
-    Address, Env, Error as SorobanError, IntoVal, Symbol, TryFromVal, TryIntoVal,
+    Address, Env, Error as SorobanError, IntoVal, String, Symbol, TryFromVal, TryIntoVal,
 };
 
 fn setup_test() -> (
@@ -69,6 +69,52 @@ fn test_subscribe_full_flow() {
 
     // Verify subscription status
     assert!(client.is_subscriber(&fan, &creator));
+}
+
+#[test]
+fn test_init_rejects_fee_bps_over_10000() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    let result = client.try_init(&admin, &10001, &fee_recipient, &token.address, &1000);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidFeeBps as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_init_rejects_invalid_token_address() {
+    let (env, client, admin, _token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let invalid_token = Address::from_string(&String::from_str(
+        &env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    ));
+
+    let result = client.try_init(&admin, &500, &fee_recipient, &invalid_token, &1000);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidTokenAddress as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_init_rejects_non_positive_price() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    let result = client.try_init(&admin, &500, &fee_recipient, &token.address, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidPrice as u32,
+        )))
+    );
 }
 
 #[test]
