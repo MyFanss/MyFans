@@ -6,6 +6,8 @@ import { BookmarkButton } from '@/components/BookmarkButton';
 import { CreatorCard } from '@/components/cards';
 import { CardSkeletonGrid, EmptyState } from '@/components/ui/states';
 import { useToast } from '@/contexts/ToastContext';
+import { FeatureGate } from '@/components/FeatureGate';
+import { FeatureFlag } from '@/lib/feature-flags';
 
 interface Creator {
   id: string;
@@ -44,6 +46,24 @@ const CREATOR_DATA: Creator[] = [
 ];
 
 export default function SubscribePage() {
+  const [query, setQuery] = useState('');
+  const [isLoadingCreators] = useState(false);
+  const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
+  const filteredCreators = useMemo(
+    () => CREATOR_DATA.filter((c) =>
+      c.name.toLowerCase().includes(query.toLowerCase()) ||
+      c.username.toLowerCase().includes(query.toLowerCase())
+    ),
+    [query]
+  );
+  const handleSubscribe = async (creator: Creator) => {
+    setIsSubscribing(creator.id);
+    try {
+      // subscription logic handled by checkout flow
+    } finally {
+      setIsSubscribing(null);
+    }
+  };
   return (
     <div className="min-h-screen bg-slate-50 p-8">
       <header className="mb-8 flex items-center justify-between">
