@@ -13,14 +13,14 @@ export default function WalletGate({ onConnected }: WalletGateProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setWalletInstalled(isWalletInstalled());
+    setWalletInstalled(isWalletInstalled('freighter'));
   }, []);
 
   const handleConnect = async () => {
     setIsConnecting(true);
     setError(null);
     try {
-      const address = await connectWallet();
+      const address = await connectWallet('freighter');
       if (address) {
         onConnected(address);
       }

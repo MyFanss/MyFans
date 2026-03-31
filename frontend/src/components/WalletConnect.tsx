@@ -28,7 +28,7 @@ export default function WalletConnect({
     setError(null);
 
     try {
-      const addr = await connectWallet();
+      const addr = await connectWallet('freighter');
       if (addr) {
         setAddress(addr);
         onConnect?.(addr);
@@ -42,7 +42,7 @@ export default function WalletConnect({
       showError('WALLET_CONNECTION_FAILED', toast);
       setError({
         code: 'WALLET_CONNECTION_FAILED',
-        message: toast.message,
+        message: toast.message ?? 'Wallet connection failed',
         severity: 'error',
         category: 'wallet',
         recoverable: true,
