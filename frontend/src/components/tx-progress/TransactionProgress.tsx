@@ -1,7 +1,9 @@
 "use client";
 
 import React from "react";
-import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/outline";
+import { CheckCircle, XCircle } from "lucide-react";
+const CheckCircleIcon = (props: React.SVGProps<SVGSVGElement>) => <CheckCircle {...(props as React.ComponentProps<typeof CheckCircle>)} />;
+const XCircleIcon = (props: React.SVGProps<SVGSVGElement>) => <XCircle {...(props as React.ComponentProps<typeof XCircle>)} />;
 
 interface TransactionProgressProps {
   stage: "signing" | "pending" | "confirmed" | "failed";

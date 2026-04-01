@@ -59,7 +59,7 @@ impl CreatorRegistryContract {
         }
 
         let current = env.ledger().sequence();
-        let last_key = DataKey::registration_ledger(caller.clone());
+        let last_key = DataKey::LastRegLedger(caller.clone());
         if let Some(last) = env.storage().persistent().get::<DataKey, u32>(&last_key) {
             if current < last.saturating_add(RATE_LIMIT_LEDGERS) {
                 panic_with_error!(&env, Error::RateLimited);

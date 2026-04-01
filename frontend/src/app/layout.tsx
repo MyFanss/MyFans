@@ -9,6 +9,7 @@ import { ToastProvider } from "@/contexts/ToastContext";
 import { ToastContainer } from "@/components/ui/Toast";
 import { FeatureFlagsProvider } from "@/contexts/FeatureFlagsContext";
 import { RouteGuard } from "@/components/RouteGuard";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 export const metadata: Metadata = {
   title: {
@@ -90,7 +91,9 @@ export default function RootLayout({
               <ConsentProvider>
                 <FavoritesProvider>
                   <ToastProvider>
-                    <RouteGuard>{children}</RouteGuard>
+                    <ErrorBoundary>
+                      <RouteGuard>{children}</RouteGuard>
+                    </ErrorBoundary>
                     <ToastContainer />
                   </ToastProvider>
                 </FavoritesProvider>
