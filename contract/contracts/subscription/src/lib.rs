@@ -57,6 +57,8 @@ pub enum Error {
     AdminNotInitialized = 5,
     InvalidFeeRecipient = 6,
     InvalidFeeBps = 7,
+    InvalidTokenAddress = 8,
+    InvalidPrice = 9,
 }
 
 /// Stellar "null" account (GAAA...WHF) — not a valid fee recipient.
@@ -80,11 +82,23 @@ fn require_valid_fee_bps(env: &Env, fee_bps: u32) {
     }
 }
 
+fn require_valid_token_address(env: &Env, token: &Address) {
+    if token == &null_account_address(env) {
+        panic_with_error!(env, Error::InvalidTokenAddress);
+    }
+}
+
 #[contract]
 pub struct MyfansContract;
 
 #[contractimpl]
 impl MyfansContract {
+    /// Initialize the subscription contract once.
+    ///
+    /// Validates:
+    /// * `fee_bps` must be ≤ 10000 (100%).
+    /// * `token` must be a valid non-null address.
+    /// * `price` must be strictly positive.
     pub fn init(
         env: Env,
         admin: Address,
@@ -98,6 +112,10 @@ impl MyfansContract {
         }
         require_valid_fee_recipient(&env, &fee_recipient);
         require_valid_fee_bps(&env, fee_bps);
+        require_valid_token_address(&env, &token);
+        if price <= 0 {
+            panic_with_error!(&env, Error::InvalidPrice);
+        }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         env.storage()
@@ -472,5 +490,6 @@ impl MyfansContract {
     }
 }
 
+#[cfg(test)]
 #[cfg(test)]
 mod test;
