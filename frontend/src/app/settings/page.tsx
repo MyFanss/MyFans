@@ -31,36 +31,36 @@ export default function SettingsPage() {
     () =>
       role === "creator"
         ? {
-          profileHint:
-            "This profile appears publicly to fans and potential subscribers.",
-          walletLabel: "Creator payout wallet",
-          walletAddress: "0xA47bF8934d6a79c161c29d98392B2f2217c2f107",
-          walletNote:
-            "Payouts are sent to this wallet after each settlement cycle.",
-          notifications: [
-            "New subscriber alerts",
-            "Comment and message activity",
-            "Weekly payout summaries",
-          ],
-          deletionCopy:
-            "Deleting a creator account removes profile data, subscription history visibility, and unreleased content drafts.",
-        }
+            profileHint:
+              "This profile appears publicly to fans and potential subscribers.",
+            walletLabel: "Creator payout wallet",
+            walletAddress: "0xA47bF8934d6a79c161c29d98392B2f2217c2f107",
+            walletNote:
+              "Payouts are sent to this wallet after each settlement cycle.",
+            notifications: [
+              "New subscriber alerts",
+              "Comment and message activity",
+              "Weekly payout summaries",
+            ],
+            deletionCopy:
+              "Deleting a creator account removes profile data, subscription history visibility, and unreleased content drafts.",
+          }
         : {
-          profileHint:
-            "This profile is visible when creators view your engagement and support activity.",
-          walletLabel: "Fan payment wallet",
-          walletAddress: "0xB06cb7A62Bd658fb6312F6d8Ab2dA7b778bc67c0",
-          walletNote:
-            "This wallet is used for subscription renewals and one-time support payments.",
-          notifications: [
-            "Creator post updates",
-            "Renewal reminders",
-            "Payment receipts",
-          ],
-          deletionCopy:
-            "Deleting a fan account removes saved payment methods, followed creators, and personal notification history.",
-        },
-    [role]
+            profileHint:
+              "This profile is visible when creators view your engagement and support activity.",
+            walletLabel: "Fan payment wallet",
+            walletAddress: "0xB06cb7A62Bd658fb6312F6d8Ab2dA7b778bc67c0",
+            walletNote:
+              "This wallet is used for subscription renewals and one-time support payments.",
+            notifications: [
+              "Creator post updates",
+              "Renewal reminders",
+              "Payment receipts",
+            ],
+            deletionCopy:
+              "Deleting a fan account removes saved payment methods, followed creators, and personal notification history.",
+          },
+    [role],
   );
 
   const handleCopyWallet = async () => {
@@ -76,7 +76,7 @@ export default function SettingsPage() {
   };
 
   const handleDeleteAccount = async (
-    event: React.FormEvent<HTMLFormElement>
+    event: React.FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault();
     if (deleteInput !== "DELETE" || !deletePassword || isDeleting) return;
@@ -85,10 +85,14 @@ export default function SettingsPage() {
     await new Promise((resolve) => setTimeout(resolve, 1200));
     setIsDeleting(false);
     setDeleteComplete(true);
-    showWarning("Account deleted", "Your account deletion request has been processed.");
+    showWarning(
+      "Account deleted",
+      "Your account deletion request has been processed.",
+    );
   };
 
-  const canDelete = deleteInput === "DELETE" && deletePassword.length >= 6 && !isDeleting;
+  const canDelete =
+    deleteInput === "DELETE" && deletePassword.length >= 6 && !isDeleting;
 
   const closeDeleteModal = () => {
     if (isDeleting) return;
@@ -107,9 +111,10 @@ export default function SettingsPage() {
     const originalPaddingRight = document.body.style.paddingRight;
 
     // Check if scrollbar is present
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
 
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
     if (scrollbarWidth > 0) {
       document.body.style.paddingRight = `${scrollbarWidth}px`;
     }
@@ -131,7 +136,8 @@ export default function SettingsPage() {
       'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
     const focusFirstElement = () => {
-      const firstFocusable = modalElement?.querySelector<HTMLElement>(focusableSelector);
+      const firstFocusable =
+        modalElement?.querySelector<HTMLElement>(focusableSelector);
       firstFocusable?.focus();
     };
 
@@ -141,12 +147,12 @@ export default function SettingsPage() {
     const handleModalKeyDown = (event: KeyboardEvent) => {
       if (!deleteModalRef.current) return;
 
-      if (event.key === 'Escape' && !isDeleting) {
+      if (event.key === "Escape" && !isDeleting) {
         closeDeleteModal();
         return;
       }
 
-      if (event.key !== 'Tab') return;
+      if (event.key !== "Tab") return;
 
       const focusableElements = Array.from(
         deleteModalRef.current.querySelectorAll<HTMLElement>(focusableSelector),
@@ -165,11 +171,11 @@ export default function SettingsPage() {
       }
     };
 
-    document.addEventListener('keydown', handleModalKeyDown);
+    document.addEventListener("keydown", handleModalKeyDown);
 
     return () => {
       clearTimeout(focusTimeout);
-      document.removeEventListener('keydown', handleModalKeyDown);
+      document.removeEventListener("keydown", handleModalKeyDown);
       deleteTriggerRef.current?.focus();
       if (!deleteTriggerRef.current) {
         previousFocusRef.current?.focus();
@@ -178,9 +184,9 @@ export default function SettingsPage() {
   }, [showDeleteModal, isDeleting]);
 
   const themeOptions: { value: Theme; label: string; icon: string }[] = [
-    { value: 'light', label: 'Light', icon: '☀️' },
-    { value: 'dark', label: 'Dark', icon: '🌙' },
-    { value: 'system', label: 'System', icon: '💻' },
+    { value: "light", label: "Light", icon: "☀️" },
+    { value: "dark", label: "Dark", icon: "🌙" },
+    { value: "system", label: "System", icon: "💻" },
   ];
 
   const renderSection = () => {
@@ -205,7 +211,9 @@ export default function SettingsPage() {
           <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
             Wallet
           </h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{content.walletNote}</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            {content.walletNote}
+          </p>
 
           <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 p-3">
             <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
@@ -258,7 +266,8 @@ export default function SettingsPage() {
             Appearance
           </h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Choose how MyFans looks to you. Select a theme or follow your system setting.
+            Choose how MyFans looks to you. Select a theme or follow your system
+            setting.
           </p>
 
           <div className="mt-5">
@@ -267,14 +276,17 @@ export default function SettingsPage() {
                 <button
                   key={option.value}
                   onClick={() => setTheme(option.value)}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${preference === option.value
-                    ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                    }`}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                    preference === option.value
+                      ? "bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                  }`}
                   type="button"
                   aria-pressed={preference === option.value}
                 >
-                  <span className="text-base" aria-hidden="true">{option.icon}</span>
+                  <span className="text-base" aria-hidden="true">
+                    {option.icon}
+                  </span>
                   {option.label}
                 </button>
               ))}
@@ -283,19 +295,22 @@ export default function SettingsPage() {
 
           <div className="mt-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30 p-4">
             <div className="flex items-center gap-3">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full text-lg ${theme === 'dark'
-                ? 'bg-indigo-500/20 text-indigo-400'
-                : 'bg-amber-500/20 text-amber-600'
-                }`}>
-                {theme === 'dark' ? '🌙' : '☀️'}
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-full text-lg ${
+                  theme === "dark"
+                    ? "bg-indigo-500/20 text-indigo-400"
+                    : "bg-amber-500/20 text-amber-600"
+                }`}
+              >
+                {theme === "dark" ? "🌙" : "☀️"}
               </div>
               <div>
                 <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
                   Currently using <strong>{theme}</strong> mode
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {preference === 'system'
-                    ? 'Following your operating system preference'
+                  {preference === "system"
+                    ? "Following your operating system preference"
                     : `Manually set to ${preference} mode`}
                 </p>
               </div>
@@ -328,14 +343,14 @@ export default function SettingsPage() {
                 Enhance experience with telemetry
               </span>
               <button
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors ${consent ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-600'}`}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors ${consent ? "bg-blue-600" : "bg-slate-200 dark:bg-slate-600"}`}
                 onClick={() => setConsent(!consent)}
                 role="switch"
                 aria-checked={consent ?? false}
               >
                 <span className="sr-only">Toggle telemetry consent</span>
                 <span
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${consent ? 'translate-x-6' : 'translate-x-1'}`}
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${consent ? "translate-x-6" : "translate-x-1"}`}
                 />
               </button>
             </div>
@@ -345,7 +360,9 @@ export default function SettingsPage() {
             <h3 className="text-base font-semibold text-rose-800 dark:text-rose-400">
               Danger zone
             </h3>
-            <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">{content.deletionCopy}</p>
+            <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">
+              {content.deletionCopy}
+            </p>
             <button
               className="mt-4 w-full rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 sm:w-auto"
               onClick={() => setShowDeleteModal(true)}
@@ -515,21 +532,21 @@ export default function SettingsPage() {
 
       {/* Delete confirmation modal */}
       {showDeleteModal ? (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 dark:bg-black/60 p-4 sm:items-center"
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-modal-title"
           aria-describedby="delete-modal-description"
         >
-          <div 
+          <div
             ref={deleteModalRef}
             tabIndex={-1}
             className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-800 p-4 shadow-xl sm:p-5 focus:outline-none"
           >
             {!deleteComplete ? (
               <>
-                <h3 
+                <h3
                   id="delete-modal-title"
                   className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg"
                 >
@@ -537,22 +554,31 @@ export default function SettingsPage() {
                 </h3>
                 <div id="delete-modal-description">
                   <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                    This action is <strong>irreversible</strong>. You will lose access to:
+                    This action is <strong>irreversible</strong>. You will lose
+                    access to:
                   </p>
                   <ul className="mt-2 list-disc pl-5 text-sm text-slate-600 dark:text-slate-400">
                     <li>Your public profile and bio</li>
                     <li>Subscription history and analytics</li>
                     <li>Any unreleased content drafts</li>
-                    {role === "fan" && <li>Followed creators and saved content</li>}
-                    {role === "creator" && <li>Creator payout history and unwithdrawn funds</li>}
+                    {role === "fan" && (
+                      <li>Followed creators and saved content</li>
+                    )}
+                    {role === "creator" && (
+                      <li>Creator payout history and unwithdrawn funds</li>
+                    )}
                   </ul>
                   <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
-                    To proceed, type <strong>DELETE</strong> and enter your password.
+                    To proceed, type <strong>DELETE</strong> and enter your
+                    password.
                   </p>
                 </div>
 
                 <form className="mt-4 space-y-3" onSubmit={handleDeleteAccount}>
-                  <label htmlFor="delete-confirmation-input" className="sr-only">
+                  <label
+                    htmlFor="delete-confirmation-input"
+                    className="sr-only"
+                  >
                     Type DELETE to confirm
                   </label>
                   <input
@@ -577,7 +603,12 @@ export default function SettingsPage() {
                     aria-required="true"
                   />
                   {deleteError && (
-                    <p className="text-sm text-rose-600 dark:text-rose-400" role="alert">{deleteError}</p>
+                    <p
+                      className="text-sm text-rose-600 dark:text-rose-400"
+                      role="alert"
+                    >
+                      {deleteError}
+                    </p>
                   )}
                   <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                     <button
@@ -600,8 +631,13 @@ export default function SettingsPage() {
               </>
             ) : (
               <div className="py-2 text-center">
-                <p className="text-3xl" aria-hidden="true">👋</p>
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400" role="status">
+                <p className="text-3xl" aria-hidden="true">
+                  👋
+                </p>
+                <p
+                  className="mt-2 text-sm text-slate-600 dark:text-slate-400"
+                  role="status"
+                >
                   Your deletion request has been successfully submitted.
                 </p>
                 <button

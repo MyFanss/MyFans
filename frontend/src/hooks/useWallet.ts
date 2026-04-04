@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import type { WalletType, WalletConnectionState } from '@/types/wallet';
-import { 
-  connectWallet, 
-  getConnectedAddress, 
-  getAnyConnectedAddress, 
-  isWalletConnected, 
+import { useState, useCallback, useEffect, useRef } from "react";
+import type { WalletType, WalletConnectionState } from "@/types/wallet";
+import {
+  connectWallet,
+  getConnectedAddress,
+  getAnyConnectedAddress,
+  isWalletConnected,
   isAnyWalletConnected,
   getWalletInstallUrl,
-  isWalletInstalled
-} from '@/lib/wallet';
+  isWalletInstalled,
+} from "@/lib/wallet";
 
 interface UseWalletOptions {
   autoReconnect?: boolean;
@@ -32,6 +32,7 @@ interface UseWalletReturn {
   isWalletInstalled: (walletType: WalletType) => boolean;
   getInstallUrl: (walletType: WalletType) => string | null;
   isReconnecting: boolean;
+  hasCheckedConnection: boolean;
 }
 
 /**
@@ -44,38 +45,45 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
     reconnectDelay = 1000,
   } = options;
 
-  const [connectionState, setConnectionState] = useState<WalletConnectionState>({
-    status: 'disconnected',
-  });
+  const [connectionState, setConnectionState] = useState<WalletConnectionState>(
+    {
+      status: "disconnected",
+    },
+  );
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
-  
+  const [hasCheckedConnection, setHasCheckedConnection] = useState(false);
+
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const mountedRef = useRef(true);
 
   const checkExistingConnection = useCallback(async () => {
     if (!mountedRef.current) return;
-    
+
     try {
       // Check if any wallet is already connected
       const connected = await getAnyConnectedAddress();
-      
+
       if (connected) {
         setConnectionState({
-          status: 'connected',
+          status: "connected",
           address: connected.address,
           walletType: connected.walletType,
-          network: 'Stellar Mainnet',
+          network: "Stellar Mainnet",
         });
         return;
       }
     } catch {
       // No existing connection or error checking
+    } finally {
+      if (mountedRef.current) {
+        setHasCheckedConnection(true);
+      }
     }
-    
+
     if (mountedRef.current) {
-      setConnectionState({ status: 'disconnected' });
+      setConnectionState({ status: "disconnected" });
     }
   }, []);
 
@@ -97,9 +105,12 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
 
     try {
       await checkExistingConnection();
-      
+
       // If still disconnected, schedule another attempt
-      if (connectionState.status === 'disconnected' && reconnectAttemptsRef.current < reconnectAttempts) {
+      if (
+        connectionState.status === "disconnected" &&
+        reconnectAttemptsRef.current < reconnectAttempts
+      ) {
         reconnectTimeoutRef.current = setTimeout(() => {
           if (mountedRef.current) {
             attemptReconnect();
@@ -120,16 +131,22 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
         setIsReconnecting(false);
       }
     }
-  }, [autoReconnect, reconnectAttempts, reconnectDelay, connectionState.status, checkExistingConnection]);
+  }, [
+    autoReconnect,
+    reconnectAttempts,
+    reconnectDelay,
+    connectionState.status,
+    checkExistingConnection,
+  ]);
 
   // Listen for wallet disconnect events
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     const handleAccountChange = () => {
       // Wallet account changed or disconnected
       void checkExistingConnection();
-      
+
       // Trigger auto-reconnect if enabled
       if (autoReconnect) {
         reconnectAttemptsRef.current = 0;
@@ -143,20 +160,26 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
     };
 
     // Wallet-specific events
-    window.addEventListener('freighter:accountChanged', handleAccountChange);
-    window.addEventListener('freighter:networkChanged', handleNetworkChange);
-    
+    window.addEventListener("freighter:accountChanged", handleAccountChange);
+    window.addEventListener("freighter:networkChanged", handleNetworkChange);
+
     // Generic wallet events
-    window.addEventListener('wallet:connected', handleAccountChange);
-    window.addEventListener('wallet:disconnected', handleAccountChange);
-    window.addEventListener('wallet:accountChanged', handleAccountChange);
+    window.addEventListener("wallet:connected", handleAccountChange);
+    window.addEventListener("wallet:disconnected", handleAccountChange);
+    window.addEventListener("wallet:accountChanged", handleAccountChange);
 
     return () => {
-      window.removeEventListener('freighter:accountChanged', handleAccountChange);
-      window.removeEventListener('freighter:networkChanged', handleNetworkChange);
-      window.removeEventListener('wallet:connected', handleAccountChange);
-      window.removeEventListener('wallet:disconnected', handleAccountChange);
-      window.removeEventListener('wallet:accountChanged', handleAccountChange);
+      window.removeEventListener(
+        "freighter:accountChanged",
+        handleAccountChange,
+      );
+      window.removeEventListener(
+        "freighter:networkChanged",
+        handleNetworkChange,
+      );
+      window.removeEventListener("wallet:connected", handleAccountChange);
+      window.removeEventListener("wallet:disconnected", handleAccountChange);
+      window.removeEventListener("wallet:accountChanged", handleAccountChange);
     };
   }, [checkExistingConnection, autoReconnect, attemptReconnect]);
 
@@ -171,22 +194,23 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
   }, []);
 
   const connect = useCallback(async (walletType: WalletType) => {
-    setConnectionState({ status: 'connecting', walletType });
+    setConnectionState({ status: "connecting", walletType });
     reconnectAttemptsRef.current = 0; // Reset reconnect attempts on manual connect
 
     try {
       const address = await connectWallet(walletType);
 
       setConnectionState({
-        status: 'connected',
+        status: "connected",
         address,
         walletType,
-        network: 'Stellar Mainnet',
+        network: "Stellar Mainnet",
       });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to connect';
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to connect";
       setConnectionState({
-        status: 'error',
+        status: "error",
         error: errorMessage,
         walletType,
       });
@@ -195,7 +219,7 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
   }, []);
 
   const disconnect = useCallback(() => {
-    setConnectionState({ status: 'disconnected' });
+    setConnectionState({ status: "disconnected" });
     reconnectAttemptsRef.current = 0;
     setIsReconnecting(false);
     if (reconnectTimeoutRef.current) {
@@ -218,19 +242,29 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
     setIsModalOpen(false);
   }, []);
 
-  const checkWalletInstalled = useCallback((walletType: WalletType): boolean => {
-    return isWalletInstalled(walletType);
-  }, []);
+  const checkWalletInstalled = useCallback(
+    (walletType: WalletType): boolean => {
+      return isWalletInstalled(walletType);
+    },
+    [],
+  );
 
-  const getInstallUrlForWallet = useCallback((walletType: WalletType): string | null => {
-    return getWalletInstallUrl(walletType);
-  }, []);
+  const getInstallUrlForWallet = useCallback(
+    (walletType: WalletType): string | null => {
+      return getWalletInstallUrl(walletType);
+    },
+    [],
+  );
 
   return {
     connectionState,
-    isConnected: connectionState.status === 'connected',
-    address: connectionState.status === 'connected' ? connectionState.address : null,
-    walletType: connectionState.status === 'connected' ? connectionState.walletType : null,
+    isConnected: connectionState.status === "connected",
+    address:
+      connectionState.status === "connected" ? connectionState.address : null,
+    walletType:
+      connectionState.status === "connected"
+        ? connectionState.walletType
+        : null,
     connect,
     disconnect,
     reconnect,
@@ -240,6 +274,6 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
     isWalletInstalled: checkWalletInstalled,
     getInstallUrl: getInstallUrlForWallet,
     isReconnecting,
+    hasCheckedConnection,
   };
 }
-

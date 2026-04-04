@@ -2,7 +2,7 @@
 
 import { WalletSelectionModal } from '@/components/wallet/WalletSelectionModal';
 import { useWallet } from '@/hooks/useWallet';
-import { Button } from '@/components/Button';
+import Button from '@/components/Button';
 
 /**
  * Example component demonstrating the enhanced wallet connection system
@@ -81,7 +81,7 @@ export function WalletConnectExample() {
                     {getInstallUrl(wallet) && (
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="secondary"
                         onClick={() => window.open(getInstallUrl(wallet)!, '_blank')}
                       >
                         Install
@@ -100,14 +100,14 @@ export function WalletConnectExample() {
         {isConnected ? (
           <div className="space-y-3">
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={disconnect}
               className="w-full"
             >
               Disconnect Wallet
             </Button>
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={reconnect}
               disabled={isReconnecting}
               className="w-full"
