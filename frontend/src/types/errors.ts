@@ -47,15 +47,17 @@ export type ErrorCode =
   | 'SERVICE_UNAVAILABLE'
   | 'RATE_LIMITED'
   // Form/Plan errors
-  | 'SAVE_FAILED'
-  | 'PUBLISH_FAILED'
   // Unknown
   | 'UNKNOWN_ERROR'
   // Product / UX-specific (toasts & inline recovery)
   | 'COPY_FAILED'
   | 'SAVE_FAILED'
   | 'PUBLISH_FAILED'
-  | 'ACCESS_DENIED';
+  | 'ACCESS_DENIED'
+  | 'PROFILE_ERROR'
+  | 'WALLET_NOT_INSTALLED'
+  | 'UNSUPPORTED_WALLET'
+  | 'WALLET_CONNECTION_REJECTED';
 
 /** Error severity levels */
 export type ErrorSeverity = 'error' | 'warning' | 'info';
@@ -500,23 +502,6 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       recoverable: true,
       actions: [{ label: 'Try again', type: 'retry', primary: true }],
     },
-    SAVE_FAILED: {
-      message: 'Save failed',
-      description: 'The changes could not be saved. Please try again.',
-      severity: 'error',
-      category: 'form',
-      recoverable: true,
-      actions: [{ label: 'Try again', type: 'retry', primary: true }],
-    },
-    PUBLISH_FAILED: {
-      message: 'Publish failed',
-      description: 'The plan could not be published. Please try again.',
-      severity: 'error',
-      category: 'form',
-      recoverable: true,
-      actions: [{ label: 'Try again', type: 'retry', primary: true }],
-    },
-
     COPY_FAILED: {
       message: 'Couldn’t copy to clipboard',
       description:
@@ -575,6 +560,34 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
         { label: 'Try again', type: 'retry', primary: true },
         { label: 'Dismiss', type: 'dismiss' },
       ],
+    },
+    PROFILE_ERROR: {
+      message: 'Profile update failed',
+      severity: 'error',
+      category: 'server',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    WALLET_NOT_INSTALLED: {
+      message: 'Wallet not installed',
+      severity: 'error',
+      category: 'wallet',
+      recoverable: true,
+      actions: [],
+    },
+    UNSUPPORTED_WALLET: {
+      message: 'Unsupported wallet',
+      severity: 'error',
+      category: 'wallet',
+      recoverable: false,
+      actions: [],
+    },
+    WALLET_CONNECTION_REJECTED: {
+      message: 'Wallet connection rejected',
+      severity: 'warning',
+      category: 'wallet',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
     },
   };
 
