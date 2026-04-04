@@ -59,7 +59,7 @@ impl CreatorRegistryContract {
         }
 
         let current = env.ledger().sequence();
-        let last_key = DataKey::registration_ledger(caller.clone());
+        let last_key = DataKey::LastRegLedger(caller.clone());
         if let Some(last) = env.storage().persistent().get::<DataKey, u32>(&last_key) {
             if current < last.saturating_add(RATE_LIMIT_LEDGERS) {
                 panic_with_error!(&env, Error::RateLimited);
@@ -92,6 +92,17 @@ impl CreatorRegistryContract {
         }
 
         env.storage().persistent().remove(&key);
+    }
+
+    /// Read-only getter for the configured admin address.
+    ///
+    /// Any caller may invoke this view function. It panics with
+    /// `Error::NotInitialized` if the contract was never initialized.
+    pub fn admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
     }
 
     /// Look up a creator_id by their registered address
