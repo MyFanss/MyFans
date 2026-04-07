@@ -1,0 +1,265 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  Inject,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
+import { Creator } from './entities/creator.entity';
+import { Follow } from './entities/follow.entity';
+import { FindCreatorsQueryDto } from './dto/find-creators-query.dto';
+import { OnboardCreatorDto } from './dto/onboard-creator.dto';
+import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
+import { User } from '../users/entities/user.entity';
+import { PaginatedResponseDto } from '../common/dto';
+
+const BIO_SNIPPET_LENGTH = 150;
+
+@Injectable()
+export class CreatorsService {
+  constructor(
+    @InjectRepository(Creator)
+    private readonly creatorRepo: Repository<Creator>,
+    @InjectRepository(Follow)
+    private readonly followRepo: Repository<Follow>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+  ) {}
+
+  private async invalidateCache() {
+    try {
+      const cacheAny = this.cacheManager as any;
+      const store =
+        cacheAny.store || (cacheAny.stores ? cacheAny.stores[0] : null);
+      if (store && store.client && typeof store.client.keys === 'function') {
+        const keys = await store.client.keys('*creators*');
+        if (keys.length > 0) {
+          await store.client.del(...keys);
+        }
+      } else {
+        if (typeof cacheAny.reset === 'function') {
+          await cacheAny.reset();
+        } else if (typeof cacheAny.clear === 'function') {
+          await cacheAny.clear();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to invalidate creators cache:', error);
+    }
+  }
+
+  async onboard(userId: string, dto: OnboardCreatorDto) {
+    // Check if user is already a creator
+    const existingCreator = await this.creatorRepo.findOne({
+      where: { user_id: userId },
+    });
+
+    if (existingCreator) {
+      throw new ConflictException('User is already a creator');
+    }
+
+    // Create the creator record
+    const creator = this.creatorRepo.create({
+      user_id: userId,
+      bio: dto.bio ?? null,
+      subscription_price: String(dto.subscription_price ?? 0),
+      currency: dto.currency ?? 'XLM',
+      is_verified: false,
+      followers_count: 0,
+    });
+
+    await this.creatorRepo.save(creator);
+
+    // Update user to mark as creator
+    await this.userRepo.update(userId, { is_creator: true });
+
+    // Fetch the creator with user relations for response
+    const createdCreator = await this.creatorRepo.findOne({
+      where: { id: creator.id },
+      relations: ['user'],
+    });
+
+    return this.toDetailItem(createdCreator!);
+  }
+
+  async updateMyProfile(userId: string, dto: UpdateCreatorProfileDto) {
+    const creator = await this.creatorRepo.findOne({
+      where: { user_id: userId },
+      relations: ['user'],
+    });
+    if (!creator) {
+      throw new NotFoundException('Creator profile not found');
+    }
+
+    const patch: Partial<Creator> = {};
+    if (dto.bio !== undefined) patch.bio = dto.bio;
+    if (dto.subscription_price !== undefined) {
+      patch.subscription_price = String(dto.subscription_price);
+    }
+    if (dto.currency !== undefined) patch.currency = dto.currency;
+    if (dto.banner_url !== undefined) patch.banner_url = dto.banner_url;
+
+    if (Object.keys(patch).length > 0) {
+      await this.creatorRepo.update(creator.id, patch);
+      await this.invalidateCache();
+    }
+
+    const updated = await this.creatorRepo.findOne({
+      where: { user_id: userId },
+      relations: ['user'],
+    });
+    return this.toDetailItem(updated!);
+  }
+
+  async findAll(query: FindCreatorsQueryDto) {
+    const { page = 1, limit = 20, is_verified, min_price, max_price } = query;
+    const skip = (page - 1) * limit;
+
+    const qb = this.creatorRepo
+      .createQueryBuilder('creator')
+      .leftJoinAndSelect('creator.user', 'user')
+      .where('user.is_creator = :is_creator', { is_creator: true })
+      .orderBy('creator.created_at', 'DESC');
+
+    if (is_verified !== undefined) {
+      qb.andWhere('creator.is_verified = :is_verified', { is_verified });
+    }
+    if (min_price !== undefined) {
+      qb.andWhere('creator.subscription_price >= :min_price', {
+        min_price: String(min_price),
+      });
+    }
+    if (max_price !== undefined) {
+      qb.andWhere('creator.subscription_price <= :max_price', {
+        max_price: String(max_price),
+      });
+    }
+
+    const [creators, total] = await qb.skip(skip).take(limit).getManyAndCount();
+
+    const items = creators.map((c) => this.toListItem(c));
+
+    return new PaginatedResponseDto(items, total, page, limit);
+  }
+
+  async findOneById(id: string) {
+    const creator = await this.creatorRepo.findOne({
+      where: { id },
+      relations: ['user'],
+    });
+    if (!creator) {
+      throw new NotFoundException(`Creator with id ${id} not found`);
+    }
+    return this.toDetailItem(creator);
+  }
+
+  async findOneByUsername(username: string) {
+    const creator = await this.creatorRepo
+      .createQueryBuilder('creator')
+      .leftJoinAndSelect('creator.user', 'user')
+      .where('user.username = :username', { username })
+      .andWhere('user.is_creator = :is_creator', { is_creator: true })
+      .getOne();
+
+    if (!creator) {
+      throw new NotFoundException(
+        `Creator with username ${username} not found`,
+      );
+    }
+    return this.toDetailItem(creator);
+  }
+
+  async follow(creatorId: string, followerId: string) {
+    const creator = await this.creatorRepo.findOne({
+      where: { id: creatorId },
+    });
+    if (!creator) {
+      throw new NotFoundException(`Creator with id ${creatorId} not found`);
+    }
+
+    if (creator.user_id === followerId) {
+      throw new BadRequestException('You cannot follow yourself');
+    }
+
+    const existingFollow = await this.followRepo.findOne({
+      where: { creator_id: creatorId, follower_id: followerId },
+    });
+
+    if (existingFollow) {
+      return; // Idempotent
+    }
+
+    await this.followRepo.save({
+      creator_id: creatorId,
+      follower_id: followerId,
+    });
+
+    await this.creatorRepo.increment({ id: creatorId }, 'followers_count', 1);
+    await this.invalidateCache();
+  }
+
+  async unfollow(creatorId: string, followerId: string) {
+    const creator = await this.creatorRepo.findOne({
+      where: { id: creatorId },
+    });
+    if (!creator) {
+      throw new NotFoundException(`Creator with id ${creatorId} not found`);
+    }
+
+    const result = await this.followRepo.delete({
+      creator_id: creatorId,
+      follower_id: followerId,
+    });
+
+    if (result.affected && result.affected > 0) {
+      await this.creatorRepo.decrement({ id: creatorId }, 'followers_count', 1);
+      await this.invalidateCache();
+    }
+  }
+
+  private toListItem(creator: Creator) {
+    const bio = creator.bio ?? '';
+    const bio_snippet =
+      bio.length > BIO_SNIPPET_LENGTH
+        ? bio.slice(0, BIO_SNIPPET_LENGTH) + '...'
+        : bio || null;
+
+    return {
+      id: creator.id,
+      username: creator.user?.username ?? null,
+      display_name: creator.user?.display_name ?? null,
+      avatar_url: creator.user?.avatar_url ?? null,
+      bio_snippet,
+      subscription_price: creator.subscription_price,
+      currency: creator.currency,
+      is_verified: creator.is_verified,
+      post_count: 0,
+      subscriber_count: 0,
+      followers_count: creator.followers_count,
+    };
+  }
+
+  private toDetailItem(creator: Creator) {
+    return {
+      id: creator.id,
+      username: creator.user?.username ?? null,
+      display_name: creator.user?.display_name ?? null,
+      avatar_url: creator.user?.avatar_url ?? null,
+      bio: creator.bio ?? null,
+      banner_url: creator.banner_url ?? null,
+      subscription_price: creator.subscription_price,
+      currency: creator.currency,
+      is_verified: creator.is_verified,
+      post_count: 0,
+      subscriber_count: 0,
+      followers_count: creator.followers_count,
+      created_at: creator.created_at,
+      updated_at: creator.updated_at,
+    };
+  }
+}
