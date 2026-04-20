@@ -4,7 +4,6 @@
     "node_modules",
     "test",
     "dist",
-    "**/*spec.ts",
-    "src/handle network mismatch (wrong chain)"
+    "**/*spec.ts"
   ]
 }

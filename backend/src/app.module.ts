@@ -8,7 +8,6 @@ import { ThrottlerGuard } from './auth/throttler.guard';
 import { JwtAuthGuard } from './auth-module/guards/jwt-auth.guard';
 import { RolesGuard } from './auth-module/guards/roles.guard';
 import { PublicGuard } from './auth-module/guards/public.guard';
-import { APP_GUARD } from '@nestjs/core';
 import { LoggingModule } from './common/logging.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { LoggingMiddleware } from './common/middleware/logging.middleware';

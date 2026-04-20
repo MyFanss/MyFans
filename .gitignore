@@ -42,6 +42,9 @@ out/
 .vercel
 coverage/
 
+# Local-only backlog (optional: paste into GitHub Issues); not part of the tracked tree
+ENGAGEMENT_ISSUES_125.md
+
 # Test snapshots & reports
 **/__snapshots__/
 frontend/playwright-report/
