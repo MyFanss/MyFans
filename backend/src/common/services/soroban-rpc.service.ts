@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import * as StellarSdk from '@stellar/stellar-sdk';
+import { rpc, nativeToScVal, scValToNative, xdr, Address } from '@stellar/stellar-sdk';
 
 export interface SorobanHealthStatus {
     status: 'up' | 'down';
@@ -12,21 +12,14 @@ export interface SorobanHealthStatus {
 
 @Injectable()
 export class SorobanRpcService {
-    private readonly server: any;
+    private readonly server: rpc.Server;
     private readonly rpcUrl: string;
     private readonly timeout: number;
 
     constructor() {
-        // Use Soroban Futurenet RPC URL by default, can be configured via environment
-        this.rpcUrl = process.env.SOROBAN_RPC_URL || 'https://horizon-futurenet.stellar.org';
-        this.timeout = parseInt(process.env.SOROBAN_RPC_TIMEOUT || '5000'); // 5 seconds default
-        
-        try {
-            this.server = new StellarSdk.Horizon.Server(this.rpcUrl, { allowHttp: true });
-        } catch (error) {
-            // If server creation fails, we'll handle it in the health check
-            this.server = null;
-        }
+        this.rpcUrl = process.env.SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org';
+        this.timeout = parseInt(process.env.SOROBAN_RPC_TIMEOUT || '5000');
+        this.server = new rpc.Server(this.rpcUrl, { allowHttp: true });
     }
 
     async checkConnectivity(): Promise<SorobanHealthStatus> {
@@ -34,43 +27,62 @@ export class SorobanRpcService {
         const timestamp = new Date().toISOString();
 
         try {
-            if (!this.server) {
-                throw new Error('Failed to initialize Stellar SDK server');
-            }
+            const withTimeout = <T>(promise: Promise<T>): Promise<T> =>
+                Promise.race([
+                    promise,
+                    new Promise<T>((_, reject) =>
+                        setTimeout(() => reject(new Error('RPC connection timeout')), this.timeout),
+                    ),
+                ]);
 
-            // Use Promise.race to implement timeout
-            const ledgerPromise = this.server.loadAccount('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('RPC connection timeout')), this.timeout)
-            );
-
-            await Promise.race([ledgerPromise, timeoutPromise]);
-            
-            // If we got here, let's try to get the latest ledger
-            const ledgerPromise2 = this.server.ledgers().order('desc').limit(1).call();
-            const timeoutPromise2 = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('RPC connection timeout')), this.timeout)
-            );
-
-            const ledgerResult = await Promise.race([ledgerPromise2, timeoutPromise2]);
+            const health = await withTimeout(this.server.getHealth());
             const responseTime = Date.now() - startTime;
+
+            // health.ledger is the latest ledger sequence
+            const ledger = (health as rpc.Api.GetHealthResponse & { ledger?: number }).ledger ?? 0;
 
             return {
                 status: 'up',
                 timestamp,
                 rpcUrl: this.rpcUrl,
-                ledger: ledgerResult.records[0]?.sequence || 0,
+                ledger,
                 responseTime,
             };
         } catch (error) {
-            const responseTime = Date.now() - startTime;
             return {
                 status: 'down',
                 timestamp,
                 rpcUrl: this.rpcUrl,
-                responseTime,
-                error: error.message || 'Unknown error',
+                responseTime: Date.now() - startTime,
+                error: (error as Error).message || 'Unknown error',
             };
+        }
+    }
+
+    /**
+     * Read a u32 value from a Soroban contract.
+     * Uses nativeToScVal to encode the key as a UInt32 ScVal and
+     * scValToNative to decode the returned ScVal back to a number.
+     */
+    async readContractUInt32(contractId: string, key: number): Promise<number | null> {
+        try {
+            const keyScVal: xdr.ScVal = nativeToScVal(key, { type: 'u32' });
+            const ledgerKey = xdr.LedgerKey.contractData(
+                new xdr.LedgerKeyContractData({
+                    contract: new Address(contractId).toScAddress(),
+                    key: keyScVal,
+                    durability: xdr.ContractDataDurability.persistent(),
+                }),
+            );
+
+            const response = await this.server.getLedgerEntries(ledgerKey);
+            if (!response.entries?.length) return null;
+
+            const entry = response.entries[0];
+            const contractData = entry.val.contractData();
+            return scValToNative(contractData.val()) as number;
+        } catch {
+            return null;
         }
     }
 
@@ -79,41 +91,25 @@ export class SorobanRpcService {
         const timestamp = new Date().toISOString();
 
         try {
-            if (!this.server) {
-                throw new Error('Failed to initialize Stellar SDK server');
+            const contractId = process.env.SOROBAN_HEALTH_CHECK_CONTRACT;
+            if (!contractId) {
+                throw new Error('SOROBAN_HEALTH_CHECK_CONTRACT not configured');
             }
 
-            // Try to read a known contract on Soroban Futurenet
-            // This is a placeholder contract address - replace with actual contract
-            const contractId = process.env.SOROBAN_HEALTH_CHECK_CONTRACT || 
-                'CA3D5KRYM6CB7OWQ6TWKRRJZ4LW5DZ5Z2J5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ5JQ';
-            
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Contract read timeout')), this.timeout)
-            );
-
-            // For now, we'll just check if we can make any RPC call
-            // In a real implementation, you would use the Soroban RPC to read contract state
-            const ledgerPromise = this.server.loadAccount('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
-            await Promise.race([ledgerPromise, timeoutPromise]);
-            
-            const responseTime = Date.now() - startTime;
-
+            await this.readContractUInt32(contractId, 0);
             return {
                 status: 'up',
                 timestamp,
                 rpcUrl: this.rpcUrl,
-                responseTime,
-                error: 'Contract check not fully implemented - using account check as fallback',
+                responseTime: Date.now() - startTime,
             };
         } catch (error) {
-            const responseTime = Date.now() - startTime;
             return {
                 status: 'down',
                 timestamp,
                 rpcUrl: this.rpcUrl,
-                responseTime,
-                error: error.message || 'Unknown error',
+                responseTime: Date.now() - startTime,
+                error: (error as Error).message || 'Unknown error',
             };
         }
     }
