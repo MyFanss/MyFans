@@ -89,7 +89,7 @@ You will keep only these three folders and this README; other files can be remov
 ### Tech
 
 - **Rust**, **soroban-sdk**.
-- Build & test: **stellar-cli** / **soroban-cli**; deploy to Stellar testnet/mainnet via CLI or CI.
+- Build & test: **stellar-cli**; deploy to Stellar testnet/mainnet via CLI or CI.
 
 ---
 
@@ -144,7 +144,7 @@ You will keep only these three folders and this README; other files can be remov
 
 | Layer | Technologies |
 |-------|----------------|
-| Chain & contracts | Stellar, Soroban, Rust, soroban-sdk, stellar-cli |
+| Chain & contracts | Stellar, Soroban, Rust, soroban-sdk, stellar-cli (≥ v21) |
 | Frontend | Next.js, TypeScript, Stellar SDK, wallet integration |
 | Backend | Nest.js, TypeScript, PostgreSQL (or similar), Stellar/Soroban RPC, IPFS (metadata/refs) |
 | Storage | IPFS (content refs), DB (metadata, indexer cache) |
@@ -179,7 +179,7 @@ You will keep only these three folders and this README; other files can be remov
 
 ## Getting Started (After Initialization)
 
-- **Contract**: `cd contract && cargo build && soroban contract test` (and deploy with soroban-cli).
+- **Contract**: `cd contract && cargo build --target wasm32-unknown-unknown --release && cargo test` (deploy with `stellar contract deploy`).
 - **Backend**: `cd backend && npm i && npm run start:dev`.
 - **Frontend**: `cd frontend && npm i && npm run dev`.
 
