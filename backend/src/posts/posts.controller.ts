@@ -23,7 +23,11 @@ export class PostsController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new post' })
-  @ApiResponse({ status: 201, description: 'Post created successfully', type: PostDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Post created successfully',
+    type: PostDto,
+  })
   async create(@Body() dto: CreatePostDto): Promise<PostDto> {
     // TODO: Get author ID from auth token/session
     const authorId = 'temp-author-id';
@@ -33,7 +37,9 @@ export class PostsController {
   @Get()
   @ApiOperation({ summary: 'List all posts (paginated)' })
   @ApiResponse({ status: 200, description: 'Paginated posts list' })
-  async findAll(@Query() pagination: PaginationDto): Promise<PaginatedResponseDto<PostDto>> {
+  async findAll(
+    @Query() pagination: PaginationDto,
+  ): Promise<PaginatedResponseDto<PostDto>> {
     return this.postsService.findAll(pagination);
   }
 
@@ -56,15 +62,25 @@ export class PostsController {
 
   @Put(':id')
   @ApiOperation({ summary: 'Update a post' })
-  @ApiResponse({ status: 200, description: 'Post updated successfully', type: PostDto })
-  async update(@Param('id') id: string, @Body() dto: UpdatePostDto): Promise<PostDto> {
+  @ApiResponse({
+    status: 200,
+    description: 'Post updated successfully',
+    type: PostDto,
+  })
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdatePostDto,
+  ): Promise<PostDto> {
     return this.postsService.update(id, dto);
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete a post' })
-  @ApiResponse({ status: 204, description: 'Post deleted successfully' })
-  async remove(@Param('id') id: string): Promise<void> {
-    return this.postsService.remove(id);
+  @ApiOperation({ summary: 'Soft-delete a post (sets deletedAt / deletedBy)' })
+  @ApiResponse({ status: 204, description: 'Post soft-deleted successfully' })
+  async remove(
+    @Param('id') id: string,
+    @Query('deletedBy') deletedBy?: string,
+  ): Promise<void> {
+    return this.postsService.softDelete(id, deletedBy ?? 'unknown');
   }
 }

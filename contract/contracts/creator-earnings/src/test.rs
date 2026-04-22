@@ -1,19 +1,19 @@
 #![cfg(test)]
 
 use super::*;
+use soroban_sdk::token::{Client as TokenClient, StellarAssetClient};
 use soroban_sdk::{
     testutils::{Address as _, Events},
     xdr::SorobanAuthorizationEntry,
-    Address, Env, Symbol, TryIntoVal,
+    Address, Env, Error as SorobanError, Symbol, TryIntoVal,
 };
-use soroban_sdk::token::{Client as TokenClient, StellarAssetClient};
 
 fn setup<'a>(
     env: &'a Env,
 ) -> (
-    Address,                     // admin
-    Address,                     // creator
-    Address,                     // depositor
+    Address, // admin
+    Address, // creator
+    Address, // depositor
     CreatorEarningsClient<'a>,
     TokenClient<'a>,
     StellarAssetClient<'a>,
@@ -56,16 +56,14 @@ fn setup<'a>(
 fn deposit_increases_balance() {
     let env = Env::default();
 
-    let (_admin, creator, depositor, client, token_client, _) =
-        setup(&env);
+    let (_admin, creator, depositor, client, token_client, _) = setup(&env);
 
     client.deposit(&depositor, &creator, &500);
 
     assert_eq!(client.balance(&creator), 500);
 
     // Contract custody verification
-    let contract_balance =
-        token_client.balance(&client.address);
+    let contract_balance = token_client.balance(&client.address);
     assert_eq!(contract_balance, 500);
 }
 
@@ -73,8 +71,7 @@ fn deposit_increases_balance() {
 fn withdraw_reduces_balance_and_transfers_tokens() {
     let env = Env::default();
 
-    let (_admin, creator, depositor, client, token_client, _) =
-        setup(&env);
+    let (_admin, creator, depositor, client, token_client, _) = setup(&env);
 
     client.deposit(&depositor, &creator, &500);
 
@@ -87,23 +84,25 @@ fn withdraw_reduces_balance_and_transfers_tokens() {
 }
 
 #[test]
-#[should_panic(expected = "insufficient balance")]
 fn withdraw_insufficient_balance_reverts() {
     let env = Env::default();
 
-    let (_admin, creator, _depositor, client, _, _) =
-        setup(&env);
+    let (_admin, creator, _depositor, client, _, _) = setup(&env);
 
-    client.withdraw(&creator, &100);
+    let result = client.try_withdraw(&creator, &100);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InsufficientBalance as u32,
+        )))
+    );
 }
 
 #[test]
-#[should_panic(expected = "not authorized")]
 fn unauthorized_deposit_reverts() {
     let env = Env::default();
 
-    let (_admin, creator, _depositor, client, _, token_admin_client) =
-        setup(&env);
+    let (_admin, creator, _depositor, client, _, token_admin_client) = setup(&env);
 
     let unauthorized = Address::generate(&env);
 
@@ -111,7 +110,13 @@ fn unauthorized_deposit_reverts() {
     token_admin_client.mint(&unauthorized, &500);
 
     // Unauthorized address not added via add_authorized
-    client.deposit(&unauthorized, &creator, &100);
+    let result = client.try_deposit(&unauthorized, &creator, &100);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::NotAuthorized as u32,
+        )))
+    );
 }
 
 /// Only the creator (or admin) can withdraw. Non-creator cannot withdraw; balance (stake) unchanged.
@@ -127,7 +132,9 @@ fn test_unauthorized_withdraw_reverts() {
     let non_creator = Address::generate(&env);
 
     let token_admin = Address::generate(&env);
-    let token_id = env.register_stellar_asset_contract_v2(token_admin.clone()).address();
+    let token_id = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
     let token_client = TokenClient::new(&env, &token_id);
     let token_admin_client = StellarAssetClient::new(&env, &token_id);
 

@@ -1,5 +1,8 @@
 /**
- * Error type definitions for the MyFans application
+ * Error type definitions for the MyFans application.
+ *
+ * User-facing `message` and `description` defaults live in `getErrorDefaults` below.
+ * Copy guidelines and flow-specific toast helpers: `@/lib/error-copy`.
  */
 
 /** Base error codes for categorizing errors */
@@ -43,8 +46,18 @@ export type ErrorCode =
   | 'INTERNAL_ERROR'
   | 'SERVICE_UNAVAILABLE'
   | 'RATE_LIMITED'
+  // Form/Plan errors
   // Unknown
-  | 'UNKNOWN_ERROR';
+  | 'UNKNOWN_ERROR'
+  // Product / UX-specific (toasts & inline recovery)
+  | 'COPY_FAILED'
+  | 'SAVE_FAILED'
+  | 'PUBLISH_FAILED'
+  | 'ACCESS_DENIED'
+  | 'PROFILE_ERROR'
+  | 'WALLET_NOT_INSTALLED'
+  | 'UNSUPPORTED_WALLET'
+  | 'WALLET_CONNECTION_REJECTED';
 
 /** Error severity levels */
 export type ErrorSeverity = 'error' | 'warning' | 'info';
@@ -158,8 +171,9 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
   const errorMap: Record<ErrorCode, Omit<AppError, 'code' | 'timestamp'>> = {
     // Transaction errors
     TX_FAILED: {
-      message: 'Transaction failed',
-      description: 'Your transaction could not be completed. Please try again.',
+      message: 'Couldn’t complete on-chain action',
+      description:
+        'Open your wallet, approve any pending transaction, then try again. If nothing appears, refresh the page and reconnect your wallet.',
       severity: 'error',
       category: 'transaction',
       recoverable: true,
@@ -169,8 +183,9 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       ],
     },
     TX_BUILD_FAILED: {
-      message: 'Transaction build failed',
-      description: 'Could not build the transaction. Please try again.',
+      message: 'Couldn’t build transaction',
+      description:
+        'Something went wrong assembling the payment. Go back one step, confirm amounts, then try again. Refresh if the problem continues.',
       severity: 'error',
       category: 'transaction',
       recoverable: true,
@@ -180,8 +195,9 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       ],
     },
     TX_SUBMIT_FAILED: {
-      message: 'Transaction submit failed',
-      description: 'Could not submit the transaction to the network.',
+      message: 'Couldn’t submit to the network',
+      description:
+        'The chain didn’t accept the transaction yet. Wait a moment, check your wallet for status, then retry or submit again from checkout.',
       severity: 'error',
       category: 'transaction',
       recoverable: true,
@@ -191,8 +207,9 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       ],
     },
     TX_REJECTED: {
-      message: 'Transaction rejected',
-      description: 'The transaction was rejected by your wallet.',
+      message: 'Transaction was declined',
+      description:
+        'You cancelled or your wallet blocked the request. Try again and approve when prompted, or switch wallet if the issue persists.',
       severity: 'warning',
       category: 'transaction',
       recoverable: true,
@@ -202,8 +219,9 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       ],
     },
     TX_TIMEOUT: {
-      message: 'Transaction timed out',
-      description: 'The transaction took too long to process. Please check your wallet for status.',
+      message: 'Transaction is taking too long',
+      description:
+        'The network may be slow. Check your wallet activity for the latest status before sending another transaction.',
       severity: 'warning',
       category: 'transaction',
       recoverable: true,
@@ -213,8 +231,9 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       ],
     },
     INSUFFICIENT_BALANCE: {
-      message: 'Insufficient balance',
-      description: 'You do not have enough funds to complete this transaction.',
+      message: 'Not enough balance',
+      description:
+        'Add funds to this wallet or pick another asset with enough balance, then continue. You can review balances in Settings.',
       severity: 'error',
       category: 'transaction',
       recoverable: false,
@@ -224,8 +243,9 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       ],
     },
     INSUFFICIENT_FUNDS: {
-      message: 'Insufficient funds',
-      description: 'Your account does not have enough funds for this operation.',
+      message: 'Not enough funds',
+      description:
+        'Top up this account or choose a different asset, then try the payment again.',
       severity: 'error',
       category: 'transaction',
       recoverable: false,
@@ -243,8 +263,9 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       actions: [{ label: 'Edit amount', type: 'back', primary: true }],
     },
     NETWORK_FEE_ERROR: {
-      message: 'Network fee error',
-      description: 'Could not estimate network fees. Please try again later.',
+      message: 'Network fee issue',
+      description:
+        'Fees are high or unavailable right now. Wait a minute, then retry. You can also try again when the network is less busy.',
       severity: 'error',
       category: 'network',
       recoverable: true,
@@ -256,8 +277,9 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
 
     // Network errors
     NETWORK_ERROR: {
-      message: 'Network error',
-      description: 'Unable to connect to the network. Please check your internet connection.',
+      message: 'Connection problem',
+      description:
+        'We couldn’t reach the server. Check your internet, then refresh this page. If you’re on Wi‑Fi, try again or switch networks.',
       severity: 'error',
       category: 'network',
       recoverable: true,
@@ -268,7 +290,8 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
     },
     NETWORK_TIMEOUT: {
       message: 'Request timed out',
-      description: 'The request took too long. Please try again.',
+      description:
+        'The server was slow to respond. Tap retry or refresh the page—often the next attempt succeeds.',
       severity: 'warning',
       category: 'network',
       recoverable: true,
@@ -278,8 +301,9 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       ],
     },
     RPC_ERROR: {
-      message: 'RPC error',
-      description: 'There was an error communicating with the blockchain network.',
+      message: 'Blockchain network error',
+      description:
+        'The Stellar endpoint had a problem. Wait a few seconds and try again. If it keeps failing, try again later.',
       severity: 'error',
       category: 'network',
       recoverable: true,
@@ -325,8 +349,9 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       actions: [{ label: 'Connect wallet', type: 'custom', primary: true }],
     },
     WALLET_CONNECTION_FAILED: {
-      message: 'Connection failed',
-      description: 'Could not connect to your wallet. Please try again.',
+      message: 'Couldn’t connect wallet',
+      description:
+        'Unlock your wallet extension or app, then tap Connect again. If it still fails, refresh the page or reinstall the wallet.',
       severity: 'error',
       category: 'wallet',
       recoverable: true,
@@ -336,8 +361,9 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       ],
     },
     WALLET_SIGNATURE_FAILED: {
-      message: 'Signature failed',
-      description: 'The transaction could not be signed. Please try again.',
+      message: 'Couldn’t sign transaction',
+      description:
+        'Approve the signature in your wallet when prompted. If you cancelled, try again and confirm.',
       severity: 'error',
       category: 'wallet',
       recoverable: true,
@@ -349,8 +375,9 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
 
     // Form errors
     VALIDATION_ERROR: {
-      message: 'Validation error',
-      description: 'Please check your input and try again.',
+      message: 'Fix the form to continue',
+      description:
+        'Review the highlighted fields, correct any errors, then save or submit again.',
       severity: 'warning',
       category: 'form',
       recoverable: true,
@@ -445,8 +472,9 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       ],
     },
     INTERNAL_ERROR: {
-      message: 'Server error',
-      description: 'Something went wrong on our end. Please try again later.',
+      message: 'Something went wrong on our side',
+      description:
+        'Wait a moment and try again. If this keeps happening, refresh the page or come back later.',
       severity: 'error',
       category: 'server',
       recoverable: true,
@@ -474,11 +502,57 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       recoverable: true,
       actions: [{ label: 'Try again', type: 'retry', primary: true }],
     },
+    COPY_FAILED: {
+      message: 'Couldn’t copy to clipboard',
+      description:
+        'Select the text and copy manually (Ctrl+C or ⌘C), or allow clipboard access for this site in your browser settings.',
+      severity: 'warning',
+      category: 'unknown',
+      recoverable: true,
+      actions: [{ label: 'Dismiss', type: 'dismiss', primary: true }],
+    },
+    SAVE_FAILED: {
+      message: 'Couldn’t save changes',
+      description:
+        'Check your connection and tap Save again. If the page looks stale, refresh once, re-enter changes, then save.',
+      severity: 'error',
+      category: 'server',
+      recoverable: true,
+      actions: [
+        { label: 'Try again', type: 'retry', primary: true },
+        { label: 'Dismiss', type: 'dismiss' },
+      ],
+    },
+    PUBLISH_FAILED: {
+      message: 'Couldn’t publish plan',
+      description:
+        'Keep your wallet connected, approve any prompts, then tap Publish again. If your wallet shows an error, fix that first and retry.',
+      severity: 'error',
+      category: 'transaction',
+      recoverable: true,
+      actions: [
+        { label: 'Try again', type: 'retry', primary: true },
+        { label: 'Go back', type: 'back' },
+      ],
+    },
+    ACCESS_DENIED: {
+      message: 'Couldn’t verify access',
+      description:
+        'Subscribe to this creator to unlock content, or refresh if you already subscribed. You can also reconnect your wallet and try again.',
+      severity: 'warning',
+      category: 'auth',
+      recoverable: true,
+      actions: [
+        { label: 'View subscribe', type: 'navigate', href: '/subscribe', primary: true },
+        { label: 'Dismiss', type: 'dismiss' },
+      ],
+    },
 
     // Unknown
     UNKNOWN_ERROR: {
-      message: 'Something went wrong',
-      description: 'An unexpected error occurred. Please try again.',
+      message: 'Something unexpected happened',
+      description:
+        'Try the action again. If it keeps failing, refresh the page or reconnect your wallet.',
       severity: 'error',
       category: 'unknown',
       recoverable: true,
@@ -486,6 +560,34 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
         { label: 'Try again', type: 'retry', primary: true },
         { label: 'Dismiss', type: 'dismiss' },
       ],
+    },
+    PROFILE_ERROR: {
+      message: 'Profile update failed',
+      severity: 'error',
+      category: 'server',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    WALLET_NOT_INSTALLED: {
+      message: 'Wallet not installed',
+      severity: 'error',
+      category: 'wallet',
+      recoverable: true,
+      actions: [],
+    },
+    UNSUPPORTED_WALLET: {
+      message: 'Unsupported wallet',
+      severity: 'error',
+      category: 'wallet',
+      recoverable: false,
+      actions: [],
+    },
+    WALLET_CONNECTION_REJECTED: {
+      message: 'Wallet connection rejected',
+      severity: 'warning',
+      category: 'wallet',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
     },
   };
 
