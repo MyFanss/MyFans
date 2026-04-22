@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { BookmarkButton } from "@/components/BookmarkButton";
+import { FeatureGate } from "@/components/FeatureGate";
 import { CreatorCard } from "@/components/cards";
 import {
   CATEGORIES,
@@ -10,6 +12,7 @@ import {
   CreatorProfile,
   SortOption,
 } from "@/lib/creator-profile";
+import { FeatureFlag } from "@/lib/feature-flags";
 
 const DEBOUNCE_DELAY = 300;
 const INITIAL_LOAD = 12;
@@ -114,6 +117,7 @@ function DiscoverContentInner() {
 
   // Intersection observer for infinite scroll
   useEffect(() => {
+    const currentLoadMoreRef = loadMoreRef.current;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !isLoading) {
@@ -123,13 +127,13 @@ function DiscoverContentInner() {
       { threshold: 0.1 },
     );
 
-    if (loadMoreRef.current) {
-      observer.observe(loadMoreRef.current);
+    if (currentLoadMoreRef) {
+      observer.observe(currentLoadMoreRef);
     }
 
     return () => {
-      if (loadMoreRef.current) {
-        observer.unobserve(loadMoreRef.current);
+      if (currentLoadMoreRef) {
+        observer.unobserve(currentLoadMoreRef);
       }
     };
   }, [loadMore, hasMore, isLoading]);
@@ -271,6 +275,11 @@ function DiscoverContentInner() {
               isVerified={creator.isVerified}
               categories={creator.categories}
               location={creator.location}
+              headerAccessory={
+                <FeatureGate flag={FeatureFlag.BOOKMARKS}>
+                  <BookmarkButton creatorId={creator.id} />
+                </FeatureGate>
+              }
               actionButton={
                 <a
                   href={`/creator/${creator.username}`}

@@ -1,15 +1,21 @@
 import { Controller, Post, Get, Body, Param, Query } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CreatorsService } from './creators.service';
+import { CreatorDashboardService } from './creator-dashboard.service';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 import { PlanDto } from './dto/plan.dto';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
+import { DashboardQueryDto } from './dto/creator-dashboard.dto';
 
 @ApiTags('creators')
+@UseGuards(JwtAuthGuard)
 @Controller({ path: 'creators', version: '1' })
 export class CreatorsController {
-  constructor(private creatorsService: CreatorsService) {}
+  constructor(
+    private creatorsService: CreatorsService,
+    private dashboardService: CreatorDashboardService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Search creators by display name or username' })
@@ -65,5 +71,15 @@ export class CreatorsController {
     @Query() pagination: PaginationDto,
   ): PaginatedResponseDto<PlanDto> {
     return this.creatorsService.findCreatorPlans(address, pagination);
+  }
+
+  @Get(':address/dashboard')
+  @ApiOperation({ summary: 'Creator revenue and subscriber metrics dashboard' })
+  @ApiResponse({ status: 200, description: 'Aggregated creator dashboard metrics' })
+  getDashboard(
+    @Param('address') address: string,
+    @Query() query: DashboardQueryDto,
+  ) {
+    return this.dashboardService.getDashboard(address, query);
   }
 }

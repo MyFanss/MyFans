@@ -1,11 +1,22 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, panic_with_error, token, Address, Env, Symbol,
+};
 
 const ADMIN: &str = "ADMIN";
 const TOKEN: &str = "TOKEN";
 const PAUSED: &str = "PAUSED";
 const MIN_BALANCE: &str = "MIN_BALANCE";
+
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Error {
+    NegativeMinBalance = 1,
+    Paused = 2,
+    InsufficientBalance = 3,
+    MinBalanceViolation = 4,
+}
 
 #[contract]
 pub struct Treasury;
@@ -32,7 +43,7 @@ impl Treasury {
         let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
         admin.require_auth();
         if amount < 0 {
-            panic!("min_balance cannot be negative");
+            panic_with_error!(&env, Error::NegativeMinBalance);
         }
         env.storage().instance().set(&MIN_BALANCE, &amount);
     }
@@ -40,13 +51,13 @@ impl Treasury {
     pub fn deposit(env: Env, from: Address, amount: i128) {
         let paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
         if paused {
-            panic!("treasury is paused");
+            panic_with_error!(&env, Error::Paused);
         }
         from.require_auth();
         let token_address: Address = env.storage().instance().get(&TOKEN).unwrap();
         let contract_address = env.current_contract_address();
         token::Client::new(&env, &token_address).transfer(&from, &contract_address, &amount);
-        
+
         env.events().publish(
             (Symbol::new(&env, "deposit"),),
             (from, amount, token_address),
@@ -56,7 +67,7 @@ impl Treasury {
     pub fn withdraw(env: Env, to: Address, amount: i128) {
         let paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
         if paused {
-            panic!("treasury is paused");
+            panic_with_error!(&env, Error::Paused);
         }
         let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
         admin.require_auth();
@@ -68,10 +79,10 @@ impl Treasury {
         let balance = token_client.balance(&contract_address);
 
         if balance < amount {
-            panic!("insufficient balance");
+            panic_with_error!(&env, Error::InsufficientBalance);
         }
         if balance - amount < min_balance {
-            panic!("withdraw would leave balance below minimum");
+            panic_with_error!(&env, Error::MinBalanceViolation);
         }
 
         token_client.transfer(&contract_address, &to, &amount);

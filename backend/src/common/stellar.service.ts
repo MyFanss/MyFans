@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Horizon } from '@stellar/stellar-sdk';
+import { resolveSubscriptionContractId } from './contract-deployed-env';
 
 @Injectable()
 export class StellarService {
@@ -8,7 +9,7 @@ export class StellarService {
 
   constructor() {
     const horizonUrl = process.env.HORIZON_URL || 'https://horizon-testnet.stellar.org';
-    this.subscriptionContractId = process.env.SUBSCRIPTION_CONTRACT_ID || '';
+    this.subscriptionContractId = resolveSubscriptionContractId() ?? '';
     this.server = new Horizon.Server(horizonUrl);
   }
 

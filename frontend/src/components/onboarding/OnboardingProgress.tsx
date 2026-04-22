@@ -1,10 +1,8 @@
 'use client';
 
-export type OnboardingStep = 
-  | 'account-type'
-  | 'profile'
-  | 'social-links'
-  | 'verification';
+import type { OnboardingIntent, OnboardingStep } from '@/lib/onboarding-types';
+
+export type { OnboardingStep };
 
 export interface OnboardingStepConfig {
   id: OnboardingStep;
@@ -15,10 +13,13 @@ export interface OnboardingStepConfig {
 export interface OnboardingProgressProps {
   currentStep: OnboardingStep;
   completedSteps: OnboardingStep[];
+  skippedSteps?: OnboardingStep[];
+  /** When set to creator/both, step copy emphasizes creator setup. */
+  intent?: OnboardingIntent;
   className?: string;
 }
 
-const ONBOARDING_STEPS: OnboardingStepConfig[] = [
+const DEFAULT_STEPS: OnboardingStepConfig[] = [
   {
     id: 'account-type',
     label: 'Account Type',
@@ -41,20 +42,55 @@ const ONBOARDING_STEPS: OnboardingStepConfig[] = [
   },
 ];
 
+const CREATOR_STEPS: OnboardingStepConfig[] = [
+  {
+    id: 'account-type',
+    label: 'Creator setup',
+    description: 'Confirm you’re here to earn',
+  },
+  {
+    id: 'profile',
+    label: 'Public profile',
+    description: 'Name, handle & bio fans will see',
+  },
+  {
+    id: 'social-links',
+    label: 'Discovery',
+    description: 'Link out to your socials (optional)',
+  },
+  {
+    id: 'verification',
+    label: 'Wallet',
+    description: 'Connect Stellar for payouts',
+  },
+];
+
+function stepsForIntent(intent: OnboardingIntent): OnboardingStepConfig[] {
+  if (intent === 'creator' || intent === 'both') {
+    return CREATOR_STEPS;
+  }
+  return DEFAULT_STEPS;
+}
+
 export function OnboardingProgress({
   currentStep,
   completedSteps,
+  skippedSteps = [],
+  intent = null,
   className = '',
 }: OnboardingProgressProps) {
-  const currentStepIndex = ONBOARDING_STEPS.findIndex(
-    (step) => step.id === currentStep
-  );
+  const ONBOARDING_STEPS = stepsForIntent(intent);
 
-  const getStepStatus = (stepId: OnboardingStep): 'completed' | 'current' | 'upcoming' => {
+  const getStepStatus = (
+    stepId: OnboardingStep,
+  ): 'completed' | 'skipped' | 'current' | 'upcoming' => {
     if (completedSteps.includes(stepId)) return 'completed';
+    if (skippedSteps.includes(stepId)) return 'skipped';
     if (stepId === currentStep) return 'current';
     return 'upcoming';
   };
+
+  const doneCount = completedSteps.length + skippedSteps.length;
 
   return (
     <div className={`w-full ${className}`}>
@@ -63,6 +99,7 @@ export function OnboardingProgress({
         {ONBOARDING_STEPS.map((step, index) => {
           const status = getStepStatus(step.id);
           const isCompleted = status === 'completed';
+          const isSkipped = status === 'skipped';
           const isCurrent = status === 'current';
 
           return (
@@ -75,6 +112,8 @@ export function OnboardingProgress({
                     ${
                       isCompleted
                         ? 'border-green-500 bg-green-500 text-white'
+                        : isSkipped
+                        ? 'border-amber-400 bg-amber-100 text-amber-900 dark:border-amber-500 dark:bg-amber-900/40 dark:text-amber-100'
                         : isCurrent
                         ? 'border-purple-500 bg-purple-500 text-white'
                         : 'border-gray-300 bg-white text-gray-400 dark:border-gray-600 dark:bg-gray-800'
@@ -97,6 +136,10 @@ export function OnboardingProgress({
                         d="M5 13l4 4L19 7" 
                       />
                     </svg>
+                  ) : isSkipped ? (
+                    <span className="text-xs font-bold" title="Skipped">
+                      —
+                    </span>
                   ) : (
                     <span className="text-sm font-semibold">{index + 1}</span>
                   )}
@@ -106,7 +149,7 @@ export function OnboardingProgress({
                     className={`
                       mt-2 h-12 w-0.5 transition-colors
                       ${
-                        isCompleted
+                        isCompleted || isSkipped
                           ? 'bg-green-500'
                           : 'bg-gray-300 dark:bg-gray-600'
                       }
@@ -123,7 +166,7 @@ export function OnboardingProgress({
                     ${
                       isCurrent
                         ? 'text-purple-600 dark:text-purple-400'
-                        : isCompleted
+                        : isCompleted || isSkipped
                         ? 'text-gray-900 dark:text-gray-100'
                         : 'text-gray-500 dark:text-gray-400'
                     }
@@ -135,13 +178,13 @@ export function OnboardingProgress({
                   className={`
                     text-xs transition-colors
                     ${
-                      isCurrent || isCompleted
+                      isCurrent || isCompleted || isSkipped
                         ? 'text-gray-600 dark:text-gray-300'
                         : 'text-gray-400 dark:text-gray-500'
                     }
                   `}
                 >
-                  {step.description}
+                  {isSkipped ? 'Skipped — finish later in settings' : step.description}
                 </p>
               </div>
             </div>
@@ -155,6 +198,7 @@ export function OnboardingProgress({
           {ONBOARDING_STEPS.map((step, index) => {
             const status = getStepStatus(step.id);
             const isCompleted = status === 'completed';
+            const isSkipped = status === 'skipped';
             const isCurrent = status === 'current';
             const isLast = index === ONBOARDING_STEPS.length - 1;
 
@@ -168,6 +212,8 @@ export function OnboardingProgress({
                       ${
                         isCompleted
                           ? 'border-green-500 bg-green-500 text-white'
+                          : isSkipped
+                          ? 'border-amber-400 bg-amber-100 text-amber-900 dark:border-amber-500 dark:bg-amber-900/40 dark:text-amber-100'
                           : isCurrent
                           ? 'border-purple-500 bg-purple-500 text-white ring-4 ring-purple-100 dark:ring-purple-900/30'
                           : 'border-gray-300 bg-white text-gray-400 dark:border-gray-600 dark:bg-gray-800'
@@ -190,6 +236,8 @@ export function OnboardingProgress({
                           d="M5 13l4 4L19 7" 
                         />
                       </svg>
+                    ) : isSkipped ? (
+                      <span className="text-sm font-bold">—</span>
                     ) : (
                       <span className="text-base font-semibold">{index + 1}</span>
                     )}
@@ -201,7 +249,7 @@ export function OnboardingProgress({
                         ${
                           isCurrent
                             ? 'text-purple-600 dark:text-purple-400'
-                            : isCompleted
+                            : isCompleted || isSkipped
                             ? 'text-gray-900 dark:text-gray-100'
                             : 'text-gray-500 dark:text-gray-400'
                         }
@@ -213,13 +261,13 @@ export function OnboardingProgress({
                       className={`
                         mt-1 text-xs transition-colors
                         ${
-                          isCurrent || isCompleted
+                          isCurrent || isCompleted || isSkipped
                             ? 'text-gray-600 dark:text-gray-300'
                             : 'text-gray-400 dark:text-gray-500'
                         }
                       `}
                     >
-                      {step.description}
+                      {isSkipped ? 'Skipped' : step.description}
                     </p>
                   </div>
                 </div>
@@ -231,7 +279,7 @@ export function OnboardingProgress({
                       className={`
                         h-0.5 w-full transition-colors
                         ${
-                          isCompleted
+                          isCompleted || isSkipped
                             ? 'bg-green-500'
                             : 'bg-gray-300 dark:bg-gray-600'
                         }
@@ -250,17 +298,17 @@ export function OnboardingProgress({
         <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 mb-2">
           <span>Progress</span>
           <span className="font-semibold">
-            {completedSteps.length} of {ONBOARDING_STEPS.length} completed
+            {doneCount} of {ONBOARDING_STEPS.length} steps done
           </span>
         </div>
         <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
           <div
             className="h-full bg-gradient-to-r from-purple-500 to-green-500 transition-all duration-500 ease-out"
             style={{
-              width: `${(completedSteps.length / ONBOARDING_STEPS.length) * 100}%`,
+              width: `${(doneCount / ONBOARDING_STEPS.length) * 100}%`,
             }}
             role="progressbar"
-            aria-valuenow={completedSteps.length}
+            aria-valuenow={doneCount}
             aria-valuemin={0}
             aria-valuemax={ONBOARDING_STEPS.length}
             aria-label="Onboarding progress"
