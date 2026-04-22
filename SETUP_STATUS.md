@@ -8,7 +8,11 @@
 
 2. **Backend Dependencies** - Installed successfully (809 packages)
    - Minor warnings about deprecated packages (non-critical)
-   - 6 moderate vulnerabilities (run `npm audit fix` if needed)
+   - **Vulnerabilities** (Last updated: 2026-04-22 via `npm audit`):
+     - 🔴 **1 Critical**
+     - 🟠 **5 High**
+     - 🟡 **9 Moderate**
+     - Total: **15 vulnerabilities** (tracked in PR validation)
 
 3. **Environment Files** - Created
    - `frontend/.env.local` ✅
@@ -108,10 +112,25 @@ npm run dev
 
 ## 📚 Documentation
 
+- **README.md** - Project overview & roadmap
 - **QUICKSTART.md** - Detailed setup guide
+- **docs/adr/** - Architecture Decision Records (including backend strategy)
 - **DEPLOYMENT.md** - Production deployment
 - **INTEGRATION.md** - Technical integration details
-- **README.md** - Project overview
+
+## 🔐 Security & Audits
+
+Vulnerability checks are automated in CI via `npm audit`. Current audit status:
+- **Backend**: See above
+- **Frontend**: Check with `cd frontend && npm audit`
+- **Contract**: Checked via `cargo audit` (if Rust installed)
+
+To run audits locally:
+```bash
+./scripts/check-audits.sh
+```
+
+GitHub Actions auto-runs audit checks on every PR and weekly. **Critical vulnerabilities** will fail the build.
 
 ## 🆘 Need Help?
 
