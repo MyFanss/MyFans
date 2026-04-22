@@ -55,32 +55,72 @@ export class CreatorsService {
   }
 
   findAllPlans(pagination: PaginationDto): PaginatedResponseDto<PlanDto> {
-    const { page = 1, limit = 20 } = pagination;
-    const allPlans = Array.from(this.plans.values());
-    const total = allPlans.length;
-    const data = allPlans
-      .slice((page - 1) * limit, page * limit)
-      .map((plan) => Object.assign(new PlanDto(), plan));
-    return new PaginatedResponseDto(data, total, page, limit);
+    const { cursor, limit = 20 } = pagination;
+    let allPlans = Array.from(this.plans.values()).sort((a, b) => a.id - b.id);
+
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        allPlans = allPlans.filter((p) => p.id > cursorId);
+      }
+    }
+
+    const data = allPlans.slice(0, limit + 1);
+    const hasMore = data.length > limit;
+    if (hasMore) {
+      data.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (data.length > 0) {
+      nextCursor = String(data[data.length - 1].id);
+    }
+
+    return new PaginatedResponseDto(
+      data.map((plan) => Object.assign(new PlanDto(), plan)),
+      limit,
+      nextCursor,
+      hasMore,
+    );
   }
 
   findCreatorPlans(
     creator: string,
     pagination: PaginationDto,
   ): PaginatedResponseDto<PlanDto> {
-    const { page = 1, limit = 20 } = pagination;
-    const creatorPlans = this.getCreatorPlans(creator);
-    const total = creatorPlans.length;
-    const data = creatorPlans
-      .slice((page - 1) * limit, page * limit)
-      .map((plan) => Object.assign(new PlanDto(), plan));
-    return new PaginatedResponseDto(data, total, page, limit);
+    const { cursor, limit = 20 } = pagination;
+    let creatorPlans = this.getCreatorPlans(creator).sort((a, b) => a.id - b.id);
+
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        creatorPlans = creatorPlans.filter((p) => p.id > cursorId);
+      }
+    }
+
+    const data = creatorPlans.slice(0, limit + 1);
+    const hasMore = data.length > limit;
+    if (hasMore) {
+      data.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (data.length > 0) {
+      nextCursor = String(data[data.length - 1].id);
+    }
+
+    return new PaginatedResponseDto(
+      data.map((plan) => Object.assign(new PlanDto(), plan)),
+      limit,
+      nextCursor,
+      hasMore,
+    );
   }
 
   async searchCreators(
     searchDto: SearchCreatorsDto,
   ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
-    const { page = 1, limit = 20, q } = searchDto;
+    const { cursor, limit = 20, q } = searchDto;
     const trimmed = q?.trim();
 
     const qb = this.userRepository
@@ -88,20 +128,29 @@ export class CreatorsService {
       .leftJoin('user.creator', 'creator')
       .addSelect('creator.bio', 'creator_bio')
       .where('user.is_creator = :isCreator', { isCreator: true })
-      .orderBy('user.username', 'ASC');
+      .orderBy('user.id', 'ASC')
+      .take(limit + 1);
 
-    // Get plan count from chain
-    const countResult = await this.chainReader.readPlanCount(contractId);
-    if (!countResult.ok) {
-      console.error('Failed to read plan count from chain:', countResult.error);
-      return;
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        qb.andWhere('user.id > :cursorId', { cursorId });
+      }
     }
 
-    const total = await qb.getCount();
-    const { entities, raw } = await qb
-      .skip((page - 1) * limit)
-      .take(limit)
-      .getRawAndEntities();
+    const { entities, raw } = await qb.getRawAndEntities();
+    const hasMore = entities.length > limit;
+    if (hasMore) {
+      entities.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (entities.length > 0) {
+      nextCursor = String(entities[entities.length - 1].id);
+    }
+
+    return new PaginatedResponseDto(entities, limit, nextCursor, hasMore);
+  }
 
     // Compare with backend plans
     for (const [id, backendPlan] of this.plans) {

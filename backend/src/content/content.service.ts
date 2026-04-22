@@ -22,27 +22,65 @@ export class ContentService {
   }
 
   async findAll(pagination: PaginationDto): Promise<PaginatedResponseDto<ContentMetadata>> {
-    const { page = 1, limit = 20 } = pagination;
-    const [data, total] = await this.contentRepo.findAndCount({
-      order: { created_at: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
-    return new PaginatedResponseDto(data, total, page, limit);
+    const { cursor, limit = 20 } = pagination;
+
+    const qb = this.contentRepo
+      .createQueryBuilder('content')
+      .orderBy('content.id', 'ASC')
+      .take(limit + 1);
+
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        qb.andWhere('content.id > :cursorId', { cursorId });
+      }
+    }
+
+    const data = await qb.getMany();
+    const hasMore = data.length > limit;
+    if (hasMore) {
+      data.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (data.length > 0) {
+      nextCursor = String(data[data.length - 1].id);
+    }
+
+    return new PaginatedResponseDto(data, limit, nextCursor, hasMore);
   }
 
   async findByCreator(
     creatorId: string,
     pagination: PaginationDto,
   ): Promise<PaginatedResponseDto<ContentMetadata>> {
-    const { page = 1, limit = 20 } = pagination;
-    const [data, total] = await this.contentRepo.findAndCount({
-      where: { creator_id: creatorId },
-      order: { created_at: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
-    return new PaginatedResponseDto(data, total, page, limit);
+    const { cursor, limit = 20 } = pagination;
+
+    const qb = this.contentRepo
+      .createQueryBuilder('content')
+      .where('content.creator_id = :creatorId', { creatorId })
+      .orderBy('content.id', 'ASC')
+      .take(limit + 1);
+
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        qb.andWhere('content.id > :cursorId', { cursorId });
+      }
+    }
+
+    const data = await qb.getMany();
+    const hasMore = data.length > limit;
+    if (hasMore) {
+      data.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (data.length > 0) {
+      nextCursor = String(data[data.length - 1].id);
+    }
+
+    return new PaginatedResponseDto(data, limit, nextCursor, hasMore);
   }
 
   async findOne(id: string): Promise<ContentMetadata> {

@@ -91,17 +91,34 @@ export class UsersService {
   }
 
   async findAll(pagination: PaginationDto): Promise<PaginatedResponseDto<UserProfileDto>> {
-    const { page = 1, limit = 20 } = pagination;
-    const skip = (page - 1) * limit;
+    const { cursor, limit = 20 } = pagination;
 
-    const [users, total] = await this.usersRepository.findAndCount({
-      skip,
-      take: limit,
-      order: { createdAt: 'DESC' },
-    });
+    const qb = this.usersRepository
+      .createQueryBuilder('user')
+      .orderBy('user.id', 'ASC')
+      .take(limit + 1);
+
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        qb.andWhere('user.id > :cursorId', { cursorId });
+      }
+    }
+
+    const users = await qb.getMany();
+    const hasMore = users.length > limit;
+    if (hasMore) {
+      users.pop();
+    }
 
     const data = users.map((u) => this.toProfile(u));
-    return createPaginatedResponse([data, total], pagination);
+
+    let nextCursor: string | null = null;
+    if (users.length > 0) {
+      nextCursor = String(users[users.length - 1].id);
+    }
+
+    return new PaginatedResponseDto(data, limit, nextCursor, hasMore);
   }
 
   async findOne(id: string): Promise<UserProfileDto> {
