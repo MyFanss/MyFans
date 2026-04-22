@@ -16,7 +16,8 @@ import {
   CheckoutResult,
 } from "@/lib/checkout";
 import { useTransaction } from "@/hooks/useTransaction";
-import { useToast } from "@/components/ErrorToast";
+import { useToast } from "@/contexts/ToastContext";
+import { createAppError } from "@/types/errors";
 
 import PlanSummaryComponent from "./PlanSummary";
 import PriceBreakdownComponent from "./PriceBreakdown";
@@ -24,6 +25,8 @@ import AssetSelectorComponent from "./AssetSelector";
 import WalletBalanceComponent from "./WalletBalance";
 import TransactionPreviewComponent from "./TransactionPreview";
 import CheckoutResultDisplay from "./CheckoutResult";
+import TxFailureRecovery from "./TxFailureRecovery";
+import TransactionProgress from "./TransactionProgress"; // ✅ new import
 
 export type CheckoutStep = "select" | "preview" | "confirm" | "result";
 
@@ -166,11 +169,12 @@ export default function CheckoutFlow({
   // Handle continue to preview
   const handleContinueToPreview = useCallback(() => {
     if (!balanceValidation?.valid) {
+      const base = createAppError("INSUFFICIENT_BALANCE");
       showError("INSUFFICIENT_BALANCE", {
-        message: "Insufficient balance for this transaction",
+        message: base.message,
         description: balanceValidation?.shortfall
-          ? `You need ${balanceValidation.shortfall} more`
-          : undefined,
+          ? `${base.description} You’re short by about ${balanceValidation.shortfall} for this plan—pick another asset or add funds.`
+          : base.description,
       });
       return;
     }
@@ -188,10 +192,9 @@ export default function CheckoutFlow({
 
     await tx.execute(async () => {
       // Simulate transaction submission
-      // In real app, this would use Freighter wallet to sign and submit
       await new Promise((resolve, reject) => {
         setTimeout(() => {
-          const shouldFail = Math.random() < 0.1; // 10% chance of failure for demo
+          const shouldFail = Math.random() < 0.1; // 10% chance of failure
           if (shouldFail) {
             reject(new Error("Transaction rejected by user"));
           } else {
@@ -218,11 +221,7 @@ export default function CheckoutFlow({
       if (!checkoutId) return;
 
       try {
-        const result = await apiFailCheckout(
-          checkoutId,
-          errorMessage,
-          isRejected
-        );
+        const result = await apiFailCheckout(checkoutId, errorMessage, isRejected);
         setCheckoutResult(result);
         setCurrentStep("result");
         onComplete?.(result);
@@ -245,9 +244,7 @@ export default function CheckoutFlow({
       <div className="flex items-center justify-center p-8">
         <div className="text-center">
           <div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
-          <p className="text-slate-600 dark:text-slate-400">
-            Loading checkout...
-          </p>
+          <p className="text-slate-600 dark:text-slate-400">Loading checkout...</p>
         </div>
       </div>
     );
@@ -285,8 +282,7 @@ export default function CheckoutFlow({
               className={`flex h-8 w-8 items-center justify-center rounded-full ${
                 currentStep === step
                   ? "bg-primary-500 text-white"
-                  : ["select", "preview", "confirm"].indexOf(currentStep) >
-                    index
+                  : ["select", "preview", "confirm"].indexOf(currentStep) > index
                   ? "bg-green-500 text-white"
                   : "bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400"
               }`}
@@ -298,12 +294,7 @@ export default function CheckoutFlow({
                   stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               ) : (
                 <span className="text-sm font-medium">{index + 1}</span>
@@ -323,47 +314,41 @@ export default function CheckoutFlow({
       </div>
 
       {/* Step 1: Asset Selection */}
-      {currentStep === "select" &&
-        planSummary &&
-        priceBreakdown &&
-        walletStatus && (
-          <div className="space-y-4">
-            <PlanSummaryComponent plan={planSummary} />
-
-            <AssetSelectorComponent
+      {currentStep === "select" && planSummary && priceBreakdown && walletStatus && (
+        <div className="space-y-4">
+          <PlanSummaryComponent plan={planSummary} />
+          <AssetSelectorComponent
+            walletStatus={walletStatus}
+            selectedAsset={selectedAsset}
+            onSelectAsset={handleAssetSelect}
+          />
+          {selectedAsset && (
+            <WalletBalanceComponent
               walletStatus={walletStatus}
               selectedAsset={selectedAsset}
-              onSelectAsset={handleAssetSelect}
+              requiredAmount={priceBreakdown.total}
+              validation={balanceValidation || undefined}
             />
-
-            {selectedAsset && (
-              <WalletBalanceComponent
-                walletStatus={walletStatus}
-                selectedAsset={selectedAsset}
-                requiredAmount={priceBreakdown.total}
-                validation={balanceValidation || undefined}
-              />
-            )}
-
-            <div className="flex gap-3">
-              {onCancel && (
-                <button
-                  onClick={onCancel}
-                  className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-3 font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-              )}
+          )}
+          <div className="flex gap-3">
+            {onCancel && (
               <button
-                onClick={handleContinueToPreview}
-                disabled={!balanceValidation?.valid}
-                className="flex-1 rounded-lg bg-primary-500 px-4 py-3 font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-600 dark:hover:bg-primary-700"
+                onClick={onCancel}
+                className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-3 font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
               >
-                Continue to Preview
+                Cancel
               </button>
-            </div>
+            )}
+            <button
+              onClick={handleContinueToPreview}
+              disabled={!balanceValidation?.valid}
+              className="flex-1 rounded-lg bg-primary-500 px-4 py-3 font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-600 dark:hover:bg-primary-700"
+            >
+              Continue to Preview
+            </button>
           </div>
-        )}
+        </div>
+      )}
 
       {/* Step 2: Preview */}
       {currentStep === "preview" &&
@@ -375,7 +360,6 @@ export default function CheckoutFlow({
             <PlanSummaryComponent plan={planSummary} />
             <PriceBreakdownComponent breakdown={priceBreakdown} />
             <TransactionPreviewComponent preview={transactionPreview} />
-
             {selectedAsset && (
               <WalletBalanceComponent
                 walletStatus={walletStatus}
@@ -384,7 +368,6 @@ export default function CheckoutFlow({
                 validation={balanceValidation || undefined}
               />
             )}
-
             <div className="flex gap-3">
               <button
                 onClick={() => setCurrentStep("select")}
@@ -422,14 +405,24 @@ export default function CheckoutFlow({
 
             <TransactionPreviewComponent preview={transactionPreview} />
 
-            {/* Transaction error */}
-            {tx.error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
-                <p className="text-sm text-red-700 dark:text-red-300">
-                  {tx.error.message}
-                </p>
-              </div>
-            )}
+            {/* Transaction progress */}
+            <TransactionProgress
+              stage={
+                tx.isPending
+                  ? "pending"
+                  : tx.isFailed
+                  ? "failed"
+                  : tx.isSuccess
+                  ? "confirmed"
+                  : "signing"
+              }
+              txHash={(tx.data as { txHash?: string } | null)?.txHash}
+              error={tx.error?.message}
+              onRetry={() => {
+                tx.reset();
+                setCurrentStep("preview");
+              }}
+            />
 
             <div className="flex gap-3">
               <button
@@ -441,48 +434,12 @@ export default function CheckoutFlow({
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={tx.isPending}
+                disabled={tx.isPending || tx.isSuccess}
                 className="flex-1 rounded-lg bg-primary-500 px-4 py-3 font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-600 dark:hover:bg-primary-700"
               >
-                {tx.isPending ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg
-                      className="h-5 w-5 animate-spin"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Processing...
-                  </span>
-                ) : (
-                  "Sign & Subscribe"
-                )}
+                {tx.isPending ? "Processing..." : "Sign & Subscribe"}
               </button>
             </div>
-
-            {/* Retry button */}
-            {tx.isFailed && tx.error?.recoverable && (
-              <button
-                onClick={handleRetry}
-                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-              >
-                Try Again
-              </button>
-            )}
           </div>
         )}
     </div>

@@ -3,8 +3,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { SelectQueryBuilder } from 'typeorm';
 import * as fc from 'fast-check';
 import { CreatorsService } from './creators.service';
-import { User } from '../users/entities/user.entity';
-import { UserRole } from '../common/enums';
+import { User, UserRole } from '../users/entities/user.entity';
+import { EventBus } from '../events/event-bus';
 
 describe('CreatorsService - Property-Based Tests', () => {
   let service: CreatorsService;
@@ -27,11 +27,16 @@ describe('CreatorsService - Property-Based Tests', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CreatorsService,
+        { provide: EventBus, useValue: { publish: jest.fn() } },
         {
           provide: getRepositoryToken(User),
           useValue: {
             createQueryBuilder: jest.fn(() => mockQueryBuilder),
           },
+        },
+        {
+          provide: EventBus,
+          useValue: { publish: jest.fn() },
         },
       ],
     }).compile();

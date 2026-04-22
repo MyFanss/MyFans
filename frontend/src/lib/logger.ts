@@ -47,15 +47,16 @@ export const logger = {
       console.log(`[INFO] ${message}`, data ? redactObject(data) : '');
     }
   },
-  
-  error: (message: string, error?: unknown) => {
-    const redacted = error instanceof Error 
+
+  error: (message: string, error?: unknown, correlationId?: string) => {
+    const redacted = error instanceof Error
       ? { message: error.message, name: error.name }
       : redactObject(error);
-    console.error(`[ERROR] ${message}`, redacted);
+    const prefix = correlationId ? `[ERROR] [${correlationId}] ${message}` : `[ERROR] ${message}`;
+    console.error(prefix, redacted);
   },
-  
+
   warn: (message: string, data?: unknown) => {
     console.warn(`[WARN] ${message}`, data ? redactObject(data) : '');
-  }
+  },
 };

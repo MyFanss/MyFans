@@ -1,12 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PaginationDto, PaginatedResponseDto } from '../common/dto';
-import { PlanDto } from './dto/plan.dto';
-import { SearchCreatorsDto } from './dto/search-creators.dto';
-import { PublicCreatorDto } from './dto/public-creator.dto';
+import { PaginatedResponseDto, PaginationDto } from '../common/dto';
+import { EventBus } from '../events/event-bus';
+import { PlanCreatedEvent } from '../events/domain-events';
 import { User } from '../users/entities/user.entity';
-import { Creator } from './entities/creator.entity';
+import { PlanDto } from './dto/plan.dto';
+import { PublicCreatorDto } from './dto/public-creator.dto';
+import { SearchCreatorsDto } from './dto/search-creators.dto';
 
 export interface Plan {
   id: number;
@@ -14,16 +15,21 @@ export interface Plan {
   asset: string;
   amount: string;
   intervalDays: number;
+  syncStatus?: 'synced' | 'stale' | 'missing' | 'unknown';
+  lastSyncedAt?: Date;
 }
 
 @Injectable()
 export class CreatorsService {
+  private readonly logger = new Logger(CreatorsService.name);
   private plans: Map<number, Plan> = new Map();
   private planCounter = 0;
 
   constructor(
     @InjectRepository(User)
-    private readonly usersRepository: Repository<User>,
+    private readonly userRepository: Repository<User>,
+    @Optional()
+    private readonly eventBus?: EventBus,
   ) {}
 
   createPlan(
@@ -32,14 +38,11 @@ export class CreatorsService {
     amount: string,
     intervalDays: number,
   ): Plan {
-    const plan = {
-      id: ++this.planCounter,
-      creator,
-      asset,
-      amount,
-      intervalDays,
-    };
+    const plan = { id: ++this.planCounter, creator, asset, amount, intervalDays };
     this.plans.set(plan.id, plan);
+    this.eventBus?.publish(
+      new PlanCreatedEvent(plan.id, creator, asset, amount),
+    );
     return plan;
   }
 
@@ -51,22 +54,16 @@ export class CreatorsService {
     return Array.from(this.plans.values()).filter((p) => p.creator === creator);
   }
 
-  /**
-   * Get all plans with pagination
-   */
   findAllPlans(pagination: PaginationDto): PaginatedResponseDto<PlanDto> {
     const { page = 1, limit = 20 } = pagination;
     const allPlans = Array.from(this.plans.values());
     const total = allPlans.length;
-    const skip = (page - 1) * limit;
-    const data = allPlans.slice(skip, skip + limit);
-
+    const data = allPlans
+      .slice((page - 1) * limit, page * limit)
+      .map((plan) => Object.assign(new PlanDto(), plan));
     return new PaginatedResponseDto(data, total, page, limit);
   }
 
-  /**
-   * Get creator plans with pagination
-   */
   findCreatorPlans(
     creator: string,
     pagination: PaginationDto,
@@ -74,58 +71,61 @@ export class CreatorsService {
     const { page = 1, limit = 20 } = pagination;
     const creatorPlans = this.getCreatorPlans(creator);
     const total = creatorPlans.length;
-    const skip = (page - 1) * limit;
-    const data = creatorPlans.slice(skip, skip + limit);
-
+    const data = creatorPlans
+      .slice((page - 1) * limit, page * limit)
+      .map((plan) => Object.assign(new PlanDto(), plan));
     return new PaginatedResponseDto(data, total, page, limit);
   }
 
-  /**
-   * Search creators by display name or username with pagination
-   */
   async searchCreators(
     searchDto: SearchCreatorsDto,
   ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
-    const { q, page = 1, limit = 20 } = searchDto;
+    const { page = 1, limit = 20, q } = searchDto;
+    const trimmed = q?.trim();
 
-    // Build query with LEFT JOIN to Creator entity
-    const queryBuilder = this.usersRepository
+    const qb = this.userRepository
       .createQueryBuilder('user')
-      .leftJoin(Creator, 'creator', 'creator.userId = user.id')
-      .addSelect('creator.bio')
-      .where('user.is_creator = :isCreator', { isCreator: true });
+      .leftJoin('user.creator', 'creator')
+      .addSelect('creator.bio', 'creator_bio')
+      .where('user.is_creator = :isCreator', { isCreator: true })
+      .orderBy('user.username', 'ASC');
 
-    // Apply search filter if query provided
-    if (q && q.trim()) {
-      const searchTerm = q.trim().toLowerCase();
-      queryBuilder.andWhere(
-        '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
-        { search: `${searchTerm}%` },
-      );
+    // Get plan count from chain
+    const countResult = await this.chainReader.readPlanCount(contractId);
+    if (!countResult.ok) {
+      console.error('Failed to read plan count from chain:', countResult.error);
+      return;
     }
 
-    // Apply ordering
-    queryBuilder.orderBy('user.username', 'ASC');
-
-    // Get total count
-    const total = await queryBuilder.getCount();
-
-    // Apply pagination
-    const skip = (page - 1) * limit;
-    const results = await queryBuilder
-      .skip(skip)
+    const total = await qb.getCount();
+    const { entities, raw } = await qb
+      .skip((page - 1) * limit)
       .take(limit)
       .getRawAndEntities();
 
-    // Map to DTOs
-    const data = results.entities.map((user, index) => {
-      const rawResult = results.raw[index] as { creator_bio?: string };
-      const creator = rawResult?.creator_bio
-        ? ({ bio: rawResult.creator_bio } as Creator)
-        : undefined;
-      return new PublicCreatorDto(user, creator);
-    });
+    // Compare with backend plans
+    for (const [id, backendPlan] of this.plans) {
+      const chainPlan = chainPlans.get(id);
+      if (!chainPlan) {
+        // Plan exists in backend but not on chain - mark as stale
+        backendPlan.syncStatus = 'stale';
+        backendPlan.lastSyncedAt = new Date();
+      } else {
+        // Check if data matches
+        const matches =
+          backendPlan.creator === chainPlan.creator &&
+          backendPlan.asset === chainPlan.asset &&
+          backendPlan.amount === chainPlan.amount &&
+          backendPlan.intervalDays === chainPlan.intervalDays;
+        backendPlan.syncStatus = matches ? 'synced' : 'stale';
+        backendPlan.lastSyncedAt = new Date();
+        // Remove from chainPlans as it's matched
+        chainPlans.delete(id);
+      }
+    }
 
-    return new PaginatedResponseDto(data, total, page, limit);
+    // Remaining chainPlans are missing from backend - add them
+    for (const [id, chainPlan] of chainPlans) {
+      this.plans.set(id, { ...chainPlan, syncStatus: 'missing' });
+    }
   }
-}

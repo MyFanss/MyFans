@@ -11,7 +11,13 @@ import { plainToInstance } from 'class-transformer';
 import { User } from './user.entity';
 import { CreateUserDto } from './create-user.dto';
 import { UpdateUserDto } from './update-user.dto';
-import { UserProfileDto, PaginationDto, PaginatedUsersDto } from './user-profile.dto';
+import { 
+  UserProfileDto, 
+  PaginationDto, 
+  PaginatedResponseDto 
+} from '../common/dto';
+import { createPaginatedResponse } from '../common/utils/pagination.util';
+import { PaginatedUsersDto } from './user-profile.dto';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -84,7 +90,7 @@ export class UsersService {
     });
   }
 
-  async findAll(pagination: PaginationDto): Promise<PaginatedUsersDto> {
+  async findAll(pagination: PaginationDto): Promise<PaginatedResponseDto<UserProfileDto>> {
     const { page = 1, limit = 20 } = pagination;
     const skip = (page - 1) * limit;
 
@@ -94,13 +100,8 @@ export class UsersService {
       order: { createdAt: 'DESC' },
     });
 
-    return {
-      data: users.map((u) => this.toProfile(u)),
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+    const data = users.map((u) => this.toProfile(u));
+    return createPaginatedResponse([data, total], pagination);
   }
 
   async findOne(id: string): Promise<UserProfileDto> {
