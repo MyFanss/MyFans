@@ -7,6 +7,7 @@ import {
   type AppError,
   type ErrorCode,
 } from '@/types/errors';
+import { logger } from '@/lib/logger';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -66,23 +67,23 @@ export class ErrorBoundary extends Component<
   override componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     const { onError, errorCode } = this.props;
 
+    const correlationId = (error as Error & { digest?: string }).digest
+      ?? `eb-${Date.now().toString(36)}`;
+
     const appError = createAppError(errorCode ?? 'UNKNOWN_ERROR', {
       message: error.message,
       cause: error,
       context: {
         componentStack: errorInfo.componentStack,
+        correlationId,
       },
     });
 
     this.setState({ error: appError });
 
-    // Call custom error handler
-    onError?.(appError, errorInfo);
+    logger.error('ErrorBoundary caught an error', error, correlationId);
 
-    // Log to console in development
-    if (process.env.NODE_ENV === 'development') {
-      console.error('ErrorBoundary caught an error:', error, errorInfo);
-    }
+    onError?.(appError, errorInfo);
   }
 
   handleReset = (): void => {

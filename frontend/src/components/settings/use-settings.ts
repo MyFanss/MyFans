@@ -4,8 +4,7 @@ import type { SettingsNavItem } from "@/components/settings/settings-shell";
 type Role = "creator" | "fan";
 
 const sharedSections: SettingsNavItem[] = [
-  { id: "profile", label: "Profile" },
-  { id: "social", label: "Social Links" },
+  { id: "profile", label: "Profile & social" },
   { id: "wallet", label: "Wallet" },
   { id: "notifications", label: "Notifications" },
   { id: "appearance", label: "Appearance" },

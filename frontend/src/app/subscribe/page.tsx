@@ -2,8 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import WalletConnect from '@/components/WalletConnect';
+import { BookmarkButton } from '@/components/BookmarkButton';
 import { CreatorCard } from '@/components/cards';
-import { CardSkeletonGrid, EmptyState, SuccessAnimation } from '@/components/ui/states';
+import { CardSkeletonGrid, EmptyState } from '@/components/ui/states';
+import { useToast } from '@/contexts/ToastContext';
+import { FeatureGate } from '@/components/FeatureGate';
+import { FeatureFlag } from '@/lib/feature-flags';
 
 interface Creator {
   id: string;
@@ -43,39 +47,23 @@ const CREATOR_DATA: Creator[] = [
 
 export default function SubscribePage() {
   const [query, setQuery] = useState('');
-  const [isLoadingCreators, setIsLoadingCreators] = useState(true);
+  const [isLoadingCreators] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState('');
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoadingCreators(false), 1100);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (!successMessage) return;
-    const timer = setTimeout(() => setSuccessMessage(''), 2400);
-    return () => clearTimeout(timer);
-  }, [successMessage]);
-
-  const filteredCreators = useMemo(() => {
-    const value = query.trim().toLowerCase();
-    if (!value) return CREATOR_DATA;
-    return CREATOR_DATA.filter(
-      (creator) =>
-        creator.name.toLowerCase().includes(value) ||
-        creator.username.toLowerCase().includes(value) ||
-        creator.bio.toLowerCase().includes(value),
-    );
-  }, [query]);
-
+  const filteredCreators = useMemo(
+    () => CREATOR_DATA.filter((c) =>
+      c.name.toLowerCase().includes(query.toLowerCase()) ||
+      c.username.toLowerCase().includes(query.toLowerCase())
+    ),
+    [query]
+  );
   const handleSubscribe = async (creator: Creator) => {
     setIsSubscribing(creator.id);
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    setIsSubscribing(null);
-    setSuccessMessage(`Subscribed to ${creator.name}`);
+    try {
+      // subscription logic handled by checkout flow
+    } finally {
+      setIsSubscribing(null);
+    }
   };
-
   return (
     <div className="min-h-screen bg-slate-50 p-8">
       <header className="mb-8 flex items-center justify-between">
@@ -100,11 +88,6 @@ export default function SubscribePage() {
             value={query}
           />
 
-          {successMessage ? (
-            <div className="mt-4">
-              <SuccessAnimation message={successMessage} />
-            </div>
-          ) : null}
         </section>
 
         <section>
@@ -134,6 +117,11 @@ export default function SubscribePage() {
                   }
                   bio={creator.bio}
                   key={creator.id}
+                  headerAccessory={
+                    <FeatureGate flag={FeatureFlag.BOOKMARKS}>
+                      <BookmarkButton creatorId={creator.id} />
+                    </FeatureGate>
+                  }
                   name={creator.name}
                   subscriberCount={creator.subscriberCount}
                   subscriptionPrice={creator.subscriptionPrice}

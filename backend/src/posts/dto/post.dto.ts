@@ -37,6 +37,10 @@ export class PostDto {
   @ApiProperty()
   @Expose()
   updatedAt: Date;
+
+  @ApiPropertyOptional({ nullable: true })
+  @Expose()
+  deletedAt: Date | null;
 }
 
 export class CreatePostDto {

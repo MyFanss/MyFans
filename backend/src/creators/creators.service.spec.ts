@@ -3,6 +3,9 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { SelectQueryBuilder } from 'typeorm';
 import { CreatorsService } from './creators.service';
 import { User, UserRole } from '../users/entities/user.entity';
+import { EventBus } from '../events/event-bus';
+import { SearchCreatorsDto } from './dto/search-creators.dto';
+import { SubscriptionChainReaderService } from '../subscriptions/subscription-chain-reader.service';
 
 describe('CreatorsService', () => {
   let service: CreatorsService;
@@ -26,10 +29,19 @@ describe('CreatorsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CreatorsService,
+        { provide: EventBus, useValue: { publish: jest.fn() } },
         {
           provide: getRepositoryToken(User),
           useValue: {
             createQueryBuilder: jest.fn(() => mockQueryBuilder),
+          },
+        },
+        {
+          provide: SubscriptionChainReaderService,
+          useValue: {
+            getConfiguredContractId: jest.fn(),
+            readPlanCount: jest.fn(),
+            readPlan: jest.fn(),
           },
         },
       ],
@@ -436,6 +448,71 @@ describe('CreatorsService', () => {
         expect(result.total).toBe(5);
         expect(result.page).toBe(10);
       });
+    });
+  });
+
+  describe('reconcilePlansWithChain', () => {
+    let chainReaderMock: jest.Mocked<SubscriptionChainReaderService>;
+
+    beforeEach(() => {
+      chainReaderMock = module.get(SubscriptionChainReaderService);
+    });
+
+    it('should skip reconciliation if no contract ID configured', async () => {
+      chainReaderMock.getConfiguredContractId.mockReturnValue(undefined);
+
+      await service.reconcilePlansWithChain();
+
+      expect(chainReaderMock.readPlanCount).not.toHaveBeenCalled();
+    });
+
+    it('should mark backend plans as stale if not on chain', async () => {
+      const contractId = 'test-contract';
+      chainReaderMock.getConfiguredContractId.mockReturnValue(contractId);
+      chainReaderMock.readPlanCount.mockResolvedValue({ ok: true, count: 0 });
+      chainReaderMock.readPlan.mockResolvedValue({ ok: false, error: 'not found' });
+
+      // Add a backend plan
+      service.createPlan('creator1', 'asset1', '1000', 30);
+
+      await service.reconcilePlansWithChain();
+
+      const plan = service.getPlan(1);
+      expect(plan?.syncStatus).toBe('stale');
+    });
+
+    it('should mark backend plans as synced if matching chain', async () => {
+      const contractId = 'test-contract';
+      chainReaderMock.getConfiguredContractId.mockReturnValue(contractId);
+      chainReaderMock.readPlanCount.mockResolvedValue({ ok: true, count: 1 });
+      chainReaderMock.readPlan.mockResolvedValue({
+        ok: true,
+        plan: { creator: 'creator1', asset: 'asset1', amount: '1000', intervalDays: 30 },
+      });
+
+      // Add a matching backend plan
+      service.createPlan('creator1', 'asset1', '1000', 30);
+
+      await service.reconcilePlansWithChain();
+
+      const plan = service.getPlan(1);
+      expect(plan?.syncStatus).toBe('synced');
+    });
+
+    it('should add missing chain plans to backend', async () => {
+      const contractId = 'test-contract';
+      chainReaderMock.getConfiguredContractId.mockReturnValue(contractId);
+      chainReaderMock.readPlanCount.mockResolvedValue({ ok: true, count: 1 });
+      chainReaderMock.readPlan.mockResolvedValue({
+        ok: true,
+        plan: { creator: 'creator1', asset: 'asset1', amount: '1000', intervalDays: 30 },
+      });
+
+      await service.reconcilePlansWithChain();
+
+      const plan = service.getPlan(1);
+      expect(plan).toBeDefined();
+      expect(plan?.syncStatus).toBe('missing');
     });
   });
 });
