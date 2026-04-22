@@ -9,11 +9,9 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Creator } from '../../creators/entities/creator.entity';
+import { UserRole } from '../../common/enums';
 
-export enum UserRole {
-  USER = 'user',
-  ADMIN = 'admin',
-}
+export { UserRole };
 
 @Entity('users')
 export class User {

@@ -3,7 +3,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { SelectQueryBuilder } from 'typeorm';
 import * as fc from 'fast-check';
 import { CreatorsService } from './creators.service';
-import { User, UserRole } from '../users/entities/user.entity';
+import { User } from '../users/entities/user.entity';
+import { UserRole } from '../common/enums';
 
 describe('CreatorsService - Property-Based Tests', () => {
   let service: CreatorsService;
