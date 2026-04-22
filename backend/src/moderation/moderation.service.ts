@@ -45,20 +45,36 @@ export class ModerationService {
   }
 
   async findAll(query: QueryFlagsDto): Promise<PaginatedResponseDto<ModerationFlag>> {
-    const { page = 1, limit = 20, status, content_type, content_id } = query;
+    const { cursor, limit = 20, status, content_type, content_id } = query;
 
     const qb = this.flagRepo
       .createQueryBuilder('flag')
-      .orderBy('flag.created_at', 'DESC');
+      .orderBy('flag.id', 'ASC')
+      .take(limit + 1);
+
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        qb.andWhere('flag.id > :cursorId', { cursorId });
+      }
+    }
 
     if (status) qb.andWhere('flag.status = :status', { status });
     if (content_type) qb.andWhere('flag.content_type = :content_type', { content_type });
     if (content_id) qb.andWhere('flag.content_id = :content_id', { content_id });
 
-    const total = await qb.getCount();
-    const data = await qb.skip((page - 1) * limit).take(limit).getMany();
+    const data = await qb.getMany();
+    const hasMore = data.length > limit;
+    if (hasMore) {
+      data.pop();
+    }
 
-    return new PaginatedResponseDto(data, total, page, limit);
+    let nextCursor: string | null = null;
+    if (data.length > 0) {
+      nextCursor = String(data[data.length - 1].id);
+    }
+
+    return new PaginatedResponseDto(data, limit, nextCursor, hasMore);
   }
 
   async findOne(id: string): Promise<ModerationFlag> {
