@@ -53,6 +53,15 @@
                     └──────────────────────┘
 ```
 
+### CI Jobs
+
+| Job | What it does |
+|-----|--------------|
+| `frontend` | `npm ci` → security audit → `npm run build` |
+| `backend` | `npm ci` → security audit → `npm run build` → unit tests → e2e tests |
+| `contracts-audit` | RustSec `cargo audit` (high/critical advisories fail the build) |
+| `contracts` | Rust stable, `cargo build --target wasm32-unknown-unknown --release` → `cargo test` |
+
 ---
 
 ## Repository Structure
@@ -144,7 +153,7 @@ You will keep only these three folders and this README; other files can be remov
 
 | Layer | Technologies |
 |-------|----------------|
-| Chain & contracts | Stellar, Soroban, Rust, soroban-sdk, stellar-cli (≥ v21) |
+| Chain & contracts | Stellar, Soroban, Rust, soroban-sdk, stellar-cli |
 | Frontend | Next.js, TypeScript, Stellar SDK, wallet integration |
 | Backend | Nest.js, TypeScript, PostgreSQL (or similar), Stellar/Soroban RPC, IPFS (metadata/refs) |
 | Storage | IPFS (content refs), DB (metadata, indexer cache) |

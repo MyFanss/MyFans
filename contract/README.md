@@ -100,13 +100,13 @@ Override paths with:
 - `--out <path>`
 - `--env-out <path>`
 
-## CI verification
+## CI
 
-GitHub Actions `contracts` job now includes:
+The `contracts` job in `.github/workflows/ci.yml` runs on every push/PR:
 
-1. Build (`cargo build --target wasm32-unknown-unknown --release`)
-2. Test (`cargo test`)
-3. Deploy on Futurenet (`./scripts/deploy.sh --network futurenet ...`)
-4. Verify contract responses during deploy
+1. Build — `cargo build --workspace --target wasm32-unknown-unknown --release`
+2. Test — `cargo test --workspace`
 
-If contract deploy or verification fails, CI fails.
+A separate `contracts-audit` job runs `cargo audit` and fails on high/critical RustSec advisories (configured in `contract/audit.toml`).
+
+Deploy to testnet/mainnet is a manual step via `./scripts/deploy.sh`; it is not run in CI.
