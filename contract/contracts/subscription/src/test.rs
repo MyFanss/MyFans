@@ -609,6 +609,84 @@ fn test_cancel_event_topics_backward_compatible() {
     assert_eq!(d.1, 2);
 }
 
+// ── #745 – ledger time vs server clock skew ─────────────────────────────────
+
+/// get_expiry_unix returns (0, 0) when no subscription exists.
+#[test]
+fn test_get_expiry_unix_no_subscription() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let fan = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    let result = client.get_expiry_unix(&fan, &creator);
+    assert_eq!(result, (0u64, 0u64));
+}
+
+/// get_expiry_unix returns a unix timestamp ahead of current ledger timestamp
+/// for an active subscription.
+#[test]
+fn test_get_expiry_unix_active_subscription() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &10000);
+
+    // Set a known ledger state: seq=1000, timestamp=1_700_000_000
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1000;
+        li.timestamp = 1_700_000_000;
+    });
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    // expiry_seq = 1000 + 30 * 17280 = 519400
+    let expected_expiry_seq: u64 = 1000 + (30 * 17280);
+
+    let (expiry_seq, expiry_unix) = client.get_expiry_unix(&fan, &creator);
+    assert_eq!(expiry_seq, expected_expiry_seq);
+
+    // expiry_unix = 1_700_000_000 + (519400 - 1000) * 5
+    let expected_unix: u64 = 1_700_000_000 + (expected_expiry_seq - 1000) * 5;
+    assert_eq!(expiry_unix, expected_unix);
+}
+
+/// get_expiry_unix for an already-expired subscription returns a unix timestamp
+/// in the past (less than current ledger timestamp).
+#[test]
+fn test_get_expiry_unix_expired_subscription() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &10000);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1000;
+        li.timestamp = 1_700_000_000;
+    });
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &1);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    // Advance ledger well past expiry (1 day = 17280 ledgers)
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1000 + 17280 + 100; // 100 ledgers past expiry
+        li.timestamp = 1_700_000_000 + (17280 + 100) * 5;
+    });
+
+    let (expiry_seq, expiry_unix) = client.get_expiry_unix(&fan, &creator);
+    assert_eq!(expiry_seq, (1000 + 17280) as u64);
+
+    let current_ts: u64 = 1_700_000_000 + (17280 + 100) * 5;
+    assert!(expiry_unix < current_ts, "expired sub unix should be in the past");
+}
+
 /// `subscribed` (direct via create_subscription) — topics: (name, fan, creator)  data: 0u32
 #[test]
 fn test_create_subscription_emits_subscribed_event() {
