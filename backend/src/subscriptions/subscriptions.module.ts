@@ -17,6 +17,7 @@ import { SubscriptionChainReaderService } from './subscription-chain-reader.serv
 import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionsService } from './subscriptions.service';
 import { RPC_BALANCE_ADAPTER, MockRpcAdapter } from './rpc-adapter';
+import { LedgerClockService } from './ledger-clock.service';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { RPC_BALANCE_ADAPTER, MockRpcAdapter } from './rpc-adapter';
     SubscriptionEventPollerService,
     SubscriptionsService,
     SubscriptionChainReaderService,
+    LedgerClockService,
     SubscriptionCacheService,
     GatedContentGuard,
     FanBearerGuard,
