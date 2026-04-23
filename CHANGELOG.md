@@ -149,6 +149,7 @@
 * **analytics:** payment analytics endpoints ([6605436](https://github.com/MyFanss/MyFans/commit/6605436e02fa6a0644fb1184e3b60d70ec9d8682)), closes [#payment-analytics](https://github.com/MyFanss/MyFans/issues/payment-analytics)
 * **auth:** wallet signature challenge endpoints ([dc3f1a1](https://github.com/MyFanss/MyFans/commit/dc3f1a143001ee3eb86a4a79b33dffbbf0e8bfab)), closes [#wallet-challenge-auth](https://github.com/MyFanss/MyFans/issues/wallet-challenge-auth)
 * backend contract health checks against CI deployment outputs ([4dcb7c5](https://github.com/MyFanss/MyFans/commit/4dcb7c5ffc1f5e0c0e1bf91a2fbef36a18bc62a9))
+* **backend:** add getLatestLedgerSequence & getNetworkEvents to SorobanRpcService; guard poller behind feature flag ([36ed0db](https://github.com/MyFanss/MyFans/commit/36ed0dba4da16ff38a5a39e31e4e8e8a5e3bbde2))
 * **backend:** add health check endpoints for monitoring and load balancers ([1a7f2fb](https://github.com/MyFanss/MyFans/commit/1a7f2fb262add25430e6eaac13fccb7c100ab5a3))
 * **backend:** add logging dependencies and configuration ([9901dc4](https://github.com/MyFanss/MyFans/commit/9901dc413112ad48a9661485835c0b102c279ef5))
 * **backend:** add logging middleware with correlation id and redaction ([e1c8ef1](https://github.com/MyFanss/MyFans/commit/e1c8ef1e3d1cfc2c45b1659439bf581c8df29859))
