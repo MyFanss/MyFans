@@ -418,4 +418,65 @@ export class SorobanRpcService {
     getRetryConfig(): RetryConfig {
         return { ...this.retryConfig };
     }
+
+    /**
+     * Returns the latest ledger sequence number from the Soroban RPC node.
+     * Throws on network failure so callers can decide how to handle stale state.
+     */
+    async getLatestLedgerSequence(): Promise<number> {
+        if (!this.server) {
+            throw new Error('SorobanRpcService: server not initialized');
+        }
+        try {
+            const health = await (this.server as rpc.Server).getHealth();
+            const seq = (health as rpc.Api.GetHealthResponse & { ledger?: number }).ledger;
+            if (typeof seq !== 'number' || seq <= 0) {
+                throw new Error('SorobanRpcService: invalid ledger sequence in health response');
+            }
+            return seq;
+        } catch (err) {
+            this.logger.error(`getLatestLedgerSequence failed: ${err}`);
+            throw err;
+        }
+    }
+
+    /**
+     * Fetches contract events from the Soroban RPC node.
+     *
+     * @param startLedger  First ledger to include (inclusive).
+     * @param limit        Max events per page (default 200, max 10 000).
+     * @param paginationToken  Opaque cursor returned by a previous call.
+     */
+    async getNetworkEvents(opts: {
+        startLedger: number;
+        limit?: number;
+        paginationToken?: string;
+    }): Promise<{
+        events: rpc.Api.EventResponse[];
+        startLedger: number;
+        latestLedger: number;
+        nextToken?: string;
+    }> {
+        if (!this.server) {
+            throw new Error('SorobanRpcService: server not initialized');
+        }
+        const { startLedger, limit = 200, paginationToken } = opts;
+        try {
+            const response = await (this.server as rpc.Server).getEvents({
+                startLedger,
+                filters: [],
+                limit,
+                ...(paginationToken ? { cursor: paginationToken } : {}),
+            });
+            return {
+                events: response.events ?? [],
+                startLedger: response.latestLedger,   // Soroban SDK field
+                latestLedger: response.latestLedger,
+                nextToken: (response as any).cursor ?? undefined,
+            };
+        } catch (err) {
+            this.logger.error(`getNetworkEvents failed (startLedger=${startLedger}): ${err}`);
+            throw err;
+        }
+    }
 }
