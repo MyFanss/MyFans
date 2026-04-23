@@ -1,6 +1,8 @@
-import type { Transaction } from './earnings-api';
+import type { Transaction, ReconciliationRow } from './earnings-api';
 
 const CSV_HEADERS = ['ID', 'Date (UTC)', 'Date (Local)', 'Type', 'Description', 'Amount', 'Currency', 'Status', 'TX Hash'];
+
+const RECONCILIATION_HEADERS = ['Creator', 'Asset', 'Gross', 'Protocol Fees', 'Net', 'Payments'];
 
 function escapeCell(value: string): string {
   if (value.includes(',') || value.includes('"') || value.includes('\n')) {
@@ -32,6 +34,15 @@ export function transactionsToCSV(transactions: Transaction[], timezone?: string
   });
 
   return [CSV_HEADERS.join(','), ...rows].join('\n');
+}
+
+export function reconciliationToCSV(rows: ReconciliationRow[]): string {
+  const dataRows = rows.map((r) =>
+    [r.creator, r.asset, r.totalGross, r.totalFees, r.totalNet, String(r.paymentCount)]
+      .map(escapeCell)
+      .join(','),
+  );
+  return [RECONCILIATION_HEADERS.join(','), ...dataRows].join('\n');
 }
 
 export function downloadCSV(csv: string, filename: string): void {

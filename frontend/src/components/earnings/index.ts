@@ -5,3 +5,4 @@ export { WithdrawalUI } from './WithdrawalUI';
 export { FeeTransparencyCard } from './FeeTransparency';
 export { EarningsChart } from './EarningsChart';
 export { EarningsChartSkeleton } from './EarningsChartSkeleton';
+export { ReconciliationReport } from './ReconciliationReport';
