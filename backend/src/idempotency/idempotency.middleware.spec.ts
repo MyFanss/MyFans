@@ -182,4 +182,21 @@ describe('IdempotencyMiddleware', () => {
       '/v1/posts',
     );
   });
+
+  it('re-throws UnprocessableEntityException on method/path mismatch', async () => {
+    svc.acquire.mockRejectedValue(
+      new UnprocessableEntityException('key reused on different endpoint'),
+    );
+
+    const req = buildReq({
+      headers: { [IDEMPOTENCY_KEY_HEADER]: 'key-mismatch' },
+    });
+    const res = buildRes();
+    const next = jest.fn();
+
+    await expect(
+      middleware.use(req as Request, res as Response, next),
+    ).rejects.toThrow(UnprocessableEntityException);
+    expect(next).not.toHaveBeenCalled();
+  });
 });
