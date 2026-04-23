@@ -2,6 +2,7 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Repository } from 'typeorm';
@@ -12,8 +13,12 @@ export interface CachedResponse {
   body: unknown;
 }
 
-/** Default TTL: 24 hours (matches JWT expiry). */
-const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * Default TTL: 24 hours (matches JWT expiry).
+ * Override via IDEMPOTENCY_TTL_HOURS environment variable.
+ */
+const DEFAULT_TTL_MS =
+  parseInt(process.env.IDEMPOTENCY_TTL_HOURS ?? '24', 10) * 60 * 60 * 1000;
 
 @Injectable()
 export class IdempotencyService {
@@ -53,7 +58,14 @@ export class IdempotencyService {
           'A request with this Idempotency-Key is already being processed. Please wait and retry.',
         );
       } else {
-        // Completed — replay cached response.
+        // Completed — guard against key reuse across different endpoints.
+        if (existing.method !== method || existing.path !== path) {
+          throw new UnprocessableEntityException(
+            `Idempotency-Key "${key}" was already used for ${existing.method} ${existing.path}. ` +
+              `It cannot be reused for ${method} ${path}.`,
+          );
+        }
+        // Replay cached response.
         return {
           status: existing.response_status!,
           body: existing.response_body ? JSON.parse(existing.response_body) : null,
