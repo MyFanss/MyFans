@@ -25,10 +25,7 @@ import { CreateUserDto } from './create-user.dto';
 import { UpdateUserDto } from './update-user.dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 import { UserProfileDto } from './user-profile.dto';
-
-type PaginatedUsersDto = PaginatedResponseDto<UserProfileDto> & {
-  data: UserProfileDto[];
-};
+import { PaginatedUsersResponseDto } from './paginated-users-response.dto';
 
 @ApiTags('Users')
 @Controller({ path: 'users', version: '1' })
@@ -50,8 +47,14 @@ export class UsersController {
   // GET /users
   @Get()
   @ApiOperation({ summary: 'List all users (paginated)' })
-  @ApiResponse({ status: 200, description: 'Paginated users list', type: PaginatedResponseDto })
-  findAll(@Query() pagination: PaginationDto): Promise<PaginatedUsersDto> {
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated users list (cursor-based)',
+    type: PaginatedUsersResponseDto,
+  })
+  findAll(
+    @Query() pagination: PaginationDto,
+  ): Promise<PaginatedResponseDto<UserProfileDto>> {
     return this.usersService.findAll(pagination);
   }
 
