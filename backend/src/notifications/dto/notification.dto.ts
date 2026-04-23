@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsISO8601, IsOptional, IsString, Min } from 'class-validator';
 import { NotificationType } from '../entities/notification.entity';
 
 export class CreateNotificationDto {
@@ -16,6 +16,15 @@ export class CreateNotificationDto {
 
   @IsOptional()
   metadata?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  digest_count?: number;
+
+  @IsOptional()
+  @IsISO8601({}, { each: true })
+  digest_event_times?: string[];
 }
 
 export class MarkReadDto {
