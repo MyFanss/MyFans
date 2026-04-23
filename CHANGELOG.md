@@ -20,6 +20,7 @@
 * align UserRole imports under src/common/enums ([#575](https://github.com/MyFanss/MyFans/issues/575)) ([cd8deea](https://github.com/MyFanss/MyFans/commit/cd8deea4f81623553e82cc119fbd72ec3683b9ee))
 * **auth:** narrow address type before passing to service ([c7da64d](https://github.com/MyFanss/MyFans/commit/c7da64d9defdaa641fd8e8f79532fa081ef00ffe))
 * **backend:** align subscription flows with indexed repo ([2bed11a](https://github.com/MyFanss/MyFans/commit/2bed11a8d64d03e206015bb27fd5c0ae6392da16))
+* **backend:** DB migration CI with ephemeral Postgres ([6e696ab](https://github.com/MyFanss/MyFans/commit/6e696ab53c8b34541a2bf6fa16d12164e787d015))
 * **backend:** explicit SubscriptionRecord type to fix CI build errors ([e4907d1](https://github.com/MyFanss/MyFans/commit/e4907d1c1c7a1b120718142588d2ad7bf3f6636e))
 * **backend:** install missing nestjs dependencies and types for building (issue [#58](https://github.com/MyFanss/MyFans/issues/58)) ([f2bca0f](https://github.com/MyFanss/MyFans/commit/f2bca0fe1771edd353c8125c925b5dae2fab8798))
 * **backend:** resolve all 44 TS build errors ([8725bae](https://github.com/MyFanss/MyFans/commit/8725baeaa42ff58e7cdacdfc4146aff0edd8530e))
