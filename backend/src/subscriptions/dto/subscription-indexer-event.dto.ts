@@ -1,8 +1,8 @@
 import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 export class SubscriptionIndexerEventDto {
-  @IsIn(['renewed', 'cancelled'])
-  event: 'renewed' | 'cancelled';
+  @IsIn(['renewed', 'cancelled', 'renewal_failed'])
+  event: 'renewed' | 'cancelled' | 'renewal_failed';
 
   @IsString()
   subscriptionId: string;
@@ -26,4 +26,8 @@ export class SubscriptionIndexerEventDto {
   @IsInt()
   @Min(0)
   cancelledAt?: number;
+
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }
