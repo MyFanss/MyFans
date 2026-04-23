@@ -120,7 +120,7 @@ export class CreatorsService {
   async searchCreators(
     searchDto: SearchCreatorsDto,
   ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
-    const { cursor, limit = 20, q } = searchDto;
+    const { page = 1, limit = 20, q } = searchDto;
     const trimmed = q?.trim();
 
     const qb = this.userRepository
@@ -128,29 +128,21 @@ export class CreatorsService {
       .leftJoin('user.creator', 'creator')
       .addSelect('creator.bio', 'creator_bio')
       .where('user.is_creator = :isCreator', { isCreator: true })
-      .orderBy('user.id', 'ASC')
-      .take(limit + 1);
+      .orderBy('user.username', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit);
 
-    if (cursor) {
-      const cursorId = parseInt(cursor, 10);
-      if (!isNaN(cursorId)) {
-        qb.andWhere('user.id > :cursorId', { cursorId });
-      }
+    if (trimmed) {
+      qb.andWhere(
+        '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
+        { search: `${trimmed.toLowerCase()}%` },
+      );
     }
 
-    const { entities, raw } = await qb.getRawAndEntities();
-    const hasMore = entities.length > limit;
-    if (hasMore) {
-      entities.pop();
-    }
-
-    let nextCursor: string | null = null;
-    if (entities.length > 0) {
-      nextCursor = String(entities[entities.length - 1].id);
-    }
-
-    return new PaginatedResponseDto(entities, limit, nextCursor, hasMore);
-  }
+    const [{ entities, raw }, total] = await Promise.all([
+      qb.getRawAndEntities(),
+      qb.getCount(),
+    ]);
 
     const data = entities.map((user, index) => {
       const dto = new PublicCreatorDto(user, user.creator);
@@ -159,7 +151,7 @@ export class CreatorsService {
     });
 
     this.logger.debug(
-      `Creator search returned ${data.length} rows for query "${trimmed ?? ''}"`,
+      `Creator search returned ${data.length}/${total} rows for query "${trimmed ?? ''}"`,
     );
 
     return new PaginatedResponseDto(data, total, page, limit);
