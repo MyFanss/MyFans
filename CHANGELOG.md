@@ -19,6 +19,7 @@
 * add use client to TransactionCard and fix ImageUpload import ([0ef31c6](https://github.com/MyFanss/MyFans/commit/0ef31c624f44e69868ee19eb98765747f354ee09))
 * align UserRole imports under src/common/enums ([#575](https://github.com/MyFanss/MyFans/issues/575)) ([cd8deea](https://github.com/MyFanss/MyFans/commit/cd8deea4f81623553e82cc119fbd72ec3683b9ee))
 * **auth:** narrow address type before passing to service ([c7da64d](https://github.com/MyFanss/MyFans/commit/c7da64d9defdaa641fd8e8f79532fa081ef00ffe))
+* **backend:** [#592](https://github.com/MyFanss/MyFans/issues/592) [#593](https://github.com/MyFanss/MyFans/issues/593) [#752](https://github.com/MyFanss/MyFans/issues/752) [#742](https://github.com/MyFanss/MyFans/issues/742) correlation ID propagation, OpenAPI DTO fixes, archive CI_CHECKS_STATUS, fan spending caps ([a2dafa6](https://github.com/MyFanss/MyFans/commit/a2dafa61d6cb338aa66da195a63790a658d2f7db))
 * **backend:** align subscription flows with indexed repo ([2bed11a](https://github.com/MyFanss/MyFans/commit/2bed11a8d64d03e206015bb27fd5c0ae6392da16))
 * **backend:** DB migration CI with ephemeral Postgres ([6e696ab](https://github.com/MyFanss/MyFans/commit/6e696ab53c8b34541a2bf6fa16d12164e787d015))
 * **backend:** explicit SubscriptionRecord type to fix CI build errors ([e4907d1](https://github.com/MyFanss/MyFans/commit/e4907d1c1c7a1b120718142588d2ad7bf3f6636e))
