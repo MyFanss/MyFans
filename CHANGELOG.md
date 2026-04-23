@@ -166,6 +166,7 @@
 * **contract:** emit cancel reason code in subscription events ([a70a291](https://github.com/MyFanss/MyFans/commit/a70a291efe4edc3398737813b99c0bf0be79e0a1)), closes [#286](https://github.com/MyFanss/MyFans/issues/286)
 * **contract:** enforce content price bounds and validation ([#294](https://github.com/MyFanss/MyFans/issues/294)) ([4e7d549](https://github.com/MyFanss/MyFans/commit/4e7d5492587d490966ecbf0c62195f4ad023d842))
 * **contract:** enforce mint admin authorization (closes [#276](https://github.com/MyFanss/MyFans/issues/276)) ([2e03cf5](https://github.com/MyFanss/MyFans/commit/2e03cf53560ad7e7f4a56b0209bab874d7c53c4a))
+* **contract:** release checklist automation linked to docs/release/ ([4fd298c](https://github.com/MyFanss/MyFans/commit/4fd298c2787de892129ee6e6462f1e3530a5a289))
 * **contracts:** add create_subscription with duration ledgers entity constraints matching Issue 60 requirements tracking creator bounds smoothly ([4657605](https://github.com/MyFanss/MyFans/commit/46576050096cad6a6155027d358a13ced3202376))
 * **contracts:** implement creator-registry stub satisfying Issue 58 ([d3a9111](https://github.com/MyFanss/MyFans/commit/d3a9111123379a830ab779d9aee57831b4d6c031))
 * **cors:** implement CORS configuration and security headers middleware ([1df68d0](https://github.com/MyFanss/MyFans/commit/1df68d06fffbce7d3565b5bc2c171c82bf941849))
