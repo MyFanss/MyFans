@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '@nestjs/config';
 import { LoggingModule } from '../common/logging.module';
 import { EventsModule } from '../events/events.module';
+import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { SubscriptionLifecycleIndexerController } from './subscription-lifecycle-indexer.controller';
 import { SubscriptionLifecycleIndexerService } from './subscription-lifecycle-indexer.service';
 import { SubscriptionIndexEntity } from './entities/subscription-index.entity';
@@ -28,8 +29,9 @@ import { LedgerClockService } from './ledger-clock.service';
     ConfigModule,
     ScheduleModule,
     TypeOrmModule.forFeature([SubscriptionIndexEntity, FanSpendingCapEntity]),
-    EventsModule, 
+    EventsModule,
     LoggingModule,
+    FeatureFlagsModule,
   ],
   controllers: [SubscriptionsController, SpendingCapController, SubscriptionLifecycleIndexerController],
   providers: [
