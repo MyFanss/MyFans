@@ -1,13 +1,12 @@
 import type { NextConfig } from "next";
+import { getRemoteImagePatterns } from "./src/lib/image-remote-patterns";
 
 const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
   },
   images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: '**' },
-    ],
+    remotePatterns: getRemoteImagePatterns(),
   },
   // Ensure proper metadata handling for SSR/SSG
   experimental: {
