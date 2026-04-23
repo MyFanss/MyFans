@@ -2,10 +2,12 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import type { MetricsSnapshot } from '../common/services/http-metrics.service';
 import { HttpMetricsService } from '../common/services/http-metrics.service';
+import { RpcMetricsService, RpcMetricsSnapshot } from '../common/services/rpc-metrics.service';
 import { ModerationSlaService, ModerationSlaSnapshot } from '../moderation/moderation-sla.service';
 
 export interface FullMetricsSnapshot extends MetricsSnapshot {
   moderationSla: ModerationSlaSnapshot;
+  rpc: RpcMetricsSnapshot;
 }
 
 @ApiTags('metrics')
@@ -13,21 +15,23 @@ export interface FullMetricsSnapshot extends MetricsSnapshot {
 export class MetricsController {
   constructor(
     private readonly httpMetrics: HttpMetricsService,
+    private readonly rpcMetrics: RpcMetricsService,
     private readonly moderationSla: ModerationSlaService,
   ) {}
 
   /**
    * GET /v1/metrics
-   * Returns a point-in-time snapshot of per-endpoint SLA metrics
-   * plus moderation queue SLA stats.
+   * Returns a point-in-time snapshot of per-endpoint SLA metrics,
+   * Soroban RPC call metrics, and moderation queue SLA stats.
    */
   @Get()
-  @ApiOperation({ summary: 'Per-endpoint HTTP latency, error rate metrics, and moderation queue SLA' })
+  @ApiOperation({ summary: 'Per-endpoint HTTP latency, error rate metrics, Soroban RPC metrics, and moderation queue SLA' })
   @ApiQuery({ name: 'route', required: false, description: 'Filter HTTP endpoints by route prefix, e.g. /v1/auth' })
   @ApiResponse({ status: 200, description: 'Metrics snapshot' })
   async getMetrics(@Query('route') routeFilter?: string): Promise<FullMetricsSnapshot> {
-    const [httpSnap, slaSnap] = await Promise.all([
+    const [httpSnap, rpcSnap, slaSnap] = await Promise.all([
       Promise.resolve(this.httpMetrics.snapshot()),
+      Promise.resolve(this.rpcMetrics.snapshot()),
       this.moderationSla.snapshot(),
     ]);
 
@@ -37,6 +41,6 @@ export class MetricsController {
       );
     }
 
-    return { ...httpSnap, moderationSla: slaSnap };
+    return { ...httpSnap, moderationSla: slaSnap, rpc: rpcSnap };
   }
 }
