@@ -67,8 +67,6 @@ export class AppModule {
       .apply(CorrelationIdMiddleware, LoggingMiddleware, MetricsMiddleware)
       .forRoutes({ path: '*', method: RequestMethod.ALL });
 
-    consumer
-      .apply(IdempotencyMiddleware)
-      .forRoutes(...IDEMPOTENCY_ROUTES);
+    consumer.apply(IdempotencyMiddleware).forRoutes(...IDEMPOTENCY_ROUTES);
   }
 }

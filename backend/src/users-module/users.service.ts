@@ -12,12 +12,11 @@ import { User } from './user.entity';
 import { CreateUserDto } from './create-user.dto';
 import { UpdateUserDto } from './update-user.dto';
 import { 
-  UserProfileDto, 
   PaginationDto, 
   PaginatedResponseDto 
 } from '../common/dto';
 import { createPaginatedResponse } from '../common/utils/pagination.util';
-import { PaginatedUsersDto } from './user-profile.dto';
+import { UserProfileDto } from './user-profile.dto';
 
 const BCRYPT_ROUNDS = 12;
 

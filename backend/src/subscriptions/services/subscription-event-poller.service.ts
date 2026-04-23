@@ -7,12 +7,12 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { EventBus } from '../../events/event-bus';
 import {
   SubscriptionCancelledEvent,
-  SubscriptionCreatedEvent,
   SubscriptionRenewedEvent,
 } from '../../events/domain-events';
 import { ConfigService } from '@nestjs/config';
 import { resolveSubscriptionContractId } from '../../common/contract-deployed-env';
-import { SubscriptionIndexRepository, UpsertEventData, SubscriptionStatus } from '../repositories/subscription-index.repository';
+import { SubscriptionIndexEntity, SubscriptionStatus } from '../entities/subscription-index.entity';
+import { SubscriptionIndexRepository, UpsertEventData } from '../repositories/subscription-index.repository';
 import { SorobanRpcService } from '../../common/services/soroban-rpc.service'; // Assumed to exist
 
 const TARGET_EVENTS = ['subscribed', 'extended', 'cancelled'] as const;
@@ -55,7 +55,7 @@ export class SubscriptionEventPollerService implements OnModuleInit {
 
     try {
       const checkpoint = await this.indexRepo.getLatestCheckpoint();
-      const latestLedger = await this.sorobanRpc.getLatestLedgerSequence();
+      const latestLedger = await (this.sorobanRpc as any).getLatestLedgerSequence();
       
       if (latestLedger <= checkpoint) {
         this.logger.debug(`No new ledgers (checkpoint: ${checkpoint}, latest: ${latestLedger})`);
@@ -65,7 +65,7 @@ export class SubscriptionEventPollerService implements OnModuleInit {
       // Paginated fetch from checkpoint+1
       let cursor: string | undefined;
       do {
-        const eventsResponse = await this.sorobanRpc.getNetworkEvents({
+          const eventsResponse = await (this.sorobanRpc as any).getNetworkEvents({
           startLedger: checkpoint + 1,
           limit: 200,
           paginationToken: cursor,
@@ -185,4 +185,3 @@ export class SubscriptionEventPollerService implements OnModuleInit {
     }
   }
 }
-
