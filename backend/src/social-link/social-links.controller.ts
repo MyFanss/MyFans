@@ -6,9 +6,9 @@ import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 @ApiTags('social-links')
 @UseGuards(ThrottlerGuard)
-@Controller('social-links')
+@Controller({ path: 'social-links', version: '1' })
 export class SocialLinkController {
-  constructor(private readonly socialLinksService: SocialLinksService) {}
+  constructor(private readonly socialLinksService: SocialLinksService) { }
 
   @Post()
   @Throttle({ default: { limit: 5, ttl: 60000 } })

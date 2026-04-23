@@ -48,6 +48,17 @@ async function bootstrap() {
 
   const probeService = app.get(StartupProbeService);
 
+  // Setup Swagger/OpenAPI documentation
+  const { DocumentBuilder, SwaggerModule } = require('@nestjs/swagger');
+  const config = new DocumentBuilder()
+    .setTitle('MyFans API')
+    .setDescription('MyFans backend REST API')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api-docs', app, document);
+
   let dbResult: { ok: boolean; error?: string };
   try {
     const dataSource = app.get<DataSource>(getDataSourceToken());

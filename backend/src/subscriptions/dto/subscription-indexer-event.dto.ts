@@ -34,4 +34,8 @@ export class SubscriptionIndexerEventDto {
   @IsInt()
   @Min(0)
   cancelledAt?: number;
+
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }

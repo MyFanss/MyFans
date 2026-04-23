@@ -31,10 +31,10 @@ type PaginatedUsersDto = PaginatedResponseDto<UserProfileDto> & {
 };
 
 @ApiTags('Users')
-@Controller('users')
+@Controller({ path: 'users', version: '1' })
 @UseInterceptors(ClassSerializerInterceptor)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   // POST /users
   @Post()
