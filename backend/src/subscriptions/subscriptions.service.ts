@@ -43,7 +43,7 @@ interface Subscription {
   creator: string;
   planId: number;
   expiry: number;
-  status: 'active' | 'expired' | 'cancelled';
+  status: SubscriptionStatus;
   createdAt: Date;
   updatedAt?: Date;
 }
@@ -353,6 +353,7 @@ export class SubscriptionsService {
   ) {
     const activeSubs = await this.indexRepo.listActiveForFan(fan, page, limit);
     const nowSecs = Date.now() / 1000;
+    void nowSecs;
 
     activeSubs.sort((a, b) => a.expiryUnix - b.expiryUnix);
 

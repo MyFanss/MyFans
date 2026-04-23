@@ -1,5 +1,6 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { PaginationDto } from '../../common/dto';
+import { SubscriptionStatus } from '../subscriptions.service';
 
 export class ListSubscriptionsQueryDto extends PaginationDto {
   @IsString()
@@ -7,8 +8,10 @@ export class ListSubscriptionsQueryDto extends PaginationDto {
   fan: string;
 
   @IsOptional()
-  @IsString()
-  status?: string;
+  @IsEnum(SubscriptionStatus, {
+    message: `status must be one of: ${Object.values(SubscriptionStatus).join(', ')}`,
+  })
+  status?: SubscriptionStatus;
 
   @IsOptional()
   @IsString()
