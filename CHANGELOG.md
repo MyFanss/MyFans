@@ -220,6 +220,7 @@
 * implement reusable pagination pattern for list endpoints ([180dacd](https://github.com/MyFanss/MyFans/commit/180dacd55b3d5d5f6a6ccfa10db7ec920ea82e9c))
 * Implement settings page ([8161772](https://github.com/MyFanss/MyFans/commit/8161772a435334478ef52af2e2a4f35a77610348))
 * implement subscribe logic and subscription data storage in MyFans contract ([0f6fba8](https://github.com/MyFanss/MyFans/commit/0f6fba88c2502a23e7879c7f2000c785c55504c0))
+* implement subscription renewal failure handling ([#733](https://github.com/MyFanss/MyFans/issues/733)) ([8181e93](https://github.com/MyFanss/MyFans/commit/8181e93e2c556163c84da9b5035200a7aa187a54))
 * implement token transfer indexer module ([df7c14d](https://github.com/MyFanss/MyFans/commit/df7c14d0a3ca4c90f44639136e3a7eb8edd3323e))
 * implement user management module with create, update, and delete functionalities ([df3e8f6](https://github.com/MyFanss/MyFans/commit/df3e8f6e06dc714d0468c1b0ecca06e4bce9280a))
 * implement wallet selection modal for Stellar/Soroban ([8746a66](https://github.com/MyFanss/MyFans/commit/8746a66e2f082b792a21485a7dd929a9820b86e1))
@@ -238,6 +239,7 @@
 * **posts:** soft delete with audit trail ([a166596](https://github.com/MyFanss/MyFans/commit/a166596f215ddaa145fe1a56a22c9a62f0b47bdf)), closes [#732](https://github.com/MyFanss/MyFans/issues/732)
 * profile settings for fans and creators with API + validation ([18319f8](https://github.com/MyFanss/MyFans/commit/18319f8e0f0527d8e2afb40536339066adf36160))
 * **profile:** complete profile page implementation ([dee35ad](https://github.com/MyFanss/MyFans/commit/dee35adf26f8e1d9fb67f22a05d2735baf43bdee))
+* publish Postman / OpenAPI collection at /api-docs ([#736](https://github.com/MyFanss/MyFans/issues/736)) ([1938b45](https://github.com/MyFanss/MyFans/commit/1938b45a83986e4b17f1f1471bd57f500130c611))
 * refactor nav IA with role-aware config, collapsible sidebar, and usability tests ([3b3d28d](https://github.com/MyFanss/MyFans/commit/3b3d28de1923b3859d23d5f0b668908dc61c374a))
 * referral/invite codes ([#743](https://github.com/MyFanss/MyFans/issues/743)) ([3503413](https://github.com/MyFanss/MyFans/commit/350341394cd04ef0393a4cc11e6de349b4572f73))
 * register interfaces and mocks in lib module tree ([a8a677b](https://github.com/MyFanss/MyFans/commit/a8a677bebf1713fcc89e1551148eed58320aacf4))
@@ -263,4 +265,4 @@
 
 ### Performance Improvements
 
-* Optimize creator profile page performance ([877e30f](https://github.com/yosemite01/MyFans/commit/877e30f6f87fcef42d889e4a79afba5a7aceba82)), closes [#415](https://github.com/yosemite01/MyFans/issues/415)
+* Optimize creator profile page performance ([877e30f](https://github.com/MyFanss/MyFans/commit/877e30f6f87fcef42d889e4a79afba5a7aceba82)), closes [#415](https://github.com/MyFanss/MyFans/issues/415)
