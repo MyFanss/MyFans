@@ -34,24 +34,37 @@ export class ConversationsService {
   }
 
   async findAll(userId: string, pagination: PaginationDto): Promise<PaginatedResponseDto<ConversationDto>> {
-    const { page = 1, limit = 20 } = pagination;
-    const skip = (page - 1) * limit;
+    const { cursor, limit = 20 } = pagination;
 
-    const [conversations, total] = await this.conversationsRepository.findAndCount({
-      where: [
-        { participant1Id: userId },
-        { participant2Id: userId },
-      ],
-      skip,
-      take: limit,
-      order: { updatedAt: 'DESC' },
-    });
+    const qb = this.conversationsRepository
+      .createQueryBuilder('conversation')
+      .where('conversation.participant1Id = :userId OR conversation.participant2Id = :userId', { userId })
+      .orderBy('conversation.id', 'ASC')
+      .take(limit + 1);
+
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        qb.andWhere('conversation.id > :cursorId', { cursorId });
+      }
+    }
+
+    const conversations = await qb.getMany();
+    const hasMore = conversations.length > limit;
+    if (hasMore) {
+      conversations.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (conversations.length > 0) {
+      nextCursor = String(conversations[conversations.length - 1].id);
+    }
 
     return new PaginatedResponseDto(
       conversations.map((c) => this.toConversationDto(c)),
-      total,
-      page,
       limit,
+      nextCursor,
+      hasMore,
     );
   }
 
@@ -73,24 +86,39 @@ export class ConversationsService {
     conversationId: string,
     pagination: PaginationDto,
   ): Promise<PaginatedResponseDto<MessageDto>> {
-    // Verify user has access to conversation
     await this.findOne(userId, conversationId);
 
-    const { page = 1, limit = 20 } = pagination;
-    const skip = (page - 1) * limit;
+    const { cursor, limit = 20 } = pagination;
 
-    const [messages, total] = await this.messagesRepository.findAndCount({
-      where: { conversationId },
-      skip,
-      take: limit,
-      order: { createdAt: 'DESC' },
-    });
+    const qb = this.messagesRepository
+      .createQueryBuilder('message')
+      .where('message.conversationId = :conversationId', { conversationId })
+      .orderBy('message.id', 'ASC')
+      .take(limit + 1);
+
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        qb.andWhere('message.id > :cursorId', { cursorId });
+      }
+    }
+
+    const messages = await qb.getMany();
+    const hasMore = messages.length > limit;
+    if (hasMore) {
+      messages.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (messages.length > 0) {
+      nextCursor = String(messages[messages.length - 1].id);
+    }
 
     return new PaginatedResponseDto(
       messages.map((m) => this.toMessageDto(m)),
-      total,
-      page,
       limit,
+      nextCursor,
+      hasMore,
     );
   }
 
