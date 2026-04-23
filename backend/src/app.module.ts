@@ -4,6 +4,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth-module/auth.module';
+import { OpenAPIController } from './common/openapi-publish.controller';
 import { ThrottlerGuard } from './auth/throttler.guard';
 import { JwtAuthGuard } from './auth-module/guards/jwt-auth.guard';
 import { RolesGuard } from './auth-module/guards/roles.guard';
@@ -52,7 +53,7 @@ const IDEMPOTENCY_ROUTES = [
     IdempotencyModule,
     ReferralModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, OpenAPIController],
   providers: [
     AppService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
