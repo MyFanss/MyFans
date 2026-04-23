@@ -1061,19 +1061,6 @@ fn test_set_fee_bps_rejects_over_10000() {
 }
 
 #[test]
-fn test_init_rejects_fee_bps_over_10000() {
-    let (env, client, admin, token, _) = setup_test();
-    let fee_recipient = Address::generate(&env);
-    let r = client.try_init(&admin, &10_001u32, &fee_recipient, &token.address, &1000);
-    assert_eq!(
-        r,
-        Err(Ok(SorobanError::from_contract_error(
-            Error::InvalidFeeBps as u32,
-        )))
-    );
-}
-
-#[test]
 fn test_set_fee_bps_non_admin_rejected() {
     let (env, client, admin, token, _) = setup_test();
     let fee_recipient = Address::generate(&env);

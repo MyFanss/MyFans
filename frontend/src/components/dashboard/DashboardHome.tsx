@@ -28,9 +28,10 @@ const UploadIcon = () => (
 export interface DashboardHomeProps {
   onCreatePlan?: () => void;
   onUploadContent?: () => void;
+  fetchDashboardData?: () => Promise<DashboardData>;
 }
 
-export function DashboardHome({ onCreatePlan, onUploadContent }: DashboardHomeProps) {
+export function DashboardHome({ onCreatePlan, onUploadContent, fetchDashboardData: fetchFn = fetchDashboardData }: DashboardHomeProps) {
   const [state, setState] = useState<'loading' | 'success' | 'error'>('loading');
   const [data, setData] = useState<DashboardData | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -39,14 +40,14 @@ export function DashboardHome({ onCreatePlan, onUploadContent }: DashboardHomePr
     setState('loading');
     setErrorMessage('');
     try {
-      const result = await fetchDashboardData();
+      const result = await fetchFn();
       setData(result);
       setState('success');
     } catch (e) {
       setState('error');
       setErrorMessage(e instanceof Error ? e.message : 'Failed to load dashboard');
     }
-  }, []);
+  }, [fetchFn]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
