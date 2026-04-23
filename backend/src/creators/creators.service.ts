@@ -40,9 +40,21 @@ export class CreatorsService {
   ): Plan {
     const plan = { id: ++this.planCounter, creator, asset, amount, intervalDays };
     this.plans.set(plan.id, plan);
-    this.eventBus?.publish(
-      new PlanCreatedEvent(plan.id, creator, asset, amount),
-    );
+    if (!this.eventBus) {
+      this.logger.debug(
+        `Plan ${plan.id} created for ${creator}; EventBus not wired, skipping PlanCreatedEvent`,
+      );
+    } else {
+      try {
+        this.eventBus.publish(
+          new PlanCreatedEvent(plan.id, creator, asset, amount),
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Plan ${plan.id} created but PlanCreatedEvent publish failed: ${(err as Error).message}`,
+        );
+      }
+    }
     return plan;
   }
 
@@ -62,6 +74,8 @@ export class CreatorsService {
       const cursorId = parseInt(cursor, 10);
       if (!isNaN(cursorId)) {
         allPlans = allPlans.filter((p) => p.id > cursorId);
+      } else {
+        this.logger.debug(`Ignoring invalid plans pagination cursor "${cursor}"`);
       }
     }
 
@@ -95,6 +109,10 @@ export class CreatorsService {
       const cursorId = parseInt(cursor, 10);
       if (!isNaN(cursorId)) {
         creatorPlans = creatorPlans.filter((p) => p.id > cursorId);
+      } else {
+        this.logger.debug(
+          `Ignoring invalid creator plans pagination cursor "${cursor}" for ${creator}`,
+        );
       }
     }
 
@@ -139,10 +157,22 @@ export class CreatorsService {
       );
     }
 
-    const [{ entities, raw }, total] = await Promise.all([
-      qb.getRawAndEntities(),
-      qb.getCount(),
-    ]);
+    let entities: User[];
+    let raw: { creator_bio?: string }[];
+    let total: number;
+    try {
+      const [{ entities: e, raw: r }, t] = await Promise.all([
+        qb.getRawAndEntities(),
+        qb.getCount(),
+      ]);
+      entities = e;
+      raw = r as { creator_bio?: string }[];
+      total = t;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Creator search failed: ${message}`);
+      throw err;
+    }
 
     const data = entities.map((user, index) => {
       const dto = new PublicCreatorDto(user, user.creator);
