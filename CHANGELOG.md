@@ -70,6 +70,7 @@
 * resolve remaining CI build errors ([1bec124](https://github.com/MyFanss/MyFans/commit/1bec124f5baabf129582f8b9cf1de6514437edc5))
 * resolve TypeScript errors in pagination implementation ([0b3c630](https://github.com/MyFanss/MyFans/commit/0b3c63021a458cadfb86654a5404ad78490baa95))
 * restore Jest configuration for UUID module handling ([9180ffa](https://github.com/MyFanss/MyFans/commit/9180ffa1f5f51f08676e5391a371186d4c4386d0))
+* **security:** remediate frontend high-severity npm audit vulnerabilities ([0bb26d5](https://github.com/MyFanss/MyFans/commit/0bb26d5fab743115359958653f9ad60ef262bfa3)), closes [hi#severity](https://github.com/hi/issues/severity)
 * test errors ([6e74a59](https://github.com/MyFanss/MyFans/commit/6e74a5989c4ccfd3986f874289b575792ece790c))
 * **test:** add CreatorDashboardService mock to creators controller spec ([6bf8bed](https://github.com/MyFanss/MyFans/commit/6bf8bedcfc7161c37710b12ce85552307ec91138))
 * **tests:** resolve all failing test suite dependency errors ([8b9e431](https://github.com/MyFanss/MyFans/commit/8b9e4311e87cad40ab51073038724fe836f777fb))
