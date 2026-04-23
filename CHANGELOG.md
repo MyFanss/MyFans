@@ -61,6 +61,7 @@
 * resolve backend build errors and failing creator service tests ([1ecc59d](https://github.com/MyFanss/MyFans/commit/1ecc59de02e20597da50ffe677cf089692586751))
 * resolve build errors with proper line endings ([852e965](https://github.com/MyFanss/MyFans/commit/852e965387b7a2555c68a65c7025b937af7009ee))
 * resolve CI failures in backend, frontend, and E2E tests ([7725c83](https://github.com/MyFanss/MyFans/commit/7725c8398143480724d43d82e8760fd9c1b0631b))
+* resolve issues [#594](https://github.com/MyFanss/MyFans/issues/594) [#596](https://github.com/MyFanss/MyFans/issues/596) [#578](https://github.com/MyFanss/MyFans/issues/578) [#729](https://github.com/MyFanss/MyFans/issues/729) ([24b4e8a](https://github.com/MyFanss/MyFans/commit/24b4e8a99a44f0ded6296c590152a9e1c2b846b1))
 * resolve Jest UUID module parsing issues ([948d85b](https://github.com/MyFanss/MyFans/commit/948d85b21610804a8d2cc585d26f8dcbaea662e5))
 * resolve merge conflicts in dashboard files ([1e9db9a](https://github.com/MyFanss/MyFans/commit/1e9db9afbb7483dba4ccf171c131b813696453a6))
 * resolve more CI issues: initialize ConfigModule, exclude e2e from tsconfig, and add env vars to ci.yml ([ea42082](https://github.com/MyFanss/MyFans/commit/ea42082b1359558cd34c68c7d7d46bcf6820b5b2))
