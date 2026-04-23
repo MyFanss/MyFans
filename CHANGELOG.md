@@ -27,6 +27,7 @@
 * **backend:** resolve all 44 TS build errors ([8725bae](https://github.com/MyFanss/MyFans/commit/8725baeaa42ff58e7cdacdfc4146aff0edd8530e))
 * **backend:** resolve broken import paths in refresh-module and missing refreshTokens on User entity (issue [#62](https://github.com/MyFanss/MyFans/issues/62)) ([3b35520](https://github.com/MyFanss/MyFans/commit/3b355200caadc294228857168588a1de97390117))
 * **backend:** resolve TS1117 duplicate secretOrKey property in jwt.strategy.ts (issue [#62](https://github.com/MyFanss/MyFans/issues/62)) ([c32800b](https://github.com/MyFanss/MyFans/commit/c32800be43f9c63850a418240c1f0f4e092617b6))
+* **backend:** use SDK discriminated unions for simulate responses in chain reader ([18701be](https://github.com/MyFanss/MyFans/commit/18701be456ba59e274564df737852f98b22b7862))
 * **ci:** fallback to npm install when package-lock.json is missing ([3c78f09](https://github.com/MyFanss/MyFans/commit/3c78f09aca5309462d02c6b48f901ebae52cd1ee))
 * **ci:** resolve backend build/test regressions on subscription service ([56870db](https://github.com/MyFanss/MyFans/commit/56870db754976b918b79df68d97e8f63f161578b))
 * **ci:** switch frontend to npm ci and sync backend lockfile overrides ([1dea7eb](https://github.com/MyFanss/MyFans/commit/1dea7eb352ac57be64d2126d89aa49c49cc35648))
