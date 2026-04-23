@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  BeforeInsert,
 } from 'typeorm';
 
 export enum ModerationStatus {
@@ -69,9 +70,25 @@ export class ModerationFlag {
   @Column({ type: 'text', nullable: true })
   admin_notes: string | null;
 
+  /**
+   * Timestamp when the flag entered its current status.
+   * Used to compute queue-age SLA metrics (how long a flag has been waiting).
+   * Defaults to created_at on insert; updated whenever status changes.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  @Index()
+  queued_at: Date | null;
+
   @CreateDateColumn()
   created_at: Date;
 
   @UpdateDateColumn()
   updated_at: Date;
+
+  @BeforeInsert()
+  setQueuedAt() {
+    if (!this.queued_at) {
+      this.queued_at = new Date();
+    }
+  }
 }
