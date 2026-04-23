@@ -21,6 +21,8 @@ import { ModerationModule } from './moderation/moderation.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { IdempotencyMiddleware } from './idempotency/idempotency.middleware';
 import { ReferralModule } from './referral/referral.module';
+import { CsrfModule } from './csrf/csrf.module';
+import { CsrfMiddleware } from './common/middleware/csrf.middleware';
 
 /** Routes where idempotency protection is enforced. */
 const IDEMPOTENCY_ROUTES = [
@@ -51,6 +53,7 @@ const IDEMPOTENCY_ROUTES = [
     ModerationModule,
     IdempotencyModule,
     ReferralModule,
+    CsrfModule,
   ],
   controllers: [AppController],
   providers: [
@@ -68,5 +71,15 @@ export class AppModule {
       .forRoutes({ path: '*', method: RequestMethod.ALL });
 
     consumer.apply(IdempotencyMiddleware).forRoutes(...IDEMPOTENCY_ROUTES);
+
+    // CSRF double-submit cookie protection on all state-mutating routes
+    consumer
+      .apply(CsrfMiddleware)
+      .forRoutes(
+        { path: '*', method: RequestMethod.POST },
+        { path: '*', method: RequestMethod.PUT },
+        { path: '*', method: RequestMethod.PATCH },
+        { path: '*', method: RequestMethod.DELETE },
+      );
   }
 }

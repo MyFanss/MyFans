@@ -1,6 +1,7 @@
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { Request, Response, NextFunction } from 'express';
+import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { StartupProbeService } from './health/startup-probe.service';
 import { getDataSourceToken } from '@nestjs/typeorm';
@@ -24,6 +25,8 @@ async function bootstrap() {
   app.use((req: Request, res: Response, next: NextFunction) =>
     securityHeadersMiddleware.use(req, res, next),
   );
+
+  app.use(cookieParser());
 
   app.enableVersioning({
     type: VersioningType.URI,
