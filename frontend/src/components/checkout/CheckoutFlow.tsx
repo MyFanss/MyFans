@@ -18,6 +18,9 @@ import {
 import { useTransaction } from "@/hooks/useTransaction";
 import { useToast } from "@/contexts/ToastContext";
 import { createAppError } from "@/types/errors";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FeatureFlag } from "@/lib/feature-flags";
+import { ReferralCodeInput } from "@/components/referral/ReferralCodeInput";
 
 import PlanSummaryComponent from "./PlanSummary";
 import PriceBreakdownComponent from "./PriceBreakdown";
@@ -75,6 +78,10 @@ export default function CheckoutFlow({
   const [checkoutResult, setCheckoutResult] = useState<CheckoutResult | null>(
     null
   );
+
+  // Referral code state
+  const referralEnabled = useFeatureFlag(FeatureFlag.REFERRAL_CODES);
+  const [appliedReferralCode, setAppliedReferralCode] = useState<string | null>(null);
 
   // Transaction hook
   const tx = useTransaction({
@@ -328,6 +335,14 @@ export default function CheckoutFlow({
               selectedAsset={selectedAsset}
               requiredAmount={priceBreakdown.total}
               validation={balanceValidation || undefined}
+            />
+          )}
+          {referralEnabled && (
+            <ReferralCodeInput
+              onValidated={(code, valid) => {
+                if (valid) setAppliedReferralCode(code);
+                else setAppliedReferralCode(null);
+              }}
             />
           )}
           <div className="flex gap-3">

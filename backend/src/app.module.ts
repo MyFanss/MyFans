@@ -20,7 +20,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { ModerationModule } from './moderation/moderation.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { IdempotencyMiddleware } from './idempotency/idempotency.middleware';
-import { SocialLinksModule } from './social-link/social-links.module';
+import { ReferralModule } from './referral/referral.module';
 
 /** Routes where idempotency protection is enforced. */
 const IDEMPOTENCY_ROUTES = [
@@ -50,7 +50,7 @@ const IDEMPOTENCY_ROUTES = [
     HealthModule,
     ModerationModule,
     IdempotencyModule,
-    SocialLinksModule,
+    ReferralModule,
   ],
   controllers: [AppController],
   providers: [

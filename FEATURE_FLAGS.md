@@ -26,12 +26,13 @@ Add to `.env.local`:
 ```env
 NEXT_PUBLIC_FEATURE_NEW_SUBSCRIPTION_FLOW=false
 NEXT_PUBLIC_FEATURE_CRYPTO_PAYMENTS=false
+NEXT_PUBLIC_FLAG_REFERRAL_CODES=false
 ```
 
 Usage:
 ```tsx
-<FeatureFlag feature="newSubscriptionFlow">
-  <NewFlow />
+<FeatureFlag feature="referral_codes">
+  <ReferralCodeInput />
 </FeatureFlag>
 ```
 
