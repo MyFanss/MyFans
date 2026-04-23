@@ -395,16 +395,33 @@ export class SubscriptionsService {
     fan: string,
     status?: SubscriptionStatus,
     sort?: string,
-    page: number = 1,
+    cursor?: string,
     limit: number = 20,
   ) {
-    const [results, total] = await this.indexRepo.findAndCountForFan(
-      fan,
-      status,
-      sort,
-      page,
-      limit,
-    );
+    const where: any = { fan };
+
+    if (status) {
+      where.status = status;
+    }
+
+    const queryBuilder = this.indexRepo.repo
+      .createQueryBuilder('sub')
+      .where('sub.fan = :fan', { fan })
+      .orderBy(sort === 'created' ? 'sub.createdAt' : 'sub.expiryUnix', 'DESC')
+      .take(limit + 1);
+
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        queryBuilder.andWhere('sub.id > :cursorId', { cursorId });
+      }
+    }
+
+    const results = await queryBuilder.getMany();
+    const hasMore = results.length > limit;
+    if (hasMore) {
+      results.pop();
+    }
 
     const formatted = results.map((sub) => ({
       id: sub.id,
@@ -420,13 +437,18 @@ export class SubscriptionsService {
       createdAt: sub.createdAt.toISOString(),
     }));
 
-    return new PaginatedResponseDto(formatted, total, page, limit);
+    let nextCursor: string | null = null;
+    if (results.length > 0) {
+      nextCursor = String(results[results.length - 1].id);
+    }
+
+    return new PaginatedResponseDto(formatted, limit, nextCursor, hasMore);
   }
 
   async listCreatorSubscribers(
     creator: string,
     status?: SubscriberListStatus,
-    page: number = 1,
+    cursor?: string,
     limit: number = 20,
   ) {
     const nowSecs = Math.floor(Date.now() / 1000);
@@ -453,9 +475,25 @@ export class SubscriptionsService {
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
 
-    const total = subscribers.length;
-    const paginatedResults = subscribers.slice((page - 1) * limit, page * limit);
-    return new PaginatedResponseDto(paginatedResults, total, page, limit);
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        subscribers = subscribers.filter((sub) => sub.id > cursorId);
+      }
+    }
+
+    const paginatedResults = subscribers.slice(0, limit + 1);
+    const hasMore = paginatedResults.length > limit;
+    if (hasMore) {
+      paginatedResults.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (paginatedResults.length > 0) {
+      nextCursor = String(paginatedResults[paginatedResults.length - 1].id);
+    }
+
+    return new PaginatedResponseDto(paginatedResults, limit, nextCursor, hasMore);
   }
 
   createCheckout(

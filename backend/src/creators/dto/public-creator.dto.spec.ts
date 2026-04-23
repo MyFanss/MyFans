@@ -1,7 +1,7 @@
 import { PublicCreatorDto } from './public-creator.dto';
 import { User } from '../../users/entities/user.entity';
-import { Creator } from '../entities/creator.entity';
-import { UserRole } from '../../common/enums/user-role.enum';
+import { UserRole } from '../../common/enums';
+import { Creator } from '../../users/entities/creator.entity';
 
 describe('PublicCreatorDto', () => {
   describe('DTO construction with User and Creator entities', () => {
