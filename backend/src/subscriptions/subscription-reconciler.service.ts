@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { SubscriptionsService, Subscription } from './subscriptions.service';
+import { SubscriptionsService } from './subscriptions.service';
 import { SubscriptionIndexRepository } from './repositories/subscription-index.repository';
-import { SubscriptionStatus } from './entities/subscription-index.entity';
+import { SubscriptionIndexEntity, SubscriptionStatus } from './entities/subscription-index.entity';
 import { SorobanRpcService } from '../common/services/soroban-rpc.service';
 import { JobLoggerService } from '../common/services/job-logger.service';
 
@@ -28,14 +28,6 @@ export interface ReconcileRecord {
   applied: boolean;
   error?: string;
 }
-
-type ReconcileSub = {
-  id: string;
-  fan: string;
-  creator: string;
-  expiryUnix: number;
-  status: SubscriptionStatus;
-};
 
 /** A subscription is stale when:
  *  1. status='active' but expiry is in the past (missed expiry update), OR
@@ -189,10 +181,6 @@ export class SubscriptionReconcilerService {
     // Stub: real impl would call soroban contract read via SorobanRpcService
     void fan; void creator;
     return null;
-  }
-
-  private getAllSubscriptions(): { id: string; fan: string; creator: string; expiry: number; status: string }[] {
-    return this.subscriptions.getAllSubscriptionsInternal();
   }
 
   private logAudit(result: ReconcileResult): void {

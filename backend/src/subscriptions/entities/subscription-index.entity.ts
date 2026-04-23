@@ -32,7 +32,7 @@ export class SubscriptionIndexEntity {
   @Column('int')
   planId!: number;
 
-@Column('bigint')
+  @Column('bigint')
   expiryUnix!: number;
 
   @CreateDateColumn({ name: 'created_at' })
@@ -55,7 +55,7 @@ export class SubscriptionIndexEntity {
   txHash?: string;
 
   @Column('varchar', { nullable: true })
-  eventType!: 'subscribed' | 'extended' | 'cancelled'; // from topics
+  eventType!: 'subscribed' | 'extended' | 'cancelled' | 'manual'; // from topics
 
   @CreateDateColumn()
   indexedAt!: Date;
@@ -63,4 +63,3 @@ export class SubscriptionIndexEntity {
   @UpdateDateColumn()
   updatedAt!: Date;
 }
-

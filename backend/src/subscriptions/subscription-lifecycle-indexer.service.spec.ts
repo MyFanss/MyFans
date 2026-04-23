@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EventBus } from '../events/event-bus';
 import { InProcessEventBus } from '../events/in-process-event-bus';
 import { SubscriptionLifecycleIndexerService } from './subscription-lifecycle-indexer.service';
+import { SubscriptionIndexRepository } from './repositories/subscription-index.repository';
+import { SubscriptionStatus } from './entities/subscription-index.entity';
 
 describe('SubscriptionLifecycleIndexerService', () => {
   let service: SubscriptionLifecycleIndexerService;
@@ -14,17 +16,32 @@ describe('SubscriptionLifecycleIndexerService', () => {
       providers: [
         SubscriptionLifecycleIndexerService,
         { provide: EventBus, useValue: eventBus },
+        {
+          provide: SubscriptionIndexRepository,
+          useValue: {
+            upsertManual: jest.fn(async (data) => ({
+              id: 'sub-1',
+              fan: data.fan,
+              creator: data.creator,
+              planId: data.planId,
+              expiryUnix: data.expiryUnix,
+              status: data.status ?? SubscriptionStatus.ACTIVE,
+              createdAt: new Date(),
+            })),
+            updateStatus: jest.fn(async () => undefined),
+          },
+        },
       ],
     }).compile();
 
     service = module.get(SubscriptionLifecycleIndexerService);
   });
 
-  it('publishes renewed indexer events onto the event bus', () => {
+  it('publishes renewed indexer events onto the event bus', async () => {
     const handler = jest.fn();
     eventBus.subscribe('subscription.renewed', handler);
 
-    service.handleEvent({
+    await service.handleEvent({
       event: 'renewed',
       subscriptionId: 'sub-1',
       userId: 'user-1',
@@ -42,11 +59,11 @@ describe('SubscriptionLifecycleIndexerService', () => {
     );
   });
 
-  it('publishes cancelled indexer events onto the event bus', () => {
+  it('publishes cancelled indexer events onto the event bus', async () => {
     const handler = jest.fn();
     eventBus.subscribe('subscription.cancelled', handler);
 
-    service.handleEvent({
+    await service.handleEvent({
       event: 'cancelled',
       subscriptionId: 'sub-2',
       userId: 'user-2',

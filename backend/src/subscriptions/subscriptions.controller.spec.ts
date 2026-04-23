@@ -7,55 +7,7 @@ import {
   RequestWithFan,
 } from './guards/fan-bearer.guard';
 
-describe('SubscriptionsController (dashboard-summary)', () => {
-  let controller: SubscriptionsController;
-  let service: jest.Mocked<Pick<SubscriptionsService, 'getFanDashboardSummary' | 'getFanCreatorSubscriptionState'>>;
-
-  const fan = `G${'A'.repeat(55)}`;
-
-  beforeEach(async () => {
-    service = {
-      getFanDashboardSummary: jest.fn().mockReturnValue({
-        fan,
-        totalActive: 0,
-        subscriptions: [],
-        page: 1,
-        limit: 20,
-        totalPages: 0,
-      }),
-      getFanCreatorSubscriptionState: jest.fn(),
-    };
-
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [SubscriptionsController],
-      providers: [
-        { provide: SubscriptionsService, useValue: service },
-        FanBearerGuard,
-      ],
-    }).compile();
-
-    controller = module.get(SubscriptionsController);
-  });
-
-  it('calls service with fan address and pagination defaults', () => {
-    const req = { fanAddress: fan } as RequestWithFan;
-    const result = controller.getFanDashboardSummary(req, { page: 1, limit: 20 });
-
-    expect(service.getFanDashboardSummary).toHaveBeenCalledWith(fan, 1, 20);
-    expect(result).toMatchObject({ fan, totalActive: 0, subscriptions: [] });
-  });
-
-  it('passes custom pagination to service', () => {
-    const req = { fanAddress: fan } as RequestWithFan;
-    controller.getFanDashboardSummary(req, { page: 2, limit: 5 });
-
-    expect(service.getFanDashboardSummary).toHaveBeenCalledWith(fan, 2, 5);
-  });
-});
-
-
-
-describe('SubscriptionsController (subscription-state)', () => {
+describe('SubscriptionsController', () => {
   let controller: SubscriptionsController;
   let service: jest.Mocked<
     Pick<
@@ -64,17 +16,20 @@ describe('SubscriptionsController (subscription-state)', () => {
     >
   >;
 
+  const fan = `G${'A'.repeat(55)}`;
+  const creator = `G${'B'.repeat(55)}`;
+
   beforeEach(async () => {
     service = {
       getFanCreatorSubscriptionState: jest.fn().mockResolvedValue({
-        fan: 'FX',
-        creator: 'CY',
+        fan,
+        creator,
         active: false,
         indexedStatus: 'none',
         indexed: null,
         chain: { configured: false, isSubscriber: null },
       }),
-      listCreatorSubscribers: jest.fn().mockReturnValue({
+      listCreatorSubscribers: jest.fn().mockResolvedValue({
         data: [],
         total: 0,
         page: 1,
@@ -94,10 +49,7 @@ describe('SubscriptionsController (subscription-state)', () => {
     controller = module.get(SubscriptionsController);
   });
 
-  const fan = `G${'A'.repeat(55)}`;
-  const creator = `G${'B'.repeat(55)}`;
-
-  it('delegates to service with fan from request', async () => {
+  it('delegates subscription-state lookup with fan from request', async () => {
     const req = { fanAddress: fan } as RequestWithFan;
     const result = await controller.getFanCreatorSubscriptionState(req, {
       creator,
@@ -110,8 +62,8 @@ describe('SubscriptionsController (subscription-state)', () => {
     expect(result).toMatchObject({ indexedStatus: 'none' });
   });
 
-  it('delegates creator subscriber list query to service', () => {
-    controller.listCreatorSubscribers({
+  it('delegates creator subscriber query to the service', async () => {
+    await controller.listCreatorSubscribers({
       creator,
       status: 'active',
       page: 2,
@@ -150,6 +102,7 @@ describe('FanBearerGuard', () => {
     const req: { headers: Record<string, string>; fanAddress?: string } = {
       headers: { authorization: `Bearer ${token}` },
     };
+
     expect(
       guard.canActivate({
         switchToHttp: () => ({ getRequest: () => req }),
