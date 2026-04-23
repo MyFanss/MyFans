@@ -12,6 +12,7 @@ import {
   WithdrawalUI,
   FeeTransparencyCard,
   EarningsChart,
+  ReconciliationReport,
 } from '@/components/earnings';
 import { fetchEarningsSummary, type EarningsSummary } from '@/lib/earnings-api';
 import { FeatureFlag } from '@/lib/feature-flags';
@@ -110,6 +111,11 @@ export default function EarningsPage() {
           {/* Transaction History */}
           <section className="mb-8">
             <TransactionHistoryCard limit={20} />
+          </section>
+
+          {/* Reconciliation Report */}
+          <section className="mb-8">
+            <ReconciliationReport />
           </section>
         </ErrorBoundary>
       </main>
