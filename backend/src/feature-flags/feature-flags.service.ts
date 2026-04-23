@@ -10,10 +10,15 @@ export class FeatureFlagsService {
     return process.env.FEATURE_CRYPTO_PAYMENTS === 'true';
   }
 
+  isReferralCodesEnabled(): boolean {
+    return process.env.FEATURE_REFERRAL_CODES === 'true';
+  }
+
   getAllFlags() {
     return {
       newSubscriptionFlow: this.isNewSubscriptionFlowEnabled(),
       cryptoPayments: this.isCryptoPaymentsEnabled(),
+      referralCodes: this.isReferralCodesEnabled(),
     };
   }
 }

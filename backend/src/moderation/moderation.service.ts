@@ -79,6 +79,8 @@ export class ModerationService {
     flag.reviewed_by = adminId;
     flag.reviewed_at = new Date();
     flag.admin_notes = dto.admin_notes ?? null;
+    // Reset queue clock so SLA measures time in the new status
+    flag.queued_at = new Date();
 
     const updated = await this.flagRepo.save(flag);
 
