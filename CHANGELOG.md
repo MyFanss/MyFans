@@ -196,6 +196,7 @@
 * implement consistent admin pattern and tests ([#72](https://github.com/MyFanss/MyFans/issues/72)) ([25e4967](https://github.com/MyFanss/MyFans/commit/25e496764e857ba1a3905155711518cfc19691f2))
 * implement content pricing and creator config ([#64](https://github.com/MyFanss/MyFans/issues/64)) ([5099f26](https://github.com/MyFanss/MyFans/commit/5099f26f77cd9fcd458c5926f55745d27c781246))
 * implement creator dashboard shell with sidebar navigation ([8f1171a](https://github.com/MyFanss/MyFans/commit/8f1171a2b1a02d87e99d2631c7032f158f864425))
+* implement cursor-based pagination, verify request ID logging, validate social URLs, and add CI caching ([bbac3c5](https://github.com/MyFanss/MyFans/commit/bbac3c577a6429affa2dbb886199761c2ec5e935)), closes [#598](https://github.com/MyFanss/MyFans/issues/598) [#708](https://github.com/MyFanss/MyFans/issues/708) [#597](https://github.com/MyFanss/MyFans/issues/597) [#595](https://github.com/MyFanss/MyFans/issues/595)
 * implement E2E tests and auth flow for backend ([#47](https://github.com/MyFanss/MyFans/issues/47)) ([b6da80e](https://github.com/MyFanss/MyFans/commit/b6da80efa71682368b1aadf15934799d861060c3))
 * implement ERC20-style token flow (closes [#274](https://github.com/MyFanss/MyFans/issues/274)) ([ef2a2a2](https://github.com/MyFanss/MyFans/commit/ef2a2a20026b6741c7405eb0de3683dfe4c80f47))
 * Implement Follow and Unfollow Creators Functionality ([c7ebefb](https://github.com/MyFanss/MyFans/commit/c7ebefbf05cd509ac7824b100338e546ffb851f7))
