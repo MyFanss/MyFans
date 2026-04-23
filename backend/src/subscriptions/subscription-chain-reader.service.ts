@@ -4,6 +4,7 @@ import {
   Address,
   Contract,
   Networks,
+  nativeToScVal,
   rpc,
   scValToNative,
   TransactionBuilder,
@@ -225,7 +226,7 @@ export class SubscriptionChainReaderService {
 
     try {
       const contract = new Contract(contractId);
-      const op = contract.call('get_plan', new Api.UInt32Val(planId).toScVal());
+      const op = contract.call('get_plan', nativeToScVal(planId));
 
       const source = new Account(
         'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
@@ -242,7 +243,7 @@ export class SubscriptionChainReaderService {
 
       const sim = await server.simulateTransaction(tx);
 
-      if (Api.isSimulationError(sim)) {
+      if (rpc.Api.isSimulationError(sim)) {
         return { ok: false, error: sim.error };
       }
 
@@ -302,7 +303,7 @@ export class SubscriptionChainReaderService {
 
       const sim = await server.simulateTransaction(tx);
 
-      if (Api.isSimulationError(sim)) {
+      if (rpc.Api.isSimulationError(sim)) {
         return { ok: false, error: sim.error };
       }
 

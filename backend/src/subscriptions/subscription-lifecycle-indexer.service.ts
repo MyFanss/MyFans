@@ -5,7 +5,8 @@ import {
   SubscriptionRenewedEvent,
 } from '../events/domain-events';
 import { SubscriptionIndexerEventDto } from './dto/subscription-indexer-event.dto';
-import { SubscriptionIndexRepository, SubscriptionStatus } from './repositories/subscription-index.repository';
+import { SubscriptionStatus } from './entities/subscription-index.entity';
+import { SubscriptionIndexRepository } from './repositories/subscription-index.repository';
 
 @Injectable()
 export class SubscriptionLifecycleIndexerService {
