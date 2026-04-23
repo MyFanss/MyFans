@@ -10,10 +10,12 @@ import {
   SubscriptionRenewedEvent,
 } from '../../events/domain-events';
 import { ConfigService } from '@nestjs/config';
+import { v4 as uuidv4 } from 'uuid';
 import { resolveSubscriptionContractId } from '../../common/contract-deployed-env';
 import { SubscriptionIndexEntity, SubscriptionStatus } from '../entities/subscription-index.entity';
 import { SubscriptionIndexRepository, UpsertEventData } from '../repositories/subscription-index.repository';
 import { SorobanRpcService } from '../../common/services/soroban-rpc.service'; // Assumed to exist
+import { RequestContextService } from '../../common/services/request-context.service';
 
 const TARGET_EVENTS = ['subscribed', 'extended', 'cancelled'] as const;
 type TargetEventType = typeof TARGET_EVENTS[number];
@@ -28,6 +30,7 @@ export class SubscriptionEventPollerService implements OnModuleInit {
     private readonly indexRepo: SubscriptionIndexRepository,
     private readonly eventBus: EventBus,
     private readonly sorobanRpc: SorobanRpcService,
+    private readonly requestContext: RequestContextService,
   ) {}
 
   async onModuleInit() {
@@ -49,6 +52,22 @@ export class SubscriptionEventPollerService implements OnModuleInit {
    */
   @Cron(CronExpression.EVERY_30_SECONDS)
   async poll(): Promise<void> {
+    const correlationId = uuidv4();
+    await new Promise<void>((resolve, reject) =>
+      this.requestContext.run(
+        {
+          correlationId,
+          requestId: uuidv4(),
+          method: 'CRON',
+          url: 'subscription-event-poller',
+          ip: 'internal',
+        },
+        () => this._poll().then(resolve, reject),
+      ),
+    );
+  }
+
+  private async _poll(): Promise<void> {
     const startTime = Date.now();
     let processed = 0;
     let errors = 0;
@@ -84,7 +103,8 @@ export class SubscriptionEventPollerService implements OnModuleInit {
       } while (cursor);
 
       const duration = Date.now() - startTime;
-      this.logger.log(`Poll complete: processed=${processed}, errors=${errors}, checkpoint=${checkpoint} -> ${latestLedger}, duration=${duration}ms`);
+      const correlationId = this.requestContext.getCorrelationId();
+      this.logger.log(`Poll complete: processed=${processed}, errors=${errors}, checkpoint=${checkpoint} -> ${latestLedger}, duration=${duration}ms, correlationId=${correlationId}`);
     } catch (error) {
       errors++;
       this.logger.error(`Poll failed: ${error}`);
