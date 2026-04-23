@@ -14,8 +14,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { resolveSubscriptionContractId } from '../../common/contract-deployed-env';
 import { SubscriptionIndexEntity, SubscriptionStatus } from '../entities/subscription-index.entity';
 import { SubscriptionIndexRepository, UpsertEventData } from '../repositories/subscription-index.repository';
-import { SorobanRpcService } from '../../common/services/soroban-rpc.service'; // Assumed to exist
+import { SorobanRpcService } from '../../common/services/soroban-rpc.service';
 import { RequestContextService } from '../../common/services/request-context.service';
+import { FeatureFlagsService } from '../../feature-flags/feature-flags.service';
 
 const TARGET_EVENTS = ['subscribed', 'extended', 'cancelled'] as const;
 type TargetEventType = typeof TARGET_EVENTS[number];
@@ -31,6 +32,7 @@ export class SubscriptionEventPollerService implements OnModuleInit {
     private readonly eventBus: EventBus,
     private readonly sorobanRpc: SorobanRpcService,
     private readonly requestContext: RequestContextService,
+    private readonly featureFlags: FeatureFlagsService,
   ) {}
 
   async onModuleInit() {
@@ -68,14 +70,25 @@ export class SubscriptionEventPollerService implements OnModuleInit {
   }
 
   private async _poll(): Promise<void> {
+    if (!this.featureFlags.isSorobanPollerEnabled()) {
+      this.logger.debug('Soroban poller disabled via feature flag; skipping.');
+      return;
+    }
+
     const startTime = Date.now();
     let processed = 0;
     let errors = 0;
 
     try {
       const checkpoint = await this.indexRepo.getLatestCheckpoint();
-      const latestLedger = await (this.sorobanRpc as any).getLatestLedgerSequence();
-      
+      let latestLedger: number;
+      try {
+        latestLedger = await this.sorobanRpc.getLatestLedgerSequence();
+      } catch (rpcErr) {
+        this.logger.warn(`getLatestLedgerSequence failed – skipping poll cycle: ${rpcErr}`);
+        return;
+      }
+
       if (latestLedger <= checkpoint) {
         this.logger.debug(`No new ledgers (checkpoint: ${checkpoint}, latest: ${latestLedger})`);
         return;
@@ -84,11 +97,17 @@ export class SubscriptionEventPollerService implements OnModuleInit {
       // Paginated fetch from checkpoint+1
       let cursor: string | undefined;
       do {
-          const eventsResponse = await (this.sorobanRpc as any).getNetworkEvents({
-          startLedger: checkpoint + 1,
-          limit: 200,
-          paginationToken: cursor,
-        });
+        let eventsResponse: Awaited<ReturnType<SorobanRpcService['getNetworkEvents']>>;
+        try {
+          eventsResponse = await this.sorobanRpc.getNetworkEvents({
+            startLedger: checkpoint + 1,
+            limit: 200,
+            paginationToken: cursor,
+          });
+        } catch (rpcErr) {
+          this.logger.warn(`getNetworkEvents failed – aborting page fetch: ${rpcErr}`);
+          break;
+        }
 
         const events = eventsResponse.events ?? [];
         this.logger.debug(`Fetched ${events.length} events from ${eventsResponse.startLedger}-${eventsResponse.latestLedger}`);
