@@ -44,6 +44,7 @@ coverage/
 
 # Local-only backlog (optional: paste into GitHub Issues); not part of the tracked tree
 ENGAGEMENT_ISSUES_125.md
+vrickish_issues.md
 
 # Test snapshots & reports
 **/__snapshots__/

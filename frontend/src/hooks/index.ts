@@ -42,3 +42,6 @@ export {
   ledgerNowUnix,
   type ClockSkew,
 } from './useClockSkew';
+
+// Creator route prefetch hook
+export { usePrefetchCreatorRoute } from './usePrefetchCreatorRoute';
