@@ -11,9 +11,14 @@ import {
 } from '@stellar/stellar-sdk';
 import { CircuitOpenError, withRetry } from '../common/utils/rpc-retry';
 import { resolveSubscriptionContractId } from '../common/contract-deployed-env';
+import { LedgerClockService } from './ledger-clock.service';
 
 export type ChainReadResult =
   | { ok: true; isSubscriber: boolean }
+  | { ok: false; error: string };
+
+export type ChainExpiryReadResult =
+  | { ok: true; expiryUnix: number; expiryLedgerSeq: number; skewMs: number }
   | { ok: false; error: string };
 
 export type ChainPlanReadResult =
@@ -31,6 +36,8 @@ export type ChainPlanCountReadResult =
 @Injectable()
 export class SubscriptionChainReaderService {
   private readonly logger = new Logger(SubscriptionChainReaderService.name);
+
+  constructor(private readonly ledgerClock: LedgerClockService) {}
 
   getConfiguredContractId(): string | undefined {
     return (
@@ -119,6 +126,88 @@ export class SubscriptionChainReaderService {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Chain read is_subscriber failed: ${message}`);
+      return { ok: false, error: message };
+    }
+  }
+
+  /**
+   * Reads the subscription expiry ledger sequence from the contract storage,
+   * then converts it to a Unix timestamp using the current ledger close time
+   * as an anchor (skew-corrected).
+   */
+  async readExpiryUnix(
+    contractId: string,
+    fan: string,
+    creator: string,
+  ): Promise<ChainExpiryReadResult> {
+    const rpcUrl = this.getRpcUrl();
+    const server = new rpc.Server(rpcUrl, {
+      allowHttp: rpcUrl.startsWith('http://'),
+    });
+
+    try {
+      const contract = new Contract(contractId);
+      const fanAddr = Address.fromString(fan);
+      const creatorAddr = Address.fromString(creator);
+      const op = contract.call(
+        'get_expiry_unix',
+        fanAddr.toScVal(),
+        creatorAddr.toScVal(),
+      );
+
+      const source = new Account(
+        'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
+        '1',
+      );
+
+      const tx = new TransactionBuilder(source, {
+        fee: '100000',
+        networkPassphrase: this.getNetworkPassphrase(),
+      })
+        .addOperation(op)
+        .setTimeout(30)
+        .build();
+
+      const sim = await withRetry(
+        'soroban-rpc',
+        () => server.simulateTransaction(tx),
+        {
+          isPermanentError: (e) =>
+            e instanceof CircuitOpenError ||
+            (e instanceof Error && /invalid contract|not found/i.test(e.message)),
+        },
+      );
+
+      if (rpc.Api.isSimulationError(sim)) {
+        return { ok: false, error: sim.error };
+      }
+
+      if (!sim.result?.retval) {
+        return { ok: false, error: 'No retval from get_expiry_unix simulation' };
+      }
+
+      // Contract returns (expiry_ledger_seq: u64, expiry_unix: u64)
+      const native = scValToNative(sim.result.retval) as [bigint, bigint];
+      const expiryLedgerSeq = Number(native[0]);
+      const contractExpiryUnix = Number(native[1]);
+
+      // Fetch ledger clock snapshot to compute skew
+      const snapshot = await this.ledgerClock.fetchSnapshot();
+      // Cross-check: re-derive expiry from ledger seq using our anchor
+      const derivedExpiryUnix = this.ledgerClock.ledgerSeqToUnix(expiryLedgerSeq, snapshot);
+
+      // Use contract-reported unix if available, otherwise use derived
+      const expiryUnix = contractExpiryUnix > 0 ? contractExpiryUnix : derivedExpiryUnix;
+
+      return {
+        ok: true,
+        expiryUnix,
+        expiryLedgerSeq,
+        skewMs: snapshot.skewMs,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Chain read get_expiry_unix failed: ${message}`);
       return { ok: false, error: message };
     }
   }

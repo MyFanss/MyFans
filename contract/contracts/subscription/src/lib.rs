@@ -488,6 +488,42 @@ impl MyfansContract {
             .get(&DataKey::Paused)
             .unwrap_or(false)
     }
+
+    /// Returns (expiry_ledger_seq, expiry_unix_timestamp) for the subscription.
+    ///
+    /// `expiry_unix_timestamp` is derived from the ledger close time at the
+    /// moment of the call, anchored to the current ledger sequence and timestamp.
+    /// This lets callers avoid ledger-sequence vs wall-clock skew by using the
+    /// on-chain timestamp directly.
+    ///
+    /// Returns (0, 0) if no subscription exists.
+    pub fn get_expiry_unix(env: Env, fan: Address, creator: Address) -> (u64, u64) {
+        let sub = match env
+            .storage()
+            .instance()
+            .get::<DataKey, Subscription>(&DataKey::subscription(fan, creator))
+        {
+            Some(s) => s,
+            None => return (0, 0),
+        };
+
+        let expiry_seq = sub.expiry;
+        let current_seq = env.ledger().sequence() as u64;
+        let current_ts = env.ledger().timestamp(); // Unix seconds at current ledger
+
+        // Stellar nominal close time is 5 seconds per ledger.
+        const SECONDS_PER_LEDGER: u64 = 5;
+
+        let expiry_unix = if expiry_seq >= current_seq {
+            current_ts + (expiry_seq - current_seq) * SECONDS_PER_LEDGER
+        } else {
+            // Already expired: subtract elapsed ledgers
+            let elapsed = current_seq - expiry_seq;
+            current_ts.saturating_sub(elapsed * SECONDS_PER_LEDGER)
+        };
+
+        (expiry_seq, expiry_unix)
+    }
 }
 
 #[cfg(test)]
