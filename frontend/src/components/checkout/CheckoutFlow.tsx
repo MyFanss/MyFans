@@ -6,7 +6,6 @@ import {
   getFullCheckoutData,
   validateBalance as apiValidateBalance,
   confirmSubscription as apiConfirmSubscription,
-  failCheckout as apiFailCheckout,
   CheckoutResponse,
   PlanSummary,
   PriceBreakdown,
@@ -16,11 +15,8 @@ import {
   CheckoutResult,
 } from "@/lib/checkout";
 import { useTransaction } from "@/hooks/useTransaction";
-import { useToast } from "@/contexts/ToastContext";
-import { createAppError } from "@/types/errors";
-import { useFeatureFlag } from "@/hooks/useFeatureFlag";
-import { FeatureFlag } from "@/lib/feature-flags";
-import { ReferralCodeInput } from "@/components/referral/ReferralCodeInput";
+import { useToast } from "@/components/ErrorToast";
+import { createTrackedTransaction, getExplorerUrl } from "@/lib/transaction-history";
 
 import PlanSummaryComponent from "./PlanSummary";
 import PriceBreakdownComponent from "./PriceBreakdown";
@@ -87,7 +83,7 @@ export default function CheckoutFlow({
   const tx = useTransaction({
     type: "subscription",
     amount: priceBreakdown ? parseFloat(priceBreakdown.total) : undefined,
-    onSuccess: (result) => {
+    onSuccess: () => {
       showSuccess(
         "Transaction successful!",
         "You are now subscribed to this creator."
@@ -198,6 +194,10 @@ export default function CheckoutFlow({
     if (!checkoutId) return;
 
     await tx.execute(async () => {
+      const txHash = `tx_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 11)}`;
+
       // Simulate transaction submission
       await new Promise((resolve, reject) => {
         setTimeout(() => {
@@ -205,20 +205,36 @@ export default function CheckoutFlow({
           if (shouldFail) {
             reject(new Error("Transaction rejected by user"));
           } else {
-            const txHash = `tx_${Date.now()}_${Math.random()
-              .toString(36)
-              .substr(2, 9)}`;
             resolve(txHash);
           }
         }, 2000);
       });
 
       // Confirm with backend
-      const result = await apiConfirmSubscription(checkoutId);
-      setCheckoutResult(result);
+      const result = await apiConfirmSubscription(checkoutId, txHash);
+      const trackedTransaction = createTrackedTransaction({
+        checkoutId,
+        txHash,
+        type: "subscription",
+        description: planSummary
+          ? `Subscription to ${planSummary.creatorName}${planSummary.name ? ` • ${planSummary.name}` : ""}`
+          : "Subscription payment",
+        amount: priceBreakdown?.total ?? checkout?.total ?? "0",
+        currency: priceBreakdown?.currency ?? selectedAsset?.code ?? "XLM",
+        creatorName: planSummary?.creatorName,
+        planName: planSummary?.name,
+      });
+
+      const nextResult = {
+        ...result,
+        txHash,
+        explorerUrl: result.explorerUrl || getExplorerUrl(txHash),
+      };
+
+      setCheckoutResult(nextResult);
       setCurrentStep("result");
-      onComplete?.(result);
-      return result;
+      onComplete?.(nextResult);
+      return { ...nextResult, trackedTransaction };
     });
   }, [checkoutId, tx, onComplete]);
 
@@ -228,7 +244,11 @@ export default function CheckoutFlow({
       if (!checkoutId) return;
 
       try {
-        const result = await apiFailCheckout(checkoutId, errorMessage, isRejected);
+        const result = await apiFailCheckout(
+          checkoutId,
+          errorMessage,
+          isRejected
+        );
         setCheckoutResult(result);
         setCurrentStep("result");
         onComplete?.(result);

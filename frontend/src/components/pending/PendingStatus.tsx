@@ -9,6 +9,7 @@ export interface PendingStatusProps {
   transactionHash?: string;
   message?: string;
   countdown?: number;
+  explorerUrl?: string;
   onRetry?: () => void;
   onContinue?: () => void;
 }
@@ -62,6 +63,7 @@ export function PendingStatus({
   transactionHash,
   message,
   countdown,
+  explorerUrl,
   onRetry,
   onContinue,
 }: PendingStatusProps) {
@@ -90,9 +92,20 @@ export function PendingStatus({
         {transactionHash && (
           <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-md">
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Transaction Hash</p>
-            <code className="text-xs break-all text-gray-700 dark:text-gray-300">
-              {transactionHash}
-            </code>
+            {explorerUrl ? (
+              <a
+                href={explorerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs break-all text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline underline-offset-2"
+              >
+                {transactionHash}
+              </a>
+            ) : (
+              <code className="text-xs break-all text-gray-700 dark:text-gray-300">
+                {transactionHash}
+              </code>
+            )}
           </div>
         )}
 
