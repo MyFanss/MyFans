@@ -53,8 +53,11 @@ jobs:
             echo "::error::Critical vulnerabilities in backend: $CRITICAL"
             exit 1
           fi
-
-      - name: 📦 Check frontend audits
+          if (( HIGH > 0 )); then
+            echo "❌ **HIGH vulnerabilities detected**" >> $GITHUB_STEP_SUMMARY
+            echo "::error::High vulnerabilities in backend: $HIGH"
+            exit 1
+          fi
         id: frontend-audit
         working-directory: ./frontend
         run: |
@@ -82,8 +85,11 @@ jobs:
             echo "::error::Critical vulnerabilities in frontend: $CRITICAL"
             exit 1
           fi
-
-      - name: 📝 Comment on PR with audit summary
+          if (( HIGH > 0 )); then
+            echo "❌ **HIGH vulnerabilities detected**" >> $GITHUB_STEP_SUMMARY
+            echo "::error::High vulnerabilities in frontend: $HIGH"
+            exit 1
+          fi with audit summary
         if: github.event_name == 'pull_request' && always()
         uses: actions/github-script@v7
         with:
