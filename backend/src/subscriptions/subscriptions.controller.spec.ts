@@ -1,11 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
 import { SubscriptionsController } from './subscriptions.controller';
-import { SubscriptionsService } from './subscriptions.service';
+import { SubscriptionsService, SubscriptionStatus } from './subscriptions.service';
 import {
   FanBearerGuard,
   RequestWithFan,
 } from './guards/fan-bearer.guard';
+import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 
 describe('SubscriptionsController (dashboard-summary)', () => {
   let controller: SubscriptionsController;
@@ -123,6 +126,94 @@ describe('SubscriptionsController (subscription-state)', () => {
       'active',
       2,
       5,
+    );
+  });
+});
+
+describe('ListSubscriptionsQueryDto – status validation', () => {
+  async function validateDto(plain: object) {
+    const dto = plainToInstance(ListSubscriptionsQueryDto, plain);
+    return validate(dto);
+  }
+
+  it('passes when status is a valid SubscriptionStatus value', async () => {
+    for (const value of Object.values(SubscriptionStatus)) {
+      const errors = await validateDto({ fan: 'GFAN', status: value });
+      expect(errors.filter((e) => e.property === 'status')).toHaveLength(0);
+    }
+  });
+
+  it('fails when status is an invalid string', async () => {
+    const errors = await validateDto({ fan: 'GFAN', status: 'unknown' });
+    const statusErrors = errors.filter((e) => e.property === 'status');
+    expect(statusErrors).toHaveLength(1);
+    expect(Object.values(statusErrors[0].constraints ?? {})[0]).toMatch(
+      /active, expired, cancelled/,
+    );
+  });
+
+  it('passes when status is omitted', async () => {
+    const errors = await validateDto({ fan: 'GFAN' });
+    expect(errors.filter((e) => e.property === 'status')).toHaveLength(0);
+  });
+});
+
+describe('SubscriptionsController – listSubscriptions', () => {
+  let controller: SubscriptionsController;
+  let service: jest.Mocked<Pick<SubscriptionsService, 'listSubscriptions' | 'getFanCreatorSubscriptionState'>>;
+
+  const fan = `G${'A'.repeat(55)}`;
+
+  beforeEach(async () => {
+    service = {
+      listSubscriptions: jest.fn().mockReturnValue({ data: [], total: 0, page: 1, limit: 20, totalPages: 0 }),
+      getFanCreatorSubscriptionState: jest.fn(),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [SubscriptionsController],
+      providers: [
+        { provide: SubscriptionsService, useValue: service },
+        FanBearerGuard,
+      ],
+    }).compile();
+
+    controller = module.get(SubscriptionsController);
+  });
+
+  it('passes typed SubscriptionStatus.ACTIVE to service', () => {
+    const query: ListSubscriptionsQueryDto = { fan, status: SubscriptionStatus.ACTIVE, page: 1, limit: 20 };
+    controller.listSubscriptions(query);
+    expect(service.listSubscriptions).toHaveBeenCalledWith(
+      fan,
+      SubscriptionStatus.ACTIVE,
+      undefined,
+      1,
+      20,
+    );
+  });
+
+  it('passes typed SubscriptionStatus.EXPIRED to service', () => {
+    const query: ListSubscriptionsQueryDto = { fan, status: SubscriptionStatus.EXPIRED, page: 1, limit: 20 };
+    controller.listSubscriptions(query);
+    expect(service.listSubscriptions).toHaveBeenCalledWith(
+      fan,
+      SubscriptionStatus.EXPIRED,
+      undefined,
+      1,
+      20,
+    );
+  });
+
+  it('passes undefined status when omitted', () => {
+    const query: ListSubscriptionsQueryDto = { fan, page: 1, limit: 20 };
+    controller.listSubscriptions(query);
+    expect(service.listSubscriptions).toHaveBeenCalledWith(
+      fan,
+      undefined,
+      undefined,
+      1,
+      20,
     );
   });
 });

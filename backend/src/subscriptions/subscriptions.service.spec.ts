@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EventBus } from '../events/event-bus';
 import { InProcessEventBus } from '../events/in-process-event-bus';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
-import { SERVER_NETWORK, SubscriptionsService } from './subscriptions.service';
+import { SERVER_NETWORK, SubscriptionsService, SubscriptionStatus } from './subscriptions.service';
 import {
   SUBSCRIPTION_EVENT_PUBLISHER,
   SUBSCRIPTION_RENEWAL_FAILED,
@@ -135,11 +135,11 @@ describe('SubscriptionsService', () => {
       service.addSubscription(fan, 'CREATOR_A_XXXXXXX', 1, expiry);
       service.addSubscription(fan, 'CREATOR_B_XXXXXXX', 1, pastExpiry);
 
-      const activeOnly = service.listSubscriptions(fan, 'active');
+      const activeOnly = service.listSubscriptions(fan, SubscriptionStatus.ACTIVE);
       expect(activeOnly.data).toHaveLength(1);
       expect(activeOnly.total).toBe(1);
 
-      const expiredOnly = service.listSubscriptions(fan, 'expired');
+      const expiredOnly = service.listSubscriptions(fan, SubscriptionStatus.EXPIRED);
       expect(expiredOnly.data).toHaveLength(1);
       expect(expiredOnly.total).toBe(1);
     });
