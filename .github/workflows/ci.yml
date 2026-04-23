@@ -43,6 +43,7 @@ jobs:
       DB_PASSWORD: myfans_ci
       DB_NAME: myfans_test
       JWT_SECRET: ci-test-secret-not-for-production
+      WEBHOOK_SECRET: ci-webhook-secret-not-for-production
       NODE_ENV: test
       STELLAR_NETWORK: testnet
       SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
