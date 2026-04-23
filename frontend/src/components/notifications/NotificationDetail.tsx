@@ -34,7 +34,7 @@ interface Props {
 }
 
 export default function NotificationDetail({ notification, onClose, onMarkRead, onDelete }: Props) {
-  const { id, type, title, body, is_read, created_at, metadata } = notification;
+  const { id, type, title, body, is_read, created_at, metadata, digest_count, digest_event_times } = notification;
 
   const handleDelete = () => {
     onDelete(id);
@@ -75,6 +75,24 @@ export default function NotificationDetail({ notification, onClose, onMarkRead, 
         </div>
 
         <p className="text-sm text-slate-700 dark:text-slate-300 mb-4">{body}</p>
+
+        {digest_count > 1 && digest_event_times && digest_event_times.length > 0 && (
+          <div
+            className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900 px-3 py-2 mb-4"
+            data-testid="digest-summary"
+          >
+            <p className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
+              {digest_count} events batched
+            </p>
+            <ul className="space-y-0.5">
+              {digest_event_times.map((t, i) => (
+                <li key={i} className="text-xs text-blue-600 dark:text-blue-400">
+                  {new Date(t).toLocaleTimeString()}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {metadata && Object.keys(metadata).length > 0 && (
           <div className="rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2 mb-4 text-xs text-slate-500 dark:text-slate-400">
