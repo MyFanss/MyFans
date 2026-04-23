@@ -13,6 +13,7 @@ import {
   SortOption,
 } from "@/lib/creator-profile";
 import { FeatureFlag } from "@/lib/feature-flags";
+import { usePrefetchCreatorRoute } from "@/hooks/usePrefetchCreatorRoute";
 
 const DEBOUNCE_DELAY = 300;
 const INITIAL_LOAD = 12;
@@ -263,33 +264,38 @@ function DiscoverContentInner() {
       {/* Creator Cards Grid */}
       {displayedCreators.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {displayedCreators.map((creator) => (
-            <CreatorCard
-              key={creator.id}
-              name={creator.displayName}
-              username={creator.username}
-              avatarUrl={creator.avatarUrl}
-              bio={creator.bio}
-              subscriberCount={creator.subscriberCount}
-              subscriptionPrice={creator.subscriptionPrice}
-              isVerified={creator.isVerified}
-              categories={creator.categories}
-              location={creator.location}
-              headerAccessory={
-                <FeatureGate flag={FeatureFlag.BOOKMARKS}>
-                  <BookmarkButton creatorId={creator.id} />
-                </FeatureGate>
-              }
-              actionButton={
-                <a
-                  href={`/creator/${creator.username}`}
-                  className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors"
-                >
-                  Subscribe
-                </a>
-              }
-            />
-          ))}
+          {displayedCreators.map((creator) => {
+            // eslint-disable-next-line react-hooks/rules-of-hooks
+            const { hoverHandlers } = usePrefetchCreatorRoute(creator.username);
+            return (
+              <CreatorCard
+                key={creator.id}
+                name={creator.displayName}
+                username={creator.username}
+                avatarUrl={creator.avatarUrl}
+                bio={creator.bio}
+                subscriberCount={creator.subscriberCount}
+                subscriptionPrice={creator.subscriptionPrice}
+                isVerified={creator.isVerified}
+                categories={creator.categories}
+                location={creator.location}
+                headerAccessory={
+                  <FeatureGate flag={FeatureFlag.BOOKMARKS}>
+                    <BookmarkButton creatorId={creator.id} />
+                  </FeatureGate>
+                }
+                actionButton={
+                  <a
+                    href={`/creator/${creator.username}`}
+                    {...hoverHandlers}
+                    className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Subscribe
+                  </a>
+                }
+              />
+            );
+          })}
         </div>
       ) : !isLoading ? (
         /* Empty State */
