@@ -37,17 +37,6 @@ export enum CheckoutStatus {
 
 export const SERVER_NETWORK = process.env.STELLAR_NETWORK ?? 'testnet';
 
-interface Subscription {
-  id: string;
-  fan: string;
-  creator: string;
-  planId: number;
-  expiry: number;
-  status: 'active' | 'expired' | 'cancelled';
-  createdAt: Date;
-  updatedAt?: Date;
-}
-
 interface Checkout {
   id: string;
   fanAddress: string;
@@ -88,6 +77,7 @@ function generateId(): string {
 @Injectable()
 export class SubscriptionsService {
   private readonly checkouts: Map<string, Checkout> = new Map();
+  private readonly plans: Map<number, Plan> = new Map();
   private readonly checkoutExpiryMinutes = 15;
   private readonly logger = new Logger(SubscriptionsService.name);
   private readonly platformFeeBps = 500;
@@ -125,7 +115,6 @@ export class SubscriptionsService {
       'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5',
       { name: 'Creator 2', description: 'Exclusive videos and photos' },
     );
-    
     // Initialize default plans
     this.initializePlans();
   }
@@ -158,8 +147,7 @@ export class SubscriptionsService {
         updatedAt: new Date(),
       },
     ];
-    
-    defaultPlans.forEach(plan => this.plans.set(plan.id, plan));
+    defaultPlans.forEach((plan) => this.plans.set(plan.id, plan));
   }
 
   assertNetworkMatch(requestNetwork: string | undefined): void {
@@ -188,7 +176,7 @@ export class SubscriptionsService {
     creator: string,
     planId: number,
     expiry: number,
-  ): Promise<Subscription> {
+  ): Promise<SubscriptionIndexEntity> {
     const status = this.getExpiryStatus(expiry);
     const upsertData = {
       fan,
@@ -208,14 +196,22 @@ export class SubscriptionsService {
     fan: string,
     creator: string,
     planId: number,
-    expiry: number,
-  ): Promise<Subscription> {
-    const status = this.getExpiryStatus(expiry);
+    expiry?: number,
+  ): Promise<SubscriptionIndexEntity> {
+    const plan = this.getRequiredPlan(planId);
+    if (plan.creator !== creator) {
+      throw new BadRequestException(
+        'Plan does not belong to the specified creator',
+      );
+    }
+
+    const nextExpiry = expiry ?? this.calculateExpiryTimestamp(plan.intervalDays);
+    const status = this.getExpiryStatus(nextExpiry);
     const upsertData = {
       fan,
       creator,
       planId,
-      expiryUnix: expiry,
+      expiryUnix: nextExpiry,
       status,
     } as const;
     const sub = await this.indexRepo.upsertManual(upsertData);
@@ -225,7 +221,7 @@ export class SubscriptionsService {
         fan,
         creator,
         planId,
-        expiry,
+        nextExpiry,
       ),
     );
     return sub;
@@ -270,7 +266,10 @@ export class SubscriptionsService {
     return this.indexRepo.isSubscriber(fan, creator);
   }
 
-  async getSubscription(fan: string, creator: string): Promise<Subscription | null> {
+  async getSubscription(
+    fan: string,
+    creator: string,
+  ): Promise<SubscriptionIndexEntity | null> {
     return this.indexRepo.findCurrentForFanCreator(fan, creator);
   }
 
@@ -399,18 +398,13 @@ export class SubscriptionsService {
     page: number = 1,
     limit: number = 20,
   ) {
-    const where: any = { fan };
-
-    if (status) {
-      where.status = status;
-    }
-
-    const [results, total] = await this.indexRepo.repo.findAndCount({
-      where,
-      order: sort === 'created' ? { createdAt: 'DESC' } : { expiryUnix: 'ASC' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+    const [results, total] = await this.indexRepo.findAndCountForFan(
+      fan,
+      status,
+      sort,
+      page,
+      limit,
+    );
 
     const formatted = results.map((sub) => ({
       id: sub.id,
@@ -429,15 +423,14 @@ export class SubscriptionsService {
     return new PaginatedResponseDto(formatted, total, page, limit);
   }
 
-  listCreatorSubscribers(
+  async listCreatorSubscribers(
     creator: string,
     status?: SubscriberListStatus,
     page: number = 1,
     limit: number = 20,
   ) {
     const nowSecs = Math.floor(Date.now() / 1000);
-    let subscribers = Array.from(this.subscriptions.values())
-      .filter((sub) => sub.creator === creator)
+    let subscribers = (await this.indexRepo.listForCreator(creator))
       .map((sub) => {
         const derivedStatus = this.getDerivedSubscriberStatus(sub, nowSecs);
         return {
@@ -446,7 +439,7 @@ export class SubscriptionsService {
           creatorAddress: sub.creator,
           planId: sub.planId,
           status: derivedStatus,
-          expiresAt: new Date(sub.expiry * 1000).toISOString(),
+          expiresAt: new Date(sub.expiryUnix * 1000).toISOString(),
           createdAt: sub.createdAt.toISOString(),
         };
       });
@@ -605,9 +598,9 @@ export class SubscriptionsService {
     };
   }
 
-  confirmSubscription(checkoutId: string, txHash?: string) {
+  async confirmSubscription(checkoutId: string, txHash?: string) {
     const checkout = this.getCheckout(checkoutId);
-    const existingSubscription = this.getSubscription(
+    const existingSubscription = await this.getSubscription(
       checkout.fanAddress,
       checkout.creatorAddress,
     );
@@ -617,20 +610,21 @@ export class SubscriptionsService {
     checkout.updatedAt = new Date();
 
     const explorerUrl = `https://stellar.expert/explorer/testnet/tx/${checkout.txHash}`;
-    const expiry = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
     const subscription = existingSubscription
       ? this.renewSubscription(
           checkout.fanAddress,
           checkout.creatorAddress,
           checkout.planId,
-          expiry,
         )
       : this.addSubscription(
           checkout.fanAddress,
           checkout.creatorAddress,
           checkout.planId,
-          expiry,
+          this.calculateExpiryTimestamp(
+            this.getRequiredPlan(checkout.planId).intervalDays,
+          ),
         );
+    const resolvedSubscription = await subscription;
 
     return {
       success: true,
@@ -638,7 +632,7 @@ export class SubscriptionsService {
       status: checkout.status,
       txHash: checkout.txHash,
       explorerUrl,
-      subscriptionId: subscription.id,
+      subscriptionId: resolvedSubscription.id,
       lifecycleEvent: existingSubscription ? 'renewed' : 'created',
       message: existingSubscription
         ? 'Subscription renewed successfully!'
@@ -674,15 +668,14 @@ export class SubscriptionsService {
   }
 
   private getDerivedSubscriberStatus(
-    sub: Subscription,
+    sub: SubscriptionIndexEntity,
     nowSecs: number,
   ): SubscriberListStatus {
-    if (sub.status === 'active' && sub.expiry > nowSecs) {
+    if (
+      sub.status === SubscriptionStatus.ACTIVE &&
+      Number(sub.expiryUnix) > nowSecs
+    ) {
       return 'active';
-    }
-
-    if (sub.status === 'active' && sub.expiry <= nowSecs) {
-      sub.status = 'expired';
     }
 
     return 'expired';
@@ -704,24 +697,7 @@ export class SubscriptionsService {
   }
 
   private getPlanMock(planId: number): Plan | undefined {
-    const plans: Plan[] = [
-      { id: 1, creator: 'GAAAAAAAAAAAAAAA', asset: 'XLM', amount: '10', intervalDays: 30 },
-      {
-        id: 2,
-        creator: 'GAAAAAAAAAAAAAAA',
-        asset: 'USDC:GA7Z6G7T3LSSKDJPLAWJH25C4D4PQV4CEMM5S5E6LQD3VDF5W6G6F3K',
-        amount: '5',
-        intervalDays: 30,
-      },
-      {
-        id: 3,
-        creator: 'GBBD47ZY6F6R7OGMW5G6C5R5P6NQ5QW5R5V5S5R5O5P5Q5R5V5S5R5O5',
-        asset: 'XLM',
-        amount: '25',
-        intervalDays: 7,
-      },
-    ];
-    return plans.find((p) => p.id === planId);
+    return this.getPlan(planId);
   }
 
   getAllSubscriptionsInternal(): Promise<SubscriptionIndexEntity[]> {
@@ -735,83 +711,28 @@ export class SubscriptionsService {
     );
   }
 
-  /**
-   * Renew an existing subscription
-   * Requires fan authentication (caller must be the fan)
-   * Reuses fee split logic from checkout flow
-   * @param fanAddress - Address of the fan renewing (must match authenticated user)
-   * @param creatorAddress - Address of the creator
-   * @param planId - ID of the plan to renew
-   * @param txHash - Optional transaction hash for the renewal payment
-   * @returns Renewal confirmation with updated expiry
-   * @throws Error if subscription not found, fan not authenticated, or plan not found
-   */
-  renewSubscription(
-    fanAddress: string,
-    creatorAddress: string,
-    planId: number,
-    txHash?: string,
-  ): {
-    success: boolean;
-    subscriptionId: string;
-    newExpiryTimestamp: number;
-    newExpiryDate: string;
-    planId: number;
-    txHash?: string;
-    message: string;
-  } {
-    // Check if subscription exists
-    const existingSubscription = this.getSubscription(fanAddress, creatorAddress);
-    if (!existingSubscription) {
-      throw new NotFoundException(
-        `No active subscription found for fan ${fanAddress} with creator ${creatorAddress}`,
-      );
-    }
+  private getPlan(planId: number): Plan | undefined {
+    return this.plans.get(planId);
+  }
 
-    // Verify plan exists
+  private getRequiredPlan(planId: number): Plan {
     const plan = this.getPlan(planId);
     if (!plan) {
       throw new NotFoundException(`Plan ${planId} not found`);
     }
+    return plan;
+  }
 
-    // Verify plan belongs to the creator
-    if (plan.creator !== creatorAddress) {
-      throw new BadRequestException(
-        'Plan does not belong to the specified creator',
-      );
+  private calculateExpiryTimestamp(intervalDays: number): number {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const intervalSeconds = intervalDays * 24 * 60 * 60;
+    const expiry = nowSeconds + intervalSeconds;
+
+    if (!Number.isSafeInteger(expiry)) {
+      throw new BadRequestException('Expiry calculation would overflow');
     }
 
-    // Calculate new expiry using the helper
-    const newExpiry = this.calculateExpiryTimestamp(plan.intervalDays);
-
-    // Update the subscription with new expiry
-    const key = this.getKey(fanAddress, creatorAddress);
-    const updatedSubscription: Subscription = {
-      ...existingSubscription,
-      expiry: newExpiry,
-      updatedAt: new Date(),
-    };
-
-    this.subscriptions.set(key, updatedSubscription);
-
-    // Emit renewal event
-    this.eventBus.publish(
-      new SubscriptionCreatedEvent(fanAddress, creatorAddress, planId, newExpiry),
-    );
-
-    this.logger.log(
-      `Subscription renewed for fan ${fanAddress} with creator ${creatorAddress}, new expiry: ${newExpiry}`,
-    );
-
-    return {
-      success: true,
-      subscriptionId: existingSubscription.id,
-      newExpiryTimestamp: newExpiry,
-      newExpiryDate: new Date(newExpiry * 1000).toISOString(),
-      planId,
-      txHash,
-      message: 'Subscription renewed successfully',
-    };
+    return expiry;
   }
 
   private emitRenewalFailureEvent(checkout: Checkout, reason: string): void {

@@ -13,7 +13,7 @@ interface SubscriptionRecord {
   fan: string;
   creator: string;
   planId: number;
-  expiry: number;
+  expiryUnix: number;
   status: string;
   createdAt: Date;
 }
@@ -45,7 +45,7 @@ export class CreatorDashboardService {
 
     const { from, to } = this.resolveWindow(query);
     const window = query.from ? 'custom' : (query.window ?? '30d');
-    const data = this.aggregate(creatorAddress, from, to, window, query);
+    const data = await this.aggregate(creatorAddress, from, to, window, query);
 
     this.cache.set(cacheKey, { data, expiresAt: Date.now() + CACHE_TTL_MS });
     return data;
@@ -62,14 +62,14 @@ export class CreatorDashboardService {
     }
   }
 
-  private aggregate(
+  private async aggregate(
     creatorAddress: string,
     from: Date,
     to: Date,
     window: TimeWindow | 'custom',
     _query: DashboardQueryDto,
-  ): CreatorDashboardDto {
-    const allSubs = this.subscriptions.getAllSubscriptionsInternal() as SubscriptionRecord[];
+  ): Promise<CreatorDashboardDto> {
+    const allSubs = await this.subscriptions.getAllSubscriptionsInternal();
     const creatorSubs = allSubs.filter(s => s.creator === creatorAddress);
     const nowSecs = Math.floor(Date.now() / 1000);
     const fromSecs = Math.floor(from.getTime() / 1000);
@@ -77,7 +77,7 @@ export class CreatorDashboardService {
 
     // Active subscribers (currently active regardless of window)
     const activeCount = creatorSubs.filter(
-      s => s.status === 'active' && s.expiry > nowSecs,
+      s => s.status === 'active' && s.expiryUnix > nowSecs,
     ).length;
 
     // New in window: created within [from, to]
@@ -88,7 +88,7 @@ export class CreatorDashboardService {
 
     // Churned in window: expired within [from, to]
     const churned = creatorSubs.filter(s => {
-      return s.status === 'expired' && s.expiry >= fromSecs && s.expiry <= toSecs;
+      return s.status === 'expired' && s.expiryUnix >= fromSecs && s.expiryUnix <= toSecs;
     }).length;
 
     // Revenue: aggregate per plan for subs created in window
@@ -142,7 +142,7 @@ export class CreatorDashboardService {
         amount: parseFloat(p.amount),
         intervalDays: p.intervalDays,
         activeSubscribers: creatorSubs.filter(
-          s => s.planId === p.id && s.status === 'active' && s.expiry > nowSecs,
+          s => s.planId === p.id && s.status === 'active' && s.expiryUnix > nowSecs,
         ).length,
       })),
     };

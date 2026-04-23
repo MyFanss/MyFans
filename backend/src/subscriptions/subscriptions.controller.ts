@@ -66,7 +66,7 @@ export class SubscriptionsController {
   listSubscriptions(@Query() query: ListSubscriptionsQueryDto) {
     return this.subscriptionsService.listSubscriptions(
       query.fan,
-      query.status,
+      query.status as never,
       query.sort,
       query.page,
       query.limit,
