@@ -2,6 +2,16 @@
 
 Smart contracts and deployment automation for MyFans on Stellar/Soroban.
 
+## Authorization matrix
+
+Use [`AUTH_MATRIX.md`](./AUTH_MATRIX.md) for method-by-method signer requirements, including valid/invalid invocation examples for each public method in deployed contracts.
+
+When any contract interface or auth rule changes, update `AUTH_MATRIX.md` in the same PR.
+
+## Contract Interface Documentation
+
+See comprehensive method docs (args, auth, examples, events): [docs/interfaces/](docs/interfaces/)
+
 ## Contracts deployed by script
 
 1. `myfans-token`
@@ -11,6 +21,10 @@ Smart contracts and deployment automation for MyFans on Stellar/Soroban.
 5. `earnings`
 
 The deploy script applies this order to keep initialization/dependency flow deterministic.
+
+## Workspace layout and versions
+
+The workspace root is `contract/Cargo.toml`. Shared crate metadata (`version`, `edition`, `authors`, `license`, `repository`, `description`, `publish`) lives under `[workspace.package]`. The Soroban SDK pin is declared once in `[workspace.dependencies]` (`soroban-sdk`) and referenced from each crate with `soroban-sdk = { workspace = true }`. After dependency changes, refresh the lockfile with `cargo update -p <crate>` as needed and verify with `cargo check --workspace`.
 
 ## Prerequisites
 
@@ -83,7 +97,7 @@ By default, deployment outputs are written to:
 - `contract/deployed.json`
 - `contract/.env.deployed`
 
-Both include contract addresses/IDs and network metadata.
+Both include contract addresses/IDs and network metadata. `deployed.json` includes a `schemaVersion` field (e.g., `"1.0.0"`) for compatibility. Environment variable names and aliases are documented in [`docs/DEPLOYED_ENV.md`](docs/DEPLOYED_ENV.md).
 
 Override paths with:
 

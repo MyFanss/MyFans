@@ -1,26 +1,26 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class PaginatedResponseDto<T> {
   @ApiProperty({ description: 'Array of items', isArray: true })
   data: T[];
 
-  @ApiProperty({ description: 'Total number of items' })
-  total: number;
-
-  @ApiProperty({ description: 'Current page number' })
-  page: number;
+  @ApiPropertyOptional({ description: 'Cursor for next page (last item ID)', nullable: true })
+  cursor: string | null;
 
   @ApiProperty({ description: 'Number of items per page' })
   limit: number;
 
-  @ApiProperty({ description: 'Total number of pages' })
-  totalPages: number;
+  @ApiPropertyOptional({ description: 'Cursor for next page', nullable: true })
+  nextCursor: string | null;
 
-  constructor(data: T[], total: number, page: number, limit: number) {
+  @ApiProperty({ description: 'Whether there are more items' })
+  hasMore: boolean;
+
+  constructor(data: T[], limit: number, nextCursor: string | null, hasMore: boolean) {
     this.data = data;
-    this.total = total;
-    this.page = page;
+    this.cursor = null;
     this.limit = limit;
-    this.totalPages = Math.ceil(total / limit);
+    this.nextCursor = nextCursor;
+    this.hasMore = hasMore;
   }
 }

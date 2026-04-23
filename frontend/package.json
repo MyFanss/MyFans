@@ -7,15 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
-    "test:e2e:debug": "playwright test --debug"
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^14.5.0",
     "@tanstack/react-virtual": "^3.13.18",
     "lucide-react": "^0.474.0",
-    "next": "16.1.6",
+    "next": "16.2.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^3.7.0"
@@ -23,17 +21,26 @@
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^20",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "ajv": "^6.12.6",
+    "axe-core": "^4.8.2",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.2.4",
+    "eslint-plugin-jsx-a11y": "^6.7.1",
+    "jsdom": "^29.0.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
   },
   "overrides": {
     "ajv": "^6.12.6",
-    "minimatch": ">=10.2.1"
+    "minimatch": ">=10.2.5",
+    "flatted": ">=3.4.2",
+    "picomatch": ">=4.0.4",
+    "vite": ">=7.3.2"
   }
 }

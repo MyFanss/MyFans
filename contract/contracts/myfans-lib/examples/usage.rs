@@ -32,8 +32,6 @@ impl ExampleContract {
     }
 }
 
-fn main() {}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -58,5 +56,3 @@ mod test {
         assert!(!client.requires_payment(&ContentType::Free));
     }
 }
-
-fn main() {}

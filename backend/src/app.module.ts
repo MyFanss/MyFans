@@ -1,94 +1,86 @@
-
-import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { ThrottlerModule } from '@nestjs/throttler';
-import { ThrottlerGuard } from './auth/throttler.guard';
 import { APP_GUARD } from '@nestjs/core';
+import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { User } from './users/entities/user.entity';
-import { HealthModule } from './health/health.module';
+import { AuthModule } from './auth-module/auth.module';
+import { OpenAPIController } from './common/openapi-publish.controller';
+import { ThrottlerGuard } from './auth/throttler.guard';
+import { JwtAuthGuard } from './auth-module/guards/jwt-auth.guard';
+import { RolesGuard } from './auth-module/guards/roles.guard';
+import { PublicGuard } from './auth-module/guards/public.guard';
 import { LoggingModule } from './common/logging.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
-import { ExampleController } from './common/examples/example.controller';
+import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 import { CreatorsModule } from './creators/creators.module';
-import { PostsModule } from './posts/posts.module';
-import { CommentsModule } from './comments/comments.module';
-import { ConversationsModule } from './conversations/conversations.module';
-import { LikesModule } from './likes/likes.module';
-import { Post } from './posts/entities/post.entity';
-import { Comment } from './comments/entities/comment.entity';
-import { Conversation } from './conversations/entities/conversation.entity';
-import { Message } from './conversations/entities/message.entity';
-import { Like } from './likes/entities/like.entity';
-import { GamesModule } from './games/games.module';
-import { Game } from './games/entities/game.entity';
-import { Player } from './games/entities/player.entity';
-import { Creator } from './creators/entities/creator.entity';
+import { HealthModule } from './health/health.module';
+import { MetricsModule } from './metrics/metrics.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { ModerationModule } from './moderation/moderation.module';
+import { IdempotencyModule } from './idempotency/idempotency.module';
+import { IdempotencyMiddleware } from './idempotency/idempotency.middleware';
+import { ReferralModule } from './referral/referral.module';
+import { CsrfModule } from './csrf/csrf.module';
+import { CsrfMiddleware } from './common/middleware/csrf.middleware';
+
+/** Routes where idempotency protection is enforced. */
+const IDEMPOTENCY_ROUTES = [
+  { path: 'v1/creators/plans', method: RequestMethod.POST },
+  { path: 'v1/subscriptions/checkout', method: RequestMethod.POST },
+  { path: 'v1/posts', method: RequestMethod.POST },
+  { path: 'v1/posts/:id', method: RequestMethod.PUT },
+  { path: 'v1/comments', method: RequestMethod.POST },
+  { path: 'v1/comments/:id', method: RequestMethod.PUT },
+  { path: 'v1/conversations', method: RequestMethod.POST },
+  { path: 'v1/conversations/:id/messages', method: RequestMethod.POST },
+];
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432'),
-      username: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'postgres',
-      database: process.env.DB_NAME || 'myfans',
-      entities: [
-        User,
-        Creator,
-        Post,
-        Comment,
-        Conversation,
-        Message,
-        Like,
-        Game,
-        Player,
-      ],
-      synchronize: true,
-    }),
     ThrottlerModule.forRoot([
-      {
-        name: 'short',
-        ttl: 1000,
-        limit: 10,
-      },
-      {
-        name: 'medium',
-        ttl: 10000,
-        limit: 50,
-      },
-      {
-        name: 'long',
-        ttl: 60000,
-        limit: 200,
-      },
+      { name: 'short', ttl: 60000, limit: 10 },
+      { name: 'medium', ttl: 60000, limit: 50 },
+      { name: 'long', ttl: 60000, limit: 100 },
     ]),
-    HealthModule,
     LoggingModule,
+    MetricsModule,
+    AuthModule,
     CreatorsModule,
-    PostsModule,
-    CommentsModule,
-    ConversationsModule,
-    LikesModule,
-    GamesModule,
+    SubscriptionsModule,
+    NotificationsModule,
+    HealthModule,
+    ModerationModule,
+    IdempotencyModule,
+    ReferralModule,
+    CsrfModule,
   ],
-  controllers: [AppController, ExampleController],
+  controllers: [AppController, OpenAPIController],
   providers: [
     AppService,
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: PublicGuard },
   ],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
-      .apply(CorrelationIdMiddleware, LoggingMiddleware)
+      .apply(CorrelationIdMiddleware, LoggingMiddleware, MetricsMiddleware)
       .forRoutes({ path: '*', method: RequestMethod.ALL });
+
+    consumer.apply(IdempotencyMiddleware).forRoutes(...IDEMPOTENCY_ROUTES);
+
+    // CSRF double-submit cookie protection on all state-mutating routes
+    consumer
+      .apply(CsrfMiddleware)
+      .forRoutes(
+        { path: '*', method: RequestMethod.POST },
+        { path: '*', method: RequestMethod.PUT },
+        { path: '*', method: RequestMethod.PATCH },
+        { path: '*', method: RequestMethod.DELETE },
+      );
   }
 }
-

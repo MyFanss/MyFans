@@ -95,6 +95,10 @@ cargo test
 ✅ Duplicate unlock is idempotent (no-op)
 ✅ All tests pass
 
+## Interface Docs
+
+Full method reference: [../docs/interfaces/content-access.md](../docs/interfaces/content-access.md)
+
 ## Usage Example
 
 ```rust

@@ -4,9 +4,8 @@
   "scripts": {
     "build": "cargo build --release --target wasm32-unknown-unknown",
     "test": "cargo test",
-    "deploy:subscription": "soroban contract deploy --wasm target/wasm32-unknown-unknown/release/subscription.wasm --network testnet",
-    "deploy:treasury": "soroban contract deploy --wasm target/wasm32-unknown-unknown/release/treasury.wasm --network testnet",
-    "deploy:all": "npm run build && npm run deploy:subscription && npm run deploy:treasury",
-    "optimize": "soroban contract optimize --wasm target/wasm32-unknown-unknown/release/subscription.wasm"
+    "release-check": "./scripts/release-check.sh",
+    "release-check:skip-abi": "./scripts/release-check.sh --skip-abi",
+    "release-check:ci": "./scripts/release-check.sh --skip-abi --skip-dry-run"
   }
 }

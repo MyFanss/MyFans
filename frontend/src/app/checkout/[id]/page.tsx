@@ -20,7 +20,7 @@ export default function CheckoutPage() {
   useEffect(() => {
     async function checkWallet() {
       try {
-        const connectedAddress = await getConnectedAddress();
+        const connectedAddress = await getConnectedAddress('freighter');
         setAddress(connectedAddress);
       } catch {
         setAddress(null);

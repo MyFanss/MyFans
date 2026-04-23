@@ -1,7 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, token, Address, Env, Symbol,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
+    Symbol,
 };
 
 #[contracttype]
@@ -12,12 +13,14 @@ pub enum DataKey {
     AuthorizedDepositor(Address),
 }
 
-#[contracttype]
+#[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum EarningsError {
+pub enum Error {
     NotInitialized = 1,
     NotAuthorized = 2,
     InsufficientBalance = 3,
+    AlreadyInitialized = 4,
+    InvalidAmount = 5,
 }
 
 #[contract]
@@ -28,13 +31,15 @@ impl CreatorEarnings {
     /// Initialize contract with admin and accepted token
     pub fn initialize(env: Env, admin: Address, token_address: Address) {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
+            panic_with_error!(&env, Error::AlreadyInitialized);
         }
 
         admin.require_auth();
 
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::Token, &token_address);
+        env.storage()
+            .instance()
+            .set(&DataKey::Token, &token_address);
     }
 
     /// Add authorized depositor contract (admin only)
@@ -49,30 +54,26 @@ impl CreatorEarnings {
 
     /// Deposit earnings for creator
     /// Callable by authorized contracts or admin
-pub fn deposit(env: Env, from: Address, creator: Address, amount: i128) {
-    if amount <= 0 {
-        panic!("invalid amount");
+    pub fn deposit(env: Env, from: Address, creator: Address, amount: i128) {
+        if amount <= 0 {
+            panic_with_error!(&env, Error::InvalidAmount);
+        }
+
+        from.require_auth();
+        Self::require_authorized(&env, &from);
+
+        let token_address: Address = Self::get_token(&env);
+        let token_client = token::Client::new(&env, &token_address);
+
+        token_client.transfer(&from, &env.current_contract_address(), &amount);
+
+        let balance = Self::balance(env.clone(), creator.clone());
+        let new_balance = balance + amount;
+
+        env.storage()
+            .instance()
+            .set(&DataKey::Balance(creator.clone()), &new_balance);
     }
-
-    from.require_auth();
-    Self::require_authorized(&env, &from);
-
-    let token_address: Address = Self::get_token(&env);
-    let token_client = token::Client::new(&env, &token_address);
-
-    token_client.transfer(
-        &from,
-        &env.current_contract_address(),
-        &amount,
-    );
-
-    let balance = Self::balance(env.clone(), creator.clone());
-    let new_balance = balance + amount;
-
-    env.storage()
-        .instance()
-        .set(&DataKey::Balance(creator.clone()), &new_balance);
-}
 
     /// Get creator balance
     pub fn balance(env: Env, creator: Address) -> i128 {
@@ -85,7 +86,7 @@ pub fn deposit(env: Env, from: Address, creator: Address, amount: i128) {
     /// Withdraw earnings
     pub fn withdraw(env: Env, creator: Address, amount: i128) {
         if amount <= 0 {
-            panic!("invalid amount");
+            panic_with_error!(&env, Error::InvalidAmount);
         }
 
         creator.require_auth();
@@ -93,18 +94,14 @@ pub fn deposit(env: Env, from: Address, creator: Address, amount: i128) {
         let current_balance = Self::balance(env.clone(), creator.clone());
 
         if current_balance < amount {
-            panic!("insufficient balance");
+            panic_with_error!(&env, Error::InsufficientBalance);
         }
 
         let token_address: Address = Self::get_token(&env);
         let token_client = token::Client::new(&env, &token_address);
 
         // Transfer from contract to creator
-        token_client.transfer(
-            &env.current_contract_address(),
-            &creator,
-            &amount,
-        );
+        token_client.transfer(&env.current_contract_address(), &creator, &amount);
 
         let new_balance = current_balance - amount;
 
@@ -124,14 +121,14 @@ pub fn deposit(env: Env, from: Address, creator: Address, amount: i128) {
         env.storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("not initialized")
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
     }
 
     fn get_token(env: &Env) -> Address {
         env.storage()
             .instance()
             .get(&DataKey::Token)
-            .expect("not initialized")
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
     }
 
     fn require_authorized(env: &Env, caller: &Address) {
@@ -149,7 +146,7 @@ pub fn deposit(env: Env, from: Address, creator: Address, amount: i128) {
             return;
         }
 
-        panic!("not authorized");
+        panic_with_error!(env, Error::NotAuthorized);
     }
 }
 

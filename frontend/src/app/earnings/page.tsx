@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
+import { FeatureGate } from '@/components/FeatureGate';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ErrorFallback } from '@/components/ErrorFallback';
@@ -11,27 +12,23 @@ import {
   WithdrawalUI,
   FeeTransparencyCard,
   EarningsChart,
+  ReconciliationReport,
 } from '@/components/earnings';
 import { fetchEarningsSummary, type EarningsSummary } from '@/lib/earnings-api';
+import { FeatureFlag } from '@/lib/feature-flags';
 import { createAppError } from '@/types/errors';
 
 export default function EarningsPage() {
   const [summary, setSummary] = useState<EarningsSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
   const [days, setDays] = useState(30);
 
   useEffect(() => {
     const load = async () => {
       try {
-        setLoading(true);
         const data = await fetchEarningsSummary(days);
         setSummary(data);
-        setError(null);
-      } catch (err) {
-        setError(err instanceof Error ? err : new Error('Failed to load earnings'));
-      } finally {
-        setLoading(false);
+      } catch {
+        setSummary(null);
       }
     };
 
@@ -93,23 +90,32 @@ export default function EarningsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
             {/* Withdrawal */}
             <div className="lg:col-span-2">
-              {summary && (
-                <WithdrawalUI
-                  availableBalance={summary.available_for_withdrawal}
-                  currency={summary.currency}
-                />
-              )}
+              <FeatureGate flag={FeatureFlag.EARNINGS_WITHDRAWALS}>
+                {summary && (
+                  <WithdrawalUI
+                    availableBalance={summary.available_for_withdrawal}
+                    currency={summary.currency}
+                  />
+                )}
+              </FeatureGate>
             </div>
 
             {/* Fee Transparency */}
             <div>
-              <FeeTransparencyCard />
+              <FeatureGate flag={FeatureFlag.EARNINGS_FEE_TRANSPARENCY}>
+                <FeeTransparencyCard />
+              </FeatureGate>
             </div>
           </div>
 
           {/* Transaction History */}
           <section className="mb-8">
             <TransactionHistoryCard limit={20} />
+          </section>
+
+          {/* Reconciliation Report */}
+          <section className="mb-8">
+            <ReconciliationReport />
           </section>
         </ErrorBoundary>
       </main>

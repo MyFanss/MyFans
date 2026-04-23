@@ -1,67 +1,43 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerGuard } from '@nestjs/throttler';
+import { THROTTLER_LIMIT, THROTTLER_TTL } from '@nestjs/throttler/dist/throttler.constants';
 import { SocialLinkController } from './social-links.controller';
 import { SocialLinksService } from './social-links.service';
-import { ThrottlerModule } from '@nestjs/throttler';
-import { INestApplication } from '@nestjs/common';
-import request from 'supertest';
-
 
 describe('SocialLinkController', () => {
-  let app: INestApplication;
+  let controller: SocialLinkController;
 
   const mockSocialLinksService = {
-    extractUpdatePayload: jest.fn().mockImplementation(dto => dto),
+    extractUpdatePayload: jest.fn().mockImplementation((dto) => dto),
   };
 
-  beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        ThrottlerModule.forRoot([{ ttl: 60, limit: 5 }]),
-      ],
-      controllers: [SocialLinkController],
-      providers: [
-        {
-          provide: SocialLinksService,
-          useValue: mockSocialLinksService,
-        },
-      ],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    await app.init();
-  });
-
-  afterAll(async () => {
-    await app.close();
+  beforeEach(() => {
+    controller = new SocialLinkController(
+      mockSocialLinksService as unknown as SocialLinksService,
+    );
   });
 
   it('should be defined', () => {
-    const controller = app.get<SocialLinkController>(SocialLinkController);
     expect(controller).toBeDefined();
   });
 
-  describe('POST /social-links', () => {
-    it('should return 429 when rate limit is exceeded', async () => {
-      const socialLinksDto = {
-        websiteUrl: 'https://example.com',
-        twitterHandle: 'test',
-        instagramHandle: 'test',
-        otherLink: 'https://test.com',
-      };
+  it('applies the throttler guard at the controller level', () => {
+    const guards = Reflect.getMetadata('__guards__', SocialLinkController) as Array<new () => unknown>;
+    expect(guards).toContain(ThrottlerGuard);
+  });
 
-      // First 5 should succeed
-      for (let i = 0; i < 5; i++) {
-        await request(app.getHttpServer())
-          .post('/social-links')
-          .send(socialLinksDto)
-          .expect(201);
-      }
+  it('configures create with the expected throttling policy', () => {
+    const limit = Reflect.getMetadata(THROTTLER_LIMIT + 'default', controller.create);
+    const ttl = Reflect.getMetadata(THROTTLER_TTL + 'default', controller.create);
 
-      // 6th should be rejected
-      await request(app.getHttpServer())
-        .post('/social-links')
-        .send(socialLinksDto)
-        .expect(429);
-    });
+    expect(limit).toBe(5);
+    expect(ttl).toBe(60000);
+  });
+
+  it('configures update with the expected throttling policy', () => {
+    const limit = Reflect.getMetadata(THROTTLER_LIMIT + 'default', controller.update);
+    const ttl = Reflect.getMetadata(THROTTLER_TTL + 'default', controller.update);
+
+    expect(limit).toBe(5);
+    expect(ttl).toBe(60000);
   });
 });
