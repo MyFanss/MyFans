@@ -1,16 +1,19 @@
-import { Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
 import { Post } from './entities/post.entity';
-import { PostDto, CreatePostDto, UpdatePostDto } from './dto';
+import { CreatePostDto, PostDto, UpdatePostDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
+import { EventBus } from '../events/event-bus';
+import { PostDeletedEvent } from '../events/domain-events';
 
 @Injectable()
 export class PostsService {
   constructor(
     @InjectRepository(Post)
-    private readonly postsRepository: Repository<Post>,
+    private readonly postRepo: Repository<Post>,
+    private readonly eventBus: EventBus,
   ) {}
 
   private toDto(post: Post): PostDto {
@@ -18,94 +21,135 @@ export class PostsService {
   }
 
   async create(authorId: string, dto: CreatePostDto): Promise<PostDto> {
-    const post = this.postsRepository.create({
-      ...dto,
+    const entity = this.postRepo.create({
+      title: dto.title,
+      content: dto.content,
       authorId,
-      likesCount: 0,
+      isPublished: dto.isPublished ?? false,
+      isPremium: dto.isPremium ?? false,
     });
-    const saved = await this.postsRepository.save(post);
+    const saved = await this.postRepo.save(entity);
     return this.toDto(saved);
   }
 
-  async findAll(pagination: PaginationDto): Promise<PaginatedResponseDto<PostDto>> {
-    const { page = 1, limit = 20 } = pagination;
-    const skip = (page - 1) * limit;
+  async findAll(
+    pagination: PaginationDto,
+  ): Promise<PaginatedResponseDto<PostDto>> {
+    const limit = pagination.limit ?? 20;
+    const queryBuilder = this.postRepo
+      .createQueryBuilder('post')
+      .where('post.deletedAt IS NULL')
+      .orderBy('post.id', 'ASC')
+      .take(limit + 1);
 
-    const [posts, total] = await this.postsRepository.findAndCount({
-      skip,
-      take: limit,
-      order: { createdAt: 'DESC' },
-    });
+    if (pagination.cursor) {
+      const cursorId = parseInt(pagination.cursor, 10);
+      if (!isNaN(cursorId)) {
+        queryBuilder.andWhere('post.id > :cursorId', { cursorId });
+      }
+    }
+
+    const items = await queryBuilder.getMany();
+    const hasMore = items.length > limit;
+    if (hasMore) {
+      items.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (items.length > 0) {
+      nextCursor = String(items[items.length - 1].id);
+    }
 
     return new PaginatedResponseDto(
-      posts.map((p) => this.toDto(p)),
-      total,
-      page,
+      items.map((p) => this.toDto(p)),
       limit,
+      nextCursor,
+      hasMore,
     );
   }
 
-  async findByAuthor(authorId: string, pagination: PaginationDto): Promise<PaginatedResponseDto<PostDto>> {
-    const { page = 1, limit = 20 } = pagination;
-    const skip = (page - 1) * limit;
+  async findByAuthor(
+    authorId: string,
+    pagination: PaginationDto,
+  ): Promise<PaginatedResponseDto<PostDto>> {
+    const limit = pagination.limit ?? 20;
+    const queryBuilder = this.postRepo
+      .createQueryBuilder('post')
+      .where('post.authorId = :authorId', { authorId })
+      .andWhere('post.deletedAt IS NULL')
+      .orderBy('post.id', 'ASC')
+      .take(limit + 1);
 
-    const [posts, total] = await this.postsRepository.findAndCount({
-      where: { authorId },
-      skip,
-      take: limit,
-      order: { createdAt: 'DESC' },
-    });
+    if (pagination.cursor) {
+      const cursorId = parseInt(pagination.cursor, 10);
+      if (!isNaN(cursorId)) {
+        queryBuilder.andWhere('post.id > :cursorId', { cursorId });
+      }
+    }
+
+    const items = await queryBuilder.getMany();
+    const hasMore = items.length > limit;
+    if (hasMore) {
+      items.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (items.length > 0) {
+      nextCursor = String(items[items.length - 1].id);
+    }
 
     return new PaginatedResponseDto(
-      posts.map((p) => this.toDto(p)),
-      total,
-      page,
+      items.map((p) => this.toDto(p)),
       limit,
+      nextCursor,
+      hasMore,
     );
   }
 
   async findOne(id: string): Promise<PostDto> {
-    const post = await this.postsRepository.findOne({ where: { id } });
+    const post = await this.postRepo.findOne({
+      where: { id, deletedAt: IsNull() },
+    });
     if (!post) {
-      throw new NotFoundException(`Post with id "${id}" not found`);
+      throw new NotFoundException(`Post with ID ${id} not found`);
     }
     return this.toDto(post);
   }
 
-  async findOneWithLikes(id: string): Promise<Post> {
-    const post = await this.postsRepository.findOne({ 
-      where: { id },
-      relations: ['likes'],
+  async update(id: string, dto: UpdatePostDto): Promise<PostDto> {
+    const post = await this.postRepo.findOne({
+      where: { id, deletedAt: IsNull() },
     });
     if (!post) {
-      throw new NotFoundException(`Post with id "${id}" not found`);
-    }
-    return post;
-  }
-
-  async update(id: string, dto: UpdatePostDto): Promise<PostDto> {
-    const post = await this.postsRepository.findOne({ where: { id } });
-    if (!post) {
-      throw new NotFoundException(`Post with id "${id}" not found`);
+      throw new NotFoundException(`Post with ID ${id} not found`);
     }
     Object.assign(post, dto);
-    const updated = await this.postsRepository.save(post);
-    return this.toDto(updated);
+    const saved = await this.postRepo.save(post);
+    return this.toDto(saved);
   }
 
-  async remove(id: string): Promise<void> {
-    const post = await this.postsRepository.findOne({ where: { id } });
+  /**
+   * Soft-delete a post: sets deletedAt and deletedBy, then emits a
+   * PostDeletedEvent for the audit trail.
+   */
+  async softDelete(id: string, deletedBy: string): Promise<void> {
+    const post = await this.postRepo.findOne({
+      where: { id, deletedAt: IsNull() },
+    });
     if (!post) {
-      throw new NotFoundException(`Post with id "${id}" not found`);
+      throw new NotFoundException(`Post with ID ${id} not found`);
     }
-    await this.postsRepository.remove(post);
+    post.deletedAt = new Date();
+    post.deletedBy = deletedBy;
+    await this.postRepo.save(post);
+    this.eventBus.publish(new PostDeletedEvent(id, deletedBy));
   }
 
-  async incrementLikesCount(id: string): Promise<void> {
-    await this.postsRepository.increment({ id }, 'likesCount', 1);
-  }
-
-  async decrementLikesCount(id: string): Promise<void> {
-    await this.postsRepository.decrement({ id }, 'likesCount', 1);
+  /** @deprecated Use softDelete instead. Hard-deletes the post. */
+  async remove(id: string): Promise<void> {
+    const res = await this.postRepo.delete(id);
+    if (!res.affected) {
+      throw new NotFoundException(`Post with ID ${id} not found`);
+    }
   }
 }

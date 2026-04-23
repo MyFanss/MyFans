@@ -2,7 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { SelectQueryBuilder } from 'typeorm';
 import { CreatorsService } from './creators.service';
-import { User, UserRole } from '../users/entities/user.entity';
+import { User } from '../users/entities/user.entity';
+import { EventBus } from '../events/event-bus';
+import { SearchCreatorsDto } from './dto/search-creators.dto';
+import { UserRole } from '../common/enums/user-role.enum';
 
 describe('CreatorsService', () => {
   let service: CreatorsService;
@@ -26,6 +29,7 @@ describe('CreatorsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CreatorsService,
+        { provide: EventBus, useValue: { publish: jest.fn() } },
         {
           provide: getRepositoryToken(User),
           useValue: {
@@ -438,6 +442,7 @@ describe('CreatorsService', () => {
       });
     });
   });
+
 });
 
 // Helper function to create mock users

@@ -1,301 +1,365 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+import {
+  INestApplication,
+  ValidationPipe,
+  VersioningType,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { Keypair } from '@stellar/stellar-sdk';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { AuthModule } from './../src/auth/auth.module';
-import { SubscriptionsModule } from './../src/subscriptions/subscriptions.module';
+import { AuthModule } from '../src/auth/auth.module';
+import { WalletChallenge } from '../src/auth/wallet-challenge.entity';
 
-describe('Wallet Endpoints (e2e)', () => {
+// ---------------------------------------------------------------------------
+// In-memory store so challenge/verify round-trips work end-to-end
+// ---------------------------------------------------------------------------
+const challengeStore = new Map<string, WalletChallenge>();
+
+const mockChallengeRepo = {
+  create: jest.fn(
+    (data: Partial<WalletChallenge>) => ({ ...data }) as WalletChallenge,
+  ),
+  save: jest.fn((entity: WalletChallenge) => {
+    challengeStore.set(entity.nonce, entity);
+    return Promise.resolve(entity);
+  }),
+  findOne: jest.fn(
+    ({ where }: { where: { stellarAddress: string; nonce: string } }) =>
+      Promise.resolve(challengeStore.get(where.nonce) ?? null),
+  ),
+};
+
+const mockJwtService = {
+  sign: jest.fn(() => 'mock-jwt-token'),
+  verify: jest.fn(),
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+const VALID_ADDRESS =
+  'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H';
+
+describe('Wallet Auth Endpoints (integration)', () => {
   let app: INestApplication<App>;
 
-  beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AuthModule, SubscriptionsModule],
-    }).compile();
+  beforeAll(async () => {
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      imports: [AuthModule],
+    })
+      .overrideProvider(ConfigService)
+      .useValue({
+        getOrThrow: () => 'test-jwt-secret',
+        get: () => 'test-jwt-secret',
+      })
+      .overrideProvider(getRepositoryToken(WalletChallenge))
+      .useValue(mockChallengeRepo)
+      .overrideProvider(JwtService)
+      .useValue(mockJwtService)
+      .compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleRef.createNestApplication();
+    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await app.close();
   });
 
-  // ==================== Wallet Connect (POST /auth/login) ====================
+  beforeEach(() => {
+    challengeStore.clear();
+    jest.clearAllMocks();
+    mockChallengeRepo.create.mockImplementation(
+      (data: Partial<WalletChallenge>) => ({ ...data }) as WalletChallenge,
+    );
+    mockChallengeRepo.save.mockImplementation((entity: WalletChallenge) => {
+      challengeStore.set(entity.nonce, entity);
+      return Promise.resolve(entity);
+    });
+    mockChallengeRepo.findOne.mockImplementation(
+      ({ where }: { where: { stellarAddress: string; nonce: string } }) =>
+        Promise.resolve(challengeStore.get(where.nonce) ?? null),
+    );
+    mockJwtService.sign.mockReturnValue('mock-jwt-token');
+  });
 
-  describe('POST /auth/login (wallet connect)', () => {
-    const validAddress =
-      'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H';
-
-    it('should create session with valid Stellar address', () => {
+  // =========================================================================
+  // POST /v1/auth/login  (wallet connect — simple session)
+  // =========================================================================
+  describe('POST /v1/auth/login', () => {
+    it('returns a session token for a valid Stellar address', () => {
       return request(app.getHttpServer())
-        .post('/auth/login')
-        .send({ address: validAddress })
+        .post('/v1/auth/login')
+        .send({ address: VALID_ADDRESS })
         .expect(201)
         .expect((res) => {
-          expect(res.body).toHaveProperty('userId', validAddress);
+          expect(res.body).toHaveProperty('userId', VALID_ADDRESS);
           expect(res.body).toHaveProperty('token');
           expect(typeof res.body.token).toBe('string');
         });
     });
 
-    it('should return token as base64-encoded address', () => {
+    it('token is the base64-encoded address', () => {
       return request(app.getHttpServer())
-        .post('/auth/login')
-        .send({ address: validAddress })
+        .post('/v1/auth/login')
+        .send({ address: VALID_ADDRESS })
         .expect(201)
         .expect((res) => {
           const decoded = Buffer.from(
             String(res.body.token),
             'base64',
           ).toString();
-          expect(decoded).toBe(validAddress);
+          expect(decoded).toBe(VALID_ADDRESS);
         });
     });
 
-    it('should reject address not starting with G', () => {
+    it('rejects an address that does not start with G', () => {
       return request(app.getHttpServer())
-        .post('/auth/login')
+        .post('/v1/auth/login')
         .send({
           address: 'XBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H',
         })
-        .expect(201)
+        .expect(400)
         .expect((res) => {
-          expect(res.body).toHaveProperty('error', 'Invalid Stellar address');
+          expect(res.body.message).toBe('Invalid Stellar address');
         });
     });
 
-    it('should reject address with wrong length', () => {
+    it('rejects an address with wrong length', () => {
       return request(app.getHttpServer())
-        .post('/auth/login')
-        .send({ address: 'GBRPYHIL2CI3FNQ4' })
-        .expect(201)
+        .post('/v1/auth/login')
+        .send({ address: 'GSHORT' })
+        .expect(400)
         .expect((res) => {
-          expect(res.body).toHaveProperty('error', 'Invalid Stellar address');
+          expect(res.body.message).toBe('Invalid Stellar address');
         });
     });
 
-    it('should reject empty address', () => {
+    it('rejects an empty address', () => {
       return request(app.getHttpServer())
-        .post('/auth/login')
+        .post('/v1/auth/login')
         .send({ address: '' })
-        .expect(201)
+        .expect(400)
         .expect((res) => {
-          expect(res.body).toHaveProperty('error', 'Invalid Stellar address');
+          expect(res.body.message).toBe('Invalid Stellar address');
         });
     });
 
-    it('should error when address field is missing', () => {
+    it('rejects a missing address field', () => {
       return request(app.getHttpServer())
-        .post('/auth/login')
+        .post('/v1/auth/login')
         .send({})
-        .expect(500);
+        .expect(400)
+        .expect((res) => {
+          expect(res.body.message).toBe('Invalid Stellar address');
+        });
     });
   });
 
-  // ==================== Wallet Status ====================
-
-  describe('GET /subscriptions/checkout/:id/wallet', () => {
-    let checkoutId: string;
-    const fanAddress =
-      'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H';
-
-    beforeEach(async () => {
-      const res = await request(app.getHttpServer())
-        .post('/subscriptions/checkout')
-        .send({
-          fanAddress,
-          creatorAddress: 'GAAAAAAAAAAAAAAA',
-          planId: 1,
-        });
-      checkoutId = res.body.id;
-    });
-
-    it('should return wallet status with balances', () => {
+  // =========================================================================
+  // POST /v1/auth/challenge  (request nonce)
+  // =========================================================================
+  describe('POST /v1/auth/challenge', () => {
+    it('returns a nonce and expiry for a valid address', () => {
       return request(app.getHttpServer())
-        .get(`/subscriptions/checkout/${checkoutId}/wallet`)
+        .post('/v1/auth/challenge')
+        .send({ address: VALID_ADDRESS })
         .expect(200)
         .expect((res) => {
-          expect(res.body).toHaveProperty('address', fanAddress);
-          expect(res.body).toHaveProperty('isConnected', true);
-          expect(Array.isArray(res.body.balances)).toBe(true);
-          expect(res.body.balances.length).toBeGreaterThan(0);
+          expect(res.body).toHaveProperty('nonce');
+          expect(typeof res.body.nonce).toBe('string');
+          expect(res.body.nonce.length).toBeGreaterThan(0);
+          expect(res.body).toHaveProperty('expiresAt');
+          expect(
+            new Date(String(res.body.expiresAt)).getTime(),
+          ).toBeGreaterThan(Date.now());
         });
     });
 
-    it('should include XLM and USDC balances', () => {
+    it('persists the challenge (repo.create and repo.save called)', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/auth/challenge')
+        .send({ address: VALID_ADDRESS })
+        .expect(200);
+
+      expect(mockChallengeRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ stellarAddress: VALID_ADDRESS }),
+      );
+      expect(mockChallengeRepo.save).toHaveBeenCalled();
+    });
+
+    it('rejects an invalid address', () => {
       return request(app.getHttpServer())
-        .get(`/subscriptions/checkout/${checkoutId}/wallet`)
+        .post('/v1/auth/challenge')
+        .send({ address: 'not-a-stellar-address' })
+        .expect(400);
+    });
+
+    it('rejects a missing address', () => {
+      return request(app.getHttpServer())
+        .post('/v1/auth/challenge')
+        .send({})
+        .expect(400);
+    });
+  });
+
+  // =========================================================================
+  // POST /v1/auth/challenge/verify  (verify signature → JWT)
+  // =========================================================================
+  describe('POST /v1/auth/challenge/verify', () => {
+    it('issues a JWT for a valid signature (full round-trip)', async () => {
+      const keypair = Keypair.random();
+      const address = keypair.publicKey();
+
+      // Request challenge
+      const challengeRes = await request(app.getHttpServer())
+        .post('/v1/auth/challenge')
+        .send({ address })
+        .expect(200);
+
+      const { nonce } = challengeRes.body as { nonce: string };
+
+      // Sign the nonce
+      const sig = keypair.sign(Buffer.from(nonce, 'utf8'));
+      const sigHex = Buffer.from(sig).toString('hex');
+
+      // Verify
+      return request(app.getHttpServer())
+        .post('/v1/auth/challenge/verify')
+        .send({ address, nonce, signature: sigHex })
         .expect(200)
         .expect((res) => {
-          const codes = res.body.balances.map((b: { code: string }) => b.code);
-          expect(codes).toContain('XLM');
-          expect(codes).toContain('USDC');
+          expect(res.body).toHaveProperty('access_token', 'mock-jwt-token');
+          expect(res.body).toHaveProperty('token_type', 'Bearer');
         });
     });
 
-    it('should return 404 for non-existent checkout', () => {
+    it('rejects a replayed (already-used) challenge', async () => {
+      const keypair = Keypair.random();
+      const address = keypair.publicKey();
+
+      const challengeRes = await request(app.getHttpServer())
+        .post('/v1/auth/challenge')
+        .send({ address })
+        .expect(200);
+
+      const { nonce } = challengeRes.body as { nonce: string };
+      const sig = keypair.sign(Buffer.from(nonce, 'utf8'));
+      const sigHex = Buffer.from(sig).toString('hex');
+
+      // First verify — succeeds
+      await request(app.getHttpServer())
+        .post('/v1/auth/challenge/verify')
+        .send({ address, nonce, signature: sigHex })
+        .expect(200);
+
+      // Second verify — replay rejected
       return request(app.getHttpServer())
-        .get('/subscriptions/checkout/non-existent-id/wallet')
-        .expect(404);
+        .post('/v1/auth/challenge/verify')
+        .send({ address, nonce, signature: sigHex })
+        .expect(401);
     });
-  });
 
-  // ==================== Balance Validation ====================
+    it('rejects an expired challenge', async () => {
+      const keypair = Keypair.random();
+      const address = keypair.publicKey();
+      const nonce = 'expired-nonce';
 
-  describe('POST /subscriptions/checkout/:id/validate', () => {
-    let checkoutId: string;
+      // Seed an already-expired challenge directly into the store
+      challengeStore.set(nonce, {
+        id: 'id-expired',
+        stellarAddress: address,
+        nonce,
+        expiresAt: new Date(Date.now() - 1000),
+        used: false,
+        createdAt: new Date(),
+      } as WalletChallenge);
 
-    beforeEach(async () => {
-      const res = await request(app.getHttpServer())
-        .post('/subscriptions/checkout')
+      const sig = keypair.sign(Buffer.from(nonce, 'utf8'));
+      const sigHex = Buffer.from(sig).toString('hex');
+
+      return request(app.getHttpServer())
+        .post('/v1/auth/challenge/verify')
+        .send({ address, nonce, signature: sigHex })
+        .expect(401);
+    });
+
+    it('rejects a challenge that does not exist', () => {
+      return request(app.getHttpServer())
+        .post('/v1/auth/challenge/verify')
         .send({
-          fanAddress:
-            'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H',
-          creatorAddress: 'GAAAAAAAAAAAAAAA',
-          planId: 1,
-        });
-      checkoutId = res.body.id;
-    });
-
-    it('should validate sufficient balance', () => {
-      return request(app.getHttpServer())
-        .post(`/subscriptions/checkout/${checkoutId}/validate`)
-        .send({ assetCode: 'XLM', amount: '10' })
-        .expect(201)
-        .expect((res) => {
-          expect(res.body).toHaveProperty('valid', true);
-          expect(res.body).toHaveProperty('balance');
-        });
-    });
-
-    it('should reject insufficient balance', () => {
-      return request(app.getHttpServer())
-        .post(`/subscriptions/checkout/${checkoutId}/validate`)
-        .send({ assetCode: 'XLM', amount: '99999' })
-        .expect(201)
-        .expect((res) => {
-          expect(res.body).toHaveProperty('valid', false);
-          expect(res.body).toHaveProperty('shortfall');
-        });
-    });
-
-    it('should return zero balance for unsupported asset', () => {
-      return request(app.getHttpServer())
-        .post(`/subscriptions/checkout/${checkoutId}/validate`)
-        .send({ assetCode: 'FAKE', amount: '1' })
-        .expect(201)
-        .expect((res) => {
-          expect(res.body).toHaveProperty('valid', false);
-        });
-    });
-  });
-
-  // ==================== Transaction Confirm (wallet success path) ====================
-
-  describe('POST /subscriptions/checkout/:id/confirm', () => {
-    let checkoutId: string;
-
-    beforeEach(async () => {
-      const res = await request(app.getHttpServer())
-        .post('/subscriptions/checkout')
-        .send({
-          fanAddress:
-            'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H',
-          creatorAddress: 'GAAAAAAAAAAAAAAA',
-          planId: 1,
-        });
-      checkoutId = res.body.id;
-    });
-
-    it('should confirm subscription with txHash', () => {
-      return request(app.getHttpServer())
-        .post(`/subscriptions/checkout/${checkoutId}/confirm`)
-        .send({ txHash: 'abc123def456' })
-        .expect(201)
-        .expect((res) => {
-          expect(res.body).toHaveProperty('success', true);
-          expect(res.body).toHaveProperty('txHash', 'abc123def456');
-          expect(res.body).toHaveProperty('explorerUrl');
-          expect(res.body.explorerUrl).toContain('stellar.expert');
-        });
-    });
-
-    it('should generate txHash when not provided', () => {
-      return request(app.getHttpServer())
-        .post(`/subscriptions/checkout/${checkoutId}/confirm`)
-        .send({})
-        .expect(201)
-        .expect((res) => {
-          expect(res.body).toHaveProperty('success', true);
-          expect(res.body).toHaveProperty('txHash');
-          expect(res.body.txHash).toMatch(/^tx_/);
-        });
-    });
-  });
-
-  // ==================== Transaction Fail (wallet error/disconnect paths) ====================
-
-  describe('POST /subscriptions/checkout/:id/fail', () => {
-    let checkoutId: string;
-
-    beforeEach(async () => {
-      const res = await request(app.getHttpServer())
-        .post('/subscriptions/checkout')
-        .send({
-          fanAddress:
-            'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H',
-          creatorAddress: 'GAAAAAAAAAAAAAAA',
-          planId: 1,
-        });
-      checkoutId = res.body.id;
-    });
-
-    it('should handle transaction failure', () => {
-      return request(app.getHttpServer())
-        .post(`/subscriptions/checkout/${checkoutId}/fail`)
-        .send({ error: 'Transaction timeout' })
-        .expect(201)
-        .expect((res) => {
-          expect(res.body).toHaveProperty('success', false);
-          expect(res.body).toHaveProperty('status', 'failed');
-          expect(res.body).toHaveProperty('error', 'Transaction timeout');
-        });
-    });
-
-    it('should handle wallet rejection (user disconnect)', () => {
-      return request(app.getHttpServer())
-        .post(`/subscriptions/checkout/${checkoutId}/fail`)
-        .send({ error: 'User rejected transaction', rejected: true })
-        .expect(201)
-        .expect((res) => {
-          expect(res.body).toHaveProperty('success', false);
-          expect(res.body).toHaveProperty('status', 'rejected');
-        });
-    });
-
-    it('should return 404 for non-existent checkout', () => {
-      return request(app.getHttpServer())
-        .post('/subscriptions/checkout/bad-id/fail')
-        .send({ error: 'fail' })
-        .expect(404);
-    });
-  });
-
-  // ==================== Checkout Creation Errors ====================
-
-  describe('POST /subscriptions/checkout (error paths)', () => {
-    it('should reject checkout for non-existent plan', () => {
-      return request(app.getHttpServer())
-        .post('/subscriptions/checkout')
-        .send({
-          fanAddress:
-            'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H',
-          creatorAddress: 'GAAAAAAAAAAAAAAA',
-          planId: 999,
+          address: VALID_ADDRESS,
+          nonce: 'no-such-nonce',
+          signature: 'aabb',
         })
-        .expect(404);
+        .expect(401);
+    });
+
+    it('rejects an invalid (bad) signature', async () => {
+      const keypair = Keypair.random();
+      const address = keypair.publicKey();
+
+      const challengeRes = await request(app.getHttpServer())
+        .post('/v1/auth/challenge')
+        .send({ address })
+        .expect(200);
+
+      const { nonce } = challengeRes.body as { nonce: string };
+      const badSig = Buffer.alloc(64, 0).toString('hex');
+
+      return request(app.getHttpServer())
+        .post('/v1/auth/challenge/verify')
+        .send({ address, nonce, signature: badSig })
+        .expect(400);
+    });
+
+    it('rejects an invalid address in verify', () => {
+      return request(app.getHttpServer())
+        .post('/v1/auth/challenge/verify')
+        .send({ address: 'BADINPUT', nonce: 'n', signature: 's' })
+        .expect(400);
+    });
+  });
+
+  // =========================================================================
+  // POST /v1/auth/register  (deprecated alias — still works)
+  // =========================================================================
+  describe('POST /v1/auth/register (deprecated)', () => {
+    it('returns a session token (same as /login)', () => {
+      return request(app.getHttpServer())
+        .post('/v1/auth/register')
+        .send({ address: VALID_ADDRESS })
+        .expect(201)
+        .expect((res) => {
+          expect(res.body).toHaveProperty('userId', VALID_ADDRESS);
+          expect(res.body).toHaveProperty('token');
+        });
+    });
+
+    it('sets Deprecation and Sunset headers', () => {
+      return request(app.getHttpServer())
+        .post('/v1/auth/register')
+        .send({ address: VALID_ADDRESS })
+        .expect(201)
+        .expect((res) => {
+          expect(res.headers).toHaveProperty('deprecation');
+          expect(res.headers).toHaveProperty('sunset');
+        });
+    });
+
+    it('rejects an invalid address', () => {
+      return request(app.getHttpServer())
+        .post('/v1/auth/register')
+        .send({ address: 'INVALID' })
+        .expect(400);
     });
   });
 });

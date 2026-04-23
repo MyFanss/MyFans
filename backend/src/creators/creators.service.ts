@@ -1,12 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PaginationDto, PaginatedResponseDto } from '../common/dto';
-import { PlanDto } from './dto/plan.dto';
-import { SearchCreatorsDto } from './dto/search-creators.dto';
-import { PublicCreatorDto } from './dto/public-creator.dto';
+import { PaginatedResponseDto, PaginationDto } from '../common/dto';
+import { EventBus } from '../events/event-bus';
+import { PlanCreatedEvent } from '../events/domain-events';
 import { User } from '../users/entities/user.entity';
-import { Creator } from './entities/creator.entity';
+import { PlanDto } from './dto/plan.dto';
+import { PublicCreatorDto } from './dto/public-creator.dto';
+import { SearchCreatorsDto } from './dto/search-creators.dto';
 
 export interface Plan {
   id: number;
@@ -14,16 +15,21 @@ export interface Plan {
   asset: string;
   amount: string;
   intervalDays: number;
+  syncStatus?: 'synced' | 'stale' | 'missing' | 'unknown';
+  lastSyncedAt?: Date;
 }
 
 @Injectable()
 export class CreatorsService {
+  private readonly logger = new Logger(CreatorsService.name);
   private plans: Map<number, Plan> = new Map();
   private planCounter = 0;
 
   constructor(
     @InjectRepository(User)
-    private readonly usersRepository: Repository<User>,
+    private readonly userRepository: Repository<User>,
+    @Optional()
+    private readonly eventBus?: EventBus,
   ) {}
 
   createPlan(
@@ -32,14 +38,11 @@ export class CreatorsService {
     amount: string,
     intervalDays: number,
   ): Plan {
-    const plan = {
-      id: ++this.planCounter,
-      creator,
-      asset,
-      amount,
-      intervalDays,
-    };
+    const plan = { id: ++this.planCounter, creator, asset, amount, intervalDays };
     this.plans.set(plan.id, plan);
+    this.eventBus?.publish(
+      new PlanCreatedEvent(plan.id, creator, asset, amount),
+    );
     return plan;
   }
 
@@ -51,80 +54,113 @@ export class CreatorsService {
     return Array.from(this.plans.values()).filter((p) => p.creator === creator);
   }
 
-  /**
-   * Get all plans with pagination
-   */
   findAllPlans(pagination: PaginationDto): PaginatedResponseDto<PlanDto> {
-    const { page = 1, limit = 20 } = pagination;
-    const allPlans = Array.from(this.plans.values());
-    const total = allPlans.length;
-    const skip = (page - 1) * limit;
-    const data = allPlans.slice(skip, skip + limit);
+    const { cursor, limit = 20 } = pagination;
+    let allPlans = Array.from(this.plans.values()).sort((a, b) => a.id - b.id);
 
-    return new PaginatedResponseDto(data, total, page, limit);
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        allPlans = allPlans.filter((p) => p.id > cursorId);
+      }
+    }
+
+    const data = allPlans.slice(0, limit + 1);
+    const hasMore = data.length > limit;
+    if (hasMore) {
+      data.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (data.length > 0) {
+      nextCursor = String(data[data.length - 1].id);
+    }
+
+    return new PaginatedResponseDto(
+      data.map((plan) => Object.assign(new PlanDto(), plan)),
+      limit,
+      nextCursor,
+      hasMore,
+    );
   }
 
-  /**
-   * Get creator plans with pagination
-   */
   findCreatorPlans(
     creator: string,
     pagination: PaginationDto,
   ): PaginatedResponseDto<PlanDto> {
-    const { page = 1, limit = 20 } = pagination;
-    const creatorPlans = this.getCreatorPlans(creator);
-    const total = creatorPlans.length;
-    const skip = (page - 1) * limit;
-    const data = creatorPlans.slice(skip, skip + limit);
+    const { cursor, limit = 20 } = pagination;
+    let creatorPlans = this.getCreatorPlans(creator).sort((a, b) => a.id - b.id);
 
-    return new PaginatedResponseDto(data, total, page, limit);
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        creatorPlans = creatorPlans.filter((p) => p.id > cursorId);
+      }
+    }
+
+    const data = creatorPlans.slice(0, limit + 1);
+    const hasMore = data.length > limit;
+    if (hasMore) {
+      data.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (data.length > 0) {
+      nextCursor = String(data[data.length - 1].id);
+    }
+
+    return new PaginatedResponseDto(
+      data.map((plan) => Object.assign(new PlanDto(), plan)),
+      limit,
+      nextCursor,
+      hasMore,
+    );
   }
 
-  /**
-   * Search creators by display name or username with pagination
-   */
   async searchCreators(
     searchDto: SearchCreatorsDto,
   ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
-    const { q, page = 1, limit = 20 } = searchDto;
+    const { cursor, limit = 20, q } = searchDto;
+    const trimmed = q?.trim();
 
-    // Build query with LEFT JOIN to Creator entity
-    const queryBuilder = this.usersRepository
+    const qb = this.userRepository
       .createQueryBuilder('user')
-      .leftJoin(Creator, 'creator', 'creator.userId = user.id')
-      .addSelect('creator.bio')
-      .where('user.is_creator = :isCreator', { isCreator: true });
+      .leftJoin('user.creator', 'creator')
+      .addSelect('creator.bio', 'creator_bio')
+      .where('user.is_creator = :isCreator', { isCreator: true })
+      .orderBy('user.id', 'ASC')
+      .take(limit + 1);
 
-    // Apply search filter if query provided
-    if (q && q.trim()) {
-      const searchTerm = q.trim().toLowerCase();
-      queryBuilder.andWhere(
-        '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
-        { search: `${searchTerm}%` },
-      );
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        qb.andWhere('user.id > :cursorId', { cursorId });
+      }
     }
 
-    // Apply ordering
-    queryBuilder.orderBy('user.username', 'ASC');
+    const { entities, raw } = await qb.getRawAndEntities();
+    const hasMore = entities.length > limit;
+    if (hasMore) {
+      entities.pop();
+    }
 
-    // Get total count
-    const total = await queryBuilder.getCount();
+    let nextCursor: string | null = null;
+    if (entities.length > 0) {
+      nextCursor = String(entities[entities.length - 1].id);
+    }
 
-    // Apply pagination
-    const skip = (page - 1) * limit;
-    const results = await queryBuilder
-      .skip(skip)
-      .take(limit)
-      .getRawAndEntities();
+    return new PaginatedResponseDto(entities, limit, nextCursor, hasMore);
+  }
 
-    // Map to DTOs
-    const data = results.entities.map((user, index) => {
-      const rawResult = results.raw[index] as { creator_bio?: string };
-      const creator = rawResult?.creator_bio
-        ? ({ bio: rawResult.creator_bio } as Creator)
-        : undefined;
-      return new PublicCreatorDto(user, creator);
+    const data = entities.map((user, index) => {
+      const dto = new PublicCreatorDto(user, user.creator);
+      dto.bio = raw[index]?.creator_bio ?? user.creator?.bio ?? null;
+      return dto;
     });
+
+    this.logger.debug(
+      `Creator search returned ${data.length} rows for query "${trimmed ?? ''}"`,
+    );
 
     return new PaginatedResponseDto(data, total, page, limit);
   }
