@@ -1,0 +1,75 @@
+MyFans Third-Party Notice
+=========================
+
+This repository includes first-party application code plus third-party open
+source dependencies used by the frontend, backend, and smart-contract
+workspaces.
+
+Repository status
+-----------------
+
+- This repository does not currently publish a single top-level reuse license.
+- Some workspace manifests declare `UNLICENSED` for first-party packages.
+- The Soroban contract workspace declares `MIT OR Apache-2.0` in
+  `contract/Cargo.toml` for its contract packages.
+
+Third-party dependency inventory
+--------------------------------
+
+Authoritative dependency and declared-license metadata for this repository is
+tracked in the following files:
+
+- `backend/package-lock.json`
+- `frontend/package-lock.json`
+- `backend/package.json`
+- `frontend/package.json`
+- `contract/Cargo.toml`
+- `contract/contracts/*/Cargo.toml`
+
+Major third-party components in use
+-----------------------------------
+
+Backend / API:
+
+- NestJS (`@nestjs/*`)
+- TypeORM (`typeorm`)
+- PostgreSQL driver (`pg`)
+- Passport / JWT (`passport`, `passport-jwt`, `@nestjs/jwt`)
+- Stellar SDK (`@stellar/stellar-sdk`)
+- RxJS (`rxjs`)
+- Winston (`winston`, `nest-winston`)
+- bcrypt (`bcrypt`)
+
+Frontend / web app:
+
+- Next.js (`next`)
+- React (`react`, `react-dom`)
+- Stellar SDK (`@stellar/stellar-sdk`)
+- TanStack React Virtual (`@tanstack/react-virtual`)
+- Recharts (`recharts`)
+- Lucide React (`lucide-react`)
+- Playwright (`@playwright/test`)
+- Vitest (`vitest`)
+
+Contracts / Rust workspace:
+
+- Soroban SDK (`soroban-sdk`)
+
+How to verify licenses
+----------------------
+
+For npm dependencies, the lockfiles above record package metadata, including
+declared license fields for installed versions. For Rust contracts, dependency
+license declarations are recorded in Cargo manifests and the Cargo dependency
+graph.
+
+When distributing binaries, Docker images, or packaged artifacts derived from
+this repository, review the exact dependency set included in that artifact and
+ship any required upstream license texts or notices with it.
+
+Additional compliance note
+--------------------------
+
+This file is an attribution index for maintainers and reviewers. It does not
+replace the license terms of any dependency, and it should be updated whenever
+the repository adds a new dependency family or changes its packaging model.
