@@ -185,6 +185,20 @@ You will keep only these three folders and this README; other files can be remov
 
 ---
 
+## Documentation
+
+### Platform Governance & Operations
+- **[Contract Upgrade Governance](docs/CONTRACT_UPGRADE_GOVERNANCE.md)** - Process for upgrading smart contracts safely
+- **[Security Policy](SECURITY.md)** - Security reporting, penetration testing tracker, and best practices
+- **[Bug Bash Checklist](docs/BUG_BASH_CHECKLIST.md)** - Comprehensive QA checklist before major releases
+- **[Changelog Guide](docs/CHANGELOG_GUIDE.md)** - How to use conventional commits for automatic changelog generation
+
+### Development
+- **[Changelog](CHANGELOG.md)** - Automatically generated from conventional commits
+- **[Upgrade Log](docs/upgrade-log.md)** - Historical record of contract upgrades
+
+---
+
 ## License
 
 MIT.
