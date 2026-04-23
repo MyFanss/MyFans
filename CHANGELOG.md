@@ -193,6 +193,7 @@
 * **frontend:** fan onboarding quickstart with wallet and first sub flow ([a87a4ad](https://github.com/MyFanss/MyFans/commit/a87a4add391f154734428bbcc76b2df1ebe4bb26))
 * **frontend:** standardize error copy with actionable recovery steps ([02f3d52](https://github.com/MyFanss/MyFans/commit/02f3d525e1fc8f514e92c780299c1916c03b5694))
 * harden backend secret management ([#350](https://github.com/MyFanss/MyFans/issues/350)) ([2022919](https://github.com/MyFanss/MyFans/commit/2022919c83aad39d50fccb3b9401bd1c4ab7f495))
+* **idempotency:** document TTL & harden collision behavior ([40e1224](https://github.com/MyFanss/MyFans/commit/40e1224db6219c7d24193eb04cba23208d7c5124))
 * implement authentication module with registration, login, and JWT strategy ([4027b86](https://github.com/MyFanss/MyFans/commit/4027b8609a05c65124bb3f34a1b2db9c3526b99a))
 * implement Backend API SLA metrics instrumentation ([8124c45](https://github.com/MyFanss/MyFans/commit/8124c45027d803e23e207f6bc41569822298a52c))
 * implement Backend API SLA metrics instrumentation ([c61c268](https://github.com/MyFanss/MyFans/commit/c61c2680edd68f822f406df214204e2a74870efd))
