@@ -57,6 +57,8 @@ Use this checklist for every production frontend release from `frontend/`. It is
 
 ## 3. Contract Compatibility Checks
 
+> See the full contract-specific checklist: **[contract-release-checklist.md](./contract-release-checklist.md)**
+
 - [ ] The correct contract package versions are identified for the release.
 - [ ] Contract addresses and network configuration used by the frontend are verified.
 - [ ] Contract-backed flows were tested on the target environment:
