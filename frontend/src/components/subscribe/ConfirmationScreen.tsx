@@ -32,8 +32,15 @@ export default function ConfirmationScreen({
   return (
     <div className="space-y-4">
       {/* Plan details card */}
-      <div className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
-        <h3 className="mb-4 text-lg font-semibold text-slate-900 dark:text-slate-100">
+      <section 
+        className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800"
+        role="region"
+        aria-labelledby="subscription-details-title"
+      >
+        <h3 
+          id="subscription-details-title"
+          className="mb-4 text-lg font-semibold text-slate-900 dark:text-slate-100"
+        >
           Subscription Details
         </h3>
 
@@ -52,7 +59,7 @@ export default function ConfirmationScreen({
             </dd>
           </div>
 
-          <div className="border-t border-slate-100 pt-3 dark:border-slate-700" />
+          <div className="border-t border-slate-100 pt-3 dark:border-slate-700" aria-hidden="true" />
 
           <div className="flex items-center justify-between">
             <dt className="text-sm text-slate-500 dark:text-slate-400">Price</dt>
@@ -68,16 +75,19 @@ export default function ConfirmationScreen({
             </dd>
           </div>
 
-          <div className="border-t border-slate-100 pt-3 dark:border-slate-700" />
+          <div className="border-t border-slate-100 pt-3 dark:border-slate-700" aria-hidden="true" />
 
           <div className="flex items-center justify-between">
             <dt className="text-sm text-slate-500 dark:text-slate-400">Wallet</dt>
-            <dd className="font-mono text-sm text-slate-700 dark:text-slate-300">
-              {truncateAddress(walletAddress)}
+            <dd 
+              className="font-mono text-sm text-slate-700 dark:text-slate-300"
+              aria-label={`Wallet address: ${walletAddress}`}
+            >
+              <span aria-hidden="true">{truncateAddress(walletAddress)}</span>
             </dd>
           </div>
         </dl>
-      </div>
+      </section>
 
       {/* Actions */}
       <div className="flex gap-3">
