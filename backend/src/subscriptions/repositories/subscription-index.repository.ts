@@ -143,5 +143,29 @@ export class SubscriptionIndexRepository {
       order: { indexedAt: 'DESC' },
     });
   }
+
+  async findWithCursor(
+    fan: string,
+    status: SubscriptionStatus | undefined,
+    sort: string | undefined,
+    cursorId: string | undefined,
+    limit: number,
+  ): Promise<SubscriptionIndexEntity[]> {
+    const qb = this.repo
+      .createQueryBuilder('sub')
+      .where('sub.fan = :fan', { fan })
+      .orderBy(sort === 'created' ? 'sub.createdAt' : 'sub.expiryUnix', 'DESC')
+      .take(limit + 1);
+
+    if (status) {
+      qb.andWhere('sub.status = :status', { status });
+    }
+
+    if (cursorId) {
+      qb.andWhere('sub.id > :cursorId', { cursorId });
+    }
+
+    return qb.getMany();
+  }
 }
 
