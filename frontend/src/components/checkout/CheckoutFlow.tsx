@@ -6,6 +6,7 @@ import {
   getFullCheckoutData,
   validateBalance as apiValidateBalance,
   confirmSubscription as apiConfirmSubscription,
+  failCheckout as apiFailCheckout,
   CheckoutResponse,
   PlanSummary,
   PriceBreakdown,
@@ -15,9 +16,12 @@ import {
   CheckoutResult,
 } from "@/lib/checkout";
 import { useTransaction } from "@/hooks/useTransaction";
-import { useToast } from "@/components/ErrorToast";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FeatureFlag } from "@/lib/feature-flags";
+import { useToast } from "@/contexts/ToastContext";
 import { createTrackedTransaction, getExplorerUrl } from "@/lib/transaction-history";
 
+import { createAppError } from "@/types/errors";
 import PlanSummaryComponent from "./PlanSummary";
 import PriceBreakdownComponent from "./PriceBreakdown";
 import AssetSelectorComponent from "./AssetSelector";
@@ -25,7 +29,8 @@ import WalletBalanceComponent from "./WalletBalance";
 import TransactionPreviewComponent from "./TransactionPreview";
 import CheckoutResultDisplay from "./CheckoutResult";
 import TxFailureRecovery from "./TxFailureRecovery";
-import TransactionProgress from "./TransactionProgress"; // ✅ new import
+import TransactionProgress from "./TransactionProgress"; 
+import { ReferralCodeInput } from "@/components/referral/ReferralCodeInput";
 
 export type CheckoutStep = "select" | "preview" | "confirm" | "result";
 
