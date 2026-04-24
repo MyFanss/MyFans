@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSubscribeFlow } from '@/hooks/useSubscribeFlow';
 import type { SubscriptionPlan } from '@/types/subscribe';
@@ -23,6 +24,12 @@ export default function SubscribeConfirmationFlow({
 }: SubscribeConfirmationFlowProps) {
   const router = useRouter();
   const { state, execute, retry, reset } = useSubscribeFlow(plan);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Focus the container when the step changes for better keyboard/screen reader UX
+  useEffect(() => {
+    containerRef.current?.focus();
+  }, [state.step]);
 
   function renderStep() {
     switch (state.step) {
@@ -71,5 +78,14 @@ export default function SubscribeConfirmationFlow({
     }
   }
 
-  return <div className="max-w-md mx-auto p-4">{renderStep()}</div>;
+  return (
+    <div 
+      ref={containerRef}
+      className="max-w-md mx-auto p-4 focus:outline-none"
+      tabIndex={-1}
+      aria-live="polite"
+    >
+      {renderStep()}
+    </div>
+  );
 }
