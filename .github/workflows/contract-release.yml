@@ -1,0 +1,248 @@
+name: 📋 Contract Release Checklist
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'contract/**'
+      - 'docs/release/contract-release-checklist.md'
+      - '.github/workflows/contract-release.yml'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'contract/**'
+      - 'docs/release/contract-release-checklist.md'
+      - '.github/workflows/contract-release.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  release-checklist:
+    name: Contract Release Checklist
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🦀 Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.cargo/git/checkouts
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('contract/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: 🏗️ Cache Cargo target
+        uses: actions/cache@v4
+        with:
+          path: contract/target
+          key: ${{ runner.os }}-contract-target-${{ hashFiles('contract/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-contract-target-
+
+      - name: 🔧 Install Rust toolchain
+        run: |
+          rustup component add rustfmt clippy
+          rustup target add wasm32-unknown-unknown
+        working-directory: contract
+
+      # ── Step 1: Formatting ────────────────────────────────────────────────
+
+      - name: 📐 Check formatting (cargo fmt)
+        id: fmt
+        run: |
+          cargo fmt --check
+          echo "### ✅ Formatting" >> $GITHUB_STEP_SUMMARY
+          echo "cargo fmt --check passed." >> $GITHUB_STEP_SUMMARY
+        working-directory: contract
+
+      # ── Step 2: Linting ───────────────────────────────────────────────────
+
+      - name: 🔍 Lint (cargo clippy)
+        id: clippy
+        run: |
+          cargo clippy --all-targets --all-features -- -D warnings
+          echo "### ✅ Linting" >> $GITHUB_STEP_SUMMARY
+          echo "cargo clippy passed with no warnings." >> $GITHUB_STEP_SUMMARY
+        working-directory: contract
+
+      # ── Step 3: Tests ─────────────────────────────────────────────────────
+
+      - name: 🧪 Run tests (cargo test)
+        id: tests
+        run: |
+          cargo test --all-features 2>&1 | tee /tmp/test-output.txt
+          echo "### ✅ Tests" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          tail -20 /tmp/test-output.txt >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        working-directory: contract
+
+      # ── Step 4: WASM build ────────────────────────────────────────────────
+
+      - name: 🏗️ Build WASM release artifacts
+        id: build
+        run: |
+          cargo build --release --target wasm32-unknown-unknown
+          echo "### ✅ WASM Build" >> $GITHUB_STEP_SUMMARY
+          echo "Built packages:" >> $GITHUB_STEP_SUMMARY
+          find target/wasm32-unknown-unknown/release -maxdepth 1 -name '*.wasm' \
+            -exec bash -c 'echo "- $(basename {}) ($(du -sh {} | cut -f1))"' \; \
+            >> $GITHUB_STEP_SUMMARY
+        working-directory: contract
+
+      # ── Step 5: ABI snapshot check ────────────────────────────────────────
+      # stellar CLI is not available in standard CI runners; we verify the
+      # snapshot files are committed and non-empty as a proxy check.
+
+      - name: 📸 ABI snapshot presence check
+        id: abi
+        run: |
+          MISSING=0
+          PACKAGES=(
+            myfans-token
+            creator-registry
+            subscription
+            content-access
+            earnings
+          )
+          echo "### 📸 ABI Snapshots" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          for pkg in "${PACKAGES[@]}"; do
+            snapshot="abi-snapshots/${pkg}.json"
+            if [[ -f "$snapshot" && -s "$snapshot" ]]; then
+              echo "| $pkg | ✅ present |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| $pkg | ❌ missing or empty |" >> $GITHUB_STEP_SUMMARY
+              echo "::warning::ABI snapshot missing or empty for $pkg — run ./scripts/snapshot-abi.sh and commit."
+              MISSING=1
+            fi
+          done
+          if [[ "$MISSING" -eq 1 ]]; then
+            echo "::error::One or more ABI snapshots are missing. Run ./scripts/snapshot-abi.sh and commit the results."
+            exit 1
+          fi
+        working-directory: contract
+
+      # ── Step 6: Deploy output schema check ───────────────────────────────
+
+      - name: 🗂️ Deploy output schema check
+        id: schema
+        run: |
+          if [[ -f "contract/deployed.json" ]]; then
+            bash contract/scripts/test-deploy-output.sh contract/deployed.json
+            echo "### ✅ Deploy Output Schema" >> $GITHUB_STEP_SUMMARY
+            echo "deployed.json schemaVersion is present." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ℹ️ Deploy Output Schema" >> $GITHUB_STEP_SUMMARY
+            echo "deployed.json not found — skipped (expected before first deploy)." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # ── Step 7: Release checklist doc link verification ───────────────────
+
+      - name: 📋 Verify release checklist docs are linked
+        id: docs
+        run: |
+          MISSING_LINKS=0
+          echo "### 📋 Release Checklist Docs" >> $GITHUB_STEP_SUMMARY
+          echo "| Document | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          DOCS=(
+            "docs/release/contract-release-checklist.md"
+            "docs/release/RELEASE_CHECKLIST.md"
+            "docs/release/ROLLBACK_TEMPLATE.md"
+            "docs/release/SMOKE_TEST_MATRIX.md"
+            "docs/CONTRACT_UPGRADE_GOVERNANCE.md"
+            "contract/AUTH_MATRIX.md"
+            "contract/STORAGE_KEYS.md"
+          )
+
+          for doc in "${DOCS[@]}"; do
+            if [[ -f "$doc" ]]; then
+              echo "| $doc | ✅ present |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| $doc | ❌ missing |" >> $GITHUB_STEP_SUMMARY
+              echo "::error::Required release doc missing: $doc"
+              MISSING_LINKS=1
+            fi
+          done
+
+          # Verify contract-release-checklist.md is referenced from RELEASE_CHECKLIST.md
+          if grep -q "contract-release-checklist" docs/release/RELEASE_CHECKLIST.md; then
+            echo "| RELEASE_CHECKLIST.md → contract-release-checklist.md | ✅ linked |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| RELEASE_CHECKLIST.md → contract-release-checklist.md | ❌ not linked |" >> $GITHUB_STEP_SUMMARY
+            echo "::error::RELEASE_CHECKLIST.md does not link to contract-release-checklist.md"
+            MISSING_LINKS=1
+          fi
+
+          if [[ "$MISSING_LINKS" -eq 1 ]]; then
+            exit 1
+          fi
+
+      # ── Summary ───────────────────────────────────────────────────────────
+
+      - name: 📊 Release checklist summary
+        if: always()
+        run: |
+          echo "## 📋 Contract Release Checklist Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Step | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Formatting (cargo fmt) | ${{ steps.fmt.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Linting (cargo clippy) | ${{ steps.clippy.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests (cargo test) | ${{ steps.tests.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| WASM build | ${{ steps.build.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| ABI snapshots | ${{ steps.abi.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deploy output schema | ${{ steps.schema.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release docs linked | ${{ steps.docs.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See [contract-release-checklist.md](../docs/release/contract-release-checklist.md) for the full manual checklist." >> $GITHUB_STEP_SUMMARY
+
+      - name: 📝 Comment on PR with checklist summary
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const steps = {
+              fmt:    '${{ steps.fmt.outcome }}',
+              clippy: '${{ steps.clippy.outcome }}',
+              tests:  '${{ steps.tests.outcome }}',
+              build:  '${{ steps.build.outcome }}',
+              abi:    '${{ steps.abi.outcome }}',
+              schema: '${{ steps.schema.outcome }}',
+              docs:   '${{ steps.docs.outcome }}',
+            };
+            const icon = (s) => s === 'success' ? '✅' : s === 'skipped' ? '⏭️' : '❌';
+            const body = [
+              '## 📋 Contract Release Checklist',
+              '',
+              '| Step | Result |',
+              '|------|--------|',
+              `| Formatting (cargo fmt) | ${icon(steps.fmt)} |`,
+              `| Linting (cargo clippy) | ${icon(steps.clippy)} |`,
+              `| Tests (cargo test) | ${icon(steps.tests)} |`,
+              `| WASM build | ${icon(steps.build)} |`,
+              `| ABI snapshots | ${icon(steps.abi)} |`,
+              `| Deploy output schema | ${icon(steps.schema)} |`,
+              `| Release docs linked | ${icon(steps.docs)} |`,
+              '',
+              'See [`docs/release/contract-release-checklist.md`](../blob/${{ github.head_ref }}/docs/release/contract-release-checklist.md) for the full manual checklist.',
+            ].join('\n');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });

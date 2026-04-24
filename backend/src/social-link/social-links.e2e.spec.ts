@@ -53,7 +53,7 @@ class MockUserRepository {
 import { Controller, Body, Param, Patch, Get } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { SocialLinksDto } from '../dto/social-links.dto';
+import { SocialLinksDto } from './social-links.dto';
 import { SocialLinksService } from '../social-links.service';
 
 @Controller('users')

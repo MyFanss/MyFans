@@ -9,33 +9,47 @@ import type {
   Subscription, CreateSubscriptionRequest, GetSubscriptionsResponse 
 } from '@/types';
 import { retryWithBackoff, getAuthHeaders, handleApiError, shouldRetry } from '@/lib/api-utils';
+import { getCsrfToken, invalidateCsrfToken } from '@/lib/csrf';
 import type { AppError } from '@/types';
+
+const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
 class ApiClient {
   async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${API_BASE}${endpoint}`;
-    const controller = new AbortController();
-    
+    const method = (options.method ?? 'GET').toUpperCase();
+
+    const extraHeaders: HeadersInit = {};
+    if (MUTATING.has(method)) {
+      extraHeaders['x-csrf-token'] = await getCsrfToken();
+    }
+
     const config: RequestInit = {
       ...options,
+      credentials: 'include',
       headers: {
         ...getAuthHeaders(),
+        ...extraHeaders,
         ...options.headers,
       },
-      signal: controller.signal,
     };
 
     return retryWithBackoff(async () => {
       const response = await fetch(url, config);
-      
+
+      if (response.status === 403) {
+        // Stale CSRF token — invalidate cache so next attempt re-fetches
+        invalidateCsrfToken();
+      }
+
       if (!response.ok) {
         const appError = handleApiError(response, url);
         if (!shouldRetry(appError)) throw appError;
         throw appError;
       }
-      
+
       return response.json() as Promise<T>;
     });
   }

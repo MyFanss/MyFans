@@ -3,9 +3,11 @@ import { EventBus } from '../events/event-bus';
 import {
   SubscriptionCancelledEvent,
   SubscriptionRenewedEvent,
+  SubscriptionRenewalFailedEvent,
 } from '../events/domain-events';
 import { SubscriptionIndexerEventDto } from './dto/subscription-indexer-event.dto';
-import { SubscriptionIndexRepository, SubscriptionStatus } from './repositories/subscription-index.repository';
+import { SubscriptionStatus } from './entities/subscription-index.entity';
+import { SubscriptionIndexRepository } from './repositories/subscription-index.repository';
 
 @Injectable()
 export class SubscriptionLifecycleIndexerService {
@@ -14,7 +16,7 @@ export class SubscriptionLifecycleIndexerService {
   constructor(
     private readonly eventBus: EventBus,
     private readonly indexRepo: SubscriptionIndexRepository,
-  ) {}
+  ) { }
 
   async handleEvent(event: SubscriptionIndexerEventDto): Promise<void> {
     const fan = event.userId;
@@ -40,7 +42,7 @@ export class SubscriptionLifecycleIndexerService {
           expiry,
         ),
       );
-      this.logger.log(`Indexed renewed sub ${event.subscriptionId} fan:${fan.slice(0,8)} -> ${creator.slice(0,8)}`);
+      this.logger.log(`Indexed renewed sub ${event.subscriptionId} fan:${fan.slice(0, 8)} -> ${creator.slice(0, 8)}`);
       return;
     }
 
@@ -56,6 +58,22 @@ export class SubscriptionLifecycleIndexerService {
         ),
       );
       this.logger.log(`Indexed cancelled sub ${event.subscriptionId}`);
+      return;
+    }
+
+    if (event.event === 'renewal_failed') {
+      this.eventBus.publish(
+        new SubscriptionRenewalFailedEvent(
+          event.subscriptionId,
+          fan,
+          creator,
+          event.planId,
+          event.reason,
+        ),
+      );
+      this.logger.warn(
+        `Indexed renewal failure for sub ${event.subscriptionId} fan:${fan.slice(0, 8)} -> ${creator.slice(0, 8)}. Reason: ${event.reason || 'unknown'}`,
+      );
     }
   }
 }

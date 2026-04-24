@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
-    Symbol,
+    String, Symbol,
 };
 
 #[contracttype]
@@ -39,6 +39,14 @@ pub enum DataKey {
     Paused,
 }
 
+impl DataKey {
+    /// Canonical subscription storage key; serializes as [`DataKey::Sub`].
+    #[inline]
+    pub fn subscription(fan: Address, creator: Address) -> Self {
+        DataKey::Sub(fan, creator)
+    }
+}
+
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -47,6 +55,37 @@ pub enum Error {
     SubscriptionNotFound = 3,
     SubscriptionExpired = 4,
     AdminNotInitialized = 5,
+    InvalidFeeRecipient = 6,
+    InvalidFeeBps = 7,
+    InvalidTokenAddress = 8,
+    InvalidPrice = 9,
+}
+
+/// Stellar "null" account (GAAA...WHF) — not a valid fee recipient.
+fn null_account_address(env: &Env) -> Address {
+    Address::from_string(&String::from_str(
+        env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    ))
+}
+
+fn require_valid_fee_recipient(env: &Env, addr: &Address) {
+    if addr == &null_account_address(env) {
+        panic_with_error!(env, Error::InvalidFeeRecipient);
+    }
+}
+
+/// Protocol fee in basis points must not exceed 100% (10_000 bps).
+fn require_valid_fee_bps(env: &Env, fee_bps: u32) {
+    if fee_bps > 10_000 {
+        panic_with_error!(env, Error::InvalidFeeBps);
+    }
+}
+
+fn require_valid_token_address(env: &Env, token: &Address) {
+    if token == &null_account_address(env) {
+        panic_with_error!(env, Error::InvalidTokenAddress);
+    }
 }
 
 #[contract]
@@ -54,6 +93,12 @@ pub struct MyfansContract;
 
 #[contractimpl]
 impl MyfansContract {
+    /// Initialize the subscription contract once.
+    ///
+    /// Validates:
+    /// * `fee_bps` must be ≤ 10000 (100%).
+    /// * `token` must be a valid non-null address.
+    /// * `price` must be strictly positive.
     pub fn init(
         env: Env,
         admin: Address,
@@ -64,6 +109,12 @@ impl MyfansContract {
     ) {
         if env.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&env, Error::AlreadyInitialized);
+        }
+        require_valid_fee_recipient(&env, &fee_recipient);
+        require_valid_fee_bps(&env, fee_bps);
+        require_valid_token_address(&env, &token);
+        if price <= 0 {
+            panic_with_error!(&env, Error::InvalidPrice);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
@@ -165,6 +216,13 @@ impl MyfansContract {
         );
     }
 
+    pub fn admin(env: Env) -> Address {
+    env.storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized))
+    }
+
     pub fn is_subscriber(env: Env, fan: Address, creator: Address) -> bool {
         if let Some(sub) = env
             .storage()
@@ -243,7 +301,17 @@ impl MyfansContract {
         );
     }
 
-    pub fn cancel(env: Env, fan: Address, creator: Address) {
+    /// Cancel a subscription.
+    ///
+    /// # Arguments
+    /// * `fan` - The subscriber address (must authorize)
+    /// * `creator` - The creator address
+    /// * `reason` - Reason code for cancellation (e.g. 0 = user-initiated,
+    ///   1 = too expensive, 2 = content quality, 3 = switching creator, 4 = other)
+    ///
+    /// Event: `cancelled` — topics: `(name, fan, creator)` data: `(true, reason)`
+    /// Backward-compatible: topics unchanged; data is now a tuple instead of bare `true`.
+    pub fn cancel(env: Env, fan: Address, creator: Address, reason: u32) {
         fan.require_auth();
         let paused: bool = env
             .storage()
@@ -257,9 +325,11 @@ impl MyfansContract {
         env.storage()
             .instance()
             .remove(&DataKey::subscription(fan.clone(), creator.clone()));
-        // topics: (name, fan, creator)  data: true
-        env.events()
-            .publish((Symbol::new(&env, "cancelled"), fan.clone(), creator), true);
+        // topics: (name, fan, creator)  data: (true, reason)
+        env.events().publish(
+            (Symbol::new(&env, "cancelled"), fan.clone(), creator),
+            (true, reason),
+        );
     }
 
     pub fn create_subscription(env: Env, fan: Address, creator: Address, duration_ledgers: u32) {
@@ -349,6 +419,68 @@ impl MyfansContract {
             .publish((Symbol::new(&env, "unpaused"),), admin);
     }
 
+    /// Rotate the protocol fee recipient (admin only).
+    ///
+    /// Rejects the Stellar null / burn strkey (`GAAA...WHF`). On success, emits
+    /// `fee_recipient_updated` (on-chain symbol; product docs: fee-recipient-updated)
+    /// with topics `(fee_recipient_updated, old_recipient, new_recipient)`.
+    pub fn set_fee_recipient(env: Env, new_fee_recipient: Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
+        admin.require_auth();
+
+        require_valid_fee_recipient(&env, &new_fee_recipient);
+
+        let old: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeRecipient)
+            .unwrap();
+
+        env.storage()
+            .instance()
+            .set(&DataKey::FeeRecipient, &new_fee_recipient);
+
+        env.events().publish(
+            (
+                Symbol::new(&env, "fee_recipient_updated"),
+                old,
+                new_fee_recipient,
+            ),
+            (),
+        );
+    }
+
+    /// Update protocol fee basis points (admin only). `new_fee_bps` must be <= 10_000.
+    ///
+    /// Emits `fee_updated` (on-chain symbol; product docs: fee-updated) with data `(old_bps, new_bps)`.
+    pub fn set_fee_bps(env: Env, new_fee_bps: u32) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
+        admin.require_auth();
+
+        require_valid_fee_bps(&env, new_fee_bps);
+
+        let old: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeBps)
+            .unwrap_or(0);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::FeeBps, &new_fee_bps);
+
+        env.events()
+            .publish((Symbol::new(&env, "fee_updated"),), (old, new_fee_bps));
+    }
+
     /// Check if the contract is paused (view function)
     pub fn is_paused(env: Env) -> bool {
         env.storage()
@@ -356,7 +488,44 @@ impl MyfansContract {
             .get(&DataKey::Paused)
             .unwrap_or(false)
     }
+
+    /// Returns (expiry_ledger_seq, expiry_unix_timestamp) for the subscription.
+    ///
+    /// `expiry_unix_timestamp` is derived from the ledger close time at the
+    /// moment of the call, anchored to the current ledger sequence and timestamp.
+    /// This lets callers avoid ledger-sequence vs wall-clock skew by using the
+    /// on-chain timestamp directly.
+    ///
+    /// Returns (0, 0) if no subscription exists.
+    pub fn get_expiry_unix(env: Env, fan: Address, creator: Address) -> (u64, u64) {
+        let sub = match env
+            .storage()
+            .instance()
+            .get::<DataKey, Subscription>(&DataKey::subscription(fan, creator))
+        {
+            Some(s) => s,
+            None => return (0, 0),
+        };
+
+        let expiry_seq = sub.expiry;
+        let current_seq = env.ledger().sequence() as u64;
+        let current_ts = env.ledger().timestamp(); // Unix seconds at current ledger
+
+        // Stellar nominal close time is 5 seconds per ledger.
+        const SECONDS_PER_LEDGER: u64 = 5;
+
+        let expiry_unix = if expiry_seq >= current_seq {
+            current_ts + (expiry_seq - current_seq) * SECONDS_PER_LEDGER
+        } else {
+            // Already expired: subtract elapsed ledgers
+            let elapsed = current_seq - expiry_seq;
+            current_ts.saturating_sub(elapsed * SECONDS_PER_LEDGER)
+        };
+
+        (expiry_seq, expiry_unix)
+    }
 }
 
+#[cfg(test)]
 #[cfg(test)]
 mod test;

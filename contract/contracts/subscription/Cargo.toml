@@ -9,7 +9,15 @@ description.workspace = true
 publish.workspace = true
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
+
+[[test]]
+name = "contract_integration"
+path = "tests/contract_integration.rs"
+required-features = ["testutils"]
+
+[features]
+testutils = ["soroban-sdk/testutils"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
@@ -17,3 +25,6 @@ myfans-lib = { path = "../myfans-lib" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+myfans_token = { package = "myfans-token", path = "../myfans-token" }
+content_access = { package = "content-access", path = "../content-access" }
+myfans_lib = { package = "myfans-lib", path = "../myfans-lib", features = ["testutils"] }

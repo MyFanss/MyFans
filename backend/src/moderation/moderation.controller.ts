@@ -19,20 +19,25 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { ModerationService } from './moderation.service';
+import { ModerationSlaService } from './moderation-sla.service';
 import { CreateFlagDto } from './dto/create-flag.dto';
 import { ReviewFlagDto } from './dto/review-flag.dto';
 import { QueryFlagsDto } from './dto/query-flags.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth-module/guards/roles.guard';
 import { Roles } from '../auth-module/decorators/roles.decorator';
-import { UserRole } from '../users/entities/user.entity';
+import { UserRole } from '../common/enums/user-role.enum';
 
 @ApiTags('moderation')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
 @Controller({ path: 'moderation', version: '1' })
 export class ModerationController {
-  constructor(private readonly moderationService: ModerationService) {}
+  constructor(
+    private readonly moderationService: ModerationService,
+    private readonly moderationSlaService: ModerationSlaService,
+  ) {}
 
   // ── User endpoints ────────────────────────────────────────────────────
 
@@ -86,5 +91,21 @@ export class ModerationController {
   @ApiResponse({ status: 200, description: 'Audit log entries' })
   getAuditLog(@Param('id', ParseUUIDPipe) id: string) {
     return this.moderationService.getAuditLog(id);
+  }
+
+  // ── SLA metrics ───────────────────────────────────────────────────────
+
+  @Get('sla')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: '[Admin] Moderation queue SLA metrics',
+    description:
+      'Returns queue-age statistics (avg, p95, p99, overdue count) for each open moderation status. ' +
+      'SLO: PENDING ≤ 4 h, UNDER_REVIEW ≤ 24 h.',
+  })
+  @ApiResponse({ status: 200, description: 'SLA snapshot' })
+  getSla() {
+    return this.moderationSlaService.snapshot();
   }
 }

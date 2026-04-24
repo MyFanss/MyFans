@@ -6,6 +6,7 @@ import { AuthService } from '../auth/auth.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CreatorsService } from '../creators/creators.service';
 import { User } from '../users/entities/user.entity';
+import { SubscriptionIndexRepository } from '../subscriptions/repositories/subscription-index.repository';
 import {
   UserLoggedInEvent,
   SubscriptionCreatedEvent,
@@ -85,12 +86,27 @@ describe('AuthService events', () => {
 describe('SubscriptionsService events', () => {
   let subscriptionsService: SubscriptionsService;
   let eventBus: InProcessEventBus;
+  let repo: { upsertManual: jest.Mock; updateStatus: jest.Mock };
 
   beforeEach(async () => {
+    repo = {
+      upsertManual: jest.fn(async (data) => ({
+        id: 'sub-1',
+        fan: data.fan,
+        creator: data.creator,
+        planId: data.planId,
+        expiryUnix: data.expiryUnix,
+        status: data.status,
+        createdAt: new Date(),
+      })),
+      updateStatus: jest.fn(async () => undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SubscriptionsService,
         { provide: EventBus, useClass: InProcessEventBus },
+        { provide: SubscriptionIndexRepository, useValue: repo },
       ],
     }).compile();
 
@@ -98,10 +114,10 @@ describe('SubscriptionsService events', () => {
     eventBus = module.get(EventBus);
   });
 
-  it('publishes SubscriptionCreatedEvent on addSubscription', () => {
+  it('publishes SubscriptionCreatedEvent on addSubscription', async () => {
     const handler = jest.fn();
     eventBus.subscribe('subscription.created', handler);
-    subscriptionsService.addSubscription('fan1', 'creator1', 1, 9999999);
+    await subscriptionsService.addSubscription('fan1', 'creator1', 1, 9999999);
     expect(handler).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'subscription.created',
@@ -112,10 +128,10 @@ describe('SubscriptionsService events', () => {
     );
   });
 
-  it('publishes SubscriptionExpiredEvent on expireSubscription', () => {
+  it('publishes SubscriptionExpiredEvent on expireSubscription', async () => {
     const handler = jest.fn();
     eventBus.subscribe('subscription.expired', handler);
-    subscriptionsService.expireSubscription('fan1', 'creator1');
+    await subscriptionsService.expireSubscription('fan1', 'creator1');
     expect(handler).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'subscription.expired',

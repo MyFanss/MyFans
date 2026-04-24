@@ -69,13 +69,15 @@ npm run dev
 
 ## Environment Variables
 
+Contract IDs written by `contract/scripts/deploy.sh` (`.env.deployed`) use canonical `CONTRACT_ID_*` names plus legacy aliases. Full mapping: [`contract/docs/DEPLOYED_ENV.md`](contract/docs/DEPLOYED_ENV.md).
+
 ### Backend (.env)
-- `SUBSCRIPTION_CONTRACT_ID`: Deployed subscription contract address
+- `CONTRACT_ID_SUBSCRIPTION` (preferred) or `SUBSCRIPTION_CONTRACT_ID` / `CONTRACT_ID_SUBSCRIPTIONS` / `SUBSCRIPTIONS_CONTRACT_ID`: subscription contract
 - `STELLAR_NETWORK`: testnet or public
 - `DB_*`: PostgreSQL connection details
 
 ### Frontend (.env.local)
-- `NEXT_PUBLIC_SUBSCRIPTION_CONTRACT_ID`: Same as backend
+- `NEXT_PUBLIC_SUBSCRIPTION_CONTRACT_ID` (or `NEXT_PUBLIC_SUBSCRIPTIONS_CONTRACT_ID`): same contract as backend subscription id
 - `NEXT_PUBLIC_STELLAR_NETWORK`: testnet or public
 - `NEXT_PUBLIC_API_URL`: Backend API URL
 

@@ -171,26 +171,21 @@ export async function signTransaction(
     });
   }
 
-  // Check if wallet is installed
-  if (!isWalletInstalled(walletType)) {
-    const installUrl = getWalletInstallUrl(walletType);
-    throw createAppError('WALLET_NOT_INSTALLED', {
-      message: `${walletType} wallet not found`,
-      description: `Please install ${walletType} wallet to sign transactions.`,
-      actions: installUrl ? [
-        { label: `Install ${walletType}`, type: 'navigate', href: installUrl, primary: true },
-      ] : [],
-    });
-  }
-
   try {
-    const signedXdr = await freighter.signTransaction(xdr, opts);
+    const windowWithWallets = window as Window & { freighter?: FreighterWallet };
+    const freighterWallet = windowWithWallets.freighter;
+    if (!freighterWallet) {
+      throw createAppError('WALLET_NOT_FOUND', { message: 'Freighter wallet not found' });
+    }
+    const signedXdr = await freighterWallet.signTransaction(xdr);
 
     if (!signedXdr) {
       throw createAppError('WALLET_SIGNATURE_FAILED', {
         message: 'No signed transaction returned',
       });
     }
+
+    return signedXdr;
   } catch (err) {
     // Re-throw AppError as-is
     if (err && typeof err === 'object' && 'code' in err) {
@@ -208,7 +203,7 @@ export async function signTransaction(
 
     throw createAppError('WALLET_SIGNATURE_FAILED', {
       message: err instanceof Error ? err.message : 'Unknown error',
-      description: `Failed to sign transaction with ${walletType} wallet. Please try again.`,
+      description: `Failed to sign transaction. Please try again.`,
       cause: err instanceof Error ? err : undefined,
     });
   }
@@ -218,7 +213,7 @@ export async function signTransaction(
  * @deprecated Use signTransaction(xdr, walletType) instead
  */
 export async function signTransactionLegacy(xdr: string): Promise<string> {
-  return signTransaction(xdr, 'freighter');
+  return signTransaction(xdr);
 }
 
 /**

@@ -42,3 +42,7 @@ export type {
   GetSubscriptionsResponse,
   CreateSubscriptionResponse
 } from './api';
+
+// Subscription status — shared type + value constants usable across frontend modules
+export type { SubscriptionStatus } from '../lib/subscription-status';
+export { SUBSCRIPTION_STATUS_VALUES } from '../lib/subscription-status';
