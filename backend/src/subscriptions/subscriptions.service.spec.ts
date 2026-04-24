@@ -106,6 +106,15 @@ describe('SubscriptionsService', () => {
         }
       }),
       findAllForReconciler: jest.fn(async () => currentSubs),
+      findWithCursor: jest.fn(async (fan, status, sort, cursorId, limit) => {
+        let filtered = currentSubs.filter(
+          (sub) => sub.fan === fan && (status ? sub.status === status : true),
+        );
+        if (cursorId) {
+          filtered = filtered.filter((sub) => sub.id > cursorId);
+        }
+        return filtered.slice(0, limit + 1);
+      }),
     } as unknown as jest.Mocked<SubscriptionIndexRepository>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -154,8 +163,38 @@ describe('SubscriptionsService', () => {
     );
 
     expect(result.data).toHaveLength(1);
-    expect(result.total).toBe(1);
-    expect(repo.findAndCountForFan).toHaveBeenCalled();
+    expect(repo.findWithCursor).toHaveBeenCalledWith(
+      'GFANADDRESS333333333333333333333333333333333333333333333333',
+      undefined,
+      undefined,
+      undefined,
+      20,
+    );
+  });
+
+  it('passes status and cursor to findWithCursor', async () => {
+    await service.addSubscription(
+      'GFANADDRESS666666666666666666666666666666666666666666666666',
+      'GAAAAAAAAAAAAAAA',
+      1,
+      Math.floor(Date.now() / 1000) + 60,
+    );
+
+    await service.listSubscriptions(
+      'GFANADDRESS666666666666666666666666666666666666666666666666',
+      SubscriptionStatus.ACTIVE,
+      'created',
+      'some-cursor',
+      10,
+    );
+
+    expect(repo.findWithCursor).toHaveBeenCalledWith(
+      'GFANADDRESS666666666666666666666666666666666666666666666666',
+      SubscriptionStatus.ACTIVE,
+      'created',
+      'some-cursor',
+      10,
+    );
   });
 
   it('publishes a renewal event when confirming an existing subscription', async () => {

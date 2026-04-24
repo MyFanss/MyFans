@@ -398,26 +398,7 @@ export class SubscriptionsService {
     cursor?: string,
     limit: number = 20,
   ) {
-    const where: any = { fan };
-
-    if (status) {
-      where.status = status;
-    }
-
-    const queryBuilder = this.indexRepo.repo
-      .createQueryBuilder('sub')
-      .where('sub.fan = :fan', { fan })
-      .orderBy(sort === 'created' ? 'sub.createdAt' : 'sub.expiryUnix', 'DESC')
-      .take(limit + 1);
-
-    if (cursor) {
-      const cursorId = parseInt(cursor, 10);
-      if (!isNaN(cursorId)) {
-        queryBuilder.andWhere('sub.id > :cursorId', { cursorId });
-      }
-    }
-
-    const results = await queryBuilder.getMany();
+    const results = await this.indexRepo.findWithCursor(fan, status, sort, cursor, limit);
     const hasMore = results.length > limit;
     if (hasMore) {
       results.pop();
