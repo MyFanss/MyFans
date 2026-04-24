@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { getRemoteImagePatterns } from "./src/lib/image-remote-patterns";
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -55,9 +56,7 @@ const nextConfig: NextConfig = {
     root: process.cwd(),
   },
   images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: '**' },
-    ],
+    remotePatterns: getRemoteImagePatterns(),
   },
   experimental: {
     optimizeCss: true,
