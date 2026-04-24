@@ -56,7 +56,7 @@ export class GatedContentGuard implements CanActivate {
     if (this.cache.get(fan, creator)) return true;
 
     // ── 4. Indexed DB check ───────────────────────────────────────────────
-    const indexed = this.subscriptionsService.isSubscriber(fan, creator);
+    const indexed = await this.subscriptionsService.isSubscriber(fan, creator);
     if (indexed) {
       this.cache.set(fan, creator);
       return true;

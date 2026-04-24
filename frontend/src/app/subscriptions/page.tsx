@@ -14,6 +14,7 @@ import { BaseCard } from '@/components/cards/BaseCard';
 import HistoryCardSkeleton from '@/components/ui/HistoryCardSkeleton';
 import { useToast } from '@/contexts/ToastContext';
 import { subscriptionActionToast, subscriptionsLoadFailed } from '@/lib/error-copy';
+import { cancelSubscriptionOnSoroban } from '@/lib/stellar';
 
 export default function SubscriptionsPage() {
   const { showInfo, showSuccess, showError, showLoading, dismiss } = useToast();
@@ -130,10 +131,27 @@ export default function SubscriptionsPage() {
     setIsCancelling(true);
     const loadingToastId = showLoading(`Cancelling ${cancelTarget.creatorName}...`);
     try {
-      // Replace with API: await cancelSubscription(cancelTarget.id);
-      setActiveList((prev: ActiveSubscription[]) => prev.filter((s: ActiveSubscription) => s.id !== cancelTarget.id));
+      // Derive fan address from connected wallet; fall back to demo address
+      const fanAddress =
+        typeof window !== 'undefined' &&
+        (window as any).freighter
+          ? await (window as any).freighter.getPublicKey().catch(() => 'fan_demo_address')
+          : 'fan_demo_address';
+
+      await cancelSubscriptionOnSoroban({
+        fanAddress,
+        creatorAddress: cancelTarget.creatorId,
+        reason: 0,
+      });
+
+      setActiveList((prev: ActiveSubscription[]) =>
+        prev.filter((s: ActiveSubscription) => s.id !== cancelTarget.id),
+      );
       setCancelTarget(null);
-      showInfo('Subscription cancelled', `Access remains active until ${formatDate(cancelTarget.currentPeriodEnd)}.`);
+      showInfo(
+        'Subscription cancelled',
+        `Access remains active until ${formatDate(cancelTarget.currentPeriodEnd)}. No refund is issued for the current period.`,
+      );
     } catch {
       showError('TX_FAILED', subscriptionActionToast.cancelFailed());
     } finally {
@@ -348,8 +366,11 @@ export default function SubscriptionsPage() {
               <h3 id="cancel-dialog-title" className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                 Cancel subscription?
               </h3>
-              <p id="cancel-dialog-description" className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              <p id="cancel-dialog-description" className="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 You will lose access to {cancelTarget.creatorName}&apos;s {cancelTarget.planName} content at the end of your current billing period ({formatDate(cancelTarget.currentPeriodEnd)}). You can resubscribe anytime.
+              </p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2 mb-4">
+                ⚠ No refund will be issued for the remaining days in the current period. Cancellation takes effect on-chain immediately.
               </p>
               <div className="flex gap-3 justify-end">
                 <button

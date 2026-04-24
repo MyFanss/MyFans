@@ -32,7 +32,7 @@ export class SubscriptionIndexRepository {
     private readonly repo: Repository<SubscriptionIndexEntity>,
   ) {}
 
-async upsertEvent(data: UpsertEventData): Promise<SubscriptionIndexEntity> {
+  async upsertEvent(data: UpsertEventData): Promise<SubscriptionIndexEntity> {
     const entity = this.repo.create(data);
     try {
       return await this.repo.save(entity);
@@ -49,7 +49,7 @@ async upsertEvent(data: UpsertEventData): Promise<SubscriptionIndexEntity> {
     }
   }
 
-async upsertManual(data: UpsertManualData): Promise<SubscriptionIndexEntity> {
+  async upsertManual(data: UpsertManualData): Promise<SubscriptionIndexEntity> {
     // Upsert on (fan, creator) - keep latest
     const existing = await this.findCurrentForFanCreator(data.fan, data.creator);
     const entity = this.repo.create({
@@ -72,8 +72,31 @@ async upsertManual(data: UpsertManualData): Promise<SubscriptionIndexEntity> {
 
   async findCurrentForFanCreator(fan: string, creator: string): Promise<SubscriptionIndexEntity | null> {
     return this.repo.findOne({
-      where: { fan, creator, status: SubscriptionStatus.ACTIVE },
+      where: { fan, creator },
       order: { indexedAt: 'DESC' },
+    });
+  }
+
+  async findAndCountForFan(
+    fan: string,
+    status: SubscriptionStatus | undefined,
+    sort: string | undefined,
+    page: number,
+    limit: number,
+  ): Promise<[SubscriptionIndexEntity[], number]> {
+    const where = status ? { fan, status } : { fan };
+    return this.repo.findAndCount({
+      where,
+      order: sort === 'created' ? { createdAt: 'DESC' } : { expiryUnix: 'ASC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+  }
+
+  async listForCreator(creator: string): Promise<SubscriptionIndexEntity[]> {
+    return this.repo.find({
+      where: { creator },
+      order: { createdAt: 'DESC' },
     });
   }
 
@@ -121,5 +144,4 @@ async upsertManual(data: UpsertManualData): Promise<SubscriptionIndexEntity> {
     });
   }
 }
-
 

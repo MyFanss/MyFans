@@ -1,4 +1,4 @@
-#[no_std]
+#![no_std]
 
 use soroban_sdk::{contracterror, contracttype};
 
@@ -51,6 +51,11 @@ pub enum MyfansError {
     NegativeMinBalance = 105,
     MinBalanceViolation = 106,
 }
+
+/// Shared test fixtures for cross-contract integration tests.
+/// Only compiled when the `testutils` feature is enabled.
+#[cfg(any(test, feature = "testutils"))]
+pub mod test_fixtures;
 
 #[cfg(test)]
 mod tests {

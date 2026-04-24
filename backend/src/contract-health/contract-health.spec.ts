@@ -77,9 +77,16 @@ const ENV_KEYS = [
   'CONTRACT_ID_MYFANS',
   'CONTRACT_ID_MYFANS_TOKEN',
   'CONTRACT_ID_CREATOR_REGISTRY',
+  'CONTRACT_ID_SUBSCRIPTION',
   'CONTRACT_ID_SUBSCRIPTIONS',
   'CONTRACT_ID_CONTENT_ACCESS',
   'CONTRACT_ID_EARNINGS',
+  'SUBSCRIPTION_CONTRACT_ID',
+  'SUBSCRIPTIONS_CONTRACT_ID',
+  'TOKEN_CONTRACT_ID',
+  'CREATOR_REGISTRY_CONTRACT_ID',
+  'CONTENT_ACCESS_CONTRACT_ID',
+  'EARNINGS_CONTRACT_ID',
   'CONTRACT_IDS_PATH',
   'STELLAR_NETWORK',
 ];
@@ -131,6 +138,33 @@ describe('loadContractIds', () => {
       const ids = loadContractIds();
       expect(ids.creatorRegistry).toBe('');
       expect(ids.subscriptions).toBe('');
+    });
+
+    it('loads from deploy-style env (token + CONTRACT_ID_SUBSCRIPTION) without CONTRACT_ID_MYFANS', () => {
+      process.env.CONTRACT_ID_MYFANS_TOKEN = 'CTOK';
+      process.env.CONTRACT_ID_SUBSCRIPTION = 'CSUB';
+      process.env.CONTRACT_ID_CREATOR_REGISTRY = 'CREG';
+      const ids = loadContractIds();
+      expect(ids.myfans).toBe('');
+      expect(ids.myfansToken).toBe('CTOK');
+      expect(ids.subscriptions).toBe('CSUB');
+      expect(ids.creatorRegistry).toBe('CREG');
+    });
+
+    it('accepts TOKEN_CONTRACT_ID and SUBSCRIPTION_CONTRACT_ID aliases', () => {
+      process.env.TOKEN_CONTRACT_ID = 'CTOK2';
+      process.env.SUBSCRIPTION_CONTRACT_ID = 'CSUB2';
+      const ids = loadContractIds();
+      expect(ids.myfansToken).toBe('CTOK2');
+      expect(ids.subscriptions).toBe('CSUB2');
+    });
+
+    it('prefers CONTRACT_ID_SUBSCRIPTION over CONTRACT_ID_SUBSCRIPTIONS when both set', () => {
+      process.env.CONTRACT_ID_MYFANS_TOKEN = 'T';
+      process.env.CONTRACT_ID_SUBSCRIPTION = 'S1';
+      process.env.CONTRACT_ID_SUBSCRIPTIONS = 'S2';
+      const ids = loadContractIds();
+      expect(ids.subscriptions).toBe('S1');
     });
 
     it('does not use env vars when primary IDs are missing', () => {

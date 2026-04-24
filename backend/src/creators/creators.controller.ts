@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CreatorsService } from './creators.service';
 import { CreatorDashboardService } from './creator-dashboard.service';
@@ -7,8 +7,10 @@ import { PlanDto } from './dto/plan.dto';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
 import { DashboardQueryDto } from './dto/creator-dashboard.dto';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 
 @ApiTags('creators')
+@UseGuards(JwtAuthGuard)
 @Controller({ path: 'creators', version: '1' })
 export class CreatorsController {
   constructor(

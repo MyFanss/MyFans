@@ -4,14 +4,21 @@ import {
   Address,
   Contract,
   Networks,
+  nativeToScVal,
   rpc,
   scValToNative,
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
 import { CircuitOpenError, withRetry } from '../common/utils/rpc-retry';
+import { resolveSubscriptionContractId } from '../common/contract-deployed-env';
+import { LedgerClockService } from './ledger-clock.service';
 
 export type ChainReadResult =
   | { ok: true; isSubscriber: boolean }
+  | { ok: false; error: string };
+
+export type ChainExpiryReadResult =
+  | { ok: true; expiryUnix: number; expiryLedgerSeq: number; skewMs: number }
   | { ok: false; error: string };
 
 export type ChainPlanReadResult =
@@ -22,18 +29,64 @@ export type ChainPlanCountReadResult =
   | { ok: true; count: number }
   | { ok: false; error: string };
 
+/** Dummy source account used for read-only simulations. */
+const SIM_SOURCE = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+
+const PERMANENT_ERROR = (e: unknown) =>
+  e instanceof CircuitOpenError ||
+  (e instanceof Error && /invalid contract|not found/i.test(e.message));
+
 /**
- * Read-only Soroban simulation of the subscription contract `is_subscriber` method.
+ * Narrows a SimulateTransactionResponse to the retval, or returns an error
+ * string using the current @stellar/stellar-sdk discriminated unions:
+ *
+ *   SimulateTransactionResponse
+ *     ├─ SimulateTransactionErrorResponse   → .error: string
+ *     ├─ SimulateTransactionSuccessResponse → .result?: SimulateHostFunctionResult
+ *     └─ SimulateTransactionRestoreResponse → .result: SimulateHostFunctionResult (required)
+ *                                             .restorePreamble (ledger entry needs restore)
+ *
+ * A restore response means the entry exists but is expired/archived; we treat
+ * it as a transient error so the caller can retry after restoration.
+ */
+function extractRetval(
+  sim: rpc.Api.SimulateTransactionResponse,
+): { retval: import('@stellar/stellar-sdk').xdr.ScVal } | { error: string } {
+  if (rpc.Api.isSimulationError(sim)) {
+    return { error: sim.error };
+  }
+
+  if (rpc.Api.isSimulationRestore(sim)) {
+    // Entry is archived — caller should restore before retrying.
+    return { error: 'Ledger entry requires restoration before simulation can succeed.' };
+  }
+
+  // isSimulationSuccess: result is optional (only present for invocation sims)
+  if (!rpc.Api.isSimulationSuccess(sim)) {
+    return { error: 'Unknown simulation response shape.' };
+  }
+
+  if (!sim.result?.retval) {
+    return { error: 'Simulation succeeded but returned no retval (unexpected).' };
+  }
+
+  return { retval: sim.result.retval };
+}
+
+/**
+ * Read-only Soroban simulation of the subscription contract methods.
  * Skipped when no contract id is configured.
  */
 @Injectable()
 export class SubscriptionChainReaderService {
   private readonly logger = new Logger(SubscriptionChainReaderService.name);
 
+  constructor(private readonly ledgerClock: LedgerClockService) {}
+
   getConfiguredContractId(): string | undefined {
-    const direct = process.env.CONTRACT_ID_SUBSCRIPTION?.trim();
-    if (direct) return direct;
-    return process.env.CONTRACT_ID_MYFANS?.trim();
+    return (
+      resolveSubscriptionContractId() ?? process.env.CONTRACT_ID_MYFANS?.trim()
+    );
   }
 
   private getRpcUrl(): string {
@@ -55,6 +108,22 @@ export class SubscriptionChainReaderService {
     return map[n] ?? Networks.TESTNET;
   }
 
+  private makeServer(): rpc.Server {
+    const rpcUrl = this.getRpcUrl();
+    return new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
+  }
+
+  private buildTx(op: ReturnType<Contract['call']>): ReturnType<TransactionBuilder['build']> {
+    const source = new Account(SIM_SOURCE, '1');
+    return new TransactionBuilder(source, {
+      fee: '100000',
+      networkPassphrase: this.getNetworkPassphrase(),
+    })
+      .addOperation(op)
+      .setTimeout(30)
+      .build();
+  }
+
   /**
    * Simulates `is_subscriber(fan, creator)` on the deployed subscription contract.
    */
@@ -63,60 +132,74 @@ export class SubscriptionChainReaderService {
     fan: string,
     creator: string,
   ): Promise<ChainReadResult> {
-    const rpcUrl = this.getRpcUrl();
-    const server = new rpc.Server(rpcUrl, {
-      allowHttp: rpcUrl.startsWith('http://'),
-    });
-
     try {
       const contract = new Contract(contractId);
-      const fanAddr = Address.fromString(fan);
-      const creatorAddr = Address.fromString(creator);
       const op = contract.call(
         'is_subscriber',
-        fanAddr.toScVal(),
-        creatorAddr.toScVal(),
+        Address.fromString(fan).toScVal(),
+        Address.fromString(creator).toScVal(),
       );
-
-      const source = new Account(
-        'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
-        '1',
-      );
-
-      const tx = new TransactionBuilder(source, {
-        fee: '100000',
-        networkPassphrase: this.getNetworkPassphrase(),
-      })
-        .addOperation(op)
-        .setTimeout(30)
-        .build();
 
       const sim = await withRetry(
         'soroban-rpc',
-        () => server.simulateTransaction(tx),
-        {
-          isPermanentError: (e) =>
-            e instanceof CircuitOpenError ||
-            (e instanceof Error && /invalid contract|not found/i.test(e.message)),
-        },
+        () => this.makeServer().simulateTransaction(this.buildTx(op)),
+        { isPermanentError: PERMANENT_ERROR },
       );
 
-      if (rpc.Api.isSimulationError(sim)) {
-        return { ok: false, error: sim.error };
+      const extracted = extractRetval(sim);
+      if ('error' in extracted) {
+        return { ok: false, error: extracted.error };
       }
 
-      if (!sim.result?.retval) {
-        return {
-          ok: false,
-          error: 'Simulation succeeded but returned no retval (unexpected).',
-        };
-      }
-
-      const native = scValToNative(sim.result.retval);
-      return { ok: true, isSubscriber: Boolean(native) };
+      return { ok: true, isSubscriber: Boolean(scValToNative(extracted.retval)) };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Chain read is_subscriber failed: ${message}`);
+      return { ok: false, error: message };
+    }
+  }
+
+  /**
+   * Reads the subscription expiry from the contract, skew-corrected via
+   * LedgerClockService.
+   */
+  async readExpiryUnix(
+    contractId: string,
+    fan: string,
+    creator: string,
+  ): Promise<ChainExpiryReadResult> {
+    try {
+      const contract = new Contract(contractId);
+      const op = contract.call(
+        'get_expiry_unix',
+        Address.fromString(fan).toScVal(),
+        Address.fromString(creator).toScVal(),
+      );
+
+      const sim = await withRetry(
+        'soroban-rpc',
+        () => this.makeServer().simulateTransaction(this.buildTx(op)),
+        { isPermanentError: PERMANENT_ERROR },
+      );
+
+      const extracted = extractRetval(sim);
+      if ('error' in extracted) {
+        return { ok: false, error: extracted.error };
+      }
+
+      // Contract returns (expiry_ledger_seq: u64, expiry_unix: u64)
+      const native = scValToNative(extracted.retval) as [bigint, bigint];
+      const expiryLedgerSeq = Number(native[0]);
+      const contractExpiryUnix = Number(native[1]);
+
+      const snapshot = await this.ledgerClock.fetchSnapshot();
+      const derivedExpiryUnix = this.ledgerClock.ledgerSeqToUnix(expiryLedgerSeq, snapshot);
+      const expiryUnix = contractExpiryUnix > 0 ? contractExpiryUnix : derivedExpiryUnix;
+
+      return { ok: true, expiryUnix, expiryLedgerSeq, skewMs: snapshot.skewMs };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Chain read get_expiry_unix failed: ${message}`);
       return { ok: false, error: message };
     }
   }
@@ -128,45 +211,26 @@ export class SubscriptionChainReaderService {
     contractId: string,
     planId: number,
   ): Promise<ChainPlanReadResult> {
-    const rpcUrl = this.getRpcUrl();
-    const server = new rpc.Server(rpcUrl, {
-      allowHttp: rpcUrl.startsWith('http://'),
-    });
-
     try {
       const contract = new Contract(contractId);
-      const op = contract.call('get_plan', new Api.UInt32Val(planId).toScVal());
+      const op = contract.call('get_plan', nativeToScVal(planId));
 
-      const source = new Account(
-        'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
-        '1',
+      const sim = await withRetry(
+        'soroban-rpc',
+        () => this.makeServer().simulateTransaction(this.buildTx(op)),
+        { isPermanentError: PERMANENT_ERROR },
       );
 
-      const tx = new TransactionBuilder(source, {
-        fee: '100000',
-        networkPassphrase: this.getNetworkPassphrase(),
-      })
-        .addOperation(op)
-        .setTimeout(30)
-        .build();
-
-      const sim = await server.simulateTransaction(tx);
-
-      if (Api.isSimulationError(sim)) {
-        return { ok: false, error: sim.error };
+      const extracted = extractRetval(sim);
+      if ('error' in extracted) {
+        return { ok: false, error: extracted.error };
       }
 
-      if (!sim.result?.retval) {
-        return {
-          ok: false,
-          error: 'Simulation succeeded but returned no retval (unexpected).',
-        };
-      }
-
-      const native = scValToNative(sim.result.retval);
+      const native = scValToNative(extracted.retval);
       if (native === null) {
         return { ok: false, error: 'Plan not found' };
       }
+
       const plan = native as { creator: string; asset: string; amount: bigint; interval_days: number };
       return {
         ok: true,
@@ -188,43 +252,22 @@ export class SubscriptionChainReaderService {
    * Simulates `get_plan_count()` on the deployed contract.
    */
   async readPlanCount(contractId: string): Promise<ChainPlanCountReadResult> {
-    const rpcUrl = this.getRpcUrl();
-    const server = new rpc.Server(rpcUrl, {
-      allowHttp: rpcUrl.startsWith('http://'),
-    });
-
     try {
       const contract = new Contract(contractId);
       const op = contract.call('get_plan_count');
 
-      const source = new Account(
-        'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
-        '1',
+      const sim = await withRetry(
+        'soroban-rpc',
+        () => this.makeServer().simulateTransaction(this.buildTx(op)),
+        { isPermanentError: PERMANENT_ERROR },
       );
 
-      const tx = new TransactionBuilder(source, {
-        fee: '100000',
-        networkPassphrase: this.getNetworkPassphrase(),
-      })
-        .addOperation(op)
-        .setTimeout(30)
-        .build();
-
-      const sim = await server.simulateTransaction(tx);
-
-      if (Api.isSimulationError(sim)) {
-        return { ok: false, error: sim.error };
+      const extracted = extractRetval(sim);
+      if ('error' in extracted) {
+        return { ok: false, error: extracted.error };
       }
 
-      if (!sim.result?.retval) {
-        return {
-          ok: false,
-          error: 'Simulation succeeded but returned no retval (unexpected).',
-        };
-      }
-
-      const native = scValToNative(sim.result.retval);
-      return { ok: true, count: Number(native) };
+      return { ok: true, count: Number(scValToNative(extracted.retval)) };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Chain read get_plan_count failed: ${message}`);

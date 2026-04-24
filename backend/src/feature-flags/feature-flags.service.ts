@@ -10,10 +10,20 @@ export class FeatureFlagsService {
     return process.env.FEATURE_CRYPTO_PAYMENTS === 'true';
   }
 
+  isReferralCodesEnabled(): boolean {
+    return process.env.FEATURE_REFERRAL_CODES === 'true';
+  }
+
+  isSorobanPollerEnabled(): boolean {
+    return process.env.FEATURE_SOROBAN_POLLER !== 'false';
+  }
+
   getAllFlags() {
     return {
       newSubscriptionFlow: this.isNewSubscriptionFlowEnabled(),
       cryptoPayments: this.isCryptoPaymentsEnabled(),
+      referralCodes: this.isReferralCodesEnabled(),
+      sorobanPoller: this.isSorobanPollerEnabled(),
     };
   }
 }

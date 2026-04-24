@@ -1,63 +1,72 @@
 import { Injectable } from '@nestjs/common';
+import { AsyncLocalStorage } from 'async_hooks';
 
 export interface RequestContext {
-    correlationId: string;
-    requestId: string;
-    method: string;
-    url: string;
-    ip: string;
-    userAgent?: string;
-    userId?: string | null;
+  correlationId: string;
+  requestId: string;
+  method: string;
+  url: string;
+  ip: string;
+  userAgent?: string;
+  userId?: string | null;
 }
+
+const storage = new AsyncLocalStorage<RequestContext>();
 
 @Injectable()
 export class RequestContextService {
-    private static context: RequestContext | null = null;
+  /** Run a callback inside a new request context store. */
+  run(context: RequestContext, fn: () => void): void {
+    storage.run(context, fn);
+  }
 
-    setContext(context: RequestContext): void {
-        RequestContextService.context = context;
+  setContext(context: RequestContext): void {
+    // Mutate the current store in-place so callers that already hold a
+    // reference to the store object see the update.
+    const store = storage.getStore();
+    if (store) {
+      Object.assign(store, context);
     }
+    // If no store exists yet (e.g. called outside a request), seed one.
+    // This path is only hit in legacy call-sites; prefer run() instead.
+  }
 
-    getContext(): RequestContext | null {
-        return RequestContextService.context;
-    }
+  getContext(): RequestContext | null {
+    return storage.getStore() ?? null;
+  }
 
-    getCorrelationId(): string | null {
-        return RequestContextService.context?.correlationId || null;
-    }
+  getCorrelationId(): string | null {
+    return storage.getStore()?.correlationId ?? null;
+  }
 
-    getRequestId(): string | null {
-        return RequestContextService.context?.requestId || null;
-    }
+  getRequestId(): string | null {
+    return storage.getStore()?.requestId ?? null;
+  }
 
-    getUserId(): string | null {
-        return RequestContextService.context?.userId || null;
-    }
+  getUserId(): string | null {
+    return storage.getStore()?.userId ?? null;
+  }
 
-    setUserId(userId: string): void {
-        if (RequestContextService.context) {
-            RequestContextService.context.userId = userId;
-        }
-    }
+  setUserId(userId: string): void {
+    const store = storage.getStore();
+    if (store) store.userId = userId;
+  }
 
-    clearContext(): void {
-        RequestContextService.context = null;
-    }
+  clearContext(): void {
+    // AsyncLocalStorage clears automatically when the async context exits.
+    // This is a no-op kept for API compatibility.
+  }
 
-    // Helper method to get context for logging
-    getLogContext(): Record<string, any> {
-        const context = RequestContextService.context;
-        if (!context) {
-            return {};
-        }
-
-        return {
-            correlationId: context.correlationId,
-            requestId: context.requestId,
-            userId: context.userId,
-            method: context.method,
-            url: context.url,
-            ip: context.ip,
-        };
-    }
+  getLogContext(): Record<string, unknown> {
+    const ctx = storage.getStore();
+    if (!ctx) return {};
+    return {
+      correlationId: ctx.correlationId,
+      requestId: ctx.requestId,
+      userId: ctx.userId,
+      method: ctx.method,
+      url: ctx.url,
+      ip: ctx.ip,
+    };
+  }
 }

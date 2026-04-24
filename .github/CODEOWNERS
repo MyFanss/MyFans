@@ -1,0 +1,8 @@
+# CODEOWNERS – route reviews to the right team automatically.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Soroban smart contract (Rust) – contract team reviews all changes under contract/
+/contract/ @MyFanss/contract
+
+# Nest.js backend – backend team reviews all changes under backend/
+/backend/ @MyFanss/backend

@@ -1,5 +1,6 @@
 import { PublicCreatorDto } from './public-creator.dto';
-import { User, UserRole } from '../../users/entities/user.entity';
+import { User } from '../../users/entities/user.entity';
+import { UserRole } from '../../common/enums';
 import { Creator } from '../../users/entities/creator.entity';
 
 describe('PublicCreatorDto', () => {

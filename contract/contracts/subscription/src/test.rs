@@ -2,10 +2,11 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Events, Ledger},
+    testutils::{Address as _, Events, Ledger, MockAuth, MockAuthInvoke},
     token,
-    xdr::ScAddress,
-    Address, Env, Symbol, TryFromVal, TryIntoVal,
+    vec,
+    xdr::{ScAddress, SorobanAuthorizationEntry},
+    Address, Env, Error as SorobanError, IntoVal, String, Symbol, TryFromVal, TryIntoVal,
 };
 
 fn setup_test() -> (
@@ -71,6 +72,52 @@ fn test_subscribe_full_flow() {
 }
 
 #[test]
+fn test_init_rejects_fee_bps_over_10000() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    let result = client.try_init(&admin, &10001, &fee_recipient, &token.address, &1000);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidFeeBps as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_init_rejects_invalid_token_address() {
+    let (env, client, admin, _token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let invalid_token = Address::from_string(&String::from_str(
+        &env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    ));
+
+    let result = client.try_init(&admin, &500, &fee_recipient, &invalid_token, &1000);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidTokenAddress as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_init_rejects_non_positive_price() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    let result = client.try_init(&admin, &500, &fee_recipient, &token.address, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidPrice as u32,
+        )))
+    );
+}
+
+#[test]
 #[should_panic]
 fn test_subscribe_insufficient_balance_reverts() {
     let (env, client, admin, token, token_admin) = setup_test();
@@ -127,7 +174,7 @@ fn test_cancel_subscription() {
 
     assert!(client.is_subscriber(&fan, &creator));
 
-    client.cancel(&fan, &creator);
+    client.cancel(&fan, &creator, &0);
     assert!(!client.is_subscriber(&fan, &creator));
 }
 
@@ -163,7 +210,8 @@ fn test_is_subscribed_false_after_expiry() {
     client.create_subscription(&fan, &creator, &17280);
     assert!(client.is_subscriber(&fan, &creator));
     env.ledger().with_mut(|li| {
-        li.sequence_number += 6;
+        // Subscription expires at init_sequence + duration_ledgers (1000 + 17280).
+        li.sequence_number = 18281;
     });
     assert!(!client.is_subscriber(&fan, &creator));
 }
@@ -470,7 +518,7 @@ fn test_cancelled_event_fields() {
 
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
     client.subscribe(&fan, &plan_id, &token.address);
-    client.cancel(&fan, &creator);
+    client.cancel(&fan, &creator, &1);
 
     let ev = find_event(&env, "cancelled").expect("cancelled event not emitted");
 
@@ -482,8 +530,161 @@ fn test_cancelled_event_fields() {
     let t_creator: Address = ev.1.get(2).unwrap().try_into_val(&env).unwrap();
     assert_eq!(t_creator, creator, "creator mismatch in topics");
 
-    let d_cancelled: bool = ev.2.try_into_val(&env).unwrap();
-    assert!(d_cancelled, "data should be true");
+    let d: (bool, u32) = ev.2.try_into_val(&env).unwrap();
+    assert!(d.0, "data.0 should be true");
+    assert_eq!(d.1, 1, "data.1 reason code mismatch");
+}
+
+// ── #286 – Cancel reason event assertions ───────────────────────────────────
+
+/// Cancel with reason code 0 (user-initiated) emits correct event payload.
+#[test]
+fn test_cancel_reason_code_zero() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    client.cancel(&fan, &creator, &0);
+
+    let ev = find_event(&env, "cancelled").expect("cancelled event not emitted");
+    let d: (bool, u32) = ev.2.try_into_val(&env).unwrap();
+    assert!(d.0, "data.0 should be true");
+    assert_eq!(d.1, 0, "reason code should be 0 (user-initiated)");
+}
+
+/// Cancel with a higher reason code (e.g. 4 = other) propagates correctly.
+#[test]
+fn test_cancel_reason_code_other() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    client.cancel(&fan, &creator, &4);
+
+    let ev = find_event(&env, "cancelled").expect("cancelled event not emitted");
+    let d: (bool, u32) = ev.2.try_into_val(&env).unwrap();
+    assert!(d.0, "data.0 should be true");
+    assert_eq!(d.1, 4, "reason code should be 4 (other)");
+}
+
+/// Cancel event topics still contain fan and creator for backward compatibility.
+#[test]
+fn test_cancel_event_topics_backward_compatible() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    client.cancel(&fan, &creator, &2);
+
+    let ev = find_event(&env, "cancelled").expect("cancelled event not emitted");
+
+    // Topics structure unchanged: (name, fan, creator)
+    assert_eq!(ev.1.len(), 3, "topics count must stay 3 for backward compat");
+    let t_name: Symbol = ev.1.get(0).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(t_name, Symbol::new(&env, "cancelled"));
+    let t_fan: Address = ev.1.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(t_fan, fan, "fan mismatch");
+    let t_creator: Address = ev.1.get(2).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(t_creator, creator, "creator mismatch");
+
+    // Data is now (true, reason) — parsers that only read the first element
+    // still see a truthy value, maintaining backward compatibility.
+    let d: (bool, u32) = ev.2.try_into_val(&env).unwrap();
+    assert!(d.0);
+    assert_eq!(d.1, 2);
+}
+
+// ── #745 – ledger time vs server clock skew ─────────────────────────────────
+
+/// get_expiry_unix returns (0, 0) when no subscription exists.
+#[test]
+fn test_get_expiry_unix_no_subscription() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let fan = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    let result = client.get_expiry_unix(&fan, &creator);
+    assert_eq!(result, (0u64, 0u64));
+}
+
+/// get_expiry_unix returns a unix timestamp ahead of current ledger timestamp
+/// for an active subscription.
+#[test]
+fn test_get_expiry_unix_active_subscription() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &10000);
+
+    // Set a known ledger state: seq=1000, timestamp=1_700_000_000
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1000;
+        li.timestamp = 1_700_000_000;
+    });
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    // expiry_seq = 1000 + 30 * 17280 = 519400
+    let expected_expiry_seq: u64 = 1000 + (30 * 17280);
+
+    let (expiry_seq, expiry_unix) = client.get_expiry_unix(&fan, &creator);
+    assert_eq!(expiry_seq, expected_expiry_seq);
+
+    // expiry_unix = 1_700_000_000 + (519400 - 1000) * 5
+    let expected_unix: u64 = 1_700_000_000 + (expected_expiry_seq - 1000) * 5;
+    assert_eq!(expiry_unix, expected_unix);
+}
+
+/// get_expiry_unix for an already-expired subscription returns a unix timestamp
+/// in the past (less than current ledger timestamp).
+#[test]
+fn test_get_expiry_unix_expired_subscription() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &10000);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1000;
+        li.timestamp = 1_700_000_000;
+    });
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &1);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    // Advance ledger well past expiry (1 day = 17280 ledgers)
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1000 + 17280 + 100; // 100 ledgers past expiry
+        li.timestamp = 1_700_000_000 + (17280 + 100) * 5;
+    });
+
+    let (expiry_seq, expiry_unix) = client.get_expiry_unix(&fan, &creator);
+    assert_eq!(expiry_seq, (1000 + 17280) as u64);
+
+    let current_ts: u64 = 1_700_000_000 + (17280 + 100) * 5;
+    assert!(expiry_unix < current_ts, "expired sub unix should be in the past");
 }
 
 /// `subscribed` (direct via create_subscription) — topics: (name, fan, creator)  data: 0u32
@@ -559,7 +760,7 @@ fn test_cancel_after_snapshot_restore() {
         "state matches after restore"
     );
 
-    client2.cancel(&fan2, &creator2);
+    client2.cancel(&fan2, &creator2, &0);
     assert!(
         !client2.is_subscriber(&fan2, &creator2),
         "cancel after restore: subscription should be removed"
@@ -584,58 +785,64 @@ fn setup_paused() -> (
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
     token_admin.mint(&fan, &50000);
-    client.pause(&admin);
+    client.pause();
     (env, client, admin, creator, fan, token, token_admin)
 }
 
 #[test]
-#[should_panic(expected = "contract is paused")]
+#[should_panic]
 fn test_create_plan_fails_when_paused() {
     let (_env, client, _admin, creator, _fan, token, _token_admin) = setup_paused();
     client.create_plan(&creator, &token.address, &1000, &30);
 }
 
 #[test]
-#[should_panic(expected = "contract is paused")]
+#[should_panic]
 fn test_subscribe_fails_when_paused() {
-    let (env, client, admin, creator, fan, token, token_admin) = setup_test();
+    let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
     client.init(&admin, &500, &fee_recipient, &token.address, &1000);
     token_admin.mint(&fan, &50000);
     // create plan before pausing
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
-    client.pause(&admin);
+    client.pause();
     client.subscribe(&fan, &plan_id, &token.address);
 }
 
 #[test]
 #[should_panic(expected = "contract is paused")]
 fn test_extend_subscription_fails_when_paused() {
-    let (env, client, admin, creator, fan, token, token_admin) = setup_test();
+    let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
     client.init(&admin, &0, &fee_recipient, &token.address, &1000);
     token_admin.mint(&fan, &50000);
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
     client.subscribe(&fan, &plan_id, &token.address);
-    client.pause(&admin);
+    client.pause();
     client.extend_subscription(&fan, &creator, &17280, &token.address);
 }
 
 #[test]
-#[should_panic(expected = "contract is paused")]
+#[should_panic]
 fn test_cancel_fails_when_paused() {
-    let (env, client, admin, creator, fan, token, token_admin) = setup_test();
+    let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
     client.init(&admin, &0, &fee_recipient, &token.address, &1000);
     token_admin.mint(&fan, &50000);
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
     client.subscribe(&fan, &plan_id, &token.address);
-    client.pause(&admin);
-    client.cancel(&fan, &creator);
+    client.pause();
+    client.cancel(&fan, &creator, &0);
 }
 
 #[test]
-#[should_panic(expected = "contract is paused")]
+#[should_panic]
 fn test_create_subscription_fails_when_paused() {
     let (_env, client, _admin, creator, fan, _token, _token_admin) = setup_paused();
     client.create_subscription(&fan, &creator, &518400);
@@ -644,14 +851,16 @@ fn test_create_subscription_fails_when_paused() {
 /// Views must remain available while paused.
 #[test]
 fn test_views_available_when_paused() {
-    let (env, client, admin, creator, fan, token, token_admin) = setup_test();
+    let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
     client.init(&admin, &0, &fee_recipient, &token.address, &1000);
     token_admin.mint(&fan, &50000);
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
     client.subscribe(&fan, &plan_id, &token.address);
 
-    client.pause(&admin);
+    client.pause();
 
     // is_paused view works
     assert!(client.is_paused());
@@ -662,19 +871,292 @@ fn test_views_available_when_paused() {
 /// Mutations succeed again after unpause.
 #[test]
 fn test_mutations_succeed_after_unpause() {
-    let (env, client, admin, creator, fan, token, token_admin) = setup_test();
+    let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
     client.init(&admin, &0, &fee_recipient, &token.address, &1000);
     token_admin.mint(&fan, &50000);
 
-    client.pause(&admin);
+    client.pause();
     assert!(client.is_paused());
 
-    client.unpause(&admin);
+    client.unpause();
     assert!(!client.is_paused());
 
     // mutations work again
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
     client.subscribe(&fan, &plan_id, &token.address);
     assert!(client.is_subscriber(&fan, &creator));
+}
+
+// ── set_fee_recipient (admin fee recipient rotation) ─────────────────────────
+
+#[test]
+fn test_set_fee_recipient_admin_updates_storage_emits_event_and_routes_fees() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let new_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    client.set_fee_recipient(&new_recipient);
+
+    let stored: Address = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::FeeRecipient)
+            .unwrap()
+    });
+    assert_eq!(stored, new_recipient);
+
+    let ev = find_event(&env, "fee_recipient_updated")
+        .expect("fee_recipient_updated event not emitted");
+    assert_eq!(ev.1.len(), 3, "topics: name, old, new");
+    let t_old: Address = ev.1.get(1).unwrap().try_into_val(&env).unwrap();
+    let t_new: Address = ev.1.get(2).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(t_old, fee_recipient);
+    assert_eq!(t_new, new_recipient);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &10000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    assert_eq!(token.balance(&new_recipient), 50);
+    assert_eq!(token.balance(&fee_recipient), 0);
+}
+
+#[test]
+#[should_panic]
+fn test_init_rejects_null_fee_recipient() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let null_addr = Address::from_string(&soroban_sdk::String::from_str(
+        &env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    ));
+    client.init(&admin, &500, &null_addr, &token.address, &1000);
+}
+
+#[test]
+fn test_set_fee_recipient_rejects_null_address() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let null_addr = Address::from_string(&soroban_sdk::String::from_str(
+        &env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    ));
+    let r = client.try_set_fee_recipient(&null_addr);
+    assert_eq!(
+        r,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidFeeRecipient as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_set_fee_recipient_non_admin_rejected() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let new_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    let attacker = Address::generate(&env);
+    let contract_id = client.address.clone();
+    let invoke = MockAuthInvoke {
+        contract: &contract_id,
+        fn_name: "set_fee_recipient",
+        args: vec![&env, new_recipient.clone().into_val(&env)],
+        sub_invokes: &[],
+    };
+    env.mock_auths(&[MockAuth {
+        address: &attacker,
+        invoke: &invoke,
+    }]);
+
+    let r = client.try_set_fee_recipient(&new_recipient);
+    assert!(r.is_err(), "only admin may rotate fee recipient");
+}
+
+#[test]
+fn test_set_fee_recipient_requires_admin_authorization() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let new_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    let empty: &[SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+
+    let r = client.try_set_fee_recipient(&new_recipient);
+    assert!(
+        r.is_err(),
+        "set_fee_recipient must fail without authorization entry"
+    );
+}
+
+// ── set_fee_bps (admin protocol fee bounds) ───────────────────────────────────
+
+#[test]
+fn test_set_fee_bps_admin_updates_storage_emits_event_and_fees() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    client.set_fee_bps(&250u32);
+
+    let stored: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::FeeBps)
+            .unwrap()
+    });
+    assert_eq!(stored, 250);
+
+    let ev = find_event(&env, "fee_updated").expect("fee_updated event not emitted");
+    assert_eq!(ev.1.len(), 1, "topics: name only");
+    let (old_bps, new_bps): (u32, u32) = ev.2.try_into_val(&env).unwrap();
+    assert_eq!(old_bps, 500);
+    assert_eq!(new_bps, 250);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &10000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    assert_eq!(token.balance(&fee_recipient), 25);
+    assert_eq!(token.balance(&creator), 975);
+}
+
+#[test]
+fn test_set_fee_bps_accepts_boundary_10000() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    client.set_fee_bps(&10_000u32);
+
+    let stored: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::FeeBps)
+            .unwrap()
+    });
+    assert_eq!(stored, 10_000);
+}
+
+#[test]
+fn test_set_fee_bps_rejects_over_10000() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &100, &fee_recipient, &token.address, &1000);
+
+    let r = client.try_set_fee_bps(&10_001u32);
+    assert_eq!(
+        r,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidFeeBps as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_set_fee_bps_non_admin_rejected() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    let attacker = Address::generate(&env);
+    let contract_id = client.address.clone();
+    let invoke = MockAuthInvoke {
+        contract: &contract_id,
+        fn_name: "set_fee_bps",
+        args: vec![&env, 100u32.into_val(&env)],
+        sub_invokes: &[],
+    };
+    env.mock_auths(&[MockAuth {
+        address: &attacker,
+        invoke: &invoke,
+    }]);
+
+    let r = client.try_set_fee_bps(&100u32);
+    assert!(r.is_err(), "only admin may update fee bps");
+}
+
+#[test]
+fn test_set_fee_bps_requires_admin_authorization() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    let empty: &[SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+
+    let r = client.try_set_fee_bps(&100u32);
+    assert!(r.is_err(), "set_fee_bps must fail without authorization entry");
+}
+
+// ── admin() view ──────────────────────────────────────────────────────────
+
+/// admin() returns the address that was passed to init().
+#[test]
+fn admin_returns_initialized_address() {
+    let (env, client, admin, _token_client, token_admin_client) = setup_test();
+
+    // init the contract using the existing test setup pattern
+    let fee_recipient = Address::generate(&env);
+    token_admin_client.mint(&admin, &1_000i128);
+
+    client.init(
+        &admin,
+        &0u32,
+        &fee_recipient,
+        &_token_client.address,
+        &1_000i128,
+    );
+
+    assert_eq!(
+        client.admin(),
+        admin,
+        "admin() must return the address set during init"
+    );
+}
+
+/// admin() requires no auth — calling it without any auth context must succeed.
+#[test]
+fn admin_requires_no_auth() {
+    let (env, client, admin, _token_client, _token_admin_client) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(
+        &admin,
+        &0u32,
+        &fee_recipient,
+        &_token_client.address,
+        &1_000i128,
+    );
+
+    // No specific auth configured — must still succeed
+    assert_eq!(client.admin(), admin);
+}
+
+/// admin() is stable across unrelated state changes (pause/unpause).
+#[test]
+fn admin_is_stable_after_pause_and_unpause() {
+    let (env, client, admin, _token_client, _token_admin_client) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(
+        &admin,
+        &0u32,
+        &fee_recipient,
+        &_token_client.address,
+        &1_000i128,
+    );
+
+    client.pause();
+    assert_eq!(client.admin(), admin, "admin() must be unchanged after pause");
+
+    client.unpause();
+    assert_eq!(client.admin(), admin, "admin() must be unchanged after unpause");
 }

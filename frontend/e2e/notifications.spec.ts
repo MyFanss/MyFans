@@ -62,4 +62,30 @@ test.describe('Notification Inbox', () => {
     const firstItem = list.getByRole('button').first();
     await expect(firstItem).toHaveAttribute('aria-label');
   });
+
+  // ── Digest display ────────────────────────────────────────────────────────
+
+  test('digest notification shows a count badge', async ({ page }) => {
+    const list = page.getByRole('list', { name: /notification list/i });
+    await expect(list).toBeVisible({ timeout: 8000 });
+
+    // Mock data includes a digest with digest_count=3 ("3 subscriptions renewed")
+    const digestBadge = list.getByLabel(/events batched/i).first();
+    await expect(digestBadge).toBeVisible({ timeout: 5000 });
+  });
+
+  test('digest notification detail shows batched events summary', async ({ page }) => {
+    const list = page.getByRole('list', { name: /notification list/i });
+    await expect(list).toBeVisible({ timeout: 8000 });
+
+    // Click the item whose title contains a number (digest)
+    const digestItem = list.getByRole('button', { name: /subscriptions renewed/i }).first();
+    await expect(digestItem).toBeVisible({ timeout: 5000 });
+    await digestItem.click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByTestId('digest-summary')).toBeVisible();
+    await expect(dialog.getByText(/events batched/i)).toBeVisible();
+  });
 });

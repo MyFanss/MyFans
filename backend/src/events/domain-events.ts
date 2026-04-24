@@ -65,10 +65,34 @@ export class PlanCreatedEvent {
   ) {}
 }
 
+// Post events
+export class PostDeletedEvent {
+  readonly type = 'post.deleted' as const;
+  constructor(
+    public readonly postId: string,
+    public readonly deletedBy: string,
+    public readonly timestamp: number = Date.now(),
+  ) {}
+}
+
+export class SubscriptionRenewalFailedEvent {
+  readonly type = 'subscription.renewal_failed' as const;
+  constructor(
+    public readonly subscriptionId: string,
+    public readonly fan: string,
+    public readonly creator: string,
+    public readonly planId: number,
+    public readonly reason?: string,
+    public readonly timestamp: number = Date.now(),
+  ) {}
+}
+
 export type DomainEvent =
   | UserLoggedInEvent
   | SubscriptionCreatedEvent
   | SubscriptionRenewedEvent
   | SubscriptionCancelledEvent
   | SubscriptionExpiredEvent
-  | PlanCreatedEvent;
+  | SubscriptionRenewalFailedEvent
+  | PlanCreatedEvent
+  | PostDeletedEvent;
