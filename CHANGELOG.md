@@ -173,6 +173,7 @@
 * complete contract interface docs generation [#301](https://github.com/MyFanss/MyFans/issues/301) ([59c929a](https://github.com/MyFanss/MyFans/commit/59c929a2ea437935343f7caced2a9039a5fd0eee))
 * **content:** add content metadata CRUD API ([#333](https://github.com/MyFanss/MyFans/issues/333)) ([0c42d45](https://github.com/MyFanss/MyFans/commit/0c42d454d6b949894e6e603ec98002cf07af2183))
 * **contract:** add admin token metadata update (set_metadata) ([aef69dd](https://github.com/MyFanss/MyFans/commit/aef69dd7d94198cd299775fc53b7f324ac21dba7)), closes [#280](https://github.com/MyFanss/MyFans/issues/280)
+* **contract:** add AUTH_MATRIX.md compliance test suite ([352ea15](https://github.com/MyFanss/MyFans/commit/352ea155b65a4338a44751ee456847676f474df3))
 * **contract:** add get_content_info catalog query ([#312](https://github.com/MyFanss/MyFans/issues/312)) ([9e7cec3](https://github.com/MyFanss/MyFans/commit/9e7cec33d8ec70b0fb4928fd01c27fcfa0ebe078))
 * **contract:** emit cancel reason code in subscription events ([a70a291](https://github.com/MyFanss/MyFans/commit/a70a291efe4edc3398737813b99c0bf0be79e0a1)), closes [#286](https://github.com/MyFanss/MyFans/issues/286)
 * **contract:** enforce content price bounds and validation ([#294](https://github.com/MyFanss/MyFans/issues/294)) ([4e7d549](https://github.com/MyFanss/MyFans/commit/4e7d5492587d490966ecbf0c62195f4ad023d842))
