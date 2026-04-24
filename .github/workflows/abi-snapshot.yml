@@ -1,0 +1,39 @@
+name: ABI Snapshot
+
+on:
+  pull_request:
+    paths:
+      - "contract/**"
+      - ".github/workflows/abi-snapshot.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts-abi:
+    name: ABI Snapshot Check (optional)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: contract
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract
+
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli
+
+      - name: Check ABI snapshots
+        run: ./scripts/snapshot-abi.sh --check
