@@ -40,10 +40,15 @@ pub enum DataKey {
 }
 
 impl DataKey {
-    /// Canonical subscription storage key; serializes as [`DataKey::Sub`].
     #[inline]
     pub fn subscription(fan: Address, creator: Address) -> Self {
         DataKey::Sub(fan, creator)
+    }
+
+    /// Canonical token address storage key; serializes as [`DataKey::Token`].
+    #[inline]
+    pub fn token_address() -> Self {
+        DataKey::Token
     }
 }
 
@@ -122,7 +127,7 @@ impl MyfansContract {
             .instance()
             .set(&DataKey::FeeRecipient, &fee_recipient);
         env.storage().instance().set(&DataKey::PlanCount, &0u32);
-        env.storage().instance().set(&DataKey::Token, &token);
+        env.storage().instance().set(&DataKey::token_address(), &token);
         env.storage().instance().set(&DataKey::Price, &price);
     }
 
@@ -341,7 +346,7 @@ impl MyfansContract {
             .unwrap_or(false);
         assert!(!paused, "contract is paused");
 
-        let token: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token: Address = env.storage().instance().get(&DataKey::token_address()).unwrap();
         let price: i128 = env.storage().instance().get(&DataKey::Price).unwrap();
         let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
         let fee_recipient: Address = env
