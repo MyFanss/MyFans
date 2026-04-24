@@ -37,6 +37,20 @@ export enum CheckoutStatus {
 
 export const SERVER_NETWORK = process.env.STELLAR_NETWORK ?? 'testnet';
 
+treasury-deposit-event
+interface Subscription {
+  id: string;
+  fan: string;
+  creator: string;
+  planId: number;
+  expiry: number;
+  status: SubscriptionStatus;
+  createdAt: Date;
+  updatedAt?: Date;
+}
+
+
+main
 interface Checkout {
   id: string;
   fanAddress: string;
@@ -352,6 +366,7 @@ export class SubscriptionsService {
   ) {
     const activeSubs = await this.indexRepo.listActiveForFan(fan, page, limit);
     const nowSecs = Date.now() / 1000;
+    void nowSecs;
 
     activeSubs.sort((a, b) => a.expiryUnix - b.expiryUnix);
 

@@ -2,7 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EventBus } from '../events/event-bus';
 import { InProcessEventBus } from '../events/in-process-event-bus';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
+ treasury-deposit-event
+import { SERVER_NETWORK, SubscriptionsService, SubscriptionStatus } from './subscriptions.service';
+
 import { SubscriptionsService } from './subscriptions.service';
+ main
 import {
   SUBSCRIPTION_EVENT_PUBLISHER,
   SUBSCRIPTION_RENEWAL_FAILED,
@@ -153,9 +157,43 @@ describe('SubscriptionsService', () => {
       'GFANADDRESS333333333333333333333333333333333333333333333333',
     );
 
+  treasury-deposit-event
+    it('should filter by status', () => {
+      const expiry = Math.floor(Date.now() / 1000) + 86400;
+      const pastExpiry = Math.floor(Date.now() / 1000) - 86400;
+      service.addSubscription(fan, 'CREATOR_A_XXXXXXX', 1, expiry);
+      service.addSubscription(fan, 'CREATOR_B_XXXXXXX', 1, pastExpiry);
+
+      const activeOnly = service.listSubscriptions(fan, SubscriptionStatus.ACTIVE);
+      expect(activeOnly.data).toHaveLength(1);
+      expect(activeOnly.total).toBe(1);
+
+      const expiredOnly = service.listSubscriptions(fan, SubscriptionStatus.EXPIRED);
+      expect(expiredOnly.data).toHaveLength(1);
+      expect(expiredOnly.total).toBe(1);
+    });
+
+    it('should return empty page when page exceeds total pages', () => {
+      const expiry = Math.floor(Date.now() / 1000) + 86400;
+      service.addSubscription(fan, 'CREATOR_A_XXXXXXX', 1, expiry);
+
+      const result = service.listSubscriptions(
+        fan,
+        undefined,
+        undefined,
+        5,
+        20,
+      );
+      expect(result.data).toEqual([]);
+      expect(result.total).toBe(1);
+      expect(result.page).toBe(5);
+      expect(result.totalPages).toBe(1);
+    });
+
     expect(result.data).toHaveLength(1);
     expect(result.total).toBe(1);
     expect(repo.findAndCountForFan).toHaveBeenCalled();
+ main
   });
 
   it('publishes a renewal event when confirming an existing subscription', async () => {
