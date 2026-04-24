@@ -50,8 +50,9 @@ export class SubscriptionsController {
   @UseInterceptors(new DeprecationInterceptor(new Reflector()))
   @ApiOperation({ summary: '[Deprecated] Check if a fan is subscribed to a creator', deprecated: true })
   @ApiResponse({ status: 200, description: 'Subscription check result' })
-  checkSubscription(@Query('fan') fan: string, @Query('creator') creator: string) {
-    return { isSubscriber: this.subscriptionsService.isSubscriber(fan, creator) };
+  async checkSubscription(@Query('fan') fan: string, @Query('creator') creator: string) {
+    const isSubscriber = await this.subscriptionsService.isSubscriber(fan, creator);
+    return { isSubscriber };
   }
 
   @Get('list')
