@@ -526,6 +526,9 @@ impl MyfansContract {
     }
 }
 
+/// Dummy seed data for snapshot/restore tests.
 #[cfg(test)]
+pub mod dummy_data;
+
 #[cfg(test)]
 mod test;
