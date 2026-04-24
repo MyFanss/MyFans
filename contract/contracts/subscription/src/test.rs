@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 use super::*;
+use super::dummy_data::*;
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger, MockAuth, MockAuthInvoke},
     token,
@@ -350,18 +351,18 @@ fn test_extend_fails_if_expired() {
 fn test_subscription_state_after_snapshot_restore() {
     let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
-    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    client.init(&admin, &DUMMY_FEE_BPS, &fee_recipient, &token.address, &DUMMY_PRICE);
 
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
-    token_admin.mint(&fan, &10000);
+    token_admin.mint(&fan, &DUMMY_FAN_BALANCE);
 
-    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    let plan_id = client.create_plan(&creator, &token.address, &DUMMY_PLAN_AMOUNT, &DUMMY_INTERVAL_DAYS);
     assert_eq!(plan_id, 1);
     client.subscribe(&fan, &plan_id, &token.address);
 
     let contract_id = client.address.clone();
-    let expected_expiry = env.ledger().sequence() + (30 * 17280);
+    let expected_expiry = env.ledger().sequence() + (DUMMY_INTERVAL_DAYS * LEDGERS_PER_DAY);
     let sc_fan: ScAddress = fan.clone().try_into().unwrap();
     let sc_creator: ScAddress = creator.clone().try_into().unwrap();
     let sc_contract: ScAddress = contract_id.clone().try_into().unwrap();
@@ -399,8 +400,8 @@ fn test_subscription_state_after_snapshot_restore() {
             .unwrap()
     });
     assert_eq!(plan.creator, creator2);
-    assert_eq!(plan.amount, 1000);
-    assert_eq!(plan.interval_days, 30);
+    assert_eq!(plan.amount, DUMMY_PLAN_AMOUNT);
+    assert_eq!(plan.interval_days, DUMMY_INTERVAL_DAYS);
 
     let plan_count: u32 = env2.as_contract(&contract_id2, || {
         env2.storage()
@@ -730,13 +731,13 @@ fn test_subscription_key_helper_keeps_legacy_variant() {
 fn test_cancel_after_snapshot_restore() {
     let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
-    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    client.init(&admin, &DUMMY_FEE_BPS, &fee_recipient, &token.address, &DUMMY_PRICE);
 
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
-    token_admin.mint(&fan, &10000);
+    token_admin.mint(&fan, &DUMMY_FAN_BALANCE);
 
-    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    let plan_id = client.create_plan(&creator, &token.address, &DUMMY_PLAN_AMOUNT, &DUMMY_INTERVAL_DAYS);
     client.subscribe(&fan, &plan_id, &token.address);
     assert!(client.is_subscriber(&fan, &creator));
 
@@ -760,7 +761,7 @@ fn test_cancel_after_snapshot_restore() {
         "state matches after restore"
     );
 
-    client2.cancel(&fan2, &creator2, &0);
+    client2.cancel(&fan2, &creator2, &CANCEL_REASON_USER_INITIATED);
     assert!(
         !client2.is_subscriber(&fan2, &creator2),
         "cancel after restore: subscription should be removed"
