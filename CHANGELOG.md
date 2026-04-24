@@ -280,4 +280,4 @@
 
 ### Performance Improvements
 
-* Optimize creator profile page performance ([877e30f](https://github.com/Meshmulla/MyFans/commit/877e30f6f87fcef42d889e4a79afba5a7aceba82)), closes [#415](https://github.com/Meshmulla/MyFans/issues/415)
+* Optimize creator profile page performance ([877e30f](https://github.com/MyFanss/MyFans/commit/877e30f6f87fcef42d889e4a79afba5a7aceba82)), closes [#415](https://github.com/MyFanss/MyFans/issues/415)
