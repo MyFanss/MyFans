@@ -77,7 +77,7 @@ export class CreatorDashboardService {
 
     // Active subscribers (currently active regardless of window)
     const activeCount = creatorSubs.filter(
-      s => s.status === 'active' && s.expiryUnix > nowSecs,
+      s => s.status === 'active' && Number(s.expiryUnix) > nowSecs,
     ).length;
 
     // New in window: created within [from, to]
@@ -88,7 +88,7 @@ export class CreatorDashboardService {
 
     // Churned in window: expired within [from, to]
     const churned = creatorSubs.filter(s => {
-      return s.status === 'expired' && s.expiryUnix >= fromSecs && s.expiryUnix <= toSecs;
+      return s.status === 'expired' && Number(s.expiryUnix) >= fromSecs && Number(s.expiryUnix) <= toSecs;
     }).length;
 
     // Revenue: aggregate per plan for subs created in window
@@ -142,7 +142,7 @@ export class CreatorDashboardService {
         amount: parseFloat(p.amount),
         intervalDays: p.intervalDays,
         activeSubscribers: creatorSubs.filter(
-          s => s.planId === p.id && s.status === 'active' && s.expiryUnix > nowSecs,
+          s => s.planId === p.id && s.status === 'active' && Number(s.expiryUnix) > nowSecs,
         ).length,
       })),
     };
