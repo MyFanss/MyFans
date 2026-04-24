@@ -16,6 +16,11 @@ name = "contract_integration"
 path = "tests/contract_integration.rs"
 required-features = ["testutils"]
 
+[[test]]
+name = "auth_matrix"
+path = "tests/auth_matrix.rs"
+required-features = ["testutils"]
+
 [features]
 testutils = ["soroban-sdk/testutils"]
 
@@ -27,4 +32,6 @@ myfans-lib = { path = "../myfans-lib" }
 soroban-sdk = { workspace = true, features = ["testutils"] }
 myfans_token = { package = "myfans-token", path = "../myfans-token" }
 content_access = { package = "content-access", path = "../content-access" }
+creator_registry = { package = "creator-registry", path = "../creator-registry" }
+earnings = { package = "earnings", path = "../earnings" }
 myfans_lib = { package = "myfans-lib", path = "../myfans-lib", features = ["testutils"] }
