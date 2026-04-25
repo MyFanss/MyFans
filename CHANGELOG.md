@@ -280,6 +280,7 @@
 * **subscriptions:** gated content access guard ([8a90715](https://github.com/MyFanss/MyFans/commit/8a90715e654f1443f9feadac6bfb70a6ebeb20a6)), closes [#gated-content-access](https://github.com/MyFanss/MyFans/issues/gated-content-access)
 * **subscriptions:** GET fan–creator subscription state with auth ([5b71e66](https://github.com/MyFanss/MyFans/commit/5b71e66fb9670f62880b1aa25b0cc4737200bcc2))
 * **subscriptions:** map query status string to SubscriptionStatus enum ([30a49c6](https://github.com/MyFanss/MyFans/commit/30a49c60c647b7020901690bcfdee3acbd6be0e9))
+* **subscriptions:** track worst-case simulation resource fees ([eb75257](https://github.com/MyFanss/MyFans/commit/eb752570f56dc7512fb6697aba00dc7f7e2f0e71))
 * Treasury-min-balance guard ([a3c26dc](https://github.com/MyFanss/MyFans/commit/a3c26dc06bfa1c6005d48e9ce88246ce6c6674d1))
 * unfollow fn done ([3e56a68](https://github.com/MyFanss/MyFans/commit/3e56a68c90b37232ccdf475c7ce76ca9f0ff2981))
 * **wallet:** return actionable errors on network mismatch ([e44f92c](https://github.com/MyFanss/MyFans/commit/e44f92c1018f2848bfc4fd36047215e14e2d645e))
