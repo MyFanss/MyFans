@@ -1,8 +1,10 @@
 #![cfg(test)]
 
-use super::*;
-use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, Env, Error as SorobanError};
 use super::Error as ContractError;
+use super::*;
+use soroban_sdk::{
+    testutils::Address as _, testutils::Ledger, Address, Env, Error as SorobanError,
+};
 
 #[test]
 fn test_initialize() {

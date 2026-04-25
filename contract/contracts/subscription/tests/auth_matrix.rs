@@ -141,10 +141,8 @@ fn token_set_metadata_invalid_non_admin_rejected() {
     let env = base_env();
     let (client, _admin) = setup_token(&env);
     env.set_auths(EMPTY_AUTHS);
-    let result = client.try_set_metadata(
-        &String::from_str(&env, "X"),
-        &String::from_str(&env, "X"),
-    );
+    let result =
+        client.try_set_metadata(&String::from_str(&env, "X"), &String::from_str(&env, "X"));
     assert!(result.is_err(), "non-admin must not update metadata");
 }
 
@@ -189,7 +187,10 @@ fn token_approve_invalid_spender_cannot_approve_for_from() {
     env.set_auths(EMPTY_AUTHS);
     let exp = env.ledger().sequence() + 100;
     let result = client.try_approve(&from, &spender, &500i128, &exp);
-    assert!(result.is_err(), "spender must not approve on behalf of from");
+    assert!(
+        result.is_err(),
+        "spender must not approve on behalf of from"
+    );
 }
 
 /// transfer_from – spender signs and spends allowance.
@@ -315,7 +316,10 @@ fn token_transfer_invalid_third_party_rejected() {
     client.mint(&from, &1000i128);
     env.set_auths(EMPTY_AUTHS);
     let result = client.try_transfer(&from, &to, &300i128);
-    assert!(result.is_err(), "third party must not transfer from's balance");
+    assert!(
+        result.is_err(),
+        "third party must not transfer from's balance"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -379,7 +383,10 @@ fn registry_register_creator_invalid_random_caller_rejected() {
     // We still need auth for `caller.require_auth()`, so keep mock_all_auths but
     // pass random as caller — the contract's own check rejects it.
     let result = registry.try_register_creator(&random, &victim, &99u64);
-    assert!(result.is_err(), "random caller must not register another creator");
+    assert!(
+        result.is_err(),
+        "random caller must not register another creator"
+    );
 }
 
 /// unregister_creator – admin signs and removes a creator.
@@ -423,7 +430,15 @@ fn registry_get_creator_id_requires_no_auth() {
 // subscription
 // ═══════════════════════════════════════════════════════════════════════════════
 
-fn sub_setup(env: &Env) -> (MyfansContractClient<'_>, MyFansTokenClient<'_>, Address, Address, Address) {
+fn sub_setup(
+    env: &Env,
+) -> (
+    MyfansContractClient<'_>,
+    MyFansTokenClient<'_>,
+    Address,
+    Address,
+    Address,
+) {
     let (token, admin) = setup_token(env);
     let fee_recipient = Address::generate(env);
     let sub = setup_subscription(env, &token.address, &admin, &fee_recipient);
@@ -528,7 +543,10 @@ fn sub_extend_subscription_invalid_third_party_rejected() {
     sub.subscribe(&fan, &plan_id, &token.address);
     env.set_auths(EMPTY_AUTHS);
     let result = sub.try_extend_subscription(&fan, &creator, &100u32, &token.address);
-    assert!(result.is_err(), "third party must not extend fan subscription");
+    assert!(
+        result.is_err(),
+        "third party must not extend fan subscription"
+    );
 }
 
 /// cancel – fan signs and cancels own subscription.
@@ -636,7 +654,15 @@ fn sub_set_fee_bps_invalid_non_admin_rejected() {
 // content-access
 // ═══════════════════════════════════════════════════════════════════════════════
 
-fn content_setup(env: &Env) -> (ContentAccessClient<'_>, MyFansTokenClient<'_>, Address, Address, Address) {
+fn content_setup(
+    env: &Env,
+) -> (
+    ContentAccessClient<'_>,
+    MyFansTokenClient<'_>,
+    Address,
+    Address,
+    Address,
+) {
     let (token, admin) = setup_token(env);
     let content = setup_content(env, &token.address, &admin);
     let buyer = Address::generate(env);
@@ -666,7 +692,10 @@ fn content_initialize_invalid_non_admin_rejected() {
     let non_admin = Address::generate(&env);
     env.set_auths(EMPTY_AUTHS);
     let result = client.try_initialize(&non_admin, &token.address);
-    assert!(result.is_err(), "non-admin must not initialize content-access");
+    assert!(
+        result.is_err(),
+        "non-admin must not initialize content-access"
+    );
 }
 
 /// unlock_content – buyer signs and unlocks priced content.
@@ -687,7 +716,10 @@ fn content_unlock_invalid_third_party_rejected() {
     content.set_content_price(&creator, &1u64, &500i128);
     env.set_auths(EMPTY_AUTHS);
     let result = content.try_unlock_content(&buyer, &creator, &1u64);
-    assert!(result.is_err(), "third party must not unlock on behalf of buyer");
+    assert!(
+        result.is_err(),
+        "third party must not unlock on behalf of buyer"
+    );
 }
 
 /// has_access / get_content_price / get_max_price – no auth required.
@@ -844,7 +876,10 @@ fn earnings_withdraw_invalid_third_party_rejected() {
     earnings.record(&creator, &1000i128);
     env.set_auths(EMPTY_AUTHS);
     let result = earnings.try_withdraw(&creator, &400i128);
-    assert!(result.is_err(), "third party must not withdraw creator earnings");
+    assert!(
+        result.is_err(),
+        "third party must not withdraw creator earnings"
+    );
     // Balance must be unchanged.
     env.mock_all_auths();
     assert_eq!(earnings.get_earnings(&creator), 1000i128);

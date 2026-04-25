@@ -42,7 +42,7 @@ pub enum Error {
     InvalidAmount = 4,
     InvalidExpiration = 5,
     NoAllowance = 6,
-    Unauthorized = 7,          // mint: caller is not admin
+    Unauthorized = 7, // mint: caller is not admin
 }
 
 #[contract]
@@ -123,10 +123,8 @@ impl MyFansToken {
         env.storage().instance().set(&DataKey::Name, &new_name);
         env.storage().instance().set(&DataKey::Symbol, &new_symbol);
 
-        env.events().publish(
-            (symbol_short!("meta_upd"),),
-            (new_name, new_symbol),
-        );
+        env.events()
+            .publish((symbol_short!("meta_upd"),), (new_name, new_symbol));
     }
 
     /// Get the token name (view function)
@@ -320,7 +318,8 @@ impl MyFansToken {
 
         write_balance(&env, from.clone(), balance - amount);
 
-        let total: i128 = env.storage()
+        let total: i128 = env
+            .storage()
             .instance()
             .get(&DataKey::TotalSupply)
             .unwrap_or(0);
