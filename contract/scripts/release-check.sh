@@ -76,13 +76,18 @@ run_step "cargo clippy" \
 run_step "cargo test" \
   cargo test --all-features --manifest-path "$ROOT_DIR/Cargo.toml"
 
-# ── Step 4: WASM release build ────────────────────────────────────────────────
+# ── Step 4: Interface docs drift check ────────────────────────────────────────
+
+run_step "interface docs drift check" \
+  node "$SCRIPT_DIR/check-interface-docs-drift.mjs"
+
+# ── Step 5: WASM release build ────────────────────────────────────────────────
 
 run_step "cargo build --release (wasm32)" \
   cargo build --release --target wasm32-unknown-unknown \
     --manifest-path "$ROOT_DIR/Cargo.toml"
 
-# ── Step 5: ABI snapshot check ────────────────────────────────────────────────
+# ── Step 6: ABI snapshot check ────────────────────────────────────────────────
 
 if [[ "$SKIP_ABI" == true ]]; then
   echo "[release-check] skipping ABI snapshot check (--skip-abi)"
@@ -93,7 +98,7 @@ else
     bash "$SCRIPT_DIR/snapshot-abi.sh" --check
 fi
 
-# ── Step 6: Deploy dry-run ────────────────────────────────────────────────────
+# ── Step 7: Deploy dry-run ────────────────────────────────────────────────────
 
 if [[ "$SKIP_DRY_RUN" == true ]]; then
   echo "[release-check] skipping deploy dry-run (--skip-dry-run)"
@@ -107,7 +112,7 @@ else
       --dry-run
 fi
 
-# ── Step 7: Deploy output schema check (if deployed.json exists) ──────────────
+# ── Step 8: Deploy output schema check (if deployed.json exists) ──────────────
 
 DEPLOYED_JSON="$ROOT_DIR/deployed.json"
 if [[ -f "$DEPLOYED_JSON" ]]; then
