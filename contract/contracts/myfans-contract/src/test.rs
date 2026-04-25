@@ -1,6 +1,8 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, Env, Error as SorobanError};
+use soroban_sdk::{
+    testutils::Address as _, testutils::Ledger, Address, Env, Error as SorobanError,
+};
 
 #[test]
 fn test_subscription_flow() {
@@ -962,5 +964,12 @@ pub struct MockToken;
 #[contractimpl]
 impl MockToken {
     pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {}
-    pub fn transfer_from(_env: Env, _spender: Address, _from: Address, _to: Address, _amount: i128) {}
+    pub fn transfer_from(
+        _env: Env,
+        _spender: Address,
+        _from: Address,
+        _to: Address,
+        _amount: i128,
+    ) {
+    }
 }

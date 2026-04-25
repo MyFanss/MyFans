@@ -535,7 +535,10 @@ mod test {
 
         // Purchase expires at ledger 1100 (current is 1000, so valid for 100 ledgers).
         client.unlock_content(&buyer, &creator, &1, &1100);
-        assert!(client.has_access(&buyer, &creator, &1), "should have access before expiry");
+        assert!(
+            client.has_access(&buyer, &creator, &1),
+            "should have access before expiry"
+        );
 
         // Advance ledger past expiry.
         env.ledger().with_mut(|li| li.sequence_number = 1101);
@@ -686,7 +689,10 @@ mod test {
             .count();
 
         assert_eq!(count_after_first, 1);
-        assert_eq!(count_after_second, 1, "duplicate unlock must not emit a second event");
+        assert_eq!(
+            count_after_second, 1,
+            "duplicate unlock must not emit a second event"
+        );
     }
 
     #[test]
@@ -779,6 +785,9 @@ mod test {
 
         // Re-purchase with a new expiry.
         client.unlock_content(&buyer, &creator, &1, &2000);
-        assert!(client.has_access(&buyer, &creator, &1), "re-purchase should restore access");
+        assert!(
+            client.has_access(&buyer, &creator, &1),
+            "re-purchase should restore access"
+        );
     }
 }
