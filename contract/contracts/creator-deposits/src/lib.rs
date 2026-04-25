@@ -13,10 +13,21 @@ pub enum DataKey {
     CreatorBalance(Address),
 }
 
+/// Per-contract error codes for the **creator-deposits** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `InvalidFeeBps` |
+/// | 2 | `InsufficientBalance` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
+    /// Code 1 – platform fee basis points must be < 10 000 (100 %).
     InvalidFeeBps = 1,
+    /// Code 2 – creator balance is less than the requested withdrawal amount.
     InsufficientBalance = 2,
 }
 

@@ -5,9 +5,18 @@ use soroban_sdk::{
 
 const MAX_PAGE_LIMIT: u32 = 100;
 
+/// Per-contract error codes for the **content-likes** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `NotLiked` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
+    /// Code 1 – user has not liked this content; `unlike` was called without a prior `like`.
     NotLiked = 1,
 }
 

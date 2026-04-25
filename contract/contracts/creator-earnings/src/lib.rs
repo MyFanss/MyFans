@@ -13,13 +13,30 @@ pub enum DataKey {
     AuthorizedDepositor(Address),
 }
 
+/// Per-contract error codes for the **creator-earnings** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `NotInitialized` |
+/// | 2 | `NotAuthorized` |
+/// | 3 | `InsufficientBalance` |
+/// | 4 | `AlreadyInitialized` |
+/// | 5 | `InvalidAmount` |
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Error {
+    /// Code 1 – contract was never initialized.
     NotInitialized = 1,
+    /// Code 2 – caller is not the admin or an authorized depositor.
     NotAuthorized = 2,
+    /// Code 3 – creator balance is less than the requested withdrawal amount.
     InsufficientBalance = 3,
+    /// Code 4 – contract was already initialized.
     AlreadyInitialized = 4,
+    /// Code 5 – deposit or withdrawal amount must be strictly positive.
     InvalidAmount = 5,
 }
 
