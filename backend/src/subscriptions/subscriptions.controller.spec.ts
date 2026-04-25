@@ -30,7 +30,17 @@ describe('SubscriptionsController', () => {
         active: false,
         indexedStatus: 'none',
         indexed: null,
-        chain: { configured: false, isSubscriber: null },
+        chain: {
+          configured: false,
+          isSubscriber: null,
+          simulationCost: {
+            method: 'is_subscriber',
+            worstCaseMinResourceFee: null,
+            lastObservedMinResourceFee: null,
+            updatedAt: null,
+            stale: true,
+          },
+        },
       }),
       listCreatorSubscribers: jest.fn().mockResolvedValue({
         data: [],
@@ -62,7 +72,15 @@ describe('SubscriptionsController', () => {
       fan,
       creator,
     );
-    expect(result).toMatchObject({ indexedStatus: 'none' });
+    expect(result).toMatchObject({
+      indexedStatus: 'none',
+      chain: {
+        simulationCost: {
+          method: 'is_subscriber',
+          stale: true,
+        },
+      },
+    });
   });
 
   it('delegates creator subscriber query to the service', async () => {
