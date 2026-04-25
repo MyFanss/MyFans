@@ -1371,6 +1371,8 @@ name = "subscription"
 version = "0.1.0"
 dependencies = [
  "content-access",
+ "creator-registry",
+ "earnings",
  "myfans-lib",
  "myfans-token",
  "soroban-sdk",

@@ -23,6 +23,18 @@ pub enum Error {
     InvalidAmount = 5,
 }
 
+/// -------- Events (INLINE) --------
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WithdrawEvent {
+    pub creator: Address,
+    pub amount: i128,
+    pub token: Address,
+}
+
+/// Avoid magic strings
+const WITHDRAW_EVENT: &str = "withdraw";
+
 #[contract]
 pub struct CreatorEarnings;
 
@@ -83,7 +95,7 @@ impl CreatorEarnings {
             .unwrap_or(0)
     }
 
-    /// Withdraw earnings
+    /// Withdraw earnings (WITH EVENT)
     pub fn withdraw(env: Env, creator: Address, amount: i128) {
         if amount <= 0 {
             panic_with_error!(&env, Error::InvalidAmount);
@@ -97,21 +109,29 @@ impl CreatorEarnings {
             panic_with_error!(&env, Error::InsufficientBalance);
         }
 
-        let token_address: Address = Self::get_token(&env);
+        let token_address = Self::get_token(&env);
         let token_client = token::Client::new(&env, &token_address);
 
-        // Transfer from contract to creator
+        // transfer first (fail-fast if token fails)
         token_client.transfer(&env.current_contract_address(), &creator, &amount);
 
-        let new_balance = current_balance - amount;
+        // safe subtraction
+        let new_balance = current_balance
+            .checked_sub(amount)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::InsufficientBalance));
 
         env.storage()
             .instance()
             .set(&DataKey::Balance(creator.clone()), &new_balance);
 
+        // ✅ Typed event emission
         env.events().publish(
-            (Symbol::new(&env, "withdraw"),),
-            (creator, amount, token_address),
+            (Symbol::new(&env, WITHDRAW_EVENT),),
+            WithdrawEvent {
+                creator,
+                amount,
+                token: token_address,
+            },
         );
     }
 
