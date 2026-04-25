@@ -278,6 +278,7 @@
 * **subscription:** admin set_fee_recipient with validation and event ([7f68de4](https://github.com/MyFanss/MyFans/commit/7f68de4de6c620a97a16fb851dfcd459d3a345fa))
 * **subscriptions:** gated content access guard ([8a90715](https://github.com/MyFanss/MyFans/commit/8a90715e654f1443f9feadac6bfb70a6ebeb20a6)), closes [#gated-content-access](https://github.com/MyFanss/MyFans/issues/gated-content-access)
 * **subscriptions:** GET fan–creator subscription state with auth ([5b71e66](https://github.com/MyFanss/MyFans/commit/5b71e66fb9670f62880b1aa25b0cc4737200bcc2))
+* Treasury-min-balance guard ([a3c26dc](https://github.com/MyFanss/MyFans/commit/a3c26dc06bfa1c6005d48e9ce88246ce6c6674d1))
 * unfollow fn done ([3e56a68](https://github.com/MyFanss/MyFans/commit/3e56a68c90b37232ccdf475c7ce76ca9f0ff2981))
 * **wallet:** return actionable errors on network mismatch ([e44f92c](https://github.com/MyFanss/MyFans/commit/e44f92c1018f2848bfc4fd36047215e14e2d645e))
 * webhook secret rotation with active + previous secret and cutoff strategy ([dec98eb](https://github.com/MyFanss/MyFans/commit/dec98eb4e3f513a42a3667adb25d25e67b116640))
