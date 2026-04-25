@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod content_query_tests {
     use crate::{ContentAccess, ContentAccessClient};
-    use soroban_sdk::{testutils::Address as _, Address, Env};
+    use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, Env};
 
     fn setup() -> (Env, Address) {
         let env = Env::default();

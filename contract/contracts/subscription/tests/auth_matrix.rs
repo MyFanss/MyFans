@@ -24,6 +24,8 @@ use subscription::{MyfansContract, MyfansContractClient};
 
 const EMPTY_AUTHS: &[SorobanAuthorizationEntry] = &[];
 
+const NO_EXPIRY: u64 = u64::MAX;
+
 fn base_env() -> Env {
     let env = Env::default();
     env.mock_all_auths();
@@ -67,7 +69,7 @@ fn setup_content<'a>(env: &'a Env, token_id: &Address, admin: &Address) -> Conte
     client
 }
 
-fn setup_registry(env: &Env, admin: &Address) -> CreatorRegistryContractClient<'_> {
+fn setup_registry<'a>(env: &'a Env, admin: &Address) -> CreatorRegistryContractClient<'a> {
     let id = env.register_contract(None, CreatorRegistryContract);
     let client = CreatorRegistryContractClient::new(env, &id);
     client.initialize(admin);
@@ -704,7 +706,7 @@ fn content_unlock_valid_buyer_signs() {
     let env = base_env();
     let (content, _token, _admin, buyer, creator) = content_setup(&env);
     content.set_content_price(&creator, &1u64, &500i128);
-    content.unlock_content(&buyer, &creator, &1u64);
+    content.unlock_content(&buyer, &creator, &1u64, &NO_EXPIRY);
     assert!(content.has_access(&buyer, &creator, &1u64));
 }
 
@@ -715,7 +717,7 @@ fn content_unlock_invalid_third_party_rejected() {
     let (content, _token, _admin, buyer, creator) = content_setup(&env);
     content.set_content_price(&creator, &1u64, &500i128);
     env.set_auths(EMPTY_AUTHS);
-    let result = content.try_unlock_content(&buyer, &creator, &1u64);
+    let result = content.try_unlock_content(&buyer, &creator, &1u64, &NO_EXPIRY);
     assert!(
         result.is_err(),
         "third party must not unlock on behalf of buyer"

@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env, Symbol,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env,
 };
 
 use soroban_sdk::token::Client;
@@ -173,4 +173,5 @@ impl CreatorRegistryContract {
     }
 }
 
+#[cfg(test)]
 mod test;
