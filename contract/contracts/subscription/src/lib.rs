@@ -127,7 +127,9 @@ impl MyfansContract {
             .instance()
             .set(&DataKey::FeeRecipient, &fee_recipient);
         env.storage().instance().set(&DataKey::PlanCount, &0u32);
-        env.storage().instance().set(&DataKey::token_address(), &token);
+        env.storage()
+            .instance()
+            .set(&DataKey::token_address(), &token);
         env.storage().instance().set(&DataKey::Price, &price);
     }
 
@@ -222,10 +224,10 @@ impl MyfansContract {
     }
 
     pub fn admin(env: Env) -> Address {
-    env.storage()
-        .instance()
-        .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized))
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized))
     }
 
     pub fn is_subscriber(env: Env, fan: Address, creator: Address) -> bool {
@@ -346,7 +348,11 @@ impl MyfansContract {
             .unwrap_or(false);
         assert!(!paused, "contract is paused");
 
-        let token: Address = env.storage().instance().get(&DataKey::token_address()).unwrap();
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::token_address())
+            .unwrap();
         let price: i128 = env.storage().instance().get(&DataKey::Price).unwrap();
         let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
         let fee_recipient: Address = env
@@ -472,15 +478,9 @@ impl MyfansContract {
 
         require_valid_fee_bps(&env, new_fee_bps);
 
-        let old: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::FeeBps)
-            .unwrap_or(0);
+        let old: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
 
-        env.storage()
-            .instance()
-            .set(&DataKey::FeeBps, &new_fee_bps);
+        env.storage().instance().set(&DataKey::FeeBps, &new_fee_bps);
 
         env.events()
             .publish((Symbol::new(&env, "fee_updated"),), (old, new_fee_bps));

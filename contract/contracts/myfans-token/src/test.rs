@@ -11,7 +11,13 @@ fn test_transfer() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Token"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     let user1 = Address::generate(&env);
     let user2 = Address::generate(&env);
@@ -34,7 +40,13 @@ fn test_transfer_insufficient_balance() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Token"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     let user1 = Address::generate(&env);
     let user2 = Address::generate(&env);
@@ -55,7 +67,13 @@ fn test_transfer_fails_for_zero_amount() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Token"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     let user1 = Address::generate(&env);
     let user2 = Address::generate(&env);
@@ -76,7 +94,13 @@ fn test_transfer_fails_for_negative_amount() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Token"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     let user1 = Address::generate(&env);
     let user2 = Address::generate(&env);
@@ -97,7 +121,13 @@ fn test_approve_and_transfer_from() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Token"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     let owner = Address::generate(&env);
     let spender = Address::generate(&env);
@@ -131,7 +161,13 @@ fn test_transfer_from_event_includes_spender() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Token"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     let owner = Address::generate(&env);
     let spender = Address::generate(&env);
@@ -155,7 +191,11 @@ fn test_transfer_from_event_includes_spender() {
     let ev = xfer_from_event.unwrap();
 
     // topics: (xfer_from, spender, from, to)
-    assert_eq!(ev.1.len(), 4, "expected 4 topics: (xfer_from, spender, from, to)");
+    assert_eq!(
+        ev.1.len(),
+        4,
+        "expected 4 topics: (xfer_from, spender, from, to)"
+    );
 
     let t_spender: Address = ev.1.get(1).unwrap().try_into_val(&env).unwrap();
     let t_from: Address = ev.1.get(2).unwrap().try_into_val(&env).unwrap();
@@ -173,12 +213,15 @@ fn test_transfer_from_event_includes_spender() {
     client.transfer(&other_user, &receiver, &100);
 
     let events2 = env.events().all();
-    let xfer_from_count = events2.iter().filter(|e| {
-        e.1.first()
-            .and_then(|t: soroban_sdk::Val| t.try_into_val(&env).ok())
-            .map(|s: soroban_sdk::Symbol| s == symbol_short!("xfer_from"))
-            .unwrap_or(false)
-    }).count();
+    let xfer_from_count = events2
+        .iter()
+        .filter(|e| {
+            e.1.first()
+                .and_then(|t: soroban_sdk::Val| t.try_into_val(&env).ok())
+                .map(|s: soroban_sdk::Symbol| s == symbol_short!("xfer_from"))
+                .unwrap_or(false)
+        })
+        .count();
 
     // Still only 1 xfer_from event (from the transfer_from call above)
     assert_eq!(xfer_from_count, 1, "plain transfer must not emit xfer_from");
@@ -197,7 +240,13 @@ fn test_transfer_from_insufficient_allowance() {
     let receiver = Address::generate(&env);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Token"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     client.mint(&owner, &1000);
     client.approve(&owner, &spender, &100, &100);
@@ -220,7 +269,13 @@ fn test_transfer_from_fails_for_zero_amount() {
     let receiver = Address::generate(&env);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Token"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     client.mint(&owner, &1000);
     client.approve(&owner, &spender, &100, &100);
@@ -243,7 +298,13 @@ fn test_transfer_from_fails_for_negative_amount() {
     let receiver = Address::generate(&env);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Token"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     client.mint(&owner, &1000);
     client.approve(&owner, &spender, &100, &100);
@@ -266,7 +327,13 @@ fn test_transfer_from_expired_allowance() {
     let receiver = Address::generate(&env);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Token"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     client.mint(&owner, &1000);
 
@@ -314,7 +381,13 @@ fn test_burn() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Token"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     let user = Address::generate(&env);
     client.mint(&user, &1000);
@@ -336,7 +409,13 @@ fn test_burn_insufficient_balance() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Token"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     let user = Address::generate(&env);
     client.mint(&user, &100);
@@ -353,7 +432,13 @@ fn test_burn_invalid_amount() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "Token"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Token"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     let user = Address::generate(&env);
     client.mint(&user, &100);
@@ -376,7 +461,13 @@ fn test_clear_allowance_resets_to_zero() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "T"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "T"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     let owner = Address::generate(&env);
     let spender = Address::generate(&env);
@@ -400,7 +491,13 @@ fn test_clear_allowance_unauthorized_fails() {
 
     let admin = Address::generate(&env);
     env.mock_all_auths();
-    client.initialize(&admin, &String::from_str(&env, "T"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "T"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
     let owner = Address::generate(&env);
     let spender = Address::generate(&env);
     client.mint(&owner, &1000);
@@ -425,7 +522,13 @@ fn test_fuzz_transfer_balances_invariant() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "T"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "T"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
@@ -473,7 +576,13 @@ fn test_fuzz_approve_transfer_from_invariant() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &String::from_str(&env, "T"), &String::from_str(&env, "T"), &7, &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "T"),
+        &String::from_str(&env, "T"),
+        &7,
+        &0,
+    );
 
     let owner = Address::generate(&env);
     let spender = Address::generate(&env);
@@ -482,13 +591,7 @@ fn test_fuzz_approve_transfer_from_invariant() {
     client.mint(&owner, &10_000);
 
     // Deterministic sequence of (approve_amount, spend_amount) pairs
-    let rounds: &[(i128, i128)] = &[
-        (1000, 300),
-        (500, 500),
-        (2000, 999),
-        (100, 50),
-        (800, 800),
-    ];
+    let rounds: &[(i128, i128)] = &[(1000, 300), (500, 500), (2000, 999), (100, 50), (800, 800)];
 
     for (approve_amt, spend_amt) in rounds {
         client.approve(&owner, &spender, approve_amt, &10_000);

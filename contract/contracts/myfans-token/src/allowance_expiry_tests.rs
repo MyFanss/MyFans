@@ -19,10 +19,7 @@ mod allowance_expiry_tests {
 
     /// Shared setup: deploy contract, mint `amount` to `owner`, approve `amount`
     /// for `spender` with `expiration_ledger = 100`.
-    fn setup(
-        env: &Env,
-        amount: i128,
-    ) -> (MyFansTokenClient, Address, Address, Address) {
+    fn setup(env: &Env, amount: i128) -> (MyFansTokenClient, Address, Address, Address) {
         let contract_id = env.register_contract(None, MyFansToken);
         let client = MyFansTokenClient::new(env, &contract_id);
 
@@ -108,7 +105,11 @@ mod allowance_expiry_tests {
         env.ledger().with_mut(|li| li.sequence_number = 99);
         client.transfer_from(&spender, &owner, &receiver, &200);
 
-        assert_eq!(client.balance(&receiver), 200, "first transfer must succeed");
+        assert_eq!(
+            client.balance(&receiver),
+            200,
+            "first transfer must succeed"
+        );
         let allowance_after_first = client.allowance(&owner, &spender);
         assert_eq!(allowance_after_first, 300, "allowance must decrease by 200");
 
@@ -151,9 +152,17 @@ mod allowance_expiry_tests {
         let (client, owner, spender, _) = setup(&env, 500);
 
         env.ledger().with_mut(|li| li.sequence_number = 100);
-        assert_eq!(client.allowance(&owner, &spender), 500, "valid at ledger 100");
+        assert_eq!(
+            client.allowance(&owner, &spender),
+            500,
+            "valid at ledger 100"
+        );
 
         env.ledger().with_mut(|li| li.sequence_number = 101);
-        assert_eq!(client.allowance(&owner, &spender), 0, "expired at ledger 101");
+        assert_eq!(
+            client.allowance(&owner, &spender),
+            0,
+            "expired at ledger 101"
+        );
     }
 }

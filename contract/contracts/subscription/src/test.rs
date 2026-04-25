@@ -1,11 +1,10 @@
 #![cfg(test)]
 
-use super::*;
 use super::dummy_data::*;
+use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger, MockAuth, MockAuthInvoke},
-    token,
-    vec,
+    token, vec,
     xdr::{ScAddress, SorobanAuthorizationEntry},
     Address, Env, Error as SorobanError, IntoVal, String, Symbol, TryFromVal, TryIntoVal,
 };
@@ -351,13 +350,24 @@ fn test_extend_fails_if_expired() {
 fn test_subscription_state_after_snapshot_restore() {
     let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
-    client.init(&admin, &DUMMY_FEE_BPS, &fee_recipient, &token.address, &DUMMY_PRICE);
+    client.init(
+        &admin,
+        &DUMMY_FEE_BPS,
+        &fee_recipient,
+        &token.address,
+        &DUMMY_PRICE,
+    );
 
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
     token_admin.mint(&fan, &DUMMY_FAN_BALANCE);
 
-    let plan_id = client.create_plan(&creator, &token.address, &DUMMY_PLAN_AMOUNT, &DUMMY_INTERVAL_DAYS);
+    let plan_id = client.create_plan(
+        &creator,
+        &token.address,
+        &DUMMY_PLAN_AMOUNT,
+        &DUMMY_INTERVAL_DAYS,
+    );
     assert_eq!(plan_id, 1);
     client.subscribe(&fan, &plan_id, &token.address);
 
@@ -595,7 +605,11 @@ fn test_cancel_event_topics_backward_compatible() {
     let ev = find_event(&env, "cancelled").expect("cancelled event not emitted");
 
     // Topics structure unchanged: (name, fan, creator)
-    assert_eq!(ev.1.len(), 3, "topics count must stay 3 for backward compat");
+    assert_eq!(
+        ev.1.len(),
+        3,
+        "topics count must stay 3 for backward compat"
+    );
     let t_name: Symbol = ev.1.get(0).unwrap().try_into_val(&env).unwrap();
     assert_eq!(t_name, Symbol::new(&env, "cancelled"));
     let t_fan: Address = ev.1.get(1).unwrap().try_into_val(&env).unwrap();
@@ -685,7 +699,10 @@ fn test_get_expiry_unix_expired_subscription() {
     assert_eq!(expiry_seq, (1000 + 17280) as u64);
 
     let current_ts: u64 = 1_700_000_000 + (17280 + 100) * 5;
-    assert!(expiry_unix < current_ts, "expired sub unix should be in the past");
+    assert!(
+        expiry_unix < current_ts,
+        "expired sub unix should be in the past"
+    );
 }
 
 /// `subscribed` (direct via create_subscription) — topics: (name, fan, creator)  data: 0u32
@@ -731,13 +748,24 @@ fn test_subscription_key_helper_keeps_legacy_variant() {
 fn test_cancel_after_snapshot_restore() {
     let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
-    client.init(&admin, &DUMMY_FEE_BPS, &fee_recipient, &token.address, &DUMMY_PRICE);
+    client.init(
+        &admin,
+        &DUMMY_FEE_BPS,
+        &fee_recipient,
+        &token.address,
+        &DUMMY_PRICE,
+    );
 
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
     token_admin.mint(&fan, &DUMMY_FAN_BALANCE);
 
-    let plan_id = client.create_plan(&creator, &token.address, &DUMMY_PLAN_AMOUNT, &DUMMY_INTERVAL_DAYS);
+    let plan_id = client.create_plan(
+        &creator,
+        &token.address,
+        &DUMMY_PLAN_AMOUNT,
+        &DUMMY_INTERVAL_DAYS,
+    );
     client.subscribe(&fan, &plan_id, &token.address);
     assert!(client.is_subscriber(&fan, &creator));
 
@@ -910,8 +938,8 @@ fn test_set_fee_recipient_admin_updates_storage_emits_event_and_routes_fees() {
     });
     assert_eq!(stored, new_recipient);
 
-    let ev = find_event(&env, "fee_recipient_updated")
-        .expect("fee_recipient_updated event not emitted");
+    let ev =
+        find_event(&env, "fee_recipient_updated").expect("fee_recipient_updated event not emitted");
     assert_eq!(ev.1.len(), 3, "topics: name, old, new");
     let t_old: Address = ev.1.get(1).unwrap().try_into_val(&env).unwrap();
     let t_new: Address = ev.1.get(2).unwrap().try_into_val(&env).unwrap();
@@ -1094,7 +1122,10 @@ fn test_set_fee_bps_requires_admin_authorization() {
     env.set_auths(empty);
 
     let r = client.try_set_fee_bps(&100u32);
-    assert!(r.is_err(), "set_fee_bps must fail without authorization entry");
+    assert!(
+        r.is_err(),
+        "set_fee_bps must fail without authorization entry"
+    );
 }
 
 // ── admin() view ──────────────────────────────────────────────────────────
@@ -1156,8 +1187,16 @@ fn admin_is_stable_after_pause_and_unpause() {
     );
 
     client.pause();
-    assert_eq!(client.admin(), admin, "admin() must be unchanged after pause");
+    assert_eq!(
+        client.admin(),
+        admin,
+        "admin() must be unchanged after pause"
+    );
 
     client.unpause();
-    assert_eq!(client.admin(), admin, "admin() must be unchanged after unpause");
+    assert_eq!(
+        client.admin(),
+        admin,
+        "admin() must be unchanged after unpause"
+    );
 }
