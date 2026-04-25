@@ -18,6 +18,14 @@ pub enum DataKey {
     LastRegLedger(Address), // last ledger when this caller did a registration
 }
 
+impl DataKey {
+    /// Canonical registration ledger storage key; serializes as [`DataKey::LastRegLedger`].
+    #[inline]
+    pub fn registration_ledger(caller: Address) -> Self {
+        DataKey::LastRegLedger(caller)
+    }
+}
+
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -59,7 +67,7 @@ impl CreatorRegistryContract {
         }
 
         let current = env.ledger().sequence();
-        let last_key = DataKey::LastRegLedger(caller.clone());
+        let last_key = DataKey::registration_ledger(caller.clone());
         if let Some(last) = env.storage().persistent().get::<DataKey, u32>(&last_key) {
             if current < last.saturating_add(RATE_LIMIT_LEDGERS) {
                 panic_with_error!(&env, Error::RateLimited);

@@ -45,3 +45,6 @@ export {
 
 // Creator route prefetch hook
 export { usePrefetchCreatorRoute } from './usePrefetchCreatorRoute';
+
+// RPC / network status hook
+export { useRpcStatus, type RpcStatus, type RpcStatusResult } from './useRpcStatus';

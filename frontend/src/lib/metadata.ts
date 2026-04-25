@@ -87,14 +87,18 @@ export function createCreatorMetadata(
   getCurrencySymbol: (currency: string) => string
 ): Metadata {
   const title = `${creator.displayName} (@${creator.username}) | MyFans`;
-  const description = creator.bio || 
-    `Subscribe to ${creator.displayName} on MyFans for exclusive content. ${creator.subscriberCount.toLocaleString()} subscribers already joined.`;
+  const subscriberText = `${creator.subscriberCount.toLocaleString()} subscribers`;
+  const description = creator.bio
+    ? `${creator.bio} ${subscriberText} already joined.`
+    : `Subscribe to ${creator.displayName} on MyFans for exclusive content. ${subscriberText} already joined.`;
   const url = `https://myfans.app/creator/${creator.username}`;
 
   // Get pricing information
   const lowestPrice = plans.length > 0 ? Math.min(...plans.map(p => p.price)) : null;
-  const priceText = lowestPrice && plans.length > 0 
-    ? `Starting from ${getCurrencySymbol(plans[0].currency)}${lowestPrice}/${plans[0].billingPeriod}`
+  const lowestPlan = lowestPrice !== null ? plans.find(p => p.price === lowestPrice) : null;
+  // priceValue is just the amount + period (label "Starting from" is separate)
+  const priceValue = lowestPlan
+    ? `${getCurrencySymbol(lowestPlan.currency)}${lowestPrice}/${lowestPlan.billingPeriod}`
     : '';
 
   // Filter out any potentially sensitive information
@@ -105,15 +109,20 @@ export function createCreatorMetadata(
     'subscription',
     'exclusive content',
     'creator',
-    'fan club'
-  ].filter(Boolean);
+    'fan club',
+  ].filter(Boolean) as string[];
+
+  // Split display name for OG profile fields
+  const nameParts = creator.displayName.split(' ');
+  const firstName = nameParts[0] ?? '';
+  const lastName = nameParts.slice(1).join(' ');
 
   return {
     title,
     description,
-    keywords: safeKeywords.join(', '),
+    keywords: safeKeywords,
     authors: [{ name: creator.displayName }],
-    creator: creator.displayName,
+    creators: [{ name: creator.displayName }],
     openGraph: {
       title,
       description,
@@ -127,6 +136,11 @@ export function createCreatorMetadata(
         height: 400,
         alt: `${creator.displayName} profile picture`,
       }] : [],
+      profile: {
+        username: creator.username,
+        firstName,
+        lastName,
+      },
     },
     twitter: {
       card: 'summary_large_image',
@@ -140,12 +154,12 @@ export function createCreatorMetadata(
     other: {
       'article:author': creator.displayName,
       'article:section': creator.categories.join(', '),
-      'og:price:amount': lowestPrice?.toString() || '',
-      'og:price:currency': plans[0]?.currency || '',
+      'og:price:amount': lowestPrice?.toString() ?? '',
+      'og:price:currency': lowestPlan?.currency ?? '',
       'twitter:label1': 'Subscribers',
       'twitter:data1': creator.subscriberCount.toLocaleString(),
-      'twitter:label2': priceText ? 'Starting from' : '',
-      'twitter:data2': priceText || '',
+      'twitter:label2': priceValue ? 'Starting from' : '',
+      'twitter:data2': priceValue,
     },
   };
 }
