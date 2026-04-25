@@ -8,6 +8,7 @@ import { CardSkeletonGrid, EmptyState } from '@/components/ui/states';
 import { useToast } from '@/contexts/ToastContext';
 import { FeatureGate } from '@/components/FeatureGate';
 import { FeatureFlag } from '@/lib/feature-flags';
+import { getWalletSession, setSubscriptionStatusForCreator } from '@/lib/client-session';
 
 interface Creator {
   id: string;
@@ -49,6 +50,13 @@ export default function SubscribePage() {
   const [query, setQuery] = useState('');
   const [isLoadingCreators] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
+  const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
+  const { showError, showSuccess } = useToast();
+  
+  useEffect(() => {
+    const session = getWalletSession();
+    setConnectedAddress(session?.address ?? null);
+  }, []);
   const filteredCreators = useMemo(
     () => CREATOR_DATA.filter((c) =>
       c.name.toLowerCase().includes(query.toLowerCase()) ||
@@ -57,9 +65,18 @@ export default function SubscribePage() {
     [query]
   );
   const handleSubscribe = async (creator: Creator) => {
+    if (!connectedAddress) {
+      showError('WALLET_CONNECTION_REQUIRED', {
+        message: 'Connect your wallet first',
+        description: 'Wallet connection is required before subscribing.',
+      });
+      return;
+    }
     setIsSubscribing(creator.id);
     try {
-      // subscription logic handled by checkout flow
+      setSubscriptionStatusForCreator(creator.id, 'active');
+      setSubscriptionStatusForCreator(creator.username, 'active');
+      showSuccess(`Subscribed to ${creator.name}`, 'Your access is now active.');
     } finally {
       setIsSubscribing(null);
     }
@@ -68,7 +85,10 @@ export default function SubscribePage() {
     <div className="min-h-screen bg-slate-50 p-8">
       <header className="mb-8 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">Subscribe to Creators</h1>
-        <WalletConnect />
+        <WalletConnect
+          onConnect={(address) => setConnectedAddress(address)}
+          onDisconnect={() => setConnectedAddress(null)}
+        />
       </header>
 
       <div className="mx-auto max-w-5xl space-y-6">
@@ -108,7 +128,7 @@ export default function SubscribePage() {
                   actionButton={
                     <button
                       className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:bg-emerald-300"
-                      disabled={isSubscribing === creator.id}
+                      disabled={isSubscribing === creator.id || !connectedAddress}
                       onClick={() => handleSubscribe(creator)}
                       type="button"
                     >
