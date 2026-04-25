@@ -33,16 +33,37 @@ pub struct AllowanceData {
 }
 
 /// Token contract errors (codes 1–7 match test expectations)
+/// Per-contract error codes for the **myfans-token** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `InsufficientBalance` |
+/// | 2 | `InsufficientAllowance` |
+/// | 3 | `AllowanceExpired` |
+/// | 4 | `InvalidAmount` |
+/// | 5 | `InvalidExpiration` |
+/// | 6 | `NoAllowance` |
+/// | 7 | `Unauthorized` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
-    InsufficientBalance = 1,   // transfer: not enough balance
-    InsufficientAllowance = 2, // transfer_from: allowance too low
-    AllowanceExpired = 3,      // transfer_from: allowance expired
+    /// Code 1 – transfer: not enough balance.
+    InsufficientBalance = 1,
+    /// Code 2 – transfer_from: allowance too low.
+    InsufficientAllowance = 2,
+    /// Code 3 – transfer_from: allowance expired.
+    AllowanceExpired = 3,
+    /// Code 4 – amount must be strictly positive.
     InvalidAmount = 4,
+    /// Code 5 – expiration ledger is in the past.
     InvalidExpiration = 5,
+    /// Code 6 – no allowance record found for (from, spender).
     NoAllowance = 6,
-    Unauthorized = 7, // mint: caller is not admin
+    /// Code 7 – mint: caller is not admin.
+    Unauthorized = 7,
 }
 
 #[contract]

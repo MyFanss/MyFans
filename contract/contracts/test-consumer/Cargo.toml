@@ -17,3 +17,13 @@ myfans-lib = { path = "../myfans-lib" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+subscription    = { path = "../subscription" }
+content-access  = { path = "../content-access" }
+content-likes   = { path = "../content-likes" }
+creator-registry = { path = "../creator-registry" }
+treasury        = { path = "../treasury" }
+earnings        = { path = "../earnings" }
+creator-earnings = { path = "../creator-earnings" }
+creator-deposits = { path = "../creator-deposits" }
+myfans-contract = { path = "../myfans-contract" }
+myfans-token    = { path = "../myfans-token" }

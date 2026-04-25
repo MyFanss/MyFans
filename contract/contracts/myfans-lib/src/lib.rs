@@ -52,6 +52,15 @@ pub enum MyfansError {
     MinBalanceViolation = 106,
 }
 
+/// Stable numeric error codes for every MyFans contract, grouped by contract.
+/// Clients can import these instead of hard-coding magic numbers.
+///
+/// ```rust
+/// use myfans_lib::error_codes::subscription as sub_err;
+/// assert_eq!(sub_err::SUBSCRIPTION_NOT_FOUND, 3);
+/// ```
+pub mod error_codes;
+
 /// Shared test fixtures for cross-contract integration tests.
 /// Only compiled when the `testutils` feature is enabled.
 #[cfg(any(test, feature = "testutils"))]

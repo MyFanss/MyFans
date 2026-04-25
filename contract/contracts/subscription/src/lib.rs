@@ -52,17 +52,42 @@ impl DataKey {
     }
 }
 
+/// Per-contract error codes for the **subscription** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `AlreadyInitialized` |
+/// | 2 | `Paused` |
+/// | 3 | `SubscriptionNotFound` |
+/// | 4 | `SubscriptionExpired` |
+/// | 5 | `AdminNotInitialized` |
+/// | 6 | `InvalidFeeRecipient` |
+/// | 7 | `InvalidFeeBps` |
+/// | 8 | `InvalidTokenAddress` |
+/// | 9 | `InvalidPrice` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
+    /// Code 1 – contract was already initialized.
     AlreadyInitialized = 1,
+    /// Code 2 – contract is paused; state-changing calls are rejected.
     Paused = 2,
+    /// Code 3 – no subscription record found for (fan, creator).
     SubscriptionNotFound = 3,
+    /// Code 4 – subscription exists but its expiry ledger has passed.
     SubscriptionExpired = 4,
+    /// Code 5 – admin key not present; contract was never initialized.
     AdminNotInitialized = 5,
+    /// Code 6 – fee recipient is the Stellar null/burn address.
     InvalidFeeRecipient = 6,
+    /// Code 7 – fee basis points exceed 10 000 (100 %).
     InvalidFeeBps = 7,
+    /// Code 8 – token address is the Stellar null/burn address.
     InvalidTokenAddress = 8,
+    /// Code 9 – subscription price must be strictly positive.
     InvalidPrice = 9,
 }
 

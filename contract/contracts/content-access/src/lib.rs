@@ -40,15 +40,30 @@ pub enum DataKey {
     MaxPrice,
 }
 
+/// Per-contract error codes for the **content-access** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `AlreadyInitialized` |
+/// | 2 | `ContentPriceNotSet` |
+/// | 3 | `NotInitialized` |
+/// | 4 | `PurchaseExpired` |
+/// | 6 | `NotBuyer` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
+    /// Code 1 – contract was already initialized.
     AlreadyInitialized = 1,
+    /// Code 2 – no price registered for (creator, content_id).
     ContentPriceNotSet = 2,
+    /// Code 3 – contract was never initialized.
     NotInitialized = 3,
-    /// The purchase record exists but its expiry ledger has passed.
+    /// Code 4 – purchase record exists but its expiry ledger has passed.
     PurchaseExpired = 4,
-    /// The caller is not the original buyer of this purchase (no purchase record found).
+    /// Code 6 – no purchase record found for the claimer (not the buyer).
     NotBuyer = 6,
 }
 
