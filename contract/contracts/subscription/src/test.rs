@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use super::dummy_data::*;
 use super::*;
 use soroban_sdk::{
@@ -373,9 +371,9 @@ fn test_subscription_state_after_snapshot_restore() {
 
     let contract_id = client.address.clone();
     let expected_expiry = env.ledger().sequence() + (DUMMY_INTERVAL_DAYS * LEDGERS_PER_DAY);
-    let sc_fan: ScAddress = fan.clone().try_into().unwrap();
-    let sc_creator: ScAddress = creator.clone().try_into().unwrap();
-    let sc_contract: ScAddress = contract_id.clone().try_into().unwrap();
+    let sc_fan: ScAddress = fan.clone().into();
+    let sc_creator: ScAddress = creator.clone().into();
+    let sc_contract: ScAddress = contract_id.clone().into();
 
     let snapshot = env.to_snapshot();
     let env2 = Env::from_snapshot(snapshot);
@@ -770,9 +768,9 @@ fn test_cancel_after_snapshot_restore() {
     assert!(client.is_subscriber(&fan, &creator));
 
     let contract_id = client.address.clone();
-    let sc_fan: ScAddress = fan.clone().try_into().unwrap();
-    let sc_creator: ScAddress = creator.clone().try_into().unwrap();
-    let sc_contract: ScAddress = contract_id.clone().try_into().unwrap();
+    let sc_fan: ScAddress = fan.clone().into();
+    let sc_creator: ScAddress = creator.clone().into();
+    let sc_contract: ScAddress = contract_id.clone().into();
 
     let snapshot = env.to_snapshot();
     let env2 = Env::from_snapshot(snapshot);

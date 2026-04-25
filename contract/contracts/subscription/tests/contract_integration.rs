@@ -9,6 +9,9 @@ use soroban_sdk::testutils::{Events, Ledger as _};
 use soroban_sdk::{String, Symbol, TryIntoVal};
 use subscription::{MyfansContract, MyfansContractClient};
 
+/// Far-future ledger seq so purchased access does not expire in these tests.
+const NO_EXPIRY: u64 = u64::MAX;
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 fn setup_token<'a>(f: &'a TestEnv) -> MyFansTokenClient<'a> {
@@ -65,7 +68,7 @@ fn test_subscription_to_content_unlock_flow() {
     let content_id = 1u64;
     assert!(!content.has_access(&f.fan, &f.creator, &content_id));
     content.set_content_price(&f.creator, &content_id, &500i128);
-    content.unlock_content(&f.fan, &f.creator, &content_id);
+    content.unlock_content(&f.fan, &f.creator, &content_id, &NO_EXPIRY);
 
     assert!(content.has_access(&f.fan, &f.creator, &content_id));
     assert_eq!(token.balance(&f.fan), 500i128);
@@ -140,13 +143,13 @@ fn test_shared_token_balance_consistency_across_contracts() {
     assert_eq!(token.balance(&f.fee_recipient), 50i128);
 
     content.set_content_price(&f.creator, &1u64, &500i128);
-    content.unlock_content(&f.fan, &f.creator, &1u64);
+    content.unlock_content(&f.fan, &f.creator, &1u64, &NO_EXPIRY);
 
     assert_eq!(token.balance(&f.fan), 1_500i128);
     assert_eq!(token.balance(&f.creator), 1_450i128);
 
     content.set_content_price(&f.creator, &2u64, &300i128);
-    content.unlock_content(&f.fan, &f.creator, &2u64);
+    content.unlock_content(&f.fan, &f.creator, &2u64, &NO_EXPIRY);
 
     assert_eq!(token.balance(&f.fan), 1_200i128);
     assert_eq!(token.balance(&f.creator), 1_750i128);
@@ -185,10 +188,10 @@ fn test_duplicate_content_unlock_is_idempotent_via_shared_fixture() {
     sub.subscribe(&f.fan, &plan_id, &token.address);
 
     content.set_content_price(&f.creator, &1u64, &200i128);
-    content.unlock_content(&f.fan, &f.creator, &1u64);
+    content.unlock_content(&f.fan, &f.creator, &1u64, &NO_EXPIRY);
     let balance_after_first = token.balance(&f.fan);
 
-    content.unlock_content(&f.fan, &f.creator, &1u64);
+    content.unlock_content(&f.fan, &f.creator, &1u64, &NO_EXPIRY);
     assert_eq!(
         token.balance(&f.fan),
         balance_after_first,

@@ -65,6 +65,10 @@ run_step() {
 run_step "cargo fmt --check" \
   cargo fmt --check --manifest-path "$ROOT_DIR/Cargo.toml"
 
+# Pin is documented in contract/CHANGELOG.md; update this grep when bumping Soroban.
+run_step "workspace soroban-sdk pin (Cargo.toml)" \
+  bash -c 'grep -qxF "soroban-sdk = \"21.7.7\"" "'"$ROOT_DIR"'/Cargo.toml"'
+
 # ── Step 2: Clippy ────────────────────────────────────────────────────────────
 
 run_step "cargo clippy" \

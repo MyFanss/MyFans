@@ -31,8 +31,10 @@ pub const TEST_TTL: u32 = 10_000_000;
 /// Central fixture that every cross-contract integration test should start from.
 ///
 /// ```rust
+/// use myfans_lib::test_fixtures::TestEnv;
+///
 /// let f = TestEnv::new();
-/// f.token_admin.mint(&f.fan, &5_000);
+/// f.mint(&f.fan, 5_000);
 /// ```
 pub struct TestEnv {
     pub env: Env,

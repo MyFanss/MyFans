@@ -82,4 +82,5 @@ impl Earnings {
     }
 }
 
+#[cfg(test)]
 mod test;

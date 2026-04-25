@@ -250,8 +250,12 @@ mod test {
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Events, Ledger},
-        vec, Address, Env, Error as SorobanError, IntoVal, Symbol, TryIntoVal,
+        vec,
+        xdr::SorobanAuthorizationEntry,
+        Address, Env, Error as SorobanError, IntoVal, Symbol, TryIntoVal,
     };
+
+    const EMPTY_AUTHS: &[SorobanAuthorizationEntry] = &[];
 
     // Mock token contract for testing
     #[contract]
@@ -727,11 +731,9 @@ mod test {
         env.mock_all_auths();
         client.initialize(&admin, &token_id);
 
-        let env2 = Env::default();
-        let client2 = ContentAccessClient::new(&env2, &contract_id);
-
-        let creator = Address::generate(&env2);
-        client2.set_content_price(&creator, &1, &100);
+        let creator = Address::generate(&env);
+        env.set_auths(EMPTY_AUTHS);
+        client.set_content_price(&creator, &1, &100);
     }
 
     #[test]
@@ -743,7 +745,7 @@ mod test {
 
         let admin = Address::generate(&env);
         let invalid_token_contract = env.register_contract(None, ContentAccess);
-        let invalid_token_address: Address = invalid_token_contract.into();
+        let invalid_token_address = invalid_token_contract;
 
         let contract_id = env.register_contract(None, ContentAccess);
         let client = ContentAccessClient::new(&env, &contract_id);
