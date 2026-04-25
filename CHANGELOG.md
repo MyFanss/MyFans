@@ -208,6 +208,7 @@
 * **frontend:** creator onboarding — skip/resume, progress, tests ([7ee6e00](https://github.com/MyFanss/MyFans/commit/7ee6e00a441b7f154fd21fe0834d857db71c1729))
 * **frontend:** fan onboarding quickstart with wallet and first sub flow ([a87a4ad](https://github.com/MyFanss/MyFans/commit/a87a4add391f154734428bbcc76b2df1ebe4bb26))
 * **frontend:** fix appearance.test.tsx and add theme e2e tests ([2f01f0f](https://github.com/MyFanss/MyFans/commit/2f01f0f3153f1eee6459df63b3af8b631eaef802)), closes [#24](https://github.com/MyFanss/MyFans/issues/24)
+* **frontend:** persist wallet/subscription state for e2e critical flow ([2442b3b](https://github.com/MyFanss/MyFans/commit/2442b3b0e59b73f7f8598cb5193fe4f8a7d2c97e))
 * **frontend:** show offline banner when RPC or network is unavailable ([7547dd9](https://github.com/MyFanss/MyFans/commit/7547dd95ad7b824d9d81ee99502056ad16a18cdc))
 * **frontend:** standardize error copy with actionable recovery steps ([02f3d52](https://github.com/MyFanss/MyFans/commit/02f3d525e1fc8f514e92c780299c1916c03b5694))
 * harden backend secret management ([#350](https://github.com/MyFanss/MyFans/issues/350)) ([2022919](https://github.com/MyFanss/MyFans/commit/2022919c83aad39d50fccb3b9401bd1c4ab7f495))
