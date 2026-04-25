@@ -195,7 +195,7 @@ mod test {
         client.deposit(&creator, &token, &1000);
 
         // Verify transfer was called with correct fee (50)
-        assert!(env.auths().len() > 0);
+        assert!(!env.auths().is_empty());
     }
 
     #[test]

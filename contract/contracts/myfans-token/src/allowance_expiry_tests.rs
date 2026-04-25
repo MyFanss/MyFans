@@ -10,7 +10,7 @@
 //! and deterministic.
 
 #[cfg(test)]
-mod allowance_expiry_tests {
+mod cases {
     use crate::{Error, MyFansToken, MyFansTokenClient};
     use soroban_sdk::{
         testutils::{Address as _, Ledger},
@@ -19,7 +19,7 @@ mod allowance_expiry_tests {
 
     /// Shared setup: deploy contract, mint `amount` to `owner`, approve `amount`
     /// for `spender` with `expiration_ledger = 100`.
-    fn setup(env: &Env, amount: i128) -> (MyFansTokenClient, Address, Address, Address) {
+    fn setup(env: &Env, amount: i128) -> (MyFansTokenClient<'_>, Address, Address, Address) {
         let contract_id = env.register_contract(None, MyFansToken);
         let client = MyFansTokenClient::new(env, &contract_id);
 

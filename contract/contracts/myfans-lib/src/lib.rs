@@ -60,7 +60,6 @@ pub mod test_fixtures;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{Env, IntoVal, TryIntoVal};
 
     #[test]
     fn test_subscription_status_values() {

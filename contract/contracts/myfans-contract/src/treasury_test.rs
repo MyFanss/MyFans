@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use crate::treasury::{Treasury, TreasuryClient};
 use soroban_sdk::{
     testutils::{Address as _, MockAuth, MockAuthInvoke},
