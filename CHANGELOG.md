@@ -187,6 +187,7 @@
 * Create gated content viewing page (Issue [#97](https://github.com/MyFanss/MyFans/issues/97)) ([6ce8009](https://github.com/MyFanss/MyFans/commit/6ce80098b4126a66e6ec429172018d847c7a6368))
 * Created transaction page ([272f671](https://github.com/MyFanss/MyFans/commit/272f6712930125013e91f6fb416c2c6ab7865d7a))
 * creator earnings withdraw event ([16e3726](https://github.com/MyFanss/MyFans/commit/16e372678e26784ee5242b17c3f94b339914b7d3))
+* creator registry - spam fee or rate limit ([d5b3ff6](https://github.com/MyFanss/MyFans/commit/d5b3ff6d4734b3764566198123360f5ea42e6cb2))
 * **dashboard:** improve mobile and tablet responsiveness for creator dashboard ([8410cb0](https://github.com/MyFanss/MyFans/commit/8410cb0e6bd2431f9a6d522c8cfaef33412c1c9b))
 * **db:** add baseline migrations for core entities ([d38ee4d](https://github.com/MyFanss/MyFans/commit/d38ee4d639640f3913c908911830ad208788c89a))
 * **docs,ci:** implement platform governance and QA tooling ([3f34818](https://github.com/MyFanss/MyFans/commit/3f348188232f2e535f4df63a330f25c94963ba06)), closes [#746](https://github.com/MyFanss/MyFans/issues/746) [#747](https://github.com/MyFanss/MyFans/issues/747) [#749](https://github.com/MyFanss/MyFans/issues/749) [#748](https://github.com/MyFanss/MyFans/issues/748) [#746](https://github.com/MyFanss/MyFans/issues/746) [#747](https://github.com/MyFanss/MyFans/issues/747) [#748](https://github.com/MyFanss/MyFans/issues/748) [#749](https://github.com/MyFanss/MyFans/issues/749)
