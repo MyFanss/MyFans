@@ -6,3 +6,9 @@
 
 # Nest.js backend – backend team reviews all changes under backend/
 /backend/ @MyFanss/backend
+
+# Next.js frontend – frontend team reviews all changes under frontend/
+/frontend/ @MyFanss/frontend
+
+# Release docs including smoke test matrix – frontend team owns these
+/docs/release/ @MyFanss/frontend
