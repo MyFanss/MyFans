@@ -11,7 +11,11 @@ Pay-per-content unlocking.
 | `has_access` | `buyer: Address, creator: Address, content_id: u64` | `bool` | none | `soroban contract invoke ... has_access -- BUYER CREATOR 123` | None |
 | `get_content_price` | `creator: Address, content_id: u64` | `Option<i128>` | none | `soroban contract invoke ... get_content_price -- CREATOR 123` | None |
 | `set_content_price` | `creator: Address, content_id: u64, price: i128` | `()` | creator | `soroban contract invoke ... set_content_price -- CREATOR 123 100` | None |
+| `verify_access` | `claimer: Address, creator: Address, content_id: u64` | `()` | none | `soroban contract invoke ... verify_access -- BUYER CREATOR 123` | None |
+| `set_max_price` | `max_price: i128` | `()` | admin | `soroban contract invoke ... set_max_price -- 1000000` | None |
+| `get_max_price` | `()` | `Option<i128>` | none | `soroban contract invoke ... get_max_price` | None |
 | `set_admin` | `new_admin: Address` | `()` | current admin | `soroban contract invoke ... set_admin -- NEW_ADMIN` | None |
+| `admin` | `()` | `Address` | none | `soroban contract invoke ... admin` | None |
 
 ## Overview
 Buyer pays creator-set price to unlock specific content. Access buyer/creator/content-specific. Idempotent unlocks.
