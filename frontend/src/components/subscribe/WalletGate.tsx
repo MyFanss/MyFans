@@ -48,6 +48,7 @@ export default function WalletGate({ onConnected }: WalletGateProps) {
           target="_blank"
           rel="noopener noreferrer"
           className="inline-block rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 dark:bg-primary-600 dark:hover:bg-primary-700"
+          aria-label="Install Freighter wallet (opens in new tab)"
         >
           Install Freighter
         </a>
@@ -59,11 +60,17 @@ export default function WalletGate({ onConnected }: WalletGateProps) {
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center dark:border-slate-700 dark:bg-slate-800/50">
       {error && (
-        <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>
+        <p 
+          className="mb-3 text-sm text-red-600 dark:text-red-400"
+          role="alert"
+        >
+          {error}
+        </p>
       )}
       <button
         onClick={handleConnect}
         disabled={isConnecting}
+        aria-busy={isConnecting}
         className="rounded-lg bg-primary-500 px-6 py-2.5 font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-600 dark:hover:bg-primary-700"
       >
         {isConnecting ? (
@@ -73,6 +80,7 @@ export default function WalletGate({ onConnected }: WalletGateProps) {
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
+              aria-hidden="true"
             >
               <circle
                 className="opacity-25"
