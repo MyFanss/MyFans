@@ -484,13 +484,12 @@ fn test_clear_allowance_resets_to_zero() {
 #[should_panic(expected = "Unauthorized")]
 fn test_clear_allowance_unauthorized_fails() {
     let env = Env::default();
-    // No mock_all_auths — auth is enforced
+    env.mock_all_auths();
 
     let contract_id = env.register_contract(None, MyFansToken);
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    env.mock_all_auths();
     client.initialize(
         &admin,
         &String::from_str(&env, "T"),
@@ -503,10 +502,10 @@ fn test_clear_allowance_unauthorized_fails() {
     client.mint(&owner, &1000);
     client.approve(&owner, &spender, &500, &100);
 
-    // Drop mock auths so the next call is unauthenticated
-    let env2 = Env::default();
-    let client2 = MyFansTokenClient::new(&env2, &contract_id);
-    client2.clear_allowance(&owner, &spender);
+    // No matching auth for owner — require_auth inside clear_allowance must fail.
+    env.mock_auths(&[]);
+
+    client.clear_allowance(&owner, &spender);
 }
 
 // ── Issue #317: fuzz-style balance tests ─────────────────────────────────────
@@ -621,7 +620,7 @@ fn test_initialize() {
     let name = String::from_str(&env, "MyFans Token");
     let symbol = String::from_str(&env, "MFAN");
     let decimals: u32 = 7;
-    let initial_supply: i128 = 1_000_000_0000; // 1,000,000 with 7 decimals
+    let initial_supply: i128 = 10_000_000_000; // 1,000,000 with 7 decimals
 
     client.initialize(&admin, &name, &symbol, &decimals, &initial_supply);
 
@@ -647,7 +646,7 @@ fn test_admin_view_returns_correct_address() {
     let name = String::from_str(&env, "MyFans Token");
     let symbol = String::from_str(&env, "MFAN");
     let decimals: u32 = 7;
-    let initial_supply: i128 = 1_000_000_0000;
+    let initial_supply: i128 = 10_000_000_000;
 
     client.initialize(&admin, &name, &symbol, &decimals, &initial_supply);
 
@@ -667,7 +666,7 @@ fn test_set_admin_updates_admin() {
     let name = String::from_str(&env, "MyFans Token");
     let symbol = String::from_str(&env, "MFAN");
     let decimals: u32 = 7;
-    let initial_supply: i128 = 1_000_000_0000;
+    let initial_supply: i128 = 10_000_000_000;
 
     client.initialize(&admin, &name, &symbol, &decimals, &initial_supply);
 
@@ -692,7 +691,7 @@ fn test_non_admin_cannot_set_admin() {
     let name = String::from_str(&env, "MyFans Token");
     let symbol = String::from_str(&env, "MFAN");
     let decimals: u32 = 7;
-    let initial_supply: i128 = 1_000_000_0000;
+    let initial_supply: i128 = 10_000_000_000;
 
     client.initialize(&admin, &name, &symbol, &decimals, &initial_supply);
 
