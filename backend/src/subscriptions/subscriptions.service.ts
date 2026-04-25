@@ -334,6 +334,13 @@ export class SubscriptionsService {
       configured: boolean;
       isSubscriber: boolean | null;
       error?: string;
+      simulationCost?: {
+        method: string;
+        worstCaseMinResourceFee: string | null;
+        lastObservedMinResourceFee: string | null;
+        updatedAt: string | null;
+        stale: boolean;
+      };
     };
 
     if (!contractId || !this.chainReader) {
@@ -344,9 +351,27 @@ export class SubscriptionsService {
         fan,
         creator,
       );
+      const simulationCost = this.chainReader.getSimulationCostSummary(
+        'is_subscriber',
+      ) as {
+        method: string;
+        worstCaseMinResourceFee: string | null;
+        lastObservedMinResourceFee: string | null;
+        updatedAt: string | null;
+        stale: boolean;
+      };
       chain = result.ok
-        ? { configured: true, isSubscriber: result.isSubscriber }
-        : { configured: true, isSubscriber: null, error: result.error };
+        ? {
+            configured: true,
+            isSubscriber: result.isSubscriber,
+            simulationCost,
+          }
+        : {
+            configured: true,
+            isSubscriber: null,
+            error: result.error,
+            simulationCost,
+          };
     }
 
     return {
