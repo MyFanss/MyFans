@@ -29,8 +29,17 @@ export type ChainPlanCountReadResult =
   | { ok: true; count: number }
   | { ok: false; error: string };
 
+export interface SimulationCostSummary {
+  method: string;
+  worstCaseMinResourceFee: string | null;
+  lastObservedMinResourceFee: string | null;
+  updatedAt: string | null;
+  stale: boolean;
+}
+
 /** Dummy source account used for read-only simulations. */
 const SIM_SOURCE = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+const DEFAULT_COST_STALE_MS = 10 * 60 * 1000; // 10 minutes
 
 const PERMANENT_ERROR = (e: unknown) =>
   e instanceof CircuitOpenError ||
@@ -80,6 +89,14 @@ function extractRetval(
 @Injectable()
 export class SubscriptionChainReaderService {
   private readonly logger = new Logger(SubscriptionChainReaderService.name);
+  private readonly simulationCosts = new Map<
+    string,
+    {
+      worstCaseMinResourceFee: bigint;
+      lastObservedMinResourceFee: bigint;
+      updatedAtMs: number;
+    }
+  >();
 
   constructor(private readonly ledgerClock: LedgerClockService) {}
 
@@ -124,6 +141,112 @@ export class SubscriptionChainReaderService {
       .build();
   }
 
+  private parsePositiveBigInt(value: unknown): bigint | null {
+    if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+      return null;
+    }
+    try {
+      const parsed = BigInt(value);
+      return parsed >= 0n ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private extractMinResourceFee(
+    sim: rpc.Api.SimulateTransactionResponse,
+  ): bigint | null {
+    // Restore responses can include two fee estimates; track whichever is larger.
+    const candidates: Array<unknown> = [];
+
+    if ('minResourceFee' in sim) {
+      candidates.push(sim.minResourceFee);
+    }
+    if (rpc.Api.isSimulationRestore(sim)) {
+      candidates.push(sim.restorePreamble?.minResourceFee);
+    }
+
+    let maxFee: bigint | null = null;
+    for (const candidate of candidates) {
+      const parsed = this.parsePositiveBigInt(candidate);
+      if (parsed === null) {
+        continue;
+      }
+      maxFee = maxFee === null || parsed > maxFee ? parsed : maxFee;
+    }
+
+    return maxFee;
+  }
+
+  private trackSimulationCost(
+    method: string,
+    sim: rpc.Api.SimulateTransactionResponse,
+  ): void {
+    const observedFee = this.extractMinResourceFee(sim);
+    if (observedFee === null) {
+      return;
+    }
+
+    const now = Date.now();
+    const prev = this.simulationCosts.get(method);
+    if (!prev) {
+      this.simulationCosts.set(method, {
+        worstCaseMinResourceFee: observedFee,
+        lastObservedMinResourceFee: observedFee,
+        updatedAtMs: now,
+      });
+      return;
+    }
+
+    this.simulationCosts.set(method, {
+      worstCaseMinResourceFee:
+        observedFee > prev.worstCaseMinResourceFee
+          ? observedFee
+          : prev.worstCaseMinResourceFee,
+      lastObservedMinResourceFee: observedFee,
+      updatedAtMs: now,
+    });
+  }
+
+  private getSimulationCostSummaryForMethod(
+    method: string,
+    maxAgeMs: number = DEFAULT_COST_STALE_MS,
+  ): SimulationCostSummary {
+    const metric = this.simulationCosts.get(method);
+    if (!metric) {
+      return {
+        method,
+        worstCaseMinResourceFee: null,
+        lastObservedMinResourceFee: null,
+        updatedAt: null,
+        stale: true,
+      };
+    }
+
+    const stale =
+      maxAgeMs <= 0 ? true : Date.now() - metric.updatedAtMs > maxAgeMs;
+    return {
+      method,
+      worstCaseMinResourceFee: metric.worstCaseMinResourceFee.toString(),
+      lastObservedMinResourceFee: metric.lastObservedMinResourceFee.toString(),
+      updatedAt: new Date(metric.updatedAtMs).toISOString(),
+      stale,
+    };
+  }
+
+  getSimulationCostSummary(
+    method?: string,
+    maxAgeMs: number = DEFAULT_COST_STALE_MS,
+  ): SimulationCostSummary | SimulationCostSummary[] {
+    if (method) {
+      return this.getSimulationCostSummaryForMethod(method, maxAgeMs);
+    }
+    const methods = Array.from(this.simulationCosts.keys()).sort();
+    return methods.map((name) =>
+      this.getSimulationCostSummaryForMethod(name, maxAgeMs),
+    );
+  }
+
   /**
    * Simulates `is_subscriber(fan, creator)` on the deployed subscription contract.
    */
@@ -145,6 +268,7 @@ export class SubscriptionChainReaderService {
         () => this.makeServer().simulateTransaction(this.buildTx(op)),
         { isPermanentError: PERMANENT_ERROR },
       );
+      this.trackSimulationCost('is_subscriber', sim);
 
       const extracted = extractRetval(sim);
       if ('error' in extracted) {
@@ -181,6 +305,7 @@ export class SubscriptionChainReaderService {
         () => this.makeServer().simulateTransaction(this.buildTx(op)),
         { isPermanentError: PERMANENT_ERROR },
       );
+      this.trackSimulationCost('get_expiry_unix', sim);
 
       const extracted = extractRetval(sim);
       if ('error' in extracted) {
@@ -220,6 +345,7 @@ export class SubscriptionChainReaderService {
         () => this.makeServer().simulateTransaction(this.buildTx(op)),
         { isPermanentError: PERMANENT_ERROR },
       );
+      this.trackSimulationCost('get_plan', sim);
 
       const extracted = extractRetval(sim);
       if ('error' in extracted) {
@@ -261,6 +387,7 @@ export class SubscriptionChainReaderService {
         () => this.makeServer().simulateTransaction(this.buildTx(op)),
         { isPermanentError: PERMANENT_ERROR },
       );
+      this.trackSimulationCost('get_plan_count', sim);
 
       const extracted = extractRetval(sim);
       if ('error' in extracted) {
