@@ -4,8 +4,10 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env, Symbol,
 };
 
+use soroban_sdk::token::Client;
+
 /// Minimum number of ledgers between registrations per caller (anti-spam).
-const RATE_LIMIT_LEDGERS: u32 = 10;
+const DEFAULT_RATE_LIMIT: u32 = 10;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -14,7 +16,11 @@ pub enum DataKey {
     Creator(Address), // maps creator address -> creator_id (u64)
     // Canonical storage name: `registration_ledger`.
     // Keep the legacy `LastRegLedger` variant to preserve deployed key serialization.
-    LastRegLedger(Address), // last ledger when this caller did a registration
+    LastRegLedger(Address),
+
+    RateLimit,
+    SpamFee,
+    FeeToken,
 }
 
 impl DataKey {
@@ -34,6 +40,8 @@ pub enum Error {
     RateLimited = 4,
     AlreadyRegistered = 5,
     NotRegistered = 6,
+
+    InvalidAmount = 7,
 }
 
 #[contract]
@@ -47,6 +55,31 @@ impl CreatorRegistryContract {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::RateLimit, &DEFAULT_RATE_LIMIT);
+        env.storage().instance().set(&DataKey::SpamFee, &0i128);
+    }
+    // set the number of ledgers for rate limiting (admin only)
+    pub fn set_rate_limit(env: Env, ledgers: u32) {
+        let admin = Self::get_admin(&env);
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::RateLimit, &ledgers);
+    }
+
+    // set the fee for spamming registrations (admin only)
+    pub fn set_spam_fee(env: Env, token: Address, amount: i128) {
+        let admin = Self::get_admin(&env);
+        admin.require_auth();
+
+        if amount < 0 {
+            panic_with_error!(&env, Error::InvalidAmount);
+        }
+
+        env.storage().instance().set(&DataKey::SpamFee, &amount);
+        env.storage().instance().set(&DataKey::FeeToken, &token);
     }
 
     /// Register a creator with a specific creator_id
@@ -68,7 +101,7 @@ impl CreatorRegistryContract {
         let current = env.ledger().sequence();
         let last_key = DataKey::registration_ledger(caller.clone());
         if let Some(last) = env.storage().persistent().get::<DataKey, u32>(&last_key) {
-            if current < last.saturating_add(RATE_LIMIT_LEDGERS) {
+            if current < last.saturating_add(DEFAULT_RATE_LIMIT) {
                 panic_with_error!(&env, Error::RateLimited);
             }
         }
@@ -80,6 +113,21 @@ impl CreatorRegistryContract {
 
         env.storage().persistent().set(&last_key, &current);
         env.storage().persistent().set(&key, &creator_id);
+
+        let fee: i128 = env.storage().instance().get(&DataKey::SpamFee).unwrap_or(0);
+
+        if fee > 0 {
+            let token_address: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::FeeToken)
+                .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+
+            let token_client = Client::new(&env, &token_address);
+
+            // transfer fee from caller to contract if fee is set
+            token_client.transfer(&caller, &env.current_contract_address(), &fee);
+        }
     }
 
     /// Unregister a creator (admin only).
@@ -115,6 +163,13 @@ impl CreatorRegistryContract {
     /// Look up a creator_id by their registered address
     pub fn get_creator_id(env: Env, address: Address) -> Option<u64> {
         env.storage().persistent().get(&DataKey::Creator(address))
+    }
+    // Internal helper to enforce authorization of admin or creator
+    fn get_admin(env: &Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
     }
 }
 
