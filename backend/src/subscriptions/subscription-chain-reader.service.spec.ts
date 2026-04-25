@@ -217,3 +217,90 @@ describe('SubscriptionChainReaderService.readPlanCount', () => {
     expect(result.ok).toBe(false);
   });
 });
+
+describe('SubscriptionChainReaderService simulation cost tracking', () => {
+  const VALID_ACCOUNT = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+
+  it('tracks worst-case minResourceFee across multiple simulations', async () => {
+    const ledgerClock = {
+      fetchSnapshot: jest.fn().mockResolvedValue({
+        ledgerSeq: 1000,
+        ledgerCloseTimeUnix: 1_700_000_000,
+        capturedAtMs: 1_700_000_000_000,
+        skewMs: 0,
+      }),
+      ledgerSeqToUnix: jest.fn().mockReturnValue(1_700_000_000),
+    } as unknown as LedgerClockService;
+
+    const svc = new SubscriptionChainReaderService(ledgerClock);
+    const simulateTransaction = jest
+      .fn()
+      .mockResolvedValueOnce(successSim(nativeToScVal(true)))
+      .mockResolvedValueOnce({
+        ...restoreSim(),
+        minResourceFee: '150',
+        restorePreamble: { minResourceFee: '400', transactionData: {} as any },
+      } as rpc.Api.SimulateTransactionRestoreResponse);
+
+    jest.spyOn(svc as any, 'makeServer').mockReturnValue({ simulateTransaction });
+
+    await svc.readIsSubscriber(CONTRACT_ID, VALID_ACCOUNT, VALID_ACCOUNT);
+    await svc.readIsSubscriber(CONTRACT_ID, VALID_ACCOUNT, VALID_ACCOUNT);
+
+    const summary = svc.getSimulationCostSummary(
+      'is_subscriber',
+      60_000,
+    ) as {
+      method: string;
+      worstCaseMinResourceFee: string | null;
+      lastObservedMinResourceFee: string | null;
+      updatedAt: string | null;
+      stale: boolean;
+    };
+
+    expect(summary.method).toBe('is_subscriber');
+    expect(summary.worstCaseMinResourceFee).toBe('400');
+    expect(summary.lastObservedMinResourceFee).toBe('400');
+    expect(summary.updatedAt).toEqual(expect.any(String));
+    expect(summary.stale).toBe(false);
+  });
+
+  it('keeps prior worst-case when a simulation has invalid fee data', async () => {
+    const ledgerClock = {
+      fetchSnapshot: jest.fn().mockResolvedValue({
+        ledgerSeq: 1000,
+        ledgerCloseTimeUnix: 1_700_000_000,
+        capturedAtMs: 1_700_000_000_000,
+        skewMs: 0,
+      }),
+      ledgerSeqToUnix: jest.fn().mockReturnValue(1_700_000_000),
+    } as unknown as LedgerClockService;
+
+    const svc = new SubscriptionChainReaderService(ledgerClock);
+    const simulateTransaction = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ...successSim(nativeToScVal(5, { type: 'u32' })),
+        minResourceFee: '200',
+      } as rpc.Api.SimulateTransactionSuccessResponse)
+      .mockResolvedValueOnce({
+        ...successSim(nativeToScVal(6, { type: 'u32' })),
+        minResourceFee: 'not-a-number',
+      } as unknown as rpc.Api.SimulateTransactionSuccessResponse);
+
+    jest.spyOn(svc as any, 'makeServer').mockReturnValue({ simulateTransaction });
+
+    await svc.readPlanCount(CONTRACT_ID);
+    await svc.readPlanCount(CONTRACT_ID);
+
+    const summary = svc.getSimulationCostSummary(
+      'get_plan_count',
+      60_000,
+    ) as {
+      worstCaseMinResourceFee: string | null;
+      lastObservedMinResourceFee: string | null;
+    };
+    expect(summary.worstCaseMinResourceFee).toBe('200');
+    expect(summary.lastObservedMinResourceFee).toBe('200');
+  });
+});
