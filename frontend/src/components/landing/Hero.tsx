@@ -5,6 +5,7 @@ import Image from "next/image";
 import Button from "@/components/Button";
 import { WalletSelectionModal } from "@/components/wallet/WalletSelectionModal";
 import type { WalletType } from "@/types/wallet";
+import { setWalletSession } from "@/lib/client-session";
 
 /**
  * Hero section for the MyFans landing page
@@ -23,6 +24,7 @@ export function Hero() {
 
   const handleWalletConnect = useCallback(
     (address: string, walletType: WalletType) => {
+      setWalletSession({ address, walletType });
       console.log("Connected wallet:", address, walletType);
       // Optionally redirect to signup/dashboard
     },
