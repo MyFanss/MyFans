@@ -32,9 +32,13 @@ export default function OnboardingPage() {
     "creator" | "fan" | "both" | null
   >(null);
   const [profileData, setProfileData] = useState({
-    displayName: "",
-    username: "",
-    bio: "",
+    displayName: '',
+    username: '',
+    bio: '',
+  });
+  const [profileErrors, setProfileErrors] = useState({
+    displayName: '',
+    username: '',
   });
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
   const completionHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -92,13 +96,17 @@ export default function OnboardingPage() {
   };
 
   const handleProfileSave = () => {
-    if (profileData.displayName && profileData.username) {
-      completeStep("profile");
-      showSuccess(
-        "Profile updated",
-        "Your display name and username have been set.",
-      );
-    }
+    const nextErrors = {
+      displayName: profileData.displayName.trim() ? '' : 'Display name is required',
+      username: profileData.username.trim() ? '' : 'Username is required',
+    };
+    setProfileErrors(nextErrors);
+    if (nextErrors.displayName || nextErrors.username) return;
+    completeStep("profile");
+    showSuccess(
+      "Profile updated",
+      "Your display name and username have been set.",
+    );
   };
 
   const handleProfileSkip = () => {
@@ -274,6 +282,7 @@ export default function OnboardingPage() {
                   setProfileData({ ...profileData, displayName: e.target.value })
                 }
                 placeholder="Your display name"
+                error={profileErrors.displayName || undefined}
               />
 
               <Input
@@ -283,6 +292,7 @@ export default function OnboardingPage() {
                   setProfileData({ ...profileData, username: e.target.value })
                 }
                 placeholder="@username"
+                error={profileErrors.username || undefined}
               />
 
               <Textarea
@@ -315,7 +325,6 @@ export default function OnboardingPage() {
                 <button
                   type="button"
                   onClick={handleProfileSave}
-                  disabled={!profileData.displayName || !profileData.username}
                   className="rounded-lg bg-purple-500 px-6 py-2.5 text-sm font-medium text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Save & continue
