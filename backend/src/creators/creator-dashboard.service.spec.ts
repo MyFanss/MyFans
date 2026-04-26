@@ -15,7 +15,7 @@ function makeSub(fan: string, planId: number, status: 'active' | 'expired', expi
     fan,
     creator: CREATOR,
     planId,
-    expiry: nowSecs() + expiryOffset,
+    expiryUnix: nowSecs() + expiryOffset,
     status,
     createdAt,
   };
@@ -32,7 +32,7 @@ describe('CreatorDashboardService', () => {
   ];
 
   beforeEach(async () => {
-    subsMock = { getAllSubscriptionsInternal: jest.fn().mockReturnValue([]) };
+    subsMock = { getAllSubscriptionsInternal: jest.fn().mockResolvedValue([]) };
     creatorsMock = { getCreatorPlans: jest.fn().mockReturnValue(mockPlans) };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -51,7 +51,7 @@ describe('CreatorDashboardService', () => {
 
   describe('subscriber metrics', () => {
     it('counts active subscribers correctly', async () => {
-      subsMock.getAllSubscriptionsInternal.mockReturnValue([
+      subsMock.getAllSubscriptionsInternal.mockResolvedValue([
         makeSub(FAN1, 1, 'active', 86400),
         makeSub(FAN2, 1, 'expired', -100),
       ]);
@@ -60,7 +60,7 @@ describe('CreatorDashboardService', () => {
     });
 
     it('counts new subscribers in window', async () => {
-      subsMock.getAllSubscriptionsInternal.mockReturnValue([
+      subsMock.getAllSubscriptionsInternal.mockResolvedValue([
         makeSub(FAN1, 1, 'active', 86400, 3),   // 3 days ago — in 30d window
         makeSub(FAN2, 1, 'active', 86400, 60),  // 60 days ago — outside 30d window
       ]);
@@ -69,7 +69,7 @@ describe('CreatorDashboardService', () => {
     });
 
     it('counts churned in window', async () => {
-      subsMock.getAllSubscriptionsInternal.mockReturnValue([
+      subsMock.getAllSubscriptionsInternal.mockResolvedValue([
         makeSub(FAN1, 1, 'expired', -100, 5),  // expired recently, created 5d ago
       ]);
       const result = await service.getDashboard(CREATOR, { window: '30d' });
@@ -79,7 +79,7 @@ describe('CreatorDashboardService', () => {
 
   describe('revenue metrics', () => {
     it('calculates gross, fee, net correctly', async () => {
-      subsMock.getAllSubscriptionsInternal.mockReturnValue([
+      subsMock.getAllSubscriptionsInternal.mockResolvedValue([
         makeSub(FAN1, 1, 'active', 86400, 5), // plan 1: 10 XLM
       ]);
       const result = await service.getDashboard(CREATOR, { window: '30d' });
@@ -89,7 +89,7 @@ describe('CreatorDashboardService', () => {
     });
 
     it('aggregates revenue by plan', async () => {
-      subsMock.getAllSubscriptionsInternal.mockReturnValue([
+      subsMock.getAllSubscriptionsInternal.mockResolvedValue([
         makeSub(FAN1, 1, 'active', 86400, 5),
         makeSub(FAN2, 2, 'active', 86400, 5),
       ]);
@@ -101,7 +101,7 @@ describe('CreatorDashboardService', () => {
     });
 
     it('strips issuer from asset code in revenue breakdown', async () => {
-      subsMock.getAllSubscriptionsInternal.mockReturnValue([
+      subsMock.getAllSubscriptionsInternal.mockResolvedValue([
         makeSub(FAN1, 2, 'active', 86400, 5),
       ]);
       const result = await service.getDashboard(CREATOR, { window: '30d' });
@@ -111,7 +111,7 @@ describe('CreatorDashboardService', () => {
 
   describe('time-window filtering', () => {
     it('respects 7d window', async () => {
-      subsMock.getAllSubscriptionsInternal.mockReturnValue([
+      subsMock.getAllSubscriptionsInternal.mockResolvedValue([
         makeSub(FAN1, 1, 'active', 86400, 3),   // 3d ago — in 7d
         makeSub(FAN2, 1, 'active', 86400, 10),  // 10d ago — outside 7d
       ]);
@@ -123,7 +123,7 @@ describe('CreatorDashboardService', () => {
     it('respects custom from/to dates', async () => {
       const from = new Date(Date.now() - 2 * 86400_000).toISOString();
       const to = new Date().toISOString();
-      subsMock.getAllSubscriptionsInternal.mockReturnValue([
+      subsMock.getAllSubscriptionsInternal.mockResolvedValue([
         makeSub(FAN1, 1, 'active', 86400, 1),  // 1d ago — in custom range
         makeSub(FAN2, 1, 'active', 86400, 5),  // 5d ago — outside custom range
       ]);
@@ -144,14 +144,14 @@ describe('CreatorDashboardService', () => {
 
   describe('caching', () => {
     it('returns cached result on second call', async () => {
-      subsMock.getAllSubscriptionsInternal.mockReturnValue([]);
+      subsMock.getAllSubscriptionsInternal.mockResolvedValue([]);
       await service.getDashboard(CREATOR, { window: '30d' });
       await service.getDashboard(CREATOR, { window: '30d' });
       expect(subsMock.getAllSubscriptionsInternal).toHaveBeenCalledTimes(1);
     });
 
     it('invalidateCache forces fresh aggregation', async () => {
-      subsMock.getAllSubscriptionsInternal.mockReturnValue([]);
+      subsMock.getAllSubscriptionsInternal.mockResolvedValue([]);
       await service.getDashboard(CREATOR, { window: '30d' });
       service.invalidateCache(CREATOR);
       await service.getDashboard(CREATOR, { window: '30d' });
@@ -161,7 +161,7 @@ describe('CreatorDashboardService', () => {
 
   describe('plans summary', () => {
     it('includes active subscriber count per plan', async () => {
-      subsMock.getAllSubscriptionsInternal.mockReturnValue([
+      subsMock.getAllSubscriptionsInternal.mockResolvedValue([
         makeSub(FAN1, 1, 'active', 86400),
         makeSub(FAN2, 1, 'active', 86400),
       ]);

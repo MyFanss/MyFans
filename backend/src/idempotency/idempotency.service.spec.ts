@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { IdempotencyService } from './idempotency.service';
 import { IdempotencyKey } from './idempotency-key.entity';
@@ -54,6 +54,8 @@ describe('IdempotencyService', () => {
         fingerprint: FP,
         is_complete: true,
         expires_at: future,
+        method: METHOD,
+        path: PATH,
         response_status: 201,
         response_body: JSON.stringify({ id: '42' }),
       });
@@ -115,6 +117,59 @@ describe('IdempotencyService', () => {
       await expect(service.acquire(KEY, FP, METHOD, PATH)).rejects.toThrow(
         'DB connection lost',
       );
+    });
+
+    it('throws UnprocessableEntityException when key is reused on a different method', async () => {
+      const future = new Date(Date.now() + 60_000);
+      repo.findOne.mockResolvedValue({
+        key: KEY,
+        fingerprint: FP,
+        is_complete: true,
+        expires_at: future,
+        method: 'POST',
+        path: PATH,
+        response_status: 201,
+        response_body: JSON.stringify({ id: '1' }),
+      });
+
+      await expect(
+        service.acquire(KEY, FP, 'PUT', PATH),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('throws UnprocessableEntityException when key is reused on a different path', async () => {
+      const future = new Date(Date.now() + 60_000);
+      repo.findOne.mockResolvedValue({
+        key: KEY,
+        fingerprint: FP,
+        is_complete: true,
+        expires_at: future,
+        method: METHOD,
+        path: '/v1/other',
+        response_status: 201,
+        response_body: JSON.stringify({ id: '1' }),
+      });
+
+      await expect(
+        service.acquire(KEY, FP, METHOD, PATH),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('replays response when method and path match the original', async () => {
+      const future = new Date(Date.now() + 60_000);
+      repo.findOne.mockResolvedValue({
+        key: KEY,
+        fingerprint: FP,
+        is_complete: true,
+        expires_at: future,
+        method: METHOD,
+        path: PATH,
+        response_status: 201,
+        response_body: JSON.stringify({ id: '99' }),
+      });
+
+      const result = await service.acquire(KEY, FP, METHOD, PATH);
+      expect(result).toEqual({ status: 201, body: { id: '99' } });
     });
   });
 

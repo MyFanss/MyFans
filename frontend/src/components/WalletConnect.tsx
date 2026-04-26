@@ -1,11 +1,15 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { connectWallet } from '@/lib/wallet';
 import { useToast } from '@/contexts/ToastContext';
-import { useTransaction } from '@/hooks/useTransaction';
 import { errorToastWithCause } from '@/lib/error-copy';
 import type { AppError } from '@/types/errors';
+import {
+  clearWalletSession,
+  getWalletSession,
+  setWalletSession,
+} from '@/lib/client-session';
 
 interface WalletConnectProps {
   onConnect?: (address: string) => void;
@@ -23,6 +27,13 @@ export default function WalletConnect({
   const [error, setError] = useState<AppError | null>(null);
   const { showError, showSuccess } = useToast();
 
+  useEffect(() => {
+    const existing = getWalletSession();
+    if (existing?.address) {
+      setAddress(existing.address);
+    }
+  }, []);
+
   const handleConnect = useCallback(async () => {
     setIsConnecting(true);
     setError(null);
@@ -31,6 +42,7 @@ export default function WalletConnect({
       const addr = await connectWallet('freighter');
       if (addr) {
         setAddress(addr);
+        setWalletSession({ address: addr, walletType: 'freighter' });
         onConnect?.(addr);
         showSuccess('Wallet connected', 'Your wallet is ready for subscriptions.');
       } else {
@@ -54,6 +66,7 @@ export default function WalletConnect({
 
   const handleDisconnect = useCallback(() => {
     setAddress(null);
+    clearWalletSession();
     setError(null);
     onDisconnect?.();
     showSuccess('Wallet disconnected');

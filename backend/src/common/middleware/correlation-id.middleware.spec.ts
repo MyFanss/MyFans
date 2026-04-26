@@ -31,14 +31,15 @@ describe('CorrelationIdMiddleware', () => {
   it('generates new IDs when headers are absent', (done) => {
     const req = makeReq();
     const res = makeRes();
-
-    middleware.use(req as Request, res as Response, () => {
+    const next: NextFunction = () => {
       expect(req.headers!['x-correlation-id']).toBeDefined();
       expect(req.headers!['x-request-id']).toBeDefined();
       expect(res.setHeader).toHaveBeenCalledWith('x-correlation-id', expect.any(String));
       expect(res.setHeader).toHaveBeenCalledWith('x-request-id', expect.any(String));
       done();
-    } as NextFunction);
+    };
+
+    middleware.use(req as Request, res as Response, next);
   });
 
   it('preserves existing IDs from incoming headers', (done) => {
@@ -47,23 +48,25 @@ describe('CorrelationIdMiddleware', () => {
       'x-request-id': 'rid-456',
     });
     const res = makeRes();
-
-    middleware.use(req as Request, res as Response, () => {
+    const next: NextFunction = () => {
       expect(req.headers!['x-correlation-id']).toBe('cid-123');
       expect(req.headers!['x-request-id']).toBe('rid-456');
       done();
-    } as NextFunction);
+    };
+
+    middleware.use(req as Request, res as Response, next);
   });
 
   it('makes correlationId readable via RequestContextService inside next()', (done) => {
     const req = makeReq({ 'x-correlation-id': 'trace-abc' });
     const res = makeRes();
-
-    middleware.use(req as Request, res as Response, () => {
+    const next: NextFunction = () => {
       // Inside next() we are within the AsyncLocalStorage context
       expect(requestContextService.getCorrelationId()).toBe('trace-abc');
       done();
-    } as NextFunction);
+    };
+
+    middleware.use(req as Request, res as Response, next);
   });
 
   it('generates valid UUID v4 IDs', (done) => {
@@ -71,12 +74,13 @@ describe('CorrelationIdMiddleware', () => {
     const res = makeRes();
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-    middleware.use(req as Request, res as Response, () => {
+    const next: NextFunction = () => {
       expect(req.headers!['x-correlation-id']).toMatch(uuidRegex);
       expect(req.headers!['x-request-id']).toMatch(uuidRegex);
       done();
-    } as NextFunction);
+    };
+
+    middleware.use(req as Request, res as Response, next);
   });
 
   it('isolates context between concurrent requests', (done) => {
@@ -84,20 +88,22 @@ describe('CorrelationIdMiddleware', () => {
     const req2 = makeReq({ 'x-correlation-id': 'cid-req2' });
     const res = makeRes();
     let completed = 0;
-
-    middleware.use(req1 as Request, res as Response, () => {
+    const next1: NextFunction = () => {
       // Simulate async work inside req1's context
       setImmediate(() => {
         expect(requestContextService.getCorrelationId()).toBe('cid-req1');
         if (++completed === 2) done();
       });
-    } as NextFunction);
-
-    middleware.use(req2 as Request, res as Response, () => {
+    };
+    const next2: NextFunction = () => {
       setImmediate(() => {
         expect(requestContextService.getCorrelationId()).toBe('cid-req2');
         if (++completed === 2) done();
       });
-    } as NextFunction);
+    };
+
+    middleware.use(req1 as Request, res as Response, next1);
+
+    middleware.use(req2 as Request, res as Response, next2);
   });
 });

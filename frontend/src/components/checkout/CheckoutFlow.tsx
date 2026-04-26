@@ -16,9 +16,12 @@ import {
   CheckoutResult,
 } from "@/lib/checkout";
 import { useTransaction } from "@/hooks/useTransaction";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FeatureFlag } from "@/lib/feature-flags";
 import { useToast } from "@/contexts/ToastContext";
-import { createAppError } from "@/types/errors";
+import { createTrackedTransaction, getExplorerUrl } from "@/lib/transaction-history";
 
+import { createAppError } from "@/types/errors";
 import PlanSummaryComponent from "./PlanSummary";
 import PriceBreakdownComponent from "./PriceBreakdown";
 import AssetSelectorComponent from "./AssetSelector";
@@ -26,7 +29,8 @@ import WalletBalanceComponent from "./WalletBalance";
 import TransactionPreviewComponent from "./TransactionPreview";
 import CheckoutResultDisplay from "./CheckoutResult";
 import TxFailureRecovery from "./TxFailureRecovery";
-import TransactionProgress from "./TransactionProgress"; // ✅ new import
+import TransactionProgress from "./TransactionProgress"; 
+import { ReferralCodeInput } from "@/components/referral/ReferralCodeInput";
 
 export type CheckoutStep = "select" | "preview" | "confirm" | "result";
 
@@ -76,11 +80,15 @@ export default function CheckoutFlow({
     null
   );
 
+  // Referral code state
+  const referralEnabled = useFeatureFlag(FeatureFlag.REFERRAL_CODES);
+  const [appliedReferralCode, setAppliedReferralCode] = useState<string | null>(null);
+
   // Transaction hook
   const tx = useTransaction({
     type: "subscription",
     amount: priceBreakdown ? parseFloat(priceBreakdown.total) : undefined,
-    onSuccess: (result) => {
+    onSuccess: () => {
       showSuccess(
         "Transaction successful!",
         "You are now subscribed to this creator."
@@ -191,6 +199,10 @@ export default function CheckoutFlow({
     if (!checkoutId) return;
 
     await tx.execute(async () => {
+      const txHash = `tx_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 11)}`;
+
       // Simulate transaction submission
       await new Promise((resolve, reject) => {
         setTimeout(() => {
@@ -198,20 +210,36 @@ export default function CheckoutFlow({
           if (shouldFail) {
             reject(new Error("Transaction rejected by user"));
           } else {
-            const txHash = `tx_${Date.now()}_${Math.random()
-              .toString(36)
-              .substr(2, 9)}`;
             resolve(txHash);
           }
         }, 2000);
       });
 
       // Confirm with backend
-      const result = await apiConfirmSubscription(checkoutId);
-      setCheckoutResult(result);
+      const result = await apiConfirmSubscription(checkoutId, txHash);
+      const trackedTransaction = createTrackedTransaction({
+        checkoutId,
+        txHash,
+        type: "subscription",
+        description: planSummary
+          ? `Subscription to ${planSummary.creatorName}${planSummary.name ? ` • ${planSummary.name}` : ""}`
+          : "Subscription payment",
+        amount: priceBreakdown?.total ?? checkout?.total ?? "0",
+        currency: priceBreakdown?.currency ?? selectedAsset?.code ?? "XLM",
+        creatorName: planSummary?.creatorName,
+        planName: planSummary?.name,
+      });
+
+      const nextResult = {
+        ...result,
+        txHash,
+        explorerUrl: result.explorerUrl || getExplorerUrl(txHash),
+      };
+
+      setCheckoutResult(nextResult);
       setCurrentStep("result");
-      onComplete?.(result);
-      return result;
+      onComplete?.(nextResult);
+      return { ...nextResult, trackedTransaction };
     });
   }, [checkoutId, tx, onComplete]);
 
@@ -221,7 +249,11 @@ export default function CheckoutFlow({
       if (!checkoutId) return;
 
       try {
-        const result = await apiFailCheckout(checkoutId, errorMessage, isRejected);
+        const result = await apiFailCheckout(
+          checkoutId,
+          errorMessage,
+          isRejected
+        );
         setCheckoutResult(result);
         setCurrentStep("result");
         onComplete?.(result);
@@ -328,6 +360,14 @@ export default function CheckoutFlow({
               selectedAsset={selectedAsset}
               requiredAmount={priceBreakdown.total}
               validation={balanceValidation || undefined}
+            />
+          )}
+          {referralEnabled && (
+            <ReferralCodeInput
+              onValidated={(code, valid) => {
+                if (valid) setAppliedReferralCode(code);
+                else setAppliedReferralCode(null);
+              }}
             />
           )}
           <div className="flex gap-3">

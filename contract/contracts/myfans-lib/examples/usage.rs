@@ -56,3 +56,7 @@ mod test {
         assert!(!client.requires_payment(&ContentType::Free));
     }
 }
+
+/// `examples/*.rs` must expose a `main` for the example binary target; contract
+/// snippets above are exercised via the `#[cfg(test)]` module when running tests.
+fn main() {}

@@ -69,6 +69,20 @@ export class FeatureFlagsService {
         earnings_withdrawals: this.isEnabled('earnings_withdrawals'),
         earnings_fee_transparency: this.isEnabled('earnings_fee_transparency'),
       },
+  isReferralCodesEnabled(): boolean {
+    return process.env.FEATURE_REFERRAL_CODES === 'true';
+  }
+
+  isSorobanPollerEnabled(): boolean {
+    return process.env.FEATURE_SOROBAN_POLLER !== 'false';
+  }
+
+  getAllFlags() {
+    return {
+      newSubscriptionFlow: this.isNewSubscriptionFlowEnabled(),
+      cryptoPayments: this.isCryptoPaymentsEnabled(),
+      referralCodes: this.isReferralCodesEnabled(),
+      sorobanPoller: this.isSorobanPollerEnabled(),
     };
   }
 }

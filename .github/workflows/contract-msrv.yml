@@ -1,0 +1,113 @@
+name: Contract MSRV
+
+# Optional second job: verify the workspace compiles and all tests pass on the
+# declared Minimum Supported Rust Version (MSRV) without requiring the Stellar
+# CLI or any network access.  Runs on every PR that touches contract code and
+# on pushes to main/develop.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'contract/**'
+      - '.github/workflows/contract-msrv.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'contract/**'
+      - '.github/workflows/contract-msrv.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # Keep incremental compilation off so the MSRV build is hermetic.
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  msrv:
+    name: Contract MSRV (Rust ${{ matrix.rust }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Primary MSRV declared in contract/Cargo.toml [workspace.package].
+        # Add additional entries here when you want to test a range, e.g.:
+        #   rust: ['1.74', '1.75', 'stable']
+        rust: ['1.74']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Cargo cache ────────────────────────────────────────────────────────
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.cargo/git/checkouts
+          key: ${{ runner.os }}-cargo-registry-msrv-${{ matrix.rust }}-${{ hashFiles('contract/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-msrv-${{ matrix.rust }}-
+            ${{ runner.os }}-cargo-registry-msrv-
+
+      - name: Cache Cargo target (MSRV)
+        uses: actions/cache@v4
+        with:
+          path: contract/target
+          key: ${{ runner.os }}-contract-target-msrv-${{ matrix.rust }}-${{ hashFiles('contract/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-contract-target-msrv-${{ matrix.rust }}-
+
+      # ── Toolchain ──────────────────────────────────────────────────────────
+      # Install the exact MSRV toolchain.  No Stellar CLI is installed here;
+      # the test suite uses soroban-sdk testutils (pure Rust, no CLI needed).
+      - name: Install Rust ${{ matrix.rust }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      # Confirm the active toolchain matches what we requested.
+      - name: Show toolchain info
+        run: |
+          rustc --version
+          cargo --version
+        working-directory: contract
+
+      # ── Verify declared MSRV matches installed toolchain ──────────────────
+      # `cargo check` with --locked ensures the Cargo.lock is respected and
+      # that the rust-version field in Cargo.toml is honoured.
+      - name: Verify MSRV field is respected (cargo check)
+        run: cargo check --locked --all-targets
+        working-directory: contract
+
+      # ── Tests (no Stellar CLI, no network) ────────────────────────────────
+      # Run the full test suite.  soroban-sdk testutils are pure-Rust and do
+      # not require the Stellar CLI or any external service.
+      - name: Run contract tests on MSRV
+        run: cargo test --locked --all-features 2>&1 | tee /tmp/msrv-test-output.txt
+        working-directory: contract
+
+      # ── Step summary ──────────────────────────────────────────────────────
+      - name: Write step summary
+        if: always()
+        run: |
+          echo "## Contract MSRV – Rust ${{ matrix.rust }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          if cargo check --locked --all-targets 2>/dev/null; then
+            echo "| \`cargo check\` | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| \`cargo check\` | ❌ |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test output (last 30 lines)" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          tail -30 /tmp/msrv-test-output.txt 2>/dev/null || echo "(no output captured)" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        working-directory: contract

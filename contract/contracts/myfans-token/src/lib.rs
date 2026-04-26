@@ -42,7 +42,7 @@ pub enum Error {
     InvalidAmount = 4,
     InvalidExpiration = 5,
     NoAllowance = 6,
-    Unauthorized = 7,          // mint: caller is not admin
+    Unauthorized = 7, // mint: caller is not admin
 }
 
 #[contract]
@@ -50,6 +50,23 @@ pub struct MyFansToken;
 
 #[contractimpl]
 impl MyFansToken {
+    /// Temporary allowance entries must stay readable until at least one ledger
+    /// after `expiration_ledger`, so `transfer_from` can return [`Error::AllowanceExpired`]
+    /// instead of [`Error::NoAllowance`] when the logical allowance has expired.
+    fn bump_allowance_temp_ttl(env: &Env, key: &DataKey, expiration_ledger: u32) {
+        let seq = env.ledger().sequence();
+        // Default temp TTL after `set` is typically 16; threshold must be > that
+        // so extend runs, and host requires threshold <= extend_to.
+        let extend_to = expiration_ledger
+            .saturating_sub(seq)
+            .saturating_add(2)
+            .max(17)
+            .min(env.storage().max_ttl());
+        env.storage()
+            .temporary()
+            .extend_ttl(key, extend_to, extend_to);
+    }
+
     /// Initialize the token contract with admin and initial supply
     ///
     /// # Arguments
@@ -123,10 +140,8 @@ impl MyFansToken {
         env.storage().instance().set(&DataKey::Name, &new_name);
         env.storage().instance().set(&DataKey::Symbol, &new_symbol);
 
-        env.events().publish(
-            (symbol_short!("meta_upd"),),
-            (new_name, new_symbol),
-        );
+        env.events()
+            .publish((symbol_short!("meta_upd"),), (new_name, new_symbol));
     }
 
     /// Get the token name (view function)
@@ -185,9 +200,9 @@ impl MyFansToken {
             expiration_ledger,
         };
 
-        // Store and extend TTL for temporary storage
+        // Store and extend TTL for temporary storage (see bump_allowance_temp_ttl).
         env.storage().temporary().set(&key, &data);
-        env.storage().temporary().extend_ttl(&key, 100, 100);
+        Self::bump_allowance_temp_ttl(&env, &key, expiration_ledger);
 
         env.events()
             .publish((symbol_short!("approve"), from, spender), amount);
@@ -228,6 +243,7 @@ impl MyFansToken {
                     expiration_ledger: data.expiration_ledger,
                 };
                 env.storage().temporary().set(&key, &new_allowance);
+                Self::bump_allowance_temp_ttl(&env, &key, data.expiration_ledger);
             }
             None => return Err(Error::NoAllowance),
         }
@@ -261,6 +277,7 @@ impl MyFansToken {
             expiration_ledger: env.ledger().sequence(),
         };
         env.storage().temporary().set(&key, &data);
+        Self::bump_allowance_temp_ttl(&env, &key, data.expiration_ledger);
         env.events()
             .publish((symbol_short!("approve"), from, spender), 0i128);
     }
@@ -320,7 +337,8 @@ impl MyFansToken {
 
         write_balance(&env, from.clone(), balance - amount);
 
-        let total: i128 = env.storage()
+        let total: i128 = env
+            .storage()
             .instance()
             .get(&DataKey::TotalSupply)
             .unwrap_or(0);

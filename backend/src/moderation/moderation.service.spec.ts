@@ -116,6 +116,25 @@ describe('ModerationService', () => {
         }),
       );
     });
+
+    it('resets queued_at on status change', async () => {
+      const flagCopy = { ...baseFlag };
+      flagRepo.findOne.mockResolvedValue(flagCopy);
+      flagRepo.save.mockImplementation(async (f) => f);
+      auditRepo.create.mockReturnValue({});
+      auditRepo.save.mockResolvedValue({});
+
+      const before = Date.now();
+      await service.reviewFlag(ADMIN_ID, FLAG_ID, {
+        status: ModerationStatus.UNDER_REVIEW,
+      });
+      const after = Date.now();
+
+      const saved = flagRepo.save.mock.calls[0][0];
+      expect(saved.queued_at).toBeInstanceOf(Date);
+      expect(saved.queued_at.getTime()).toBeGreaterThanOrEqual(before);
+      expect(saved.queued_at.getTime()).toBeLessThanOrEqual(after);
+    });
   });
 
   describe('getAuditLog', () => {

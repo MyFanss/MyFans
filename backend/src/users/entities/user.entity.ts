@@ -10,9 +10,9 @@ import {
   DeleteDateColumn,
 } from 'typeorm';
 import { Creator } from '../../creators/entities/creator.entity';
-
 import { UserRole } from '../../common/enums/user-role.enum';
 
+export { UserRole };
 
 @Entity('users')
 export class User {

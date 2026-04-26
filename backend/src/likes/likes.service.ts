@@ -25,7 +25,7 @@ export class LikesService {
     userId: string,
   ): Promise<{ status: number; message: string }> {
     // Verify post exists and get author info
-    const post = await this.postsService.findOneWithLikes(postId);
+    const post = await this.postsService.findOne(postId);
 
     // Verify user has access to the post (free or subscribed)
     await this.checkUserAccess(postId, userId, post.authorId, post.isPremium);
@@ -45,8 +45,6 @@ export class LikesService {
     await this.likesRepository.save(like);
 
     // Increment likes count on post
-    await this.postsService.incrementLikesCount(postId);
-
     return { status: 201, message: 'Like added successfully' };
   }
 
@@ -69,7 +67,6 @@ export class LikesService {
     await this.likesRepository.remove(like);
 
     // Decrement likes count on post
-    await this.postsService.decrementLikesCount(postId);
   }
 
   /**

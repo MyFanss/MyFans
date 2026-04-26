@@ -4,34 +4,44 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '@nestjs/config';
 import { LoggingModule } from '../common/logging.module';
 import { EventsModule } from '../events/events.module';
+import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { SubscriptionLifecycleIndexerController } from './subscription-lifecycle-indexer.controller';
 import { SubscriptionLifecycleIndexerService } from './subscription-lifecycle-indexer.service';
 import { SubscriptionIndexEntity } from './entities/subscription-index.entity';
+import { FanSpendingCapEntity } from './entities/fan-spending-cap.entity';
 import { SubscriptionIndexRepository } from './repositories/subscription-index.repository';
 import { SubscriptionEventPollerService } from './services/subscription-event-poller.service';
+import { SubscriptionReconcilerService } from './subscription-reconciler.service';
+import { SpendingCapService } from './services/spending-cap.service';
 import { SUBSCRIPTION_EVENT_PUBLISHER } from './events';
 import { FanBearerGuard } from './guards/fan-bearer.guard';
 import { GatedContentGuard } from './gated-content.guard';
 import { SubscriptionCacheService } from './subscription-cache.service';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
 import { SubscriptionsController } from './subscriptions.controller';
+import { SpendingCapController } from './spending-cap.controller';
 import { SubscriptionsService } from './subscriptions.service';
 import { RPC_BALANCE_ADAPTER, MockRpcAdapter } from './rpc-adapter';
+import { LedgerClockService } from './ledger-clock.service';
 
 @Module({
   imports: [
     ConfigModule,
     ScheduleModule,
-    TypeOrmModule.forFeature([SubscriptionIndexEntity]),
-    EventsModule, 
+    TypeOrmModule.forFeature([SubscriptionIndexEntity, FanSpendingCapEntity]),
+    EventsModule,
     LoggingModule,
+    FeatureFlagsModule,
   ],
-  controllers: [SubscriptionsController, SubscriptionLifecycleIndexerController],
+  controllers: [SubscriptionsController, SpendingCapController, SubscriptionLifecycleIndexerController],
   providers: [
     SubscriptionIndexRepository,
     SubscriptionEventPollerService,
+    SubscriptionReconcilerService,
+    SpendingCapService,
     SubscriptionsService,
     SubscriptionChainReaderService,
+    LedgerClockService,
     SubscriptionCacheService,
     GatedContentGuard,
     FanBearerGuard,
