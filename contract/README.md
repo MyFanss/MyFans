@@ -114,3 +114,77 @@ GitHub Actions `contracts` job now includes:
 4. Verify contract responses during deploy
 
 If contract deploy or verification fails, CI fails.
+
+## Non-interactive mode (CI / automation)
+
+Pass `--non-interactive` to disable all interactive prompts and key-generation side-effects.
+In this mode the script will **fail immediately** if the source identity does not already exist,
+rather than generating one on the fly.
+
+This is the recommended flag for any automated pipeline (GitHub Actions, GitLab CI, etc.).
+
+### Required pre-conditions
+
+Before running the script in non-interactive mode you must:
+
+1. **Create the identity** (once, outside CI):
+   ```bash
+   stellar keys generate myfans-deployer --network testnet --fund
+   ```
+2. **Export the secret key** and store it as a CI secret (e.g. `STELLAR_SECRET_KEY`).
+3. **Import the key inside the CI job** before calling the deploy script:
+   ```bash
+   stellar keys add myfans-deployer --secret-key "$STELLAR_SECRET_KEY"
+   ```
+
+### Typical CI invocation
+
+```bash
+# Dry-run (build + WASM validation only — no transactions):
+./contract/scripts/deploy.sh \
+  --network testnet \
+  --source myfans-deployer \
+  --non-interactive \
+  --dry-run
+
+# Full deploy (submits transactions):
+./contract/scripts/deploy.sh \
+  --network testnet \
+  --source myfans-deployer \
+  --non-interactive \
+  --no-fund \
+  --out /tmp/deployed.json \
+  --env-out /tmp/.env.deployed
+```
+
+### GitHub Actions example
+
+```yaml
+- name: Import deployer identity
+  run: stellar keys add myfans-deployer --secret-key "${{ secrets.STELLAR_SECRET_KEY }}"
+
+- name: Deploy contracts (dry-run)
+  run: |
+    ./contract/scripts/deploy.sh \
+      --network testnet \
+      --source myfans-deployer \
+      --non-interactive \
+      --dry-run
+```
+
+### Flag reference
+
+| Flag | Effect |
+|------|--------|
+| `--non-interactive` | Fail if identity is missing; never prompt or auto-generate |
+| `--dry-run` | Build + validate WASM artifacts; skip all on-chain transactions |
+| `--no-fund` | Skip friendbot funding (required when account is already funded) |
+| `--network` | `futurenet` \| `testnet` \| `mainnet` |
+| `--source` | Stellar identity name (must exist when `--non-interactive` is set) |
+
+### Manual checklist
+
+- [ ] `stellar keys public-key myfans-deployer` returns the expected public key
+- [ ] `./contract/scripts/deploy.sh --network testnet --non-interactive --dry-run` exits 0
+- [ ] `./contract/scripts/deploy.sh --network testnet --non-interactive --no-fund` exits 0 and writes `deployed.json`
+- [ ] Removing the identity and re-running with `--non-interactive` exits non-zero with a clear error message
