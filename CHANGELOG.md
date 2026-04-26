@@ -181,6 +181,7 @@
 * **contract:** enforce content price bounds and validation ([#294](https://github.com/MyFanss/MyFans/issues/294)) ([4e7d549](https://github.com/MyFanss/MyFans/commit/4e7d5492587d490966ecbf0c62195f4ad023d842))
 * **contract:** enforce mint admin authorization (closes [#276](https://github.com/MyFanss/MyFans/issues/276)) ([2e03cf5](https://github.com/MyFanss/MyFans/commit/2e03cf53560ad7e7f4a56b0209bab874d7c53c4a))
 * **contract:** link interface docs to code with drift check ([1a4cb4c](https://github.com/MyFanss/MyFans/commit/1a4cb4cfcdb4fe6f262ba41a00b886245b315609))
+* **contract:** property tests for token transfers + non-interactive deploy mode ([519b40e](https://github.com/MyFanss/MyFans/commit/519b40e3877e5f4af9595f39439532a1bad12c3a))
 * **contract:** release checklist automation linked to docs/release/ ([4fd298c](https://github.com/MyFanss/MyFans/commit/4fd298c2787de892129ee6e6462f1e3530a5a289))
 * **contracts:** add create_subscription with duration ledgers entity constraints matching Issue 60 requirements tracking creator bounds smoothly ([4657605](https://github.com/MyFanss/MyFans/commit/46576050096cad6a6155027d358a13ced3202376))
 * **contract:** shared Env fixtures for cross-contract integration tests ([9913d9e](https://github.com/MyFanss/MyFans/commit/9913d9ed4e623d80203e7be5525353b935ccc009))
