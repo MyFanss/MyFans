@@ -283,6 +283,7 @@
 * Subscription List Filter by Status & Sorting ([253c562](https://github.com/MyFanss/MyFans/commit/253c56227c30398c2c9a7366c458d895557e23fa))
 * **subscription:** admin set_fee_bps with bounds and fee_updated event ([59b973a](https://github.com/MyFanss/MyFans/commit/59b973aa6aad0d46872bfabe1222c0511c3df744))
 * **subscription:** admin set_fee_recipient with validation and event ([7f68de4](https://github.com/MyFanss/MyFans/commit/7f68de4de6c620a97a16fb851dfcd459d3a345fa))
+* **subscriptions:** add status filter and sort to subscription list endpoints ([c1af3fd](https://github.com/MyFanss/MyFans/commit/c1af3fd80f098c78d52c3bad71d98fe17c081a7d))
 * **subscriptions:** gated content access guard ([8a90715](https://github.com/MyFanss/MyFans/commit/8a90715e654f1443f9feadac6bfb70a6ebeb20a6)), closes [#gated-content-access](https://github.com/MyFanss/MyFans/issues/gated-content-access)
 * **subscriptions:** GET fan–creator subscription state with auth ([5b71e66](https://github.com/MyFanss/MyFans/commit/5b71e66fb9670f62880b1aa25b0cc4737200bcc2))
 * **subscriptions:** map query status string to SubscriptionStatus enum ([30a49c6](https://github.com/MyFanss/MyFans/commit/30a49c60c647b7020901690bcfdee3acbd6be0e9))
