@@ -31,16 +31,36 @@ impl DataKey {
     }
 }
 
+/// Per-contract error codes for the **creator-registry** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `AlreadyInitialized` |
+/// | 2 | `NotInitialized` |
+/// | 3 | `Unauthorized` |
+/// | 4 | `RateLimited` |
+/// | 5 | `AlreadyRegistered` |
+/// | 6 | `NotRegistered` |
+/// | 7 | `InvalidAmount` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
+    /// Code 1 – contract was already initialized.
     AlreadyInitialized = 1,
+    /// Code 2 – contract was never initialized.
     NotInitialized = 2,
+    /// Code 3 – caller is neither admin nor the creator being registered.
     Unauthorized = 3,
+    /// Code 4 – caller registered too recently; wait for the rate-limit window.
     RateLimited = 4,
+    /// Code 5 – creator address is already registered.
     AlreadyRegistered = 5,
+    /// Code 6 – creator address is not registered.
     NotRegistered = 6,
-
+    /// Code 7 – spam fee amount is negative.
     InvalidAmount = 7,
 }
 

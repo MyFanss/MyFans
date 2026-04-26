@@ -9,15 +9,33 @@ const TOKEN: &str = "TOKEN";
 const PAUSED: &str = "PAUSED";
 const MIN_BALANCE: &str = "MIN_BALANCE";
 
+/// Per-contract error codes for the **treasury** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `NegativeMinBalance` |
+/// | 2 | `Paused` |
+/// | 3 | `InsufficientBalance` |
+/// | 4 | `MinBalanceViolation` |
+/// | 5 | `NotInitialized` |
+/// | 6 | `InvalidAmount` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
+    /// Code 1 – min_balance must be ≥ 0.
     NegativeMinBalance = 1,
+    /// Code 2 – contract is paused; deposits and withdrawals are rejected.
     Paused = 2,
+    /// Code 3 – contract balance is less than the requested withdrawal amount.
     InsufficientBalance = 3,
+    /// Code 4 – withdrawal would leave the balance below the configured minimum.
     MinBalanceViolation = 4,
-
+    /// Code 5 – contract was never initialized.
     NotInitialized = 5,
+    /// Code 6 – deposit or withdrawal amount must be strictly positive.
     InvalidAmount = 6,
 }
 

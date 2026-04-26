@@ -10,9 +10,18 @@ enum DataKey {
     Earnings(Address),
 }
 
+/// Per-contract error codes for the **earnings** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `AlreadyInitialized` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
+    /// Code 1 – contract was already initialized.
     AlreadyInitialized = 1,
 }
 
