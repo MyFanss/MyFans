@@ -246,7 +246,10 @@ impl MyfansContract {
 
     /// Get the total number of plans (view function)
     pub fn get_plan_count(env: Env) -> u32 {
-        env.storage().instance().get(&DataKey::PlanCount).unwrap_or(0)
+        env.storage()
+            .instance()
+            .get(&DataKey::PlanCount)
+            .unwrap_or(0)
     }
 
     pub fn is_subscriber(env: Env, fan: Address, creator: Address) -> bool {

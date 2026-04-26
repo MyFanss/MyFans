@@ -1,5 +1,12 @@
 export type SubscriptionStatus = 'active' | 'expired' | 'cancelled';
 
+/** Value-level constants for SubscriptionStatus — importable from '@/types'. */
+export const SUBSCRIPTION_STATUS_VALUES = {
+  ACTIVE: 'active' as SubscriptionStatus,
+  EXPIRED: 'expired' as SubscriptionStatus,
+  CANCELLED: 'cancelled' as SubscriptionStatus,
+} as const;
+
 export interface SubscriptionStatusCopy {
   label: string;
   srLabel: string;

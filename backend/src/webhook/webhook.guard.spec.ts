@@ -63,4 +63,41 @@ describe('WebhookGuard', () => {
     );
     expect(guard2.canActivate(ctx)).toBe(true);
   });
+
+  it('throws when previous secret cutoff has expired', () => {
+    const svc = new WebhookService('old-secret');
+    const sig = svc.sign(PAYLOAD); // sign with old (will become previous)
+    svc.rotate('new-secret', -1);  // cutoffAt already in the past
+    const g = new WebhookGuard(svc);
+
+    const ctx = makeContext(
+      { 'x-webhook-signature': sig },
+      {},
+      Buffer.from(PAYLOAD),
+    );
+    expect(() => g.canActivate(ctx)).toThrow(UnauthorizedException);
+  });
+
+  it('throws after expirePrevious() is called', () => {
+    const svc = new WebhookService('old-secret');
+    const sig = svc.sign(PAYLOAD);
+    svc.rotate('new-secret', 60_000);
+    svc.expirePrevious();
+    const g = new WebhookGuard(svc);
+
+    const ctx = makeContext(
+      { 'x-webhook-signature': sig },
+      {},
+      Buffer.from(PAYLOAD),
+    );
+    expect(() => g.canActivate(ctx)).toThrow(UnauthorizedException);
+  });
+
+  it('falls back to JSON.stringify(body) when rawBody is absent', () => {
+    const body = { event: 'test' };
+    const payload = JSON.stringify(body);
+    const sig = service.sign(payload);
+    const ctx = makeContext({ 'x-webhook-signature': sig }, body); // no rawBody
+    expect(guard.canActivate(ctx)).toBe(true);
+  });
 });

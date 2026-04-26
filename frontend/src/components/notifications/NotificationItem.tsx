@@ -32,7 +32,7 @@ interface Props {
 }
 
 export default function NotificationItem({ notification, onMarkRead, onDelete, onClick }: Props) {
-  const { id, type, title, body, is_read, created_at } = notification;
+  const { id, type, title, body, is_read, created_at, digest_count } = notification;
 
   return (
     <li
@@ -47,9 +47,19 @@ export default function NotificationItem({ notification, onMarkRead, onDelete, o
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <p className={`text-sm truncate ${!is_read ? 'font-semibold text-slate-900 dark:text-slate-100' : 'text-slate-700 dark:text-slate-300'}`}>
-            {title}
-          </p>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className={`text-sm truncate ${!is_read ? 'font-semibold text-slate-900 dark:text-slate-100' : 'text-slate-700 dark:text-slate-300'}`}>
+              {title}
+            </p>
+            {digest_count > 1 && (
+              <span
+                className="inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-medium shrink-0"
+                aria-label={`${digest_count} events batched`}
+              >
+                {digest_count}
+              </span>
+            )}
+          </div>
           <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0">{timeAgo(created_at)}</span>
         </div>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{body}</p>

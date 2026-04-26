@@ -131,7 +131,9 @@ mod test {
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Events},
-        vec, Env, IntoVal, Symbol, TryFromVal,
+        vec,
+        xdr::SorobanAuthorizationEntry,
+        Env, IntoVal, Symbol, TryFromVal,
     };
 
     fn setup() -> (Env, Address, Address, Address, Address) {
@@ -193,7 +195,7 @@ mod test {
         client.deposit(&creator, &token, &1000);
 
         // Verify transfer was called with correct fee (50)
-        assert!(env.auths().len() > 0);
+        assert!(!env.auths().is_empty());
     }
 
     #[test]
@@ -354,5 +356,29 @@ mod test {
                 Error::InsufficientBalance as u32,
             )))
         );
+    }
+
+    #[test]
+    fn test_unauthorized_withdraw_reverts() {
+        let (env, admin, treasury, creator, token) = setup();
+        let unauthorized = Address::generate(&env);
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        client.init(&admin, &0, &treasury);
+        client.deposit(&creator, &token, &1000);
+
+        let starting_balance = client.get_balance(&creator);
+        assert_eq!(starting_balance, 1000);
+
+        // Clear auth mocks so withdraw must satisfy the real creator auth check.
+        let empty: &[SorobanAuthorizationEntry] = &[];
+        env.set_auths(empty);
+
+        let result = client.try_withdraw(&unauthorized, &token, &100);
+        assert!(result.is_err(), "expected unauthorized withdraw to revert");
+
+        assert_eq!(client.get_balance(&creator), starting_balance);
     }
 }

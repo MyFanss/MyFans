@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PaginatedResponseDto, PaginationDto } from '../common/dto';
@@ -40,9 +40,21 @@ export class CreatorsService {
   ): Plan {
     const plan = { id: ++this.planCounter, creator, asset, amount, intervalDays };
     this.plans.set(plan.id, plan);
-    this.eventBus?.publish(
-      new PlanCreatedEvent(plan.id, creator, asset, amount),
-    );
+    if (!this.eventBus) {
+      this.logger.debug(
+        `Plan ${plan.id} created for ${creator}; EventBus not wired, skipping PlanCreatedEvent`,
+      );
+    } else {
+      try {
+        this.eventBus.publish(
+          new PlanCreatedEvent(plan.id, creator, asset, amount),
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Plan ${plan.id} created but PlanCreatedEvent publish failed: ${(err as Error).message}`,
+        );
+      }
+    }
     return plan;
   }
 
@@ -55,26 +67,72 @@ export class CreatorsService {
   }
 
   findAllPlans(pagination: PaginationDto): PaginatedResponseDto<PlanDto> {
-    const { page = 1, limit = 20 } = pagination;
-    const allPlans = Array.from(this.plans.values());
-    const total = allPlans.length;
-    const data = allPlans
-      .slice((page - 1) * limit, page * limit)
-      .map((plan) => Object.assign(new PlanDto(), plan));
-    return new PaginatedResponseDto(data, total, page, limit);
+    const { cursor, limit = 20 } = pagination;
+    let allPlans = Array.from(this.plans.values()).sort((a, b) => a.id - b.id);
+
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        allPlans = allPlans.filter((p) => p.id > cursorId);
+      } else {
+        this.logger.debug(`Ignoring invalid plans pagination cursor "${cursor}"`);
+      }
+    }
+
+    const data = allPlans.slice(0, limit + 1);
+    const hasMore = data.length > limit;
+    if (hasMore) {
+      data.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (data.length > 0) {
+      nextCursor = String(data[data.length - 1].id);
+    }
+
+    return new PaginatedResponseDto(
+      data.map((plan) => Object.assign(new PlanDto(), plan)),
+      limit,
+      nextCursor,
+      hasMore,
+    );
   }
 
   findCreatorPlans(
     creator: string,
     pagination: PaginationDto,
   ): PaginatedResponseDto<PlanDto> {
-    const { page = 1, limit = 20 } = pagination;
-    const creatorPlans = this.getCreatorPlans(creator);
-    const total = creatorPlans.length;
-    const data = creatorPlans
-      .slice((page - 1) * limit, page * limit)
-      .map((plan) => Object.assign(new PlanDto(), plan));
-    return new PaginatedResponseDto(data, total, page, limit);
+    const { cursor, limit = 20 } = pagination;
+    let creatorPlans = this.getCreatorPlans(creator).sort((a, b) => a.id - b.id);
+
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        creatorPlans = creatorPlans.filter((p) => p.id > cursorId);
+      } else {
+        this.logger.debug(
+          `Ignoring invalid creator plans pagination cursor "${cursor}" for ${creator}`,
+        );
+      }
+    }
+
+    const data = creatorPlans.slice(0, limit + 1);
+    const hasMore = data.length > limit;
+    if (hasMore) {
+      data.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (data.length > 0) {
+      nextCursor = String(data[data.length - 1].id);
+    }
+
+    return new PaginatedResponseDto(
+      data.map((plan) => Object.assign(new PlanDto(), plan)),
+      limit,
+      nextCursor,
+      hasMore,
+    );
   }
 
   async searchCreators(
@@ -88,44 +146,44 @@ export class CreatorsService {
       .leftJoin('user.creator', 'creator')
       .addSelect('creator.bio', 'creator_bio')
       .where('user.is_creator = :isCreator', { isCreator: true })
-      .orderBy('user.username', 'ASC');
-
-    // Get plan count from chain
-    const countResult = await this.chainReader.readPlanCount(contractId);
-    if (!countResult.ok) {
-      console.error('Failed to read plan count from chain:', countResult.error);
-      return;
-    }
-
-    const total = await qb.getCount();
-    const { entities, raw } = await qb
+      .orderBy('user.username', 'ASC')
       .skip((page - 1) * limit)
-      .take(limit)
-      .getRawAndEntities();
+      .take(limit);
 
-    // Compare with backend plans
-    for (const [id, backendPlan] of this.plans) {
-      const chainPlan = chainPlans.get(id);
-      if (!chainPlan) {
-        // Plan exists in backend but not on chain - mark as stale
-        backendPlan.syncStatus = 'stale';
-        backendPlan.lastSyncedAt = new Date();
-      } else {
-        // Check if data matches
-        const matches =
-          backendPlan.creator === chainPlan.creator &&
-          backendPlan.asset === chainPlan.asset &&
-          backendPlan.amount === chainPlan.amount &&
-          backendPlan.intervalDays === chainPlan.intervalDays;
-        backendPlan.syncStatus = matches ? 'synced' : 'stale';
-        backendPlan.lastSyncedAt = new Date();
-        // Remove from chainPlans as it's matched
-        chainPlans.delete(id);
-      }
+    if (trimmed) {
+      qb.andWhere(
+        '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
+        { search: `${trimmed.toLowerCase()}%` },
+      );
     }
 
-    // Remaining chainPlans are missing from backend - add them
-    for (const [id, chainPlan] of chainPlans) {
-      this.plans.set(id, { ...chainPlan, syncStatus: 'missing' });
+    let entities: User[];
+    let raw: { creator_bio?: string }[];
+    let total: number;
+    try {
+      const [{ entities: e, raw: r }, t] = await Promise.all([
+        qb.getRawAndEntities(),
+        qb.getCount(),
+      ]);
+      entities = e;
+      raw = r as { creator_bio?: string }[];
+      total = t;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Creator search failed: ${message}`);
+      throw err;
     }
+
+    const data = entities.map((user, index) => {
+      const dto = new PublicCreatorDto(user, user.creator);
+      dto.bio = raw[index]?.creator_bio ?? user.creator?.bio ?? null;
+      return dto;
+    });
+
+    this.logger.debug(
+      `Creator search returned ${data.length}/${total} rows for query "${trimmed ?? ''}"`,
+    );
+
+    return new PaginatedResponseDto(data, total, page, limit);
   }
+}

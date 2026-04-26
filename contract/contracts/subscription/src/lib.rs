@@ -40,10 +40,15 @@ pub enum DataKey {
 }
 
 impl DataKey {
-    /// Canonical subscription storage key; serializes as [`DataKey::Sub`].
     #[inline]
     pub fn subscription(fan: Address, creator: Address) -> Self {
         DataKey::Sub(fan, creator)
+    }
+
+    /// Canonical token address storage key; serializes as [`DataKey::Token`].
+    #[inline]
+    pub fn token_address() -> Self {
+        DataKey::Token
     }
 }
 
@@ -122,7 +127,9 @@ impl MyfansContract {
             .instance()
             .set(&DataKey::FeeRecipient, &fee_recipient);
         env.storage().instance().set(&DataKey::PlanCount, &0u32);
-        env.storage().instance().set(&DataKey::Token, &token);
+        env.storage()
+            .instance()
+            .set(&DataKey::token_address(), &token);
         env.storage().instance().set(&DataKey::Price, &price);
     }
 
@@ -217,10 +224,10 @@ impl MyfansContract {
     }
 
     pub fn admin(env: Env) -> Address {
-    env.storage()
-        .instance()
-        .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized))
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized))
     }
 
     pub fn is_subscriber(env: Env, fan: Address, creator: Address) -> bool {
@@ -341,7 +348,11 @@ impl MyfansContract {
             .unwrap_or(false);
         assert!(!paused, "contract is paused");
 
-        let token: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::token_address())
+            .unwrap();
         let price: i128 = env.storage().instance().get(&DataKey::Price).unwrap();
         let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
         let fee_recipient: Address = env
@@ -467,15 +478,9 @@ impl MyfansContract {
 
         require_valid_fee_bps(&env, new_fee_bps);
 
-        let old: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::FeeBps)
-            .unwrap_or(0);
+        let old: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
 
-        env.storage()
-            .instance()
-            .set(&DataKey::FeeBps, &new_fee_bps);
+        env.storage().instance().set(&DataKey::FeeBps, &new_fee_bps);
 
         env.events()
             .publish((Symbol::new(&env, "fee_updated"),), (old, new_fee_bps));
@@ -488,8 +493,47 @@ impl MyfansContract {
             .get(&DataKey::Paused)
             .unwrap_or(false)
     }
+
+    /// Returns (expiry_ledger_seq, expiry_unix_timestamp) for the subscription.
+    ///
+    /// `expiry_unix_timestamp` is derived from the ledger close time at the
+    /// moment of the call, anchored to the current ledger sequence and timestamp.
+    /// This lets callers avoid ledger-sequence vs wall-clock skew by using the
+    /// on-chain timestamp directly.
+    ///
+    /// Returns (0, 0) if no subscription exists.
+    pub fn get_expiry_unix(env: Env, fan: Address, creator: Address) -> (u64, u64) {
+        let sub = match env
+            .storage()
+            .instance()
+            .get::<DataKey, Subscription>(&DataKey::subscription(fan, creator))
+        {
+            Some(s) => s,
+            None => return (0, 0),
+        };
+
+        let expiry_seq = sub.expiry;
+        let current_seq = env.ledger().sequence() as u64;
+        let current_ts = env.ledger().timestamp(); // Unix seconds at current ledger
+
+        // Stellar nominal close time is 5 seconds per ledger.
+        const SECONDS_PER_LEDGER: u64 = 5;
+
+        let expiry_unix = if expiry_seq >= current_seq {
+            current_ts + (expiry_seq - current_seq) * SECONDS_PER_LEDGER
+        } else {
+            // Already expired: subtract elapsed ledgers
+            let elapsed = current_seq - expiry_seq;
+            current_ts.saturating_sub(elapsed * SECONDS_PER_LEDGER)
+        };
+
+        (expiry_seq, expiry_unix)
+    }
 }
 
+/// Dummy seed data for snapshot/restore tests.
 #[cfg(test)]
+pub mod dummy_data;
+
 #[cfg(test)]
 mod test;

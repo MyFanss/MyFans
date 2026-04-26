@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { GatedContentViewer, ContentType } from '@/components/GatedContentViewer';
 import { SubscriptionStatusBadge } from '@/components/subscription/SubscriptionStatusBadge';
 import {
@@ -9,6 +9,11 @@ import {
   isSubscriptionActive,
   type SubscriptionStatus,
 } from '@/lib/subscription-status';
+import {
+  getSubscriptionStatusForCreator,
+  getWalletSession,
+  setSubscriptionStatusForCreator,
+} from '@/lib/client-session';
 import Link from 'next/link';
 
 // Mock data - in real app, fetch from API based on params.id
@@ -21,9 +26,9 @@ const mockContentData = {
   description: 'Join me in this exclusive behind-the-scenes look at my latest studio session. I\'ll be sharing my creative process, the equipment I use, and some exclusive tips for aspiring creators.\n\nThis is premium content available only to my subscribers. Thank you for your support!',
   isGated: true,
   creator: {
-    id: 'creator-1',
-    name: 'Alex Rivera',
-    username: 'alex',
+    id: 'c1',
+    name: 'Lena Nova',
+    username: 'lena.nova',
     avatarUrl: '/placeholder-2.jpg',
     isVerified: true,
   },
@@ -66,14 +71,32 @@ export default function ContentPage({ params }: PageProps) {
 
   // In a real app, you would fetch the content based on the ID
   const [content] = useState(mockContentData);
-  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>(
-    () => getMockViewerSubscriptionStatus(mockContentData.creator.username) ?? 'expired',
-  );
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>(() => {
+    const persistedById = getSubscriptionStatusForCreator(mockContentData.creator.id);
+    const persistedByUsername = getSubscriptionStatusForCreator(
+      mockContentData.creator.username,
+    );
+    return (
+      persistedById ??
+      persistedByUsername ??
+      getMockViewerSubscriptionStatus(mockContentData.creator.username) ??
+      'expired'
+    );
+  });
+  const [hasWalletSession, setHasWalletSession] = useState(false);
   const isSubscribed = isSubscriptionActive(subscriptionStatus);
   const subscriptionCopy = getSubscriptionStatusCopy(subscriptionStatus);
 
+  useEffect(() => {
+    setHasWalletSession(!!getWalletSession());
+  }, []);
+
   const handleSubscribe = () => {
-    // In real app, redirect to subscription page or open modal
+    if (!getWalletSession()) {
+      return;
+    }
+    setSubscriptionStatusForCreator(mockContentData.creator.id, 'active');
+    setSubscriptionStatusForCreator(mockContentData.creator.username, 'active');
     setSubscriptionStatus('active');
   };
 
@@ -110,9 +133,10 @@ export default function ContentPage({ params }: PageProps) {
                 <button
                   onClick={handleSubscribe}
                   type="button"
+                  disabled={!hasWalletSession}
                   className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
                 >
-                  {subscriptionCopy.ctaLabel}
+                  {hasWalletSession ? subscriptionCopy.ctaLabel : 'Connect wallet to subscribe'}
                 </button>
               )}
             </div>

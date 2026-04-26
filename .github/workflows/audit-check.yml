@@ -1,0 +1,112 @@
+name: 🔐 Audit & Vulnerability Check
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  schedule:
+    - cron: "0 0 * * 0"  # Weekly on Sunday
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    name: Check Dependencies & Audits
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+
+      - name: 📦 Check backend audits
+        id: backend-audit
+        working-directory: ./backend
+        run: |
+          npm install --prefer-offline --no-audit 2>&1 | head -20
+          AUDIT_JSON=$(npm audit --json 2>/dev/null || echo '{"metadata":{"vulnerabilities":{"critical":0,"high":0,"moderate":0}}}')
+          
+          CRITICAL=$(echo "$AUDIT_JSON" | jq '.metadata.vulnerabilities.critical // 0')
+          HIGH=$(echo "$AUDIT_JSON" | jq '.metadata.vulnerabilities.high // 0')
+          MODERATE=$(echo "$AUDIT_JSON" | jq '.metadata.vulnerabilities.moderate // 0')
+          
+          echo "backend_critical=$CRITICAL" >> $GITHUB_OUTPUT
+          echo "backend_high=$HIGH" >> $GITHUB_OUTPUT
+          echo "backend_moderate=$MODERATE" >> $GITHUB_OUTPUT
+          
+          echo "### 🔍 Backend Audit Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Critical | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+          echo "| Moderate | $MODERATE |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if (( CRITICAL > 0 )); then
+            echo "❌ **CRITICAL vulnerabilities detected**" >> $GITHUB_STEP_SUMMARY
+            echo "::error::Critical vulnerabilities in backend: $CRITICAL"
+            exit 1
+          fi
+          if (( HIGH > 0 )); then
+            echo "❌ **HIGH vulnerabilities detected**" >> $GITHUB_STEP_SUMMARY
+            echo "::error::High vulnerabilities in backend: $HIGH"
+            exit 1
+          fi
+
+      - name: 📦 Check frontend audits
+        id: frontend-audit
+        working-directory: ./frontend
+        run: |
+          npm install --prefer-offline --no-audit 2>&1 | head -20
+          AUDIT_JSON=$(npm audit --json 2>/dev/null || echo '{"metadata":{"vulnerabilities":{"critical":0,"high":0,"moderate":0}}}')
+          
+          CRITICAL=$(echo "$AUDIT_JSON" | jq '.metadata.vulnerabilities.critical // 0')
+          HIGH=$(echo "$AUDIT_JSON" | jq '.metadata.vulnerabilities.high // 0')
+          MODERATE=$(echo "$AUDIT_JSON" | jq '.metadata.vulnerabilities.moderate // 0')
+          
+          echo "frontend_critical=$CRITICAL" >> $GITHUB_OUTPUT
+          echo "frontend_high=$HIGH" >> $GITHUB_OUTPUT
+          echo "frontend_moderate=$MODERATE" >> $GITHUB_OUTPUT
+          
+          echo "### 🔍 Frontend Audit Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Critical | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+          echo "| Moderate | $MODERATE |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if (( CRITICAL > 0 )); then
+            echo "❌ **CRITICAL vulnerabilities detected**" >> $GITHUB_STEP_SUMMARY
+            echo "::error::Critical vulnerabilities in frontend: $CRITICAL"
+            exit 1
+          fi
+          if (( HIGH > 0 )); then
+            echo "❌ **HIGH vulnerabilities detected**" >> $GITHUB_STEP_SUMMARY
+            echo "::error::High vulnerabilities in frontend: $HIGH"
+            exit 1
+          fi
+
+      - name: 💬 Comment on PR with audit summary
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: >-
+            const backendCritical = '${{ steps.backend-audit.outputs.backend_critical }}' || '0';
+            const backendHigh = '${{ steps.backend-audit.outputs.backend_high }}' || '0';
+            const frontendCritical = '${{ steps.frontend-audit.outputs.frontend_critical }}' || '0';
+            const frontendHigh = '${{ steps.frontend-audit.outputs.frontend_high }}' || '0';
+            const comment = '## 🔐 Security Audit Summary\n\n**Backend:**\n- 🔴 Critical: ' + backendCritical + '\n- 🟠 High: ' + backendHigh + '\n\n**Frontend:**\n- 🔴 Critical: ' + frontendCritical + '\n- 🟠 High: ' + frontendHigh + '\n\nRun locally with: `./scripts/check-audits.sh`';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

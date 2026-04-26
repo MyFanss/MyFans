@@ -1,3 +1,4 @@
+import { rpc, nativeToScVal, scValToNative, xdr, Address } from '@stellar/stellar-sdk';
 import { Injectable, Logger } from '@nestjs/common';
 import * as StellarSdk from '@stellar/stellar-sdk';
 
@@ -41,6 +42,7 @@ const DEGRADED_SLOW_RESPONSE_THRESHOLD = 0.5; // 50% of responses are slow
 
 @Injectable()
 export class SorobanRpcService {
+    private readonly server: rpc.Server;
     private readonly logger = new Logger(SorobanRpcService.name);
     private readonly server: any;
     private readonly rpcUrl: string;
@@ -81,6 +83,21 @@ export class SorobanRpcService {
         let failureCount = 0;
         let lastError: string | undefined;
         let slowResponses = 0;
+
+        try {
+            const withTimeout = <T>(promise: Promise<T>): Promise<T> =>
+                Promise.race([
+                    promise,
+                    new Promise<T>((_, reject) =>
+                        setTimeout(() => reject(new Error('RPC connection timeout')), this.timeout),
+                    ),
+                ]);
+
+            const health = await withTimeout(this.server.getHealth());
+            const responseTime = Date.now() - startTime;
+
+            // health.ledger is the latest ledger sequence
+            const ledger = (health as rpc.Api.GetHealthResponse & { ledger?: number }).ledger ?? 0;
 
         if (!this.server) {
             return {
@@ -163,6 +180,10 @@ export class SorobanRpcService {
                 status: 'down',
                 timestamp,
                 rpcUrl: this.rpcUrl,
+                ledger,
+                responseTime,
+            };
+        } catch (error) {
                 responseTime: avgResponseTime,
                 error: lastError || `RPC unreachable after ${this.retryConfig.retries} attempts`,
                 details: {
@@ -181,6 +202,8 @@ export class SorobanRpcService {
                 status: 'degraded',
                 timestamp,
                 rpcUrl: this.rpcUrl,
+                responseTime: Date.now() - startTime,
+                error: (error as Error).message || 'Unknown error',
                 responseTime: avgResponseTime,
                 error: failureCount > 0 
                     ? `${failureCount} of ${this.retryConfig.retries} attempts failed`
@@ -210,6 +233,33 @@ export class SorobanRpcService {
         };
     }
 
+    /**
+     * Read a u32 value from a Soroban contract.
+     * Uses nativeToScVal to encode the key as a UInt32 ScVal and
+     * scValToNative to decode the returned ScVal back to a number.
+     */
+    async readContractUInt32(contractId: string, key: number): Promise<number | null> {
+        try {
+            const keyScVal: xdr.ScVal = nativeToScVal(key, { type: 'u32' });
+            const ledgerKey = xdr.LedgerKey.contractData(
+                new xdr.LedgerKeyContractData({
+                    contract: new Address(contractId).toScAddress(),
+                    key: keyScVal,
+                    durability: xdr.ContractDataDurability.persistent(),
+                }),
+            );
+
+            const response = await this.server.getLedgerEntries(ledgerKey);
+            if (!response.entries?.length) return null;
+
+            const entry = response.entries[0];
+            const contractData = entry.val.contractData();
+            return scValToNative(contractData.val()) as number;
+        } catch {
+            return null;
+        }
+    }
+
     async checkKnownContract(): Promise<SorobanHealthStatus> {
         const timestamp = new Date().toISOString();
         const responseTimes: number[] = [];
@@ -218,6 +268,13 @@ export class SorobanRpcService {
         let lastError: string | undefined;
         let slowResponses = 0;
 
+        try {
+            const contractId = process.env.SOROBAN_HEALTH_CHECK_CONTRACT;
+            if (!contractId) {
+                throw new Error('SOROBAN_HEALTH_CHECK_CONTRACT not configured');
+            }
+
+            await this.readContractUInt32(contractId, 0);
         if (!this.server) {
             return {
                 status: 'down',
@@ -299,6 +356,9 @@ export class SorobanRpcService {
                 status: 'down',
                 timestamp,
                 rpcUrl: this.rpcUrl,
+                responseTime: Date.now() - startTime,
+            };
+        } catch (error) {
                 responseTime: avgResponseTime,
                 error: lastError || `Contract check failed after ${this.retryConfig.retries} attempts`,
                 details: {
@@ -316,6 +376,8 @@ export class SorobanRpcService {
                 status: 'degraded',
                 timestamp,
                 rpcUrl: this.rpcUrl,
+                responseTime: Date.now() - startTime,
+                error: (error as Error).message || 'Unknown error',
                 responseTime: avgResponseTime,
                 error: failureCount > 0 
                     ? `${failureCount} of ${this.retryConfig.retries} attempts failed`
@@ -355,5 +417,66 @@ export class SorobanRpcService {
 
     getRetryConfig(): RetryConfig {
         return { ...this.retryConfig };
+    }
+
+    /**
+     * Returns the latest ledger sequence number from the Soroban RPC node.
+     * Throws on network failure so callers can decide how to handle stale state.
+     */
+    async getLatestLedgerSequence(): Promise<number> {
+        if (!this.server) {
+            throw new Error('SorobanRpcService: server not initialized');
+        }
+        try {
+            const health = await (this.server as rpc.Server).getHealth();
+            const seq = (health as rpc.Api.GetHealthResponse & { ledger?: number }).ledger;
+            if (typeof seq !== 'number' || seq <= 0) {
+                throw new Error('SorobanRpcService: invalid ledger sequence in health response');
+            }
+            return seq;
+        } catch (err) {
+            this.logger.error(`getLatestLedgerSequence failed: ${err}`);
+            throw err;
+        }
+    }
+
+    /**
+     * Fetches contract events from the Soroban RPC node.
+     *
+     * @param startLedger  First ledger to include (inclusive).
+     * @param limit        Max events per page (default 200, max 10 000).
+     * @param paginationToken  Opaque cursor returned by a previous call.
+     */
+    async getNetworkEvents(opts: {
+        startLedger: number;
+        limit?: number;
+        paginationToken?: string;
+    }): Promise<{
+        events: rpc.Api.EventResponse[];
+        startLedger: number;
+        latestLedger: number;
+        nextToken?: string;
+    }> {
+        if (!this.server) {
+            throw new Error('SorobanRpcService: server not initialized');
+        }
+        const { startLedger, limit = 200, paginationToken } = opts;
+        try {
+            const response = await (this.server as rpc.Server).getEvents({
+                startLedger,
+                filters: [],
+                limit,
+                ...(paginationToken ? { cursor: paginationToken } : {}),
+            });
+            return {
+                events: response.events ?? [],
+                startLedger: response.latestLedger,   // Soroban SDK field
+                latestLedger: response.latestLedger,
+                nextToken: (response as any).cursor ?? undefined,
+            };
+        } catch (err) {
+            this.logger.error(`getNetworkEvents failed (startLedger=${startLedger}): ${err}`);
+            throw err;
+        }
     }
 }

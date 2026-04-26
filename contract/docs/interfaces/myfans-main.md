@@ -1,4 +1,4 @@
-# MyFans Main Contract Interface (contract/src/lib.rs)
+# MyFans Main Contract Interface (contracts/myfans-contract/src/lib.rs)
 
 Core subscription and creator registry.
 
@@ -12,6 +12,8 @@ Core subscription and creator registry.
 | `get_creator` | `address: Address` | `Option<CreatorInfo>` | none | `soroban contract invoke ... get_creator -- ADDR` | None |
 | `create_plan` | `creator: Address, asset: Address, amount: i128, interval_days: u32` | `u32` (plan_id) | creator | `soroban contract invoke ... create_plan -- CREATOR TOKEN_ID 1000 30` | `("plan_created", plan_id) -> creator` |
 | `subscribe` | `fan: Address, plan_id: u32` | `()` | fan | `soroban contract invoke ... subscribe -- FAN_ADDR 1` (fund fan balance first) | `("subscribed", plan_id) -> fan` |
+| `get_plan` | `plan_id: u32` | `Option<Plan>` | none | `soroban contract invoke ... get_plan -- 1` | None |
+| `get_plan_count` | `()` | `u32` | none | `soroban contract invoke ... get_plan_count` | None |
 | `is_subscriber` / `is_subscribed` | `fan: Address, creator: Address` | `bool` | none | `soroban contract invoke ... is_subscriber -- FAN CREATOR` | None |
 | `get_subscription_expiry` | `fan: Address, creator: Address` | `Option<u64>` | none | `soroban contract invoke ... get_subscription_expiry -- FAN CREATOR` | None |
 | `cancel` | `fan: Address, creator: Address` | `()` | fan | `soroban contract invoke ... cancel -- FAN CREATOR` | `("cancelled",) -> fan` |

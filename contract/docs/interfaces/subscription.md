@@ -7,6 +7,7 @@ Advanced subscription with ledger expiry.
 | Method | Args | Returns | Auth | Example Invoke | Expected Events |
 |--------|------|---------|------|---------------|-----------------|
 | `init` | `admin: Address, fee_bps: u32, fee_recipient: Address, token: Address, price: i128` | `()` | admin | `soroban contract invoke ... init -- ADMIN 100 TREASURY TOKEN 1000` | None |
+| `admin` | `()` | `Address` | none | `soroban contract invoke ... admin` | None |
 | `create_plan` | `creator: Address, asset: Address, amount: i128, interval_days: u32` | `u32` | creator | `soroban contract invoke ... create_plan -- CREATOR TOKEN 1000 30` | `("plan_created", plan_id) -> creator` |
 | `subscribe` | `fan: Address, plan_id: u32, token: Address` | `()` | fan | `soroban contract invoke ... subscribe -- FAN 1 TOKEN` | `("subscribed", plan_id) -> fan` |
 | `is_subscriber` | `fan: Address, creator: Address` | `bool` | none | `soroban contract invoke ... is_subscriber -- FAN CREATOR` | None |
@@ -14,7 +15,10 @@ Advanced subscription with ledger expiry.
 | `cancel` | `fan: Address, creator: Address, reason: u32` | `()` | fan | `soroban contract invoke ... cancel -- FAN CREATOR 0` | `("cancelled", fan, creator) -> (true, reason)` |
 | `create_subscription` | `fan: Address, creator: Address, duration_ledgers: u32` | `()` | fan | `soroban contract invoke ... create_subscription -- FAN CREATOR 17280` | None (internal) |
 | `pause` / `unpause` | `()` | `()` | admin | `soroban contract invoke ... pause --` | `("paused" / "unpaused",) -> admin` |
+| `set_fee_recipient` | `new_fee_recipient: Address` | `()` | admin | `soroban contract invoke ... set_fee_recipient -- RECIPIENT` | `("fee_recipient_updated", old, new) -> ()` |
+| `set_fee_bps` | `new_fee_bps: u32` | `()` | admin | `soroban contract invoke ... set_fee_bps -- 250` | `("fee_updated",) -> (old, new)` |
 | `is_paused` | `()` | `bool` | none | `soroban contract invoke ... is_paused` | None |
+| `get_expiry_unix` | `fan: Address, creator: Address` | `(u64, u64)` | none | `soroban contract invoke ... get_expiry_unix -- FAN CREATOR` | None |
 
 ## Overview
 Subscription plans with extend/cancel; overlaps main contract. Uses ledger seq for expiry.

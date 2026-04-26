@@ -57,8 +57,11 @@ export class IdempotencyMiddleware implements NestMiddleware {
         return;
       }
     } catch (err) {
-      if (err instanceof ConflictException) {
-        // Re-throw so NestJS exception filters handle it correctly.
+      // Re-throw known client errors so NestJS exception filters handle them.
+      if (
+        err instanceof ConflictException ||
+        err instanceof UnprocessableEntityException
+      ) {
         throw err;
       }
       throw err;

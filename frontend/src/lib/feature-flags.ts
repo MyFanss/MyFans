@@ -2,6 +2,7 @@ export const FeatureFlag = {
   BOOKMARKS: 'bookmarks',
   EARNINGS_WITHDRAWALS: 'earnings_withdrawals',
   EARNINGS_FEE_TRANSPARENCY: 'earnings_fee_transparency',
+  REFERRAL_CODES: 'referral_codes',
 } as const;
 
 export type FeatureFlag = (typeof FeatureFlag)[keyof typeof FeatureFlag];
@@ -33,12 +34,17 @@ export const featureFlagDefinitions: Record<FeatureFlag, FeatureFlagDefinition> 
     description: 'Shows the fee transparency card on the creator earnings page.',
     envKey: 'NEXT_PUBLIC_FLAG_EARNINGS_FEE_TRANSPARENCY',
   },
+  [FeatureFlag.REFERRAL_CODES]: {
+    description: 'Enables referral / invite code input during checkout and share panel in settings.',
+    envKey: 'NEXT_PUBLIC_FLAG_REFERRAL_CODES',
+  },
 };
 
 export const defaultFeatureFlags: FeatureFlagSnapshot = Object.freeze({
   [FeatureFlag.BOOKMARKS]: false,
   [FeatureFlag.EARNINGS_WITHDRAWALS]: false,
   [FeatureFlag.EARNINGS_FEE_TRANSPARENCY]: false,
+  [FeatureFlag.REFERRAL_CODES]: false,
 });
 
 let cachedRemoteFlags: FeatureFlagOverrides = {};

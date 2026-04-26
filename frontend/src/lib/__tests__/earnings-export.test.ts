@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { transactionsToCSV, downloadCSV } from '../earnings-export';
-import type { Transaction } from '../earnings-api';
+import { transactionsToCSV, downloadCSV, reconciliationToCSV } from '../earnings-export';
+import type { Transaction, ReconciliationRow } from '../earnings-api';
 
 const TX: Transaction = {
   id: 'tx-1',
@@ -102,5 +102,46 @@ describe('downloadCSV', () => {
 
     downloadCSV('data', 'earnings-2024-03-15.csv');
     expect(capturedLink?.download).toBe('earnings-2024-03-15.csv');
+  });
+});
+
+const RECON_ROW: ReconciliationRow = {
+  creator: 'GCREATORAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+  asset: 'USDC',
+  totalGross: '100.0000000',
+  totalFees: '5.0000000',
+  totalNet: '95.0000000',
+  paymentCount: 10,
+};
+
+describe('reconciliationToCSV', () => {
+  it('includes correct header row', () => {
+    const csv = reconciliationToCSV([RECON_ROW]);
+    const [header] = csv.split('\n');
+    expect(header).toBe('Creator,Asset,Gross,Protocol Fees,Net,Payments');
+  });
+
+  it('returns only header for empty array', () => {
+    const csv = reconciliationToCSV([]);
+    expect(csv.trim()).toBe('Creator,Asset,Gross,Protocol Fees,Net,Payments');
+  });
+
+  it('serialises all fields correctly', () => {
+    const csv = reconciliationToCSV([RECON_ROW]);
+    const dataRow = csv.split('\n')[1];
+    expect(dataRow).toBe(
+      'GCREATORAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,USDC,100.0000000,5.0000000,95.0000000,10',
+    );
+  });
+
+  it('generates one data row per reconciliation row', () => {
+    const csv = reconciliationToCSV([RECON_ROW, RECON_ROW]);
+    expect(csv.split('\n').length).toBe(3); // header + 2 rows
+  });
+
+  it('escapes commas in creator address', () => {
+    const row: ReconciliationRow = { ...RECON_ROW, creator: 'creator,with,commas' };
+    const csv = reconciliationToCSV([row]);
+    expect(csv).toContain('"creator,with,commas"');
   });
 });

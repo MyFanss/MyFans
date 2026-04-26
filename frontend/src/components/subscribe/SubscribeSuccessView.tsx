@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import type { SubscriptionPlan } from '@/types/subscribe';
 
 interface Props {
@@ -9,8 +10,18 @@ interface Props {
 }
 
 export default function SubscribeSuccessView({ plan, txHash, onViewContent }: Props) {
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
+
   return (
-    <div className="flex flex-col items-center gap-6 py-8 text-center">
+    <div 
+      className="flex flex-col items-center gap-6 py-8 text-center"
+      role="status"
+      aria-live="polite"
+    >
       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
         <svg
           className="h-8 w-8 text-green-600"
@@ -25,12 +36,18 @@ export default function SubscribeSuccessView({ plan, txHash, onViewContent }: Pr
       </div>
 
       <div className="flex flex-col gap-1">
-        <h2 className="text-xl font-semibold text-slate-900">You are now subscribed</h2>
+        <h2 
+          ref={headingRef}
+          tabIndex={-1}
+          className="text-xl font-semibold text-slate-900 focus:outline-none"
+        >
+          You are now subscribed
+        </h2>
         <p className="text-sm text-slate-500">to {plan.creatorName}</p>
       </div>
 
       <p className="max-w-xs break-all text-xs text-slate-400">
-        Tx: {txHash}
+        Tx: <span aria-label={`Transaction hash: ${txHash}`}>{txHash}</span>
       </p>
 
       <button

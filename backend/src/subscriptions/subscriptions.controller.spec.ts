@@ -1,61 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
 import { SubscriptionsController } from './subscriptions.controller';
-import { SubscriptionsService } from './subscriptions.service';
+import { SubscriptionsService, SubscriptionStatus } from './subscriptions.service';
 import {
   FanBearerGuard,
   RequestWithFan,
 } from './guards/fan-bearer.guard';
+import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 
-describe('SubscriptionsController (dashboard-summary)', () => {
-  let controller: SubscriptionsController;
-  let service: jest.Mocked<Pick<SubscriptionsService, 'getFanDashboardSummary' | 'getFanCreatorSubscriptionState'>>;
-
-  const fan = `G${'A'.repeat(55)}`;
-
-  beforeEach(async () => {
-    service = {
-      getFanDashboardSummary: jest.fn().mockReturnValue({
-        fan,
-        totalActive: 0,
-        subscriptions: [],
-        page: 1,
-        limit: 20,
-        totalPages: 0,
-      }),
-      getFanCreatorSubscriptionState: jest.fn(),
-    };
-
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [SubscriptionsController],
-      providers: [
-        { provide: SubscriptionsService, useValue: service },
-        FanBearerGuard,
-      ],
-    }).compile();
-
-    controller = module.get(SubscriptionsController);
-  });
-
-  it('calls service with fan address and pagination defaults', () => {
-    const req = { fanAddress: fan } as RequestWithFan;
-    const result = controller.getFanDashboardSummary(req, { page: 1, limit: 20 });
-
-    expect(service.getFanDashboardSummary).toHaveBeenCalledWith(fan, 1, 20);
-    expect(result).toMatchObject({ fan, totalActive: 0, subscriptions: [] });
-  });
-
-  it('passes custom pagination to service', () => {
-    const req = { fanAddress: fan } as RequestWithFan;
-    controller.getFanDashboardSummary(req, { page: 2, limit: 5 });
-
-    expect(service.getFanDashboardSummary).toHaveBeenCalledWith(fan, 2, 5);
-  });
-});
-
-
-
-describe('SubscriptionsController (subscription-state)', () => {
+describe('SubscriptionsController', () => {
   let controller: SubscriptionsController;
   let service: jest.Mocked<
     Pick<
@@ -64,17 +19,30 @@ describe('SubscriptionsController (subscription-state)', () => {
     >
   >;
 
+  const fan = `G${'A'.repeat(55)}`;
+  const creator = `G${'B'.repeat(55)}`;
+
   beforeEach(async () => {
     service = {
       getFanCreatorSubscriptionState: jest.fn().mockResolvedValue({
-        fan: 'FX',
-        creator: 'CY',
+        fan,
+        creator,
         active: false,
         indexedStatus: 'none',
         indexed: null,
-        chain: { configured: false, isSubscriber: null },
+        chain: {
+          configured: false,
+          isSubscriber: null,
+          simulationCost: {
+            method: 'is_subscriber',
+            worstCaseMinResourceFee: null,
+            lastObservedMinResourceFee: null,
+            updatedAt: null,
+            stale: true,
+          },
+        },
       }),
-      listCreatorSubscribers: jest.fn().mockReturnValue({
+      listCreatorSubscribers: jest.fn().mockResolvedValue({
         data: [],
         total: 0,
         page: 1,
@@ -94,10 +62,7 @@ describe('SubscriptionsController (subscription-state)', () => {
     controller = module.get(SubscriptionsController);
   });
 
-  const fan = `G${'A'.repeat(55)}`;
-  const creator = `G${'B'.repeat(55)}`;
-
-  it('delegates to service with fan from request', async () => {
+  it('delegates subscription-state lookup with fan from request', async () => {
     const req = { fanAddress: fan } as RequestWithFan;
     const result = await controller.getFanCreatorSubscriptionState(req, {
       creator,
@@ -107,11 +72,19 @@ describe('SubscriptionsController (subscription-state)', () => {
       fan,
       creator,
     );
-    expect(result).toMatchObject({ indexedStatus: 'none' });
+    expect(result).toMatchObject({
+      indexedStatus: 'none',
+      chain: {
+        simulationCost: {
+          method: 'is_subscriber',
+          stale: true,
+        },
+      },
+    });
   });
 
-  it('delegates creator subscriber list query to service', () => {
-    controller.listCreatorSubscribers({
+  it('delegates creator subscriber query to the service', async () => {
+    await controller.listCreatorSubscribers({
       creator,
       status: 'active',
       page: 2,
@@ -123,6 +96,94 @@ describe('SubscriptionsController (subscription-state)', () => {
       'active',
       2,
       5,
+    );
+  });
+});
+
+describe('ListSubscriptionsQueryDto – status validation', () => {
+  async function validateDto(plain: object) {
+    const dto = plainToInstance(ListSubscriptionsQueryDto, plain);
+    return validate(dto);
+  }
+
+  it('passes when status is a valid SubscriptionStatus value', async () => {
+    for (const value of Object.values(SubscriptionStatus)) {
+      const errors = await validateDto({ fan: 'GFAN', status: value });
+      expect(errors.filter((e) => e.property === 'status')).toHaveLength(0);
+    }
+  });
+
+  it('fails when status is an invalid string', async () => {
+    const errors = await validateDto({ fan: 'GFAN', status: 'unknown' });
+    const statusErrors = errors.filter((e) => e.property === 'status');
+    expect(statusErrors).toHaveLength(1);
+    expect(Object.values(statusErrors[0].constraints ?? {})[0]).toMatch(
+      /active, expired, cancelled/,
+    );
+  });
+
+  it('passes when status is omitted', async () => {
+    const errors = await validateDto({ fan: 'GFAN' });
+    expect(errors.filter((e) => e.property === 'status')).toHaveLength(0);
+  });
+});
+
+describe('SubscriptionsController – listSubscriptions', () => {
+  let controller: SubscriptionsController;
+  let service: jest.Mocked<Pick<SubscriptionsService, 'listSubscriptions' | 'getFanCreatorSubscriptionState'>>;
+
+  const fan = `G${'A'.repeat(55)}`;
+
+  beforeEach(async () => {
+    service = {
+      listSubscriptions: jest.fn().mockReturnValue({ data: [], total: 0, page: 1, limit: 20, totalPages: 0 }),
+      getFanCreatorSubscriptionState: jest.fn(),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [SubscriptionsController],
+      providers: [
+        { provide: SubscriptionsService, useValue: service },
+        FanBearerGuard,
+      ],
+    }).compile();
+
+    controller = module.get(SubscriptionsController);
+  });
+
+  it('passes typed SubscriptionStatus.ACTIVE to service', () => {
+    const query: ListSubscriptionsQueryDto = { fan, status: SubscriptionStatus.ACTIVE, page: 1, limit: 20 };
+    controller.listSubscriptions(query);
+    expect(service.listSubscriptions).toHaveBeenCalledWith(
+      fan,
+      SubscriptionStatus.ACTIVE,
+      undefined,
+      1,
+      20,
+    );
+  });
+
+  it('passes typed SubscriptionStatus.EXPIRED to service', () => {
+    const query: ListSubscriptionsQueryDto = { fan, status: SubscriptionStatus.EXPIRED, page: 1, limit: 20 };
+    controller.listSubscriptions(query);
+    expect(service.listSubscriptions).toHaveBeenCalledWith(
+      fan,
+      SubscriptionStatus.EXPIRED,
+      undefined,
+      1,
+      20,
+    );
+  });
+
+  it('passes undefined status when omitted', () => {
+    const query: ListSubscriptionsQueryDto = { fan, page: 1, limit: 20 };
+    controller.listSubscriptions(query);
+    expect(service.listSubscriptions).toHaveBeenCalledWith(
+      fan,
+      undefined,
+      undefined,
+      1,
+      20,
     );
   });
 });
@@ -150,6 +211,7 @@ describe('FanBearerGuard', () => {
     const req: { headers: Record<string, string>; fanAddress?: string } = {
       headers: { authorization: `Bearer ${token}` },
     };
+
     expect(
       guard.canActivate({
         switchToHttp: () => ({ getRequest: () => req }),

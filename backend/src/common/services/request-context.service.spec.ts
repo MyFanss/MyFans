@@ -34,10 +34,11 @@ describe('RequestContextService', () => {
             userId: null,
         };
 
-        service.setContext(mockContext);
-        const retrievedContext = service.getContext();
-
-        expect(retrievedContext).toEqual(mockContext);
+        service.run(mockContext, () => {
+            service.setContext(mockContext);
+            const retrievedContext = service.getContext();
+            expect(retrievedContext).toEqual(mockContext);
+        });
     });
 
     it('should return null when no context is set', () => {
@@ -58,11 +59,12 @@ describe('RequestContextService', () => {
             userId: 'user123',
         };
 
-        service.setContext(mockContext);
-
-        expect(service.getCorrelationId()).toBe('test-correlation-id');
-        expect(service.getRequestId()).toBe('test-request-id');
-        expect(service.getUserId()).toBe('user123');
+        service.run(mockContext, () => {
+            service.setContext(mockContext);
+            expect(service.getCorrelationId()).toBe('test-correlation-id');
+            expect(service.getRequestId()).toBe('test-request-id');
+            expect(service.getUserId()).toBe('user123');
+        });
     });
 
     it('should set user ID correctly', () => {
@@ -76,11 +78,12 @@ describe('RequestContextService', () => {
             userId: null,
         };
 
-        service.setContext(mockContext);
-        expect(service.getUserId()).toBeNull();
-
-        service.setUserId('user456');
-        expect(service.getUserId()).toBe('user456');
+        service.run(mockContext, () => {
+            service.setContext(mockContext);
+            expect(service.getUserId()).toBeNull();
+            service.setUserId('user456');
+            expect(service.getUserId()).toBe('user456');
+        });
     });
 
     it('should return log context correctly', () => {
@@ -94,16 +97,17 @@ describe('RequestContextService', () => {
             userId: 'user123',
         };
 
-        service.setContext(mockContext);
-        const logContext = service.getLogContext();
-
-        expect(logContext).toEqual({
-            correlationId: 'test-correlation-id',
-            requestId: 'test-request-id',
-            userId: 'user123',
-            method: 'GET',
-            url: '/test',
-            ip: '127.0.0.1',
+        service.run(mockContext, () => {
+            service.setContext(mockContext);
+            const logContext = service.getLogContext();
+            expect(logContext).toEqual({
+                correlationId: 'test-correlation-id',
+                requestId: 'test-request-id',
+                userId: 'user123',
+                method: 'GET',
+                url: '/test',
+                ip: '127.0.0.1',
+            });
         });
     });
 
@@ -123,10 +127,12 @@ describe('RequestContextService', () => {
             userId: 'user123',
         };
 
-        service.setContext(mockContext);
-        expect(service.getContext()).not.toBeNull();
-
-        service.clearContext();
+        service.run(mockContext, () => {
+            service.setContext(mockContext);
+            expect(service.getContext()).not.toBeNull();
+            service.clearContext();
+            expect(service.getContext()).not.toBeNull();
+        });
         expect(service.getContext()).toBeNull();
     });
 });
