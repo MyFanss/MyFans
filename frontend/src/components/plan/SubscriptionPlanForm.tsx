@@ -401,7 +401,9 @@ export function SubscriptionPlanForm({
           {submissionState !== 'idle' && (
             <div
               className={`rounded-xl border p-4 text-sm ${getSubmissionPanelStyles(submissionState)}`}
-              aria-live="polite"
+              role={submissionState === 'error' ? 'alert' : 'status'}
+              aria-live={submissionState === 'error' ? 'assertive' : 'polite'}
+              aria-atomic="true"
             >
               <p className="font-medium">
                 {submissionState === 'saving' && 'Saving draft'}
