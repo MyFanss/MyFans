@@ -1,6 +1,8 @@
 'use client';
 
 import { SubscriptionPlan } from '@/types/subscribe';
+import NetworkMismatchBanner from '@/components/NetworkMismatchBanner';
+import { useNetworkGuard } from '@/hooks/useNetworkGuard';
 
 interface ConfirmationScreenProps {
   plan: SubscriptionPlan;
@@ -22,6 +24,8 @@ export default function ConfirmationScreen({
   onCancel,
   disabled,
 }: ConfirmationScreenProps) {
+  const { mismatch } = useNetworkGuard();
+
   const billingLabel =
     plan.billingInterval === 'monthly'
       ? 'per month'
@@ -97,13 +101,19 @@ export default function ConfirmationScreen({
         >
           Cancel
         </button>
-        <button
-          onClick={onConfirm}
-          disabled={disabled}
-          className="flex-1 rounded-lg bg-primary-500 px-4 py-3 font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-600 dark:hover:bg-primary-700"
-        >
-          Sign &amp; Subscribe
-        </button>
+        {mismatch ? (
+          <div className="flex-1">
+            <NetworkMismatchBanner />
+          </div>
+        ) : (
+          <button
+            onClick={onConfirm}
+            disabled={disabled}
+            className="flex-1 rounded-lg bg-primary-500 px-4 py-3 font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-600 dark:hover:bg-primary-700"
+          >
+            Sign &amp; Subscribe
+          </button>
+        )}
       </div>
     </div>
   );
