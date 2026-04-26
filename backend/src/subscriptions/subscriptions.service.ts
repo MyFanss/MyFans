@@ -438,8 +438,7 @@ export class SubscriptionsService {
     cursor?: string,
     limit: number = 20,
   ) {
-    const results = await this.indexRepo.findWithCursor(fan, status, sort, cursor, limit);
-    const hasMore = results.length > limit;
+    const results = await this.indexRepo.findWithCursor(fan, status, sort, cursor, limit);    const hasMore = results.length > limit;
     if (hasMore) {
       results.pop();
     }
@@ -471,6 +470,7 @@ export class SubscriptionsService {
     status?: SubscriberListStatus,
     cursor?: string,
     limit: number = 20,
+    sort?: string,
   ) {
     const nowSecs = Math.floor(Date.now() / 1000);
     let subscribers = (await this.indexRepo.listForCreator(creator))
@@ -491,10 +491,16 @@ export class SubscriptionsService {
       subscribers = subscribers.filter((sub) => sub.status === status);
     }
 
-    subscribers.sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+    if (sort === 'expiry') {
+      subscribers.sort(
+        (a, b) => new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime(),
+      );
+    } else {
+      // default: sort by created desc
+      subscribers.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+    }
 
     if (cursor) {
       const cursorId = parseInt(cursor, 10);
