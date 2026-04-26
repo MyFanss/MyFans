@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { FeatureGate } from '@/components/FeatureGate';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -11,12 +12,17 @@ import {
   TransactionHistoryCard,
   WithdrawalUI,
   FeeTransparencyCard,
-  EarningsChart,
+  EarningsChartSkeleton,
   ReconciliationReport,
 } from '@/components/earnings';
 import { fetchEarningsSummary, type EarningsSummary } from '@/lib/earnings-api';
 import { FeatureFlag } from '@/lib/feature-flags';
 import { createAppError } from '@/types/errors';
+
+const EarningsChart = dynamic(
+  () => import('@/components/earnings/EarningsChart').then((m) => m.EarningsChart),
+  { loading: () => <EarningsChartSkeleton />, ssr: false }
+);
 
 export default function EarningsPage() {
   const [summary, setSummary] = useState<EarningsSummary | null>(null);
@@ -76,9 +82,7 @@ export default function EarningsPage() {
 
           {/* Charts Section */}
           <section className="mb-8">
-            <Suspense fallback={<div className="h-80 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />}>
-              <EarningsChart />
-            </Suspense>
+            <EarningsChart />
           </section>
 
           {/* Breakdown Section */}
