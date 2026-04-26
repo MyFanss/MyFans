@@ -1,4 +1,4 @@
-#  (2026-04-25)
+#  (2026-04-26)
 
 
 ### Bug Fixes
@@ -267,6 +267,7 @@
 * register interfaces and mocks in lib module tree ([a8a677b](https://github.com/MyFanss/MyFans/commit/a8a677bebf1713fcc89e1551148eed58320aacf4))
 * reinitialized ([2c62b94](https://github.com/MyFanss/MyFans/commit/2c62b9420d907d34d1342326e617291e445d47ff))
 * reinitialized ([f0462b0](https://github.com/MyFanss/MyFans/commit/f0462b08090aa6e6f70869840e69f4d1dd99e421))
+* remove dead code ([2603d03](https://github.com/MyFanss/MyFans/commit/2603d03ce59428d782bea0c2829c935090e17f14))
 * resolve issues [#728](https://github.com/MyFanss/MyFans/issues/728) [#730](https://github.com/MyFanss/MyFans/issues/730) [#731](https://github.com/MyFanss/MyFans/issues/731) [#740](https://github.com/MyFanss/MyFans/issues/740) ([66977ca](https://github.com/MyFanss/MyFans/commit/66977ca5016b406b2acbe938514ae495909f42a4))
 * **scripts:** add --dry-run flag to deploy script ([c42c306](https://github.com/MyFanss/MyFans/commit/c42c306c5ab11df6b22eb035c8dbd6e46dd701ab)), closes [#306](https://github.com/MyFanss/MyFans/issues/306)
 * **security:** CSRF double-submit cookie strategy for BFF ([cac88a9](https://github.com/MyFanss/MyFans/commit/cac88a90c991f05b7b219aab9cb4ca48986d7d90))
@@ -286,6 +287,7 @@
 * Treasury-min-balance guard ([a3c26dc](https://github.com/MyFanss/MyFans/commit/a3c26dc06bfa1c6005d48e9ce88246ce6c6674d1))
 * unfollow fn done ([3e56a68](https://github.com/MyFanss/MyFans/commit/3e56a68c90b37232ccdf475c7ce76ca9f0ff2981))
 * **wallet:** return actionable errors on network mismatch ([e44f92c](https://github.com/MyFanss/MyFans/commit/e44f92c1018f2848bfc4fd36047215e14e2d645e))
+* wasm build size ([f56adb3](https://github.com/MyFanss/MyFans/commit/f56adb37e337b9b453d22d62dd432fdba76d0ba7))
 * webhook secret rotation with active + previous secret and cutoff strategy ([dec98eb](https://github.com/MyFanss/MyFans/commit/dec98eb4e3f513a42a3667adb25d25e67b116640))
 
 

@@ -92,8 +92,32 @@ function sanitizeFlagOverrides(value: unknown): FeatureFlagOverrides {
   }, {});
 }
 
-function getRemoteFlagsUrl(): string | undefined {
-  return process.env[FEATURE_FLAGS_URL_ENV_KEY];
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+export function getRemoteFlagsUrl(): string | undefined {
+  const explicitUrl = process.env[FEATURE_FLAGS_URL_ENV_KEY];
+  if (explicitUrl) {
+    return explicitUrl;
+  }
+
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (apiBaseUrl) {
+    const normalizedApiBaseUrl = trimTrailingSlash(apiBaseUrl);
+
+    if (normalizedApiBaseUrl.endsWith('/api/v1')) {
+      return `${normalizedApiBaseUrl}/feature-flags`;
+    }
+
+    if (normalizedApiBaseUrl.endsWith('/api')) {
+      return `${normalizedApiBaseUrl}/v1/feature-flags`;
+    }
+
+    return `${normalizedApiBaseUrl}/feature-flags`;
+  }
+
+  return '/api/v1/feature-flags';
 }
 
 function isLocalOverrideAllowed(): boolean {
