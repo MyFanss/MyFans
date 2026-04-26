@@ -411,3 +411,6 @@ mod test;
 
 #[cfg(test)]
 mod allowance_expiry_tests;
+
+#[cfg(test)]
+mod property_tests;
