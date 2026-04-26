@@ -49,6 +49,14 @@ export class Notification {
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, unknown> | null;
 
+  /** Number of individual events collapsed into this digest (1 = not a digest). */
+  @Column({ type: 'int', default: 1 })
+  digest_count: number;
+
+  /** ISO timestamps of the individual events batched into this digest. */
+  @Column({ type: 'jsonb', nullable: true })
+  digest_event_times: string[] | null;
+
   @CreateDateColumn()
   created_at: Date;
 }

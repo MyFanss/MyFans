@@ -1,14 +1,5 @@
 import { test, expect } from '@playwright/test';
 
-// Helper: open wallet modal from homepage and connect via mock Freighter
-async function connectWalletFromHome(page: import('@playwright/test').Page) {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Get Started/i }).click();
-  await page.getByRole('button', { name: /Freighter/i }).waitFor({ state: 'visible', timeout: 5000 });
-  await page.getByRole('button', { name: /Freighter/i }).click();
-  await expect(page.locator('text=/GTEST.*/')).toBeVisible({ timeout: 10000 });
-}
-
 // Mock wallet for testing
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -20,47 +11,41 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('Critical User Flow: Connect → Subscribe → Unlock', () => {
-  test('should complete full subscription flow', async ({ page }) => {
-    // Step 1: Connect Wallet (homepage: Get Started → Freighter)
-    await connectWalletFromHome(page);
+  test('completes connect -> subscribe -> unlock flow with persisted client state', async ({ page }) => {
+    // Connect wallet from the subscribe page
+    await page.goto('/subscribe');
+    await page.getByRole('button', { name: 'Connect Wallet' }).click();
+    await expect(page.getByText(/GTEST1\.\.\.\d+/i)).toBeVisible({ timeout: 10_000 });
 
-    // Step 2: Navigate to creators page and verify it loads
-    await page.goto('/creators');
-    await expect(page).toHaveURL(/\/creators/);
-    await expect(page.getByRole('heading', { name: /Creator Dashboard/i })).toBeVisible({ timeout: 10000 });
+    // Subscribe to a creator
+    const subscribeButton = page.getByRole('button', { name: 'Subscribe' }).first();
+    await expect(subscribeButton).toBeEnabled();
+    await subscribeButton.click();
 
-    // Step 3: Navigate to subscriptions and verify page loads
-    await page.goto('/subscriptions');
-    await expect(page).toHaveURL(/\/subscriptions/);
+    // Open gated content and verify access is unlocked from persisted subscription
+    await page.goto('/content/1');
+    await expect(page.getByRole('heading', { name: /Exclusive Behind the Scenes/i })).toBeVisible();
+    await expect(page.locator('video')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Exclusive Content')).not.toBeVisible();
   });
 
-  test('should show subscription status in dashboard', async ({ page }) => {
-    await connectWalletFromHome(page);
-
-    // Navigate to subscriptions
-    await page.goto('/subscriptions');
-    
-    // Verify subscriptions page loaded (page may show list or empty state)
-    await expect(page).toHaveURL(/\/subscriptions/);
-    await expect(page.locator('body')).toBeVisible();
+  test('handles disconnected state gracefully on gated content', async ({ page }) => {
+    await page.goto('/content/1');
+    await expect(page.getByRole('button', { name: /Subscribe to Lena Nova/i })).toBeVisible();
+    await expect(page.locator('video')).not.toBeVisible();
+    await expect(page.getByText('Exclusive Content')).toBeVisible();
   });
 
-  test('should handle wallet rejection gracefully', async ({ page }) => {
-    // Override mock to reject
+  test('recovers from invalid persisted session state', async ({ page }) => {
     await page.addInitScript(() => {
-      (window as any).freighter = {
-        getPublicKey: async () => {
-          throw new Error('User rejected');
-        },
-      };
+      window.localStorage.setItem('myfans.wallet.session.v1', '{broken');
+      window.localStorage.setItem('myfans.viewer.subscriptions.v1', '{broken');
     });
 
-    await page.goto('/');
-    await page.getByRole('button', { name: /Get Started/i }).click();
-    await page.getByRole('button', { name: /Freighter/i }).waitFor({ state: 'visible', timeout: 5000 });
-    await page.getByRole('button', { name: /Freighter/i }).click();
-
-    // Verify error message (use .first() to avoid strict mode: sr-only + visible p both match)
-    await expect(page.locator('text=/rejected/i').first()).toBeVisible({ timeout: 10000 });
+    await page.goto('/content/1');
+    await expect(page.getByRole('heading', { name: /Exclusive Behind the Scenes/i })).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByText('Exclusive Content')).toBeVisible();
   });
 });

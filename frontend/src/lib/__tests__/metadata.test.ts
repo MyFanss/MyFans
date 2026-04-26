@@ -92,11 +92,11 @@ describe('Metadata Generation', () => {
       expect(metadata.twitter?.creator).toBe('@jane');
       expect(metadata.twitter?.site).toBe('@myfans');
 
-      // Custom metadata
+      // Custom metadata — label and data are separate (no duplication)
       expect(metadata.other?.['twitter:label1']).toBe('Subscribers');
       expect(metadata.other?.['twitter:data1']).toBe('12,400');
       expect(metadata.other?.['twitter:label2']).toBe('Starting from');
-      expect(metadata.other?.['twitter:data2']).toBe('Starting from $9.99/month');
+      expect(metadata.other?.['twitter:data2']).toBe('$9.99/month');
     });
 
     it('handles missing creator gracefully', async () => {
@@ -161,8 +161,8 @@ describe('Metadata Generation', () => {
       expect(metadata.description).toContain('12,400 subscribers');
       expect(metadata.authors).toHaveLength(1);
       expect(metadata.authors?.[0].name).toBe('Jane Doe');
-      expect(metadata.creators).toHaveLength(1);
-      expect(metadata.creators?.[0].name).toBe('Jane Doe');
+      expect((metadata as any).creators).toHaveLength(1);
+      expect((metadata as any).creators?.[0].name).toBe('Jane Doe');
     });
 
     it('handles creator without bio', () => {

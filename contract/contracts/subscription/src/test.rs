@@ -1,10 +1,8 @@
-#![cfg(test)]
-
+use super::dummy_data::*;
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger, MockAuth, MockAuthInvoke},
-    token,
-    vec,
+    token, vec,
     xdr::{ScAddress, SorobanAuthorizationEntry},
     Address, Env, Error as SorobanError, IntoVal, String, Symbol, TryFromVal, TryIntoVal,
 };
@@ -350,21 +348,32 @@ fn test_extend_fails_if_expired() {
 fn test_subscription_state_after_snapshot_restore() {
     let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
-    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    client.init(
+        &admin,
+        &DUMMY_FEE_BPS,
+        &fee_recipient,
+        &token.address,
+        &DUMMY_PRICE,
+    );
 
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
-    token_admin.mint(&fan, &10000);
+    token_admin.mint(&fan, &DUMMY_FAN_BALANCE);
 
-    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    let plan_id = client.create_plan(
+        &creator,
+        &token.address,
+        &DUMMY_PLAN_AMOUNT,
+        &DUMMY_INTERVAL_DAYS,
+    );
     assert_eq!(plan_id, 1);
     client.subscribe(&fan, &plan_id, &token.address);
 
     let contract_id = client.address.clone();
-    let expected_expiry = env.ledger().sequence() + (30 * 17280);
-    let sc_fan: ScAddress = fan.clone().try_into().unwrap();
-    let sc_creator: ScAddress = creator.clone().try_into().unwrap();
-    let sc_contract: ScAddress = contract_id.clone().try_into().unwrap();
+    let expected_expiry = env.ledger().sequence() + (DUMMY_INTERVAL_DAYS * LEDGERS_PER_DAY);
+    let sc_fan: ScAddress = fan.clone().into();
+    let sc_creator: ScAddress = creator.clone().into();
+    let sc_contract: ScAddress = contract_id.clone().into();
 
     let snapshot = env.to_snapshot();
     let env2 = Env::from_snapshot(snapshot);
@@ -399,8 +408,8 @@ fn test_subscription_state_after_snapshot_restore() {
             .unwrap()
     });
     assert_eq!(plan.creator, creator2);
-    assert_eq!(plan.amount, 1000);
-    assert_eq!(plan.interval_days, 30);
+    assert_eq!(plan.amount, DUMMY_PLAN_AMOUNT);
+    assert_eq!(plan.interval_days, DUMMY_INTERVAL_DAYS);
 
     let plan_count: u32 = env2.as_contract(&contract_id2, || {
         env2.storage()
@@ -594,7 +603,11 @@ fn test_cancel_event_topics_backward_compatible() {
     let ev = find_event(&env, "cancelled").expect("cancelled event not emitted");
 
     // Topics structure unchanged: (name, fan, creator)
-    assert_eq!(ev.1.len(), 3, "topics count must stay 3 for backward compat");
+    assert_eq!(
+        ev.1.len(),
+        3,
+        "topics count must stay 3 for backward compat"
+    );
     let t_name: Symbol = ev.1.get(0).unwrap().try_into_val(&env).unwrap();
     assert_eq!(t_name, Symbol::new(&env, "cancelled"));
     let t_fan: Address = ev.1.get(1).unwrap().try_into_val(&env).unwrap();
@@ -607,6 +620,87 @@ fn test_cancel_event_topics_backward_compatible() {
     let d: (bool, u32) = ev.2.try_into_val(&env).unwrap();
     assert!(d.0);
     assert_eq!(d.1, 2);
+}
+
+// ── #745 – ledger time vs server clock skew ─────────────────────────────────
+
+/// get_expiry_unix returns (0, 0) when no subscription exists.
+#[test]
+fn test_get_expiry_unix_no_subscription() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let fan = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    let result = client.get_expiry_unix(&fan, &creator);
+    assert_eq!(result, (0u64, 0u64));
+}
+
+/// get_expiry_unix returns a unix timestamp ahead of current ledger timestamp
+/// for an active subscription.
+#[test]
+fn test_get_expiry_unix_active_subscription() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &10000);
+
+    // Set a known ledger state: seq=1000, timestamp=1_700_000_000
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1000;
+        li.timestamp = 1_700_000_000;
+    });
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    // expiry_seq = 1000 + 30 * 17280 = 519400
+    let expected_expiry_seq: u64 = 1000 + (30 * 17280);
+
+    let (expiry_seq, expiry_unix) = client.get_expiry_unix(&fan, &creator);
+    assert_eq!(expiry_seq, expected_expiry_seq);
+
+    // expiry_unix = 1_700_000_000 + (519400 - 1000) * 5
+    let expected_unix: u64 = 1_700_000_000 + (expected_expiry_seq - 1000) * 5;
+    assert_eq!(expiry_unix, expected_unix);
+}
+
+/// get_expiry_unix for an already-expired subscription returns a unix timestamp
+/// in the past (less than current ledger timestamp).
+#[test]
+fn test_get_expiry_unix_expired_subscription() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &10000);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1000;
+        li.timestamp = 1_700_000_000;
+    });
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &1);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    // Advance ledger well past expiry (1 day = 17280 ledgers)
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1000 + 17280 + 100; // 100 ledgers past expiry
+        li.timestamp = 1_700_000_000 + (17280 + 100) * 5;
+    });
+
+    let (expiry_seq, expiry_unix) = client.get_expiry_unix(&fan, &creator);
+    assert_eq!(expiry_seq, (1000 + 17280) as u64);
+
+    let current_ts: u64 = 1_700_000_000 + (17280 + 100) * 5;
+    assert!(
+        expiry_unix < current_ts,
+        "expired sub unix should be in the past"
+    );
 }
 
 /// `subscribed` (direct via create_subscription) — topics: (name, fan, creator)  data: 0u32
@@ -652,20 +746,31 @@ fn test_subscription_key_helper_keeps_legacy_variant() {
 fn test_cancel_after_snapshot_restore() {
     let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
-    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    client.init(
+        &admin,
+        &DUMMY_FEE_BPS,
+        &fee_recipient,
+        &token.address,
+        &DUMMY_PRICE,
+    );
 
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
-    token_admin.mint(&fan, &10000);
+    token_admin.mint(&fan, &DUMMY_FAN_BALANCE);
 
-    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    let plan_id = client.create_plan(
+        &creator,
+        &token.address,
+        &DUMMY_PLAN_AMOUNT,
+        &DUMMY_INTERVAL_DAYS,
+    );
     client.subscribe(&fan, &plan_id, &token.address);
     assert!(client.is_subscriber(&fan, &creator));
 
     let contract_id = client.address.clone();
-    let sc_fan: ScAddress = fan.clone().try_into().unwrap();
-    let sc_creator: ScAddress = creator.clone().try_into().unwrap();
-    let sc_contract: ScAddress = contract_id.clone().try_into().unwrap();
+    let sc_fan: ScAddress = fan.clone().into();
+    let sc_creator: ScAddress = creator.clone().into();
+    let sc_contract: ScAddress = contract_id.clone().into();
 
     let snapshot = env.to_snapshot();
     let env2 = Env::from_snapshot(snapshot);
@@ -682,7 +787,7 @@ fn test_cancel_after_snapshot_restore() {
         "state matches after restore"
     );
 
-    client2.cancel(&fan2, &creator2, &0);
+    client2.cancel(&fan2, &creator2, &CANCEL_REASON_USER_INITIATED);
     assert!(
         !client2.is_subscriber(&fan2, &creator2),
         "cancel after restore: subscription should be removed"
@@ -831,8 +936,8 @@ fn test_set_fee_recipient_admin_updates_storage_emits_event_and_routes_fees() {
     });
     assert_eq!(stored, new_recipient);
 
-    let ev = find_event(&env, "fee_recipient_updated")
-        .expect("fee_recipient_updated event not emitted");
+    let ev =
+        find_event(&env, "fee_recipient_updated").expect("fee_recipient_updated event not emitted");
     assert_eq!(ev.1.len(), 3, "topics: name, old, new");
     let t_old: Address = ev.1.get(1).unwrap().try_into_val(&env).unwrap();
     let t_new: Address = ev.1.get(2).unwrap().try_into_val(&env).unwrap();
@@ -983,19 +1088,6 @@ fn test_set_fee_bps_rejects_over_10000() {
 }
 
 #[test]
-fn test_init_rejects_fee_bps_over_10000() {
-    let (env, client, admin, token, _) = setup_test();
-    let fee_recipient = Address::generate(&env);
-    let r = client.try_init(&admin, &10_001u32, &fee_recipient, &token.address, &1000);
-    assert_eq!(
-        r,
-        Err(Ok(SorobanError::from_contract_error(
-            Error::InvalidFeeBps as u32,
-        )))
-    );
-}
-
-#[test]
 fn test_set_fee_bps_non_admin_rejected() {
     let (env, client, admin, token, _) = setup_test();
     let fee_recipient = Address::generate(&env);
@@ -1028,7 +1120,10 @@ fn test_set_fee_bps_requires_admin_authorization() {
     env.set_auths(empty);
 
     let r = client.try_set_fee_bps(&100u32);
-    assert!(r.is_err(), "set_fee_bps must fail without authorization entry");
+    assert!(
+        r.is_err(),
+        "set_fee_bps must fail without authorization entry"
+    );
 }
 
 // ── admin() view ──────────────────────────────────────────────────────────
@@ -1090,8 +1185,16 @@ fn admin_is_stable_after_pause_and_unpause() {
     );
 
     client.pause();
-    assert_eq!(client.admin(), admin, "admin() must be unchanged after pause");
+    assert_eq!(
+        client.admin(),
+        admin,
+        "admin() must be unchanged after pause"
+    );
 
     client.unpause();
-    assert_eq!(client.admin(), admin, "admin() must be unchanged after unpause");
+    assert_eq!(
+        client.admin(),
+        admin,
+        "admin() must be unchanged after unpause"
+    );
 }

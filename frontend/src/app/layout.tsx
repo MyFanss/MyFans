@@ -10,6 +10,8 @@ import { ToastContainer } from "@/components/ui/Toast";
 import { FeatureFlagsProvider } from "@/contexts/FeatureFlagsContext";
 import { RouteGuard } from "@/components/RouteGuard";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { RpcStatusProvider } from "@/contexts/RpcStatusContext";
+import { RpcOfflineBannerWrapper } from "@/components/RpcOfflineBannerWrapper";
 
 export const metadata: Metadata = {
   title: {
@@ -91,10 +93,13 @@ export default function RootLayout({
               <ConsentProvider>
                 <FavoritesProvider>
                   <ToastProvider>
-                    <ErrorBoundary>
-                      <RouteGuard>{children}</RouteGuard>
-                    </ErrorBoundary>
-                    <ToastContainer />
+                    <RpcStatusProvider>
+                      <RpcOfflineBannerWrapper />
+                      <ErrorBoundary>
+                        <RouteGuard>{children}</RouteGuard>
+                      </ErrorBoundary>
+                      <ToastContainer />
+                    </RpcStatusProvider>
                   </ToastProvider>
                 </FavoritesProvider>
               </ConsentProvider>

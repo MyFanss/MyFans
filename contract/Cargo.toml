@@ -16,8 +16,12 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
+# Minimum Supported Rust Version (MSRV).
+# soroban-sdk 21.x requires at least 1.74 (curve25519-dalek 4.x lower bound).
+# Bump this only when a dependency genuinely requires a newer compiler.
+rust-version = "1.74"
 authors = ["Mimah97 <e77377366@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Mimah97/MyFans"
@@ -25,7 +29,7 @@ description = "MyFans Soroban smart contracts."
 publish = false
 
 [workspace.dependencies]
-soroban-sdk = "21.7.0"
+soroban-sdk = "21.7.7"
 
 [profile.release]
 opt-level = "z"

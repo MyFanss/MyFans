@@ -1,9 +1,8 @@
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { Request, Response, NextFunction } from 'express';
+import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
-import { CorrelationExceptionFilter } from './common/filters/correlation-exception.filter';
-import { RequestContextService } from './common/services/request-context.service';
 import { StartupProbeService } from './health/startup-probe.service';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -23,7 +22,11 @@ async function bootstrap() {
 
   // Apply security headers middleware
   const securityHeadersMiddleware = new SecurityHeadersMiddleware();
-  app.use((req, res, next) => securityHeadersMiddleware.use(req, res, next));
+  app.use((req: Request, res: Response, next: NextFunction) =>
+    securityHeadersMiddleware.use(req, res, next),
+  );
+
+  app.use(cookieParser());
 
   app.enableVersioning({
     type: VersioningType.URI,
@@ -44,6 +47,17 @@ async function bootstrap() {
   });
 
   const probeService = app.get(StartupProbeService);
+
+  // Setup Swagger/OpenAPI documentation
+  const { DocumentBuilder, SwaggerModule } = require('@nestjs/swagger');
+  const config = new DocumentBuilder()
+    .setTitle('MyFans API')
+    .setDescription('MyFans backend REST API')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api-docs', app, document);
 
   let dbResult: { ok: boolean; error?: string };
   try {

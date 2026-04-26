@@ -1,6 +1,8 @@
-#![cfg(test)]
 use super::*;
-use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, Env, Error as SorobanError};
+use soroban_sdk::{
+    testutils::Address as _, testutils::Events, testutils::Ledger, Address, Env,
+    Error as SorobanError, Symbol, TryIntoVal,
+};
 
 #[test]
 fn test_subscription_flow() {
@@ -279,7 +281,7 @@ fn test_register_creator() {
     assert!(creator_info.is_some());
     let info = creator_info.unwrap();
     assert_eq!(info.creator_id, 1);
-    assert_eq!(info.is_verified, false);
+    assert!(!info.is_verified);
 }
 
 #[test]
@@ -352,21 +354,21 @@ fn test_set_verified_updates_status() {
 
     // Verify initial state is not verified
     let info_before = client.get_creator(&creator).unwrap();
-    assert_eq!(info_before.is_verified, false);
+    assert!(!info_before.is_verified);
 
     // Admin verifies the creator
     client.set_verified(&creator, &true);
 
     // Check verification status updated
     let info_after = client.get_creator(&creator).unwrap();
-    assert_eq!(info_after.is_verified, true);
+    assert!(info_after.is_verified);
     assert_eq!(info_after.creator_id, 1);
 
     // Admin can also unverify
     client.set_verified(&creator, &false);
 
     let info_final = client.get_creator(&creator).unwrap();
-    assert_eq!(info_final.is_verified, false);
+    assert!(!info_final.is_verified);
 }
 
 #[test]
@@ -389,13 +391,13 @@ fn test_get_creator_returns_correct_tuple() {
     // Get creator info
     let info = client.get_creator(&creator).unwrap();
     assert_eq!(info.creator_id, creator_id);
-    assert_eq!(info.is_verified, false);
+    assert!(!info.is_verified);
 
     // Verify and check again
     client.set_verified(&creator, &true);
     let info_verified = client.get_creator(&creator).unwrap();
     assert_eq!(info_verified.creator_id, creator_id);
-    assert_eq!(info_verified.is_verified, true);
+    assert!(info_verified.is_verified);
 }
 
 #[test]
@@ -476,7 +478,7 @@ fn test_non_admin_cannot_set_verified_reverts() {
     // Test that admin CAN set verified
     client.set_verified(&creator, &true);
     let info = client.get_creator(&creator).unwrap();
-    assert_eq!(info.is_verified, true);
+    assert!(info.is_verified);
 }
 
 #[test]
@@ -502,7 +504,7 @@ fn test_only_admin_signature_works_for_set_verified() {
     // Verify the admin can set verified status
     client.set_verified(&creator, &true);
     let info = client.get_creator(&creator).unwrap();
-    assert_eq!(info.is_verified, true);
+    assert!(info.is_verified);
 
     // The security model is:
     // 1. set_verified calls admin.require_auth()
@@ -755,11 +757,10 @@ fn test_transfer_event_schema_emitted_on_subscribe() {
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
     let fee_recipient = Address::generate(&env);
-    let asset = Address::generate(&env);
 
     // Register mock token contract so token::Client calls succeed
     let token_id = env.register_contract(None, MockToken);
-    let token_client = MockTokenClient::new(&env, &token_id);
+    let _token_client = MockTokenClient::new(&env, &token_id);
 
     let client = MyfansContractClient::new(&env, &contract_id);
     client.init(&admin, &500 /* 5% fee */, &fee_recipient);
@@ -768,47 +769,26 @@ fn test_transfer_event_schema_emitted_on_subscribe() {
     // Subscribe — triggers both transfer legs
     client.subscribe(&fan, &1);
 
-    // Collect all events emitted by the contract
     let all_events = env.events().all();
+    let mut transfer_count = 0usize;
+    let mut transfer_from_count = 0usize;
+    for i in 0..all_events.len() {
+        let (id, topics, _data) = all_events.get(i).unwrap();
+        if id != contract_id {
+            continue;
+        }
+        let t0: Option<Symbol> = topics.get(0).and_then(|v| v.try_into_val(&env).ok());
+        if t0 == Some(Symbol::new(&env, events::TOPIC_TRANSFER)) {
+            transfer_count += 1;
+        }
+        if t0 == Some(Symbol::new(&env, events::TOPIC_TRANSFER_FROM)) {
+            transfer_from_count += 1;
+        }
+    }
 
-    // Filter to events from our contract
-    let contract_events: soroban_sdk::Vec<_> = all_events
-        .iter()
-        .filter(|(id, _topics, _data)| *id == contract_id)
-        .collect();
-
-    // We expect at least the two transfer events + the "subscribed" event
-    // Verify "transfer" event is present with correct topic key
-    let transfer_events: soroban_sdk::Vec<_> = contract_events
-        .iter()
-        .filter(|(_id, topics, _data)| {
-            if let soroban_sdk::Val::Symbol(sym) = topics.get(0).unwrap() {
-                sym == Symbol::new(&env, events::TOPIC_TRANSFER)
-            } else {
-                false
-            }
-        })
-        .collect();
-
+    assert!(transfer_count > 0, "expected at least one transfer event");
     assert!(
-        !transfer_events.is_empty(),
-        "expected at least one transfer event"
-    );
-
-    // Verify "transfer_from" event is present (fee leg)
-    let transfer_from_events: soroban_sdk::Vec<_> = contract_events
-        .iter()
-        .filter(|(_id, topics, _data)| {
-            if let soroban_sdk::Val::Symbol(sym) = topics.get(0).unwrap() {
-                sym == Symbol::new(&env, events::TOPIC_TRANSFER_FROM)
-            } else {
-                false
-            }
-        })
-        .collect();
-
-    assert!(
-        !transfer_from_events.is_empty(),
+        transfer_from_count > 0,
         "expected at least one transfer_from event"
     );
 }
@@ -828,63 +808,70 @@ fn test_transfer_and_transfer_from_share_same_data_shape() {
     let env = Env::default();
     env.mock_all_auths();
 
+    let contract_id = env.register_contract(None, MyfansContract);
+
     let addr_a = Address::generate(&env);
     let addr_b = Address::generate(&env);
     let addr_c = Address::generate(&env);
     let asset = Address::generate(&env);
 
-    events::emit_transfer(&env, &asset, &addr_a, &addr_b, 500);
-    events::emit_transfer_from(&env, &asset, &addr_a, &addr_c, 50);
+    // Events must be published in contract context (matches subscribe path);
+    // soroban-sdk 21.7+ does not surface the same topic Val decoding otherwise.
+    env.as_contract(&contract_id, || {
+        events::emit_transfer(&env, &asset, &addr_a, &addr_b, 500);
+        events::emit_transfer_from(&env, &asset, &addr_a, &addr_c, 50);
+    });
 
     let all_events = env.events().all();
 
-    // Both events should parse to a (Address, Address, i128) data tuple
-    let transfer_evt = all_events
-        .iter()
-        .find(|(_id, topics, _data)| {
-            topics
-                .get(0)
-                .map(|v| {
-                    if let soroban_sdk::Val::Symbol(sym) = v {
-                        sym == Symbol::new(&env, events::TOPIC_TRANSFER)
-                    } else {
-                        false
-                    }
-                })
-                .unwrap_or(false)
-        })
-        .expect("transfer event not found");
+    let mut transfer_evt: Option<(
+        soroban_sdk::Address,
+        soroban_sdk::Vec<soroban_sdk::Val>,
+        soroban_sdk::Val,
+    )> = None;
+    let mut transfer_from_evt: Option<(
+        soroban_sdk::Address,
+        soroban_sdk::Vec<soroban_sdk::Val>,
+        soroban_sdk::Val,
+    )> = None;
+    for i in 0..all_events.len() {
+        let evt = all_events.get(i).unwrap();
+        let (id, topics, _) = &evt;
+        if *id != contract_id {
+            continue;
+        }
+        let t0: Option<Symbol> = topics.get(0).and_then(|v| v.try_into_val(&env).ok());
+        if t0 == Some(Symbol::new(&env, events::TOPIC_TRANSFER)) {
+            transfer_evt = Some(evt);
+        } else if t0 == Some(Symbol::new(&env, events::TOPIC_TRANSFER_FROM)) {
+            transfer_from_evt = Some(evt);
+        }
+    }
 
-    let transfer_from_evt = all_events
-        .iter()
-        .find(|(_id, topics, _data)| {
-            topics
-                .get(0)
-                .map(|v| {
-                    if let soroban_sdk::Val::Symbol(sym) = v {
-                        sym == Symbol::new(&env, events::TOPIC_TRANSFER_FROM)
-                    } else {
-                        false
-                    }
-                })
-                .unwrap_or(false)
-        })
-        .expect("transfer_from event not found");
+    let transfer_evt = transfer_evt.expect("transfer event not found");
+    let transfer_from_evt = transfer_from_evt.expect("transfer_from event not found");
 
-    // Both events have the asset as topic[1]
     let (_id1, topics1, data1) = transfer_evt;
     let (_id2, topics2, data2) = transfer_from_evt;
 
-    // topic[1] = asset in both cases
-    assert_eq!(topics1.get(1), topics2.get(1), "asset topic must match");
+    let asset1: Address = topics1
+        .get(1)
+        .expect("topic 1")
+        .try_into_val(&env)
+        .expect("asset topic");
+    let asset2: Address = topics2
+        .get(1)
+        .expect("topic 1")
+        .try_into_val(&env)
+        .expect("asset topic");
+    assert_eq!(asset1, asset2, "asset topic must match");
 
-    // data is (from, to, amount) — both events must have a 3-element tuple
-    // We verify this by confirming they deserialize to the same shape
-    let (from1, to1, amount1): (Address, Address, i128) =
-        soroban_sdk::xdr::FromXdr::from_xdr(&env, &data1).expect("transfer data must be a 3-tuple");
-    let (from2, to2, amount2): (Address, Address, i128) =
-        soroban_sdk::xdr::FromXdr::from_xdr(&env, &data2)
-            .expect("transfer_from data must be a 3-tuple");
+    let (from1, to1, amount1): (Address, Address, i128) = data1
+        .try_into_val(&env)
+        .expect("transfer data must be a 3-tuple");
+    let (from2, to2, amount2): (Address, Address, i128) = data2
+        .try_into_val(&env)
+        .expect("transfer_from data must be a 3-tuple");
 
     // Verify correct values were captured
     assert_eq!(from1, addr_a);
@@ -917,36 +904,21 @@ fn test_zero_fee_emits_only_transfer_no_transfer_from() {
     client.subscribe(&fan, &1);
 
     let all_events = env.events().all();
-    let contract_events: soroban_sdk::Vec<_> = all_events
-        .iter()
-        .filter(|(id, _t, _d)| *id == contract_id)
-        .collect();
-
-    let has_transfer = contract_events.iter().any(|(_id, topics, _data)| {
-        topics
-            .get(0)
-            .map(|v| {
-                if let soroban_sdk::Val::Symbol(sym) = v {
-                    sym == Symbol::new(&env, events::TOPIC_TRANSFER)
-                } else {
-                    false
-                }
-            })
-            .unwrap_or(false)
-    });
-
-    let has_transfer_from = contract_events.iter().any(|(_id, topics, _data)| {
-        topics
-            .get(0)
-            .map(|v| {
-                if let soroban_sdk::Val::Symbol(sym) = v {
-                    sym == Symbol::new(&env, events::TOPIC_TRANSFER_FROM)
-                } else {
-                    false
-                }
-            })
-            .unwrap_or(false)
-    });
+    let mut has_transfer = false;
+    let mut has_transfer_from = false;
+    for i in 0..all_events.len() {
+        let (id, topics, _data) = all_events.get(i).unwrap();
+        if id != contract_id {
+            continue;
+        }
+        let t0: Option<Symbol> = topics.get(0).and_then(|v| v.try_into_val(&env).ok());
+        if t0 == Some(Symbol::new(&env, events::TOPIC_TRANSFER)) {
+            has_transfer = true;
+        }
+        if t0 == Some(Symbol::new(&env, events::TOPIC_TRANSFER_FROM)) {
+            has_transfer_from = true;
+        }
+    }
 
     assert!(has_transfer, "transfer event must still fire when fee is 0");
     assert!(
@@ -962,5 +934,12 @@ pub struct MockToken;
 #[contractimpl]
 impl MockToken {
     pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {}
-    pub fn transfer_from(_env: Env, _spender: Address, _from: Address, _to: Address, _amount: i128) {}
+    pub fn transfer_from(
+        _env: Env,
+        _spender: Address,
+        _from: Address,
+        _to: Address,
+        _amount: i128,
+    ) {
+    }
 }

@@ -25,3 +25,12 @@ Examples assume local deployment (`contract/deployed-local.json`). Replace:
 
 Run: `soroban contract invoke --network local --source registry --wasm path/to/target.wasm --dry-run` to validate.
 
+## Drift Check
+
+To ensure contract interface docs stay linked to code, run:
+
+- `npm run check:interfaces` (validates all `docs/interfaces/*.md` method tables against referenced `contracts/**/src/lib.rs` files)
+- `npm run test:interfaces` (parser/unit tests for the drift check)
+
+The release checklist (`npm run release-check`) now includes the interface drift check.
+
