@@ -22,6 +22,7 @@ OUTPUT_JSON="$ROOT_DIR/deployed.json"
 OUTPUT_ENV="$ROOT_DIR/.env.deployed"
 AUTO_FUND="true"
 DRY_RUN="false"
+NON_INTERACTIVE="false"
 
 usage() {
   cat <<USAGE
@@ -36,6 +37,7 @@ Options:
   --env-out <path>                       Output env path (default: contract/.env.deployed)
   --no-fund                              Disable auto funding on futurenet/testnet
   --dry-run                              Validate build and config without submitting transactions
+  --non-interactive                      CI mode: never prompt; fail if identity is missing
   -h, --help                             Show this help
 USAGE
 }
@@ -77,6 +79,10 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN="true"
       shift
       ;;
+    --non-interactive)
+      NON_INTERACTIVE="true"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -114,6 +120,9 @@ NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE:-$DEFAULT_NETWORK_PASSPHRASE}"
 if [[ "$DRY_RUN" == "true" ]]; then
   echo "[deploy] *** DRY-RUN MODE — no transactions will be submitted ***"
 fi
+if [[ "$NON_INTERACTIVE" == "true" ]]; then
+  echo "[deploy] *** NON-INTERACTIVE MODE — identity auto-generation disabled ***"
+fi
 echo "[deploy] network=$NETWORK"
 echo "[deploy] rpc=$RPC_URL"
 
@@ -132,6 +141,12 @@ fi
 if ! "${STELLAR[@]}" keys public-key "$SOURCE_ACCOUNT" >/dev/null 2>&1; then
   if [[ "$NETWORK" == "mainnet" ]]; then
     echo "Source account '$SOURCE_ACCOUNT' not found and auto-generation on mainnet is disabled." >&2
+    exit 1
+  fi
+
+  if [[ "$NON_INTERACTIVE" == "true" ]]; then
+    echo "[deploy] ERROR: identity '$SOURCE_ACCOUNT' not found and --non-interactive is set." >&2
+    echo "[deploy] Pre-create the identity with: stellar keys generate $SOURCE_ACCOUNT --network $NETWORK" >&2
     exit 1
   fi
 
