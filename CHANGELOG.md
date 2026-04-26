@@ -259,6 +259,7 @@
 * make IMyFans trait public and add subscribe and get_subscription_details methods ([4a8f367](https://github.com/MyFanss/MyFans/commit/4a8f36747d294d3824b0b676615eea994e495dbf))
 * **moderation:** add content moderation flags model and admin endpoints ([#353](https://github.com/MyFanss/MyFans/issues/353)) ([1c9b00a](https://github.com/MyFanss/MyFans/commit/1c9b00a9de299d65700ed2c4d56e73a358d5fd49))
 * normalize subscription expiry ledger calculations ([#288](https://github.com/MyFanss/MyFans/issues/288)) ([b5a7ffe](https://github.com/MyFanss/MyFans/commit/b5a7ffe4c703031c1968e9e9a276e807f500265e))
+* **onboarding:** creator onboarding progress UI — stale state handling + tests ([266eaa8](https://github.com/MyFanss/MyFans/commit/266eaa8a5b8d6bec4212ba26edb60d083627f21d))
 * optimistic updates for content metadata actions ([a343a4a](https://github.com/MyFanss/MyFans/commit/a343a4a188a86408afcb4ac11385c535594c06fb))
 * **posts:** soft delete with audit trail ([a166596](https://github.com/MyFanss/MyFans/commit/a166596f215ddaa145fe1a56a22c9a62f0b47bdf)), closes [#732](https://github.com/MyFanss/MyFans/issues/732)
 * PR template with test plan ([#723](https://github.com/MyFanss/MyFans/issues/723)) ([6ccf622](https://github.com/MyFanss/MyFans/commit/6ccf622a0f94ab8320b885ae968c93c661c3ccd3))
