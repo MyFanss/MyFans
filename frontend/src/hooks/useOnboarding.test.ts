@@ -5,6 +5,7 @@ import {
   isFlowFinished,
   STEP_ORDER,
   ONBOARDING_STORAGE_KEY,
+  STALE_THRESHOLD_MS,
 } from "./useOnboarding";
 
 describe("isFlowFinished", () => {
@@ -95,5 +96,125 @@ describe("useOnboarding", () => {
     expect(raw).toBeTruthy();
     const parsed = JSON.parse(raw!);
     expect(parsed.completedSteps).toEqual([]);
+  });
+});
+
+describe("stale / invalid state handling", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("resets to fresh state when savedAt is older than STALE_THRESHOLD_MS", () => {
+    const staleDate = new Date(Date.now() - STALE_THRESHOLD_MS - 1000).toISOString();
+    localStorage.setItem(
+      ONBOARDING_STORAGE_KEY,
+      JSON.stringify({
+        currentStep: "profile",
+        completedSteps: ["account-type"],
+        skippedSteps: [],
+        isComplete: false,
+        onboardingIntent: "creator",
+        savedAt: staleDate,
+      }),
+    );
+    const { result } = renderHook(() => useOnboarding());
+    expect(result.current.currentStep).toBe("account-type");
+    expect(result.current.completedSteps).toEqual([]);
+    expect(result.current.onboardingIntent).toBeNull();
+  });
+
+  it("preserves state when savedAt is within threshold", () => {
+    const recentDate = new Date(Date.now() - 1000).toISOString();
+    localStorage.setItem(
+      ONBOARDING_STORAGE_KEY,
+      JSON.stringify({
+        currentStep: "profile",
+        completedSteps: ["account-type"],
+        skippedSteps: [],
+        isComplete: false,
+        onboardingIntent: "creator",
+        savedAt: recentDate,
+      }),
+    );
+    const { result } = renderHook(() => useOnboarding());
+    expect(result.current.currentStep).toBe("profile");
+    expect(result.current.completedSteps).toContain("account-type");
+    expect(result.current.onboardingIntent).toBe("creator");
+  });
+
+  it("resets to fresh state when stored JSON is corrupted", () => {
+    localStorage.setItem(ONBOARDING_STORAGE_KEY, "not-valid-json{{{");
+    const { result } = renderHook(() => useOnboarding());
+    expect(result.current.currentStep).toBe("account-type");
+    expect(result.current.completedSteps).toEqual([]);
+  });
+
+  it("filters out unrecognised step values from completedSteps", () => {
+    const recentDate = new Date(Date.now() - 1000).toISOString();
+    localStorage.setItem(
+      ONBOARDING_STORAGE_KEY,
+      JSON.stringify({
+        currentStep: "profile",
+        completedSteps: ["account-type", "unknown-step-xyz"],
+        skippedSteps: [],
+        isComplete: false,
+        onboardingIntent: null,
+        savedAt: recentDate,
+      }),
+    );
+    const { result } = renderHook(() => useOnboarding());
+    expect(result.current.completedSteps).toContain("account-type");
+    expect(result.current.completedSteps).not.toContain("unknown-step-xyz");
+  });
+
+  it("falls back to account-type when currentStep is invalid", () => {
+    const recentDate = new Date(Date.now() - 1000).toISOString();
+    localStorage.setItem(
+      ONBOARDING_STORAGE_KEY,
+      JSON.stringify({
+        currentStep: "totally-invalid",
+        completedSteps: [],
+        skippedSteps: [],
+        isComplete: false,
+        onboardingIntent: null,
+        savedAt: recentDate,
+      }),
+    );
+    const { result } = renderHook(() => useOnboarding());
+    expect(result.current.currentStep).toBe("account-type");
+  });
+
+  it("resets to fresh state when savedAt is an invalid date string", () => {
+    localStorage.setItem(
+      ONBOARDING_STORAGE_KEY,
+      JSON.stringify({
+        currentStep: "profile",
+        completedSteps: ["account-type"],
+        skippedSteps: [],
+        isComplete: false,
+        onboardingIntent: "creator",
+        savedAt: "not-a-date",
+      }),
+    );
+    const { result } = renderHook(() => useOnboarding());
+    expect(result.current.currentStep).toBe("account-type");
+    expect(result.current.completedSteps).toEqual([]);
+  });
+
+  it("ignores invalid onboardingIntent and defaults to null", () => {
+    const recentDate = new Date(Date.now() - 1000).toISOString();
+    localStorage.setItem(
+      ONBOARDING_STORAGE_KEY,
+      JSON.stringify({
+        currentStep: "account-type",
+        completedSteps: [],
+        skippedSteps: [],
+        isComplete: false,
+        onboardingIntent: "hacker",
+        savedAt: recentDate,
+      }),
+    );
+    const { result } = renderHook(() => useOnboarding());
+    expect(result.current.onboardingIntent).toBeNull();
   });
 });
