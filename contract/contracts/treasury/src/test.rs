@@ -3,7 +3,7 @@ use soroban_sdk::{
     testutils::{Address as _, Events, MockAuth, MockAuthInvoke},
     token::{StellarAssetClient, TokenClient},
     xdr::SorobanAuthorizationEntry,
-    Address, Env, Error as SorobanError, IntoVal, Symbol, TryIntoVal,
+    Address, Env, IntoVal, Symbol, TryIntoVal,
 };
 
 fn create_token_contract<'a>(
@@ -63,7 +63,7 @@ fn test_withdraw_insufficient_balance() {
     let result = treasury_client.try_withdraw(&user, &500);
     assert_eq!(
         result,
-        Err(Ok(SorobanError::from_contract_error(
+        Err(Ok(soroban_sdk::Error::from_contract_error(
             Error::InsufficientBalance as u32,
         )))
     );
@@ -164,7 +164,7 @@ fn test_pause_blocks_deposit() {
     let result = treasury_client.try_deposit(&user, &100);
     assert_eq!(
         result,
-        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+        Err(Ok(soroban_sdk::Error::from_contract_error(Error::Paused as u32)))
     );
 }
 
@@ -190,7 +190,7 @@ fn test_pause_blocks_withdraw() {
     let result = treasury_client.try_withdraw(&user, &100);
     assert_eq!(
         result,
-        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+        Err(Ok(soroban_sdk::Error::from_contract_error(Error::Paused as u32)))
     );
 }
 
@@ -241,7 +241,7 @@ fn test_min_balance_blocks_withdraw() {
     let result = treasury_client.try_withdraw(&user, &1); // would leave 299 < 300
     assert_eq!(
         result,
-        Err(Ok(SorobanError::from_contract_error(
+        Err(Ok(soroban_sdk::Error::from_contract_error(
             Error::MinBalanceViolation as u32,
         )))
     );
@@ -285,7 +285,7 @@ fn test_set_min_balance_negative_reverts() {
     let result = treasury_client.try_set_min_balance(&-1);
     assert_eq!(
         result,
-        Err(Ok(SorobanError::from_contract_error(
+        Err(Ok(soroban_sdk::Error::from_contract_error(
             Error::NegativeMinBalance as u32,
         )))
     );

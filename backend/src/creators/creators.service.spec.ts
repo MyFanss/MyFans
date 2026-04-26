@@ -461,7 +461,6 @@ describe('CreatorsService', () => {
   });
 
   describe('logging and resilience', () => {
-    it('createPlan logs when EventBus is not injected and still persists plan', async () => {
       const module: TestingModule = await Test.createTestingModule({
         providers: [
           CreatorsService,
