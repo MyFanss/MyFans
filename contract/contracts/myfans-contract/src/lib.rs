@@ -42,14 +42,33 @@ pub enum DataKey {
     Paused,
 }
 
+/// Per-contract error codes for the **myfans-contract** (main contract).
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `CreatorAlreadyRegistered` |
+/// | 2 | `NotInitialized` |
+/// | 3 | `CreatorNotRegistered` |
+/// | 4 | `Paused` |
+/// | 5 | `SubscriptionDoesNotExist` |
+/// | 6 | `AdminNotInitialized` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
+    /// Code 1 – creator address is already registered.
     CreatorAlreadyRegistered = 1,
+    /// Code 2 – contract was never initialized.
     NotInitialized = 2,
+    /// Code 3 – creator address is not registered.
     CreatorNotRegistered = 3,
+    /// Code 4 – contract is paused; state-changing calls are rejected.
     Paused = 4,
+    /// Code 5 – no subscription record found for (fan, creator).
     SubscriptionDoesNotExist = 5,
+    /// Code 6 – admin key not present; contract was never initialized.
     AdminNotInitialized = 6,
 }
 
