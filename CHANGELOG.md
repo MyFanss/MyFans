@@ -204,6 +204,7 @@
 * fixed account creation problems closes [#1](https://github.com/MyFanss/MyFans/issues/1) ([bf136b8](https://github.com/MyFanss/MyFans/commit/bf136b8fd7d7bb39590c6c25b02e236777e56a5f))
 * fixed account creation problems closes [#1](https://github.com/MyFanss/MyFans/issues/1) ([cce7f42](https://github.com/MyFanss/MyFans/commit/cce7f42852a96da4a6ae6c4889783fb158d5de06))
 * follow fn done ([df96342](https://github.com/MyFanss/MyFans/commit/df963420995b4889a54e61801e1006e724af566b))
+* formalize error code ([a89c5c4](https://github.com/MyFanss/MyFans/commit/a89c5c4066bebf85440bd4604079e936247a2dc3))
 * **frontend:** add transaction status polling and history UI ([478ccdb](https://github.com/MyFanss/MyFans/commit/478ccdb8d287c5e3fe72f01c76189e660fd30e5d))
 * **frontend:** creator onboarding — skip/resume, progress, tests ([7ee6e00](https://github.com/MyFanss/MyFans/commit/7ee6e00a441b7f154fd21fe0834d857db71c1729))
 * **frontend:** fan onboarding quickstart with wallet and first sub flow ([a87a4ad](https://github.com/MyFanss/MyFans/commit/a87a4add391f154734428bbcc76b2df1ebe4bb26))
