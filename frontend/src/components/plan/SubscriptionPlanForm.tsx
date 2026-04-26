@@ -15,6 +15,7 @@ import {
   getTokenDisplayLabel,
   validatePlanForm,
 } from '@/lib/plan-form';
+import { SUPPORTED_ASSETS } from '@/lib/assets';
 
 const defaultValues: PlanFormValues = {
   name: '',
@@ -250,15 +251,36 @@ export function SubscriptionPlanForm({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label htmlFor="plan-token-address" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Token contract
+                Payment asset
               </label>
+              {/* Known-asset quick-select */}
+              <div className="mb-2 flex flex-wrap gap-2" role="group" aria-label="Select a known asset">
+                {SUPPORTED_ASSETS.filter((a) => a.contractId).map((asset) => (
+                  <button
+                    key={asset.contractId}
+                    type="button"
+                    onClick={() => update('tokenAddress', asset.contractId)}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                      values.tokenAddress === asset.contractId
+                        ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-950/30 dark:text-primary-300'
+                        : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                    }`}
+                    aria-pressed={values.tokenAddress === asset.contractId}
+                  >
+                    {asset.symbol}
+                    {asset.isStablecoin && (
+                      <span className="ml-1 text-gray-400 dark:text-gray-500">(stablecoin)</span>
+                    )}
+                  </button>
+                ))}
+              </div>
               <input
                 id="plan-token-address"
                 type="text"
                 value={values.tokenAddress}
                 onChange={(e) => update('tokenAddress', e.target.value)}
                 onBlur={() => handleBlur('tokenAddress')}
-                placeholder="C..."
+                placeholder="C... (or select above)"
                 spellCheck={false}
                 className={`w-full rounded-lg border px-3 py-2 font-mono text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-white dark:placeholder-gray-500 ${
                   errors.tokenAddress ? 'border-red-500 dark:border-red-500' : 'border-gray-300 dark:border-gray-600'
@@ -267,7 +289,7 @@ export function SubscriptionPlanForm({
                 aria-describedby={errors.tokenAddress ? 'plan-token-address-error' : 'plan-token-address-help'}
               />
               <p id="plan-token-address-help" className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Paste the Soroban token contract fans will pay with. Default token symbol: {DEFAULT_PLAN_TOKEN_SYMBOL}.
+                Select a known asset above or paste any Soroban token contract address.
               </p>
               {errors.tokenAddress && (
                 <p id="plan-token-address-error" className="mt-1 text-sm text-red-600 dark:text-red-400">
@@ -447,7 +469,7 @@ export function SubscriptionPlanForm({
           price={isValidPrice ? priceNum : 0}
           billingPeriod={values.interval}
           description={values.description.trim() || undefined}
-          currencySymbol={`${tokenLabel} `}
+          assetSymbol={tokenLabel}
           isPopular={values.tier === 'pro'}
           badge={
             status === 'on-chain'
