@@ -69,7 +69,26 @@ export class SubscriptionsController {
       query.fan,
       query.status as never,
       query.sort,
-      query.page,
+      query.cursor,
+      query.limit,
+    );
+  }
+
+  @Get('me/list')
+  @UseGuards(FanBearerGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List subscriptions for the authenticated fan with status and sort filters' })
+  @ApiResponse({ status: 200, description: 'Paginated subscriptions list' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  listMySubscriptions(
+    @Req() req: RequestWithFan,
+    @Query() query: ListSubscriptionsQueryDto,
+  ) {
+    return this.subscriptionsService.listSubscriptions(
+      req.fanAddress,
+      query.status,
+      query.sort,
+      query.cursor,
       query.limit,
     );
   }
@@ -79,8 +98,9 @@ export class SubscriptionsController {
     return this.subscriptionsService.listCreatorSubscribers(
       query.creator,
       query.status,
-      query.page,
+      query.cursor,
       query.limit,
+      query.sort,
     );
   }
 
