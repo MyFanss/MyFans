@@ -8,6 +8,7 @@ import { User } from '../users/entities/user.entity';
 import { PlanDto } from './dto/plan.dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
+import { SubscriptionChainReaderService } from '../subscriptions/subscription-chain-reader.service';
 
 export interface Plan {
   id: number;
@@ -30,6 +31,8 @@ export class CreatorsService {
     private readonly userRepository: Repository<User>,
     @Optional()
     private readonly eventBus?: EventBus,
+    @Optional()
+    private readonly chainReader?: SubscriptionChainReaderService,
   ) {}
 
   createPlan(
@@ -133,6 +136,62 @@ export class CreatorsService {
       nextCursor,
       hasMore,
     );
+  }
+
+  /**
+   * Lists all in-memory plans, optionally merging chain state for each plan.
+   * Chain reads are best-effort: stale/disconnected results fall back to
+   * syncStatus='unknown' so callers always receive a valid response.
+   */
+  async listCreators(mergeChain = false): Promise<PlanDto[]> {
+    const allPlans = Array.from(this.plans.values()).sort((a, b) => a.id - b.id);
+
+    if (!mergeChain) {
+      return allPlans.map((p) => Object.assign(new PlanDto(), p));
+    }
+
+    const contractId = this.chainReader?.getConfiguredContractId();
+    if (!contractId || !this.chainReader) {
+      this.logger.debug('listCreators: chain reader not configured, skipping merge');
+      return allPlans.map((p) =>
+        Object.assign(new PlanDto(), { ...p, syncStatus: 'unknown' }),
+      );
+    }
+
+    // Build planMap for O(1) lookup during merge
+    const planMap = new Map(allPlans.map((p) => [p.id, p]));
+
+    const merged = await Promise.all(
+      allPlans.map(async (plan) => {
+        const chainResult = await this.chainReader!.readPlan(contractId, plan.id);
+        if (!chainResult.ok) {
+          this.logger.warn(
+            `listCreators: chain read failed for plan ${plan.id}: ${chainResult.error}`,
+          );
+          const local = planMap.get(plan.id)!;
+          return Object.assign(new PlanDto(), {
+            ...local,
+            syncStatus: 'unknown' as const,
+          });
+        }
+
+        const local = planMap.get(plan.id)!;
+        const chainPlan = chainResult.plan;
+        const isSynced =
+          local.creator === chainPlan.creator &&
+          local.asset === chainPlan.asset &&
+          local.amount === chainPlan.amount &&
+          local.intervalDays === chainPlan.intervalDays;
+
+        return Object.assign(new PlanDto(), {
+          ...local,
+          syncStatus: isSynced ? ('synced' as const) : ('stale' as const),
+          lastSyncedAt: new Date(),
+        });
+      }),
+    );
+
+    return merged;
   }
 
   async searchCreators(

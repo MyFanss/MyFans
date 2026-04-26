@@ -35,6 +35,13 @@ export class CreatorsController {
     return this.creatorsService.searchCreators(searchDto);
   }
 
+  @Get('list')
+  @ApiOperation({ summary: 'List all creator plans, optionally merged with on-chain state' })
+  @ApiResponse({ status: 200, description: 'Array of plans with optional chain sync status' })
+  listCreators(@Query('chain') chain?: string): Promise<PlanDto[]> {
+    return this.creatorsService.listCreators(chain === 'true');
+  }
+
   @Post('plans')
   @ApiOperation({ summary: 'Create a new subscription plan' })
   @ApiResponse({ status: 201, description: 'Plan created successfully' })
