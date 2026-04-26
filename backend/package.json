@@ -25,14 +25,14 @@
   },
   "dependencies": {
     "@nestjs/common": "^11.1.17",
-    "@nestjs/config": "^4.0.3",
-    "@nestjs/core": "^11.1.17",
+    "@nestjs/config": "^4.0.4",
+    "@nestjs/core": "^11.1.19",
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/mapped-types": "^2.1.0",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.1.17",
     "@nestjs/schedule": "^6.1.1",
-    "@nestjs/swagger": "^11.2.6",
+    "@nestjs/swagger": "^11.4.1",
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/typeorm": "^11.0.0",
     "@stellar/stellar-sdk": "^14.5.0",
@@ -55,8 +55,8 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
-    "@nestjs/cli": "^11.0.0",
-    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/cli": "^11.0.21",
+    "@nestjs/schematics": "^11.1.0",
     "@nestjs/testing": "^11.1.17",
     "@types/bcrypt": "^6.0.0",
     "@types/cookie-parser": "^1.4.10",
@@ -112,8 +112,12 @@
     ]
   },
   "overrides": {
+    "flatted": "^3.4.2",
+    "follow-redirects": "^1.16.0",
+    "handlebars": "^4.7.9",
     "minimatch": ">=9.0.6",
     "multer": ">=2.1.1",
-    "path-to-regexp": ">=8.4.0"
+    "path-to-regexp": ">=8.4.0",
+    "picomatch": "^4.0.4"
   }
 }

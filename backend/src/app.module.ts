@@ -21,6 +21,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { ModerationModule } from './moderation/moderation.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { IdempotencyMiddleware } from './idempotency/idempotency.middleware';
+import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { ReferralModule } from './referral/referral.module';
 import { CsrfModule } from './csrf/csrf.module';
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
@@ -54,6 +55,7 @@ const IDEMPOTENCY_ROUTES = [
     HealthModule,
     ModerationModule,
     IdempotencyModule,
+    FeatureFlagsModule,
     ReferralModule,
     CsrfModule,
   ],
