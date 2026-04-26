@@ -285,7 +285,12 @@ export default function CheckoutFlow({
   // Error state
   if (error) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-center dark:border-red-800 dark:bg-red-900/20">
+      <div
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
+        className="rounded-lg border border-red-200 bg-red-50 p-4 text-center dark:border-red-800 dark:bg-red-900/20"
+      >
         <p className="text-red-700 dark:text-red-300">{error}</p>
         {onCancel && (
           <button
