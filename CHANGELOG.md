@@ -97,6 +97,7 @@
 * **#311:** standardize subscription event topics + fix treasury test ([e14703f](https://github.com/MyFanss/MyFans/commit/e14703f68151f08a9cb1cb3454b3e6e56f7b7239))
 * **#311:** standardize subscription event topics for indexing ([9c9ffb2](https://github.com/MyFanss/MyFans/commit/9c9ffb27d17ad38753092c1edf05a2223beb2a8e)), closes [#311](https://github.com/MyFanss/MyFans/issues/311)
 * **#745:** ledger time vs server clock skew handling ([2b873f3](https://github.com/MyFanss/MyFans/commit/2b873f38a6f2853fe68791c7c2d4c7d21d2d92b5)), closes [#745](https://github.com/MyFanss/MyFans/issues/745)
+* **a11y:** add ARIA live regions to form error messages ([52f8416](https://github.com/MyFanss/MyFans/commit/52f8416117eee5540c773031c61aad90366b154f))
 * add admin-controlled creator unregistration to creator-registry ([e7af8cb](https://github.com/MyFanss/MyFans/commit/e7af8cb39a7982841b2439d3e8671c8f63a25eb6))
 * add API rate limiting with @nestjs/throttler ([b39f5b3](https://github.com/MyFanss/MyFans/commit/b39f5b3fec9f313188d4c566f8ba30deaf1505b0))
 * add AvatarUpload component with validation and accessibility ([a30194f](https://github.com/MyFanss/MyFans/commit/a30194fe22cd266422e7c24148dea16f930aec76))
