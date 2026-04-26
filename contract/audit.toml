@@ -10,13 +10,21 @@ severity_threshold = "high"
 
 ## To ignore a specific advisory, add it under `[advisories]` and include
 ## a justification comment explaining why it is safe in this project.
-##
-## Example:
-##
-## [advisories]
-## # RUSTSEC-0000-0000: <short description>
-## # Reason: <why this is acceptable here, link to issue / PR / upstream discussion>
-## ignore = [
-##   "RUSTSEC-0000-0000",
-## ]
+[advisories]
+# RUSTSEC-2024-0436: paste - no longer maintained
+# Reason: Transitive dependency via soroban-wasmi → soroban-env-host → soroban-sdk 21.7.7.
+# The `paste` crate is used only in macro expansion at compile time and has no runtime
+# security surface. No upstream fix is available without upgrading soroban-sdk beyond the
+# version pinned by this workspace. Tracked in: upgrade soroban-sdk when 22.x stabilises.
+# Severity: warning (unmaintained), not high/critical — below our threshold.
 
+# RUSTSEC-2026-0012: keccak 0.1.5 — unsoundness in opt-in ARMv8 assembly backend
+# Reason: Transitive dependency via soroban-env-host → sha3 → keccak.
+# The unsoundness only manifests when the `asm` feature is enabled on ARMv8 targets.
+# Soroban contracts compile to Wasm (wasm32-unknown-unknown), not ARMv8 native code,
+# so the vulnerable code path is never exercised. No upstream fix available without
+# upgrading soroban-sdk. Severity: warning (unsound), not high/critical.
+ignore = [
+  "RUSTSEC-2024-0436",
+  "RUSTSEC-2026-0012",
+]

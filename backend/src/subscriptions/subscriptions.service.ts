@@ -37,7 +37,6 @@ export enum CheckoutStatus {
 
 export const SERVER_NETWORK = process.env.STELLAR_NETWORK ?? 'testnet';
 
-treasury-deposit-event
 interface Subscription {
   id: string;
   fan: string;
@@ -49,8 +48,6 @@ interface Subscription {
   updatedAt?: Date;
 }
 
-
-main
 interface Checkout {
   id: string;
   fanAddress: string;
