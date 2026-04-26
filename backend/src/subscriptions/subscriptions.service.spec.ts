@@ -2,11 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EventBus } from '../events/event-bus';
 import { InProcessEventBus } from '../events/in-process-event-bus';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
- treasury-deposit-event
-import { SERVER_NETWORK, SubscriptionsService, SubscriptionStatus } from './subscriptions.service';
-
 import { SubscriptionsService } from './subscriptions.service';
- main
 import {
   SUBSCRIPTION_EVENT_PUBLISHER,
   SUBSCRIPTION_RENEWAL_FAILED,
@@ -166,45 +162,8 @@ describe('SubscriptionsService', () => {
       'GFANADDRESS333333333333333333333333333333333333333333333333',
     );
 
-  treasury-deposit-event
-    it('should filter by status', () => {
-      const expiry = Math.floor(Date.now() / 1000) + 86400;
-      const pastExpiry = Math.floor(Date.now() / 1000) - 86400;
-      service.addSubscription(fan, 'CREATOR_A_XXXXXXX', 1, expiry);
-      service.addSubscription(fan, 'CREATOR_B_XXXXXXX', 1, pastExpiry);
-
-      const activeOnly = service.listSubscriptions(fan, SubscriptionStatus.ACTIVE);
-      expect(activeOnly.data).toHaveLength(1);
-      expect(activeOnly.total).toBe(1);
-
-      const expiredOnly = service.listSubscriptions(fan, SubscriptionStatus.EXPIRED);
-      expect(expiredOnly.data).toHaveLength(1);
-      expect(expiredOnly.total).toBe(1);
-    });
-
-    it('should return empty page when page exceeds total pages', () => {
-      const expiry = Math.floor(Date.now() / 1000) + 86400;
-      service.addSubscription(fan, 'CREATOR_A_XXXXXXX', 1, expiry);
-
-      const result = service.listSubscriptions(
-        fan,
-        undefined,
-        undefined,
-        5,
-        20,
-      );
-      expect(result.data).toEqual([]);
-      expect(result.total).toBe(1);
-      expect(result.page).toBe(5);
-      expect(result.totalPages).toBe(1);
-    });
-
     expect(result.data).toHaveLength(1);
-main
     expect(result.total).toBe(1);
-    expect(repo.findAndCountForFan).toHaveBeenCalled();
- main
-=======
     expect(repo.findWithCursor).toHaveBeenCalledWith(
       'GFANADDRESS333333333333333333333333333333333333333333333333',
       undefined,
@@ -237,7 +196,73 @@ main
       'some-cursor',
       10,
     );
- main
+  });
+
+  it('filters by status=active via findWithCursor', async () => {
+    const fan = 'GFANADDRESS777777777777777777777777777777777777777777777777';
+    await service.addSubscription(fan, 'GAAAAAAAAAAAAAAA', 1, Math.floor(Date.now() / 1000) + 3600);
+
+    await service.listSubscriptions(fan, SubscriptionStatus.ACTIVE, undefined, undefined, 20);
+
+    expect(repo.findWithCursor).toHaveBeenCalledWith(fan, SubscriptionStatus.ACTIVE, undefined, undefined, 20);
+  });
+
+  it('filters by status=expired via findWithCursor', async () => {
+    const fan = 'GFANADDRESS888888888888888888888888888888888888888888888888';
+    await service.addSubscription(fan, 'GAAAAAAAAAAAAAAA', 1, Math.floor(Date.now() / 1000) - 3600);
+
+    await service.listSubscriptions(fan, SubscriptionStatus.EXPIRED, undefined, undefined, 20);
+
+    expect(repo.findWithCursor).toHaveBeenCalledWith(fan, SubscriptionStatus.EXPIRED, undefined, undefined, 20);
+  });
+
+  it('passes sort=expiry to findWithCursor', async () => {
+    const fan = 'GFANADDRESS999999999999999999999999999999999999999999999999';
+    await service.listSubscriptions(fan, undefined, 'expiry', undefined, 20);
+
+    expect(repo.findWithCursor).toHaveBeenCalledWith(fan, undefined, 'expiry', undefined, 20);
+  });
+
+  it('listCreatorSubscribers sorts by expiry when sort=expiry', async () => {
+    const creator = 'GCREATOR1111111111111111111111111111111111111111111111111111';
+    const now = Math.floor(Date.now() / 1000);
+    currentSubs.push(
+      makeSub({ id: 'sub-a', fan: 'GFAN_A', creator, expiryUnix: now + 7200, createdAt: new Date(Date.now() - 1000) }),
+      makeSub({ id: 'sub-b', fan: 'GFAN_B', creator, expiryUnix: now + 3600, createdAt: new Date() }),
+    );
+
+    const result = await service.listCreatorSubscribers(creator, undefined, undefined, 20, 'expiry');
+
+    expect(result.data[0].fanAddress).toBe('GFAN_B'); // earlier expiry first
+    expect(result.data[1].fanAddress).toBe('GFAN_A');
+  });
+
+  it('listCreatorSubscribers sorts by created desc by default', async () => {
+    const creator = 'GCREATOR2222222222222222222222222222222222222222222222222222';
+    const now = Math.floor(Date.now() / 1000);
+    currentSubs.push(
+      makeSub({ id: 'sub-c', fan: 'GFAN_C', creator, expiryUnix: now + 3600, createdAt: new Date(Date.now() - 5000) }),
+      makeSub({ id: 'sub-d', fan: 'GFAN_D', creator, expiryUnix: now + 3600, createdAt: new Date() }),
+    );
+
+    const result = await service.listCreatorSubscribers(creator, undefined, undefined, 20);
+
+    expect(result.data[0].fanAddress).toBe('GFAN_D'); // most recently created first
+    expect(result.data[1].fanAddress).toBe('GFAN_C');
+  });
+
+  it('listCreatorSubscribers filters by status=active', async () => {
+    const creator = 'GCREATOR3333333333333333333333333333333333333333333333333333';
+    const now = Math.floor(Date.now() / 1000);
+    currentSubs.push(
+      makeSub({ id: 'sub-e', fan: 'GFAN_E', creator, expiryUnix: now + 3600, status: SubscriptionStatus.ACTIVE }),
+      makeSub({ id: 'sub-f', fan: 'GFAN_F', creator, expiryUnix: now - 3600, status: SubscriptionStatus.EXPIRED }),
+    );
+
+    const result = await service.listCreatorSubscribers(creator, 'active', undefined, 20);
+
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0].fanAddress).toBe('GFAN_E');
   });
 
   it('publishes a renewal event when confirming an existing subscription', async () => {

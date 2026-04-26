@@ -37,13 +37,13 @@ export default function SubscriptionsPage() {
     const fetchSubscriptions = async () => {
       setIsLoading(true);
       try {
-        // Hardcode a fan address for demo purposes, since auth context isn't visible here
-        const fanAddress = 'fan_demo_address';
-        const res = await fetch(`http://localhost:3001/subscriptions/list?fan=${fanAddress}&status=${statusFilter}&sort=${sortOption}`);
+        const params = new URLSearchParams({ status: statusFilter, sort: sortOption });
+        const res = await fetch(`/api/v1/subscriptions/me/list?${params.toString()}`);
         if (!res.ok) throw new Error('Failed to fetch subscriptions');
         const data = await res.json();
         if (mounted) {
-          setActiveList(data);
+          // API returns { data: [...], ... } paginated shape
+          setActiveList(Array.isArray(data) ? data : (data.data ?? []));
         }
       } catch (err) {
         console.error(err);
@@ -171,12 +171,12 @@ export default function SubscriptionsPage() {
       
       showSuccess('Subscription renewed', `${renewTarget.creatorName} ${renewTarget.planName} is active again.`);
       
-      // Refresh list if it was a history item or expired
-      const fanAddress = 'fan_demo_address';
-      const res = await fetch(`http://localhost:3001/subscriptions/list?fan=${fanAddress}&status=${statusFilter}&sort=${sortOption}`);
+      // Refresh list after renewal
+      const params = new URLSearchParams({ status: statusFilter, sort: sortOption });
+      const res = await fetch(`/api/v1/subscriptions/me/list?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setActiveList(data);
+        setActiveList(Array.isArray(data) ? data : (data.data ?? []));
       }
       
       setRenewTarget(null);
@@ -220,20 +220,26 @@ export default function SubscriptionsPage() {
             </div>
 
             <div className="flex items-center gap-3">
+              <label htmlFor="status-filter" className="sr-only">Filter by status</label>
               <select
+                id="status-filter"
                 value={statusFilter}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatusFilter(e.target.value)}
                 className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                aria-label="Filter by status"
               >
                 <option value="active">Active</option>
                 <option value="expired">Expired</option>
                 <option value="cancelled">Cancelled</option>
               </select>
 
+              <label htmlFor="sort-option" className="sr-only">Sort by</label>
               <select
+                id="sort-option"
                 value={sortOption}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSortOption(e.target.value)}
                 className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                aria-label="Sort subscriptions"
               >
                 <option value="expiry">Sort by Expiry</option>
                 <option value="created">Sort by Created</option>
