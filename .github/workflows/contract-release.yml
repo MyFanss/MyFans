@@ -99,6 +99,37 @@ jobs:
             >> $GITHUB_STEP_SUMMARY
         working-directory: contract
 
+      - name: 📏 Generate Wasm size report
+        run: |
+          REPORT="wasm-size-report.txt"
+          WASM_DIR="target/wasm32-unknown-unknown/release"
+          echo "# Wasm Build Size Report" > "$REPORT"
+          echo "Generated: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$REPORT"
+          echo "Commit:    ${GITHUB_SHA}" >> "$REPORT"
+          echo "" >> "$REPORT"
+          printf "%-40s %10s %10s\n" "Contract" "Bytes" "KiB" >> "$REPORT"
+          printf "%-40s %10s %10s\n" "--------" "-----" "---" >> "$REPORT"
+          TOTAL=0
+          while IFS= read -r -d '' f; do
+            name=$(basename "$f")
+            bytes=$(stat -c%s "$f")
+            kib=$(echo "scale=1; $bytes / 1024" | bc)
+            printf "%-40s %10d %10s\n" "$name" "$bytes" "$kib" >> "$REPORT"
+            TOTAL=$((TOTAL + bytes))
+          done < <(find "$WASM_DIR" -maxdepth 1 -name '*.wasm' -print0 | sort -z)
+          TOTAL_KIB=$(echo "scale=1; $TOTAL / 1024" | bc)
+          echo "" >> "$REPORT"
+          printf "%-40s %10d %10s\n" "TOTAL" "$TOTAL" "$TOTAL_KIB" >> "$REPORT"
+        working-directory: contract
+
+      - name: 📦 Upload Wasm size report artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: wasm-size-report
+          path: contract/wasm-size-report.txt
+          retention-days: 30
+          if-no-files-found: error
+
       # ── Step 5: ABI snapshot check ────────────────────────────────────────
       # stellar CLI is not available in standard CI runners; we verify the
       # snapshot files are committed and non-empty as a proxy check.
