@@ -267,6 +267,7 @@
 * register interfaces and mocks in lib module tree ([a8a677b](https://github.com/MyFanss/MyFans/commit/a8a677bebf1713fcc89e1551148eed58320aacf4))
 * reinitialized ([2c62b94](https://github.com/MyFanss/MyFans/commit/2c62b9420d907d34d1342326e617291e445d47ff))
 * reinitialized ([f0462b0](https://github.com/MyFanss/MyFans/commit/f0462b08090aa6e6f70869840e69f4d1dd99e421))
+* remove dead code ([2603d03](https://github.com/MyFanss/MyFans/commit/2603d03ce59428d782bea0c2829c935090e17f14))
 * resolve issues [#728](https://github.com/MyFanss/MyFans/issues/728) [#730](https://github.com/MyFanss/MyFans/issues/730) [#731](https://github.com/MyFanss/MyFans/issues/731) [#740](https://github.com/MyFanss/MyFans/issues/740) ([66977ca](https://github.com/MyFanss/MyFans/commit/66977ca5016b406b2acbe938514ae495909f42a4))
 * **scripts:** add --dry-run flag to deploy script ([c42c306](https://github.com/MyFanss/MyFans/commit/c42c306c5ab11df6b22eb035c8dbd6e46dd701ab)), closes [#306](https://github.com/MyFanss/MyFans/issues/306)
 * **security:** CSRF double-submit cookie strategy for BFF ([cac88a9](https://github.com/MyFanss/MyFans/commit/cac88a90c991f05b7b219aab9cb4ca48986d7d90))
