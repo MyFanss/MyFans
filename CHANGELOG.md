@@ -287,6 +287,7 @@
 * Treasury-min-balance guard ([a3c26dc](https://github.com/MyFanss/MyFans/commit/a3c26dc06bfa1c6005d48e9ce88246ce6c6674d1))
 * unfollow fn done ([3e56a68](https://github.com/MyFanss/MyFans/commit/3e56a68c90b37232ccdf475c7ce76ca9f0ff2981))
 * **wallet:** return actionable errors on network mismatch ([e44f92c](https://github.com/MyFanss/MyFans/commit/e44f92c1018f2848bfc4fd36047215e14e2d645e))
+* wasm build size ([f56adb3](https://github.com/MyFanss/MyFans/commit/f56adb37e337b9b453d22d62dd432fdba76d0ba7))
 * webhook secret rotation with active + previous secret and cutoff strategy ([dec98eb](https://github.com/MyFanss/MyFans/commit/dec98eb4e3f513a42a3667adb25d25e67b116640))
 
 
