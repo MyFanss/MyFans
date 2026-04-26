@@ -1,17 +1,25 @@
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { SelectQueryBuilder } from 'typeorm';
 import { CreatorsService } from './creators.service';
-import { User, UserRole } from '../users/entities/user.entity';
+import { PaginationDto } from '../common/dto';
+import { User } from '../users/entities/user.entity';
 import { EventBus } from '../events/event-bus';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
-import { SubscriptionChainReaderService } from '../subscriptions/subscription-chain-reader.service';
+import { UserRole } from '../common/enums/user-role.enum';
 
 describe('CreatorsService', () => {
   let service: CreatorsService;
   let mockQueryBuilder: Partial<SelectQueryBuilder<User>>;
+  let debugSpy: jest.SpyInstance;
+  let warnSpy: jest.SpyInstance;
+  let errorSpy: jest.SpyInstance;
 
   beforeEach(async () => {
+    debugSpy = jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
+    warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
     // Create mock query builder
     mockQueryBuilder = {
       createQueryBuilder: jest.fn().mockReturnThis(),
@@ -36,18 +44,16 @@ describe('CreatorsService', () => {
             createQueryBuilder: jest.fn(() => mockQueryBuilder),
           },
         },
-        {
-          provide: SubscriptionChainReaderService,
-          useValue: {
-            getConfiguredContractId: jest.fn(),
-            readPlanCount: jest.fn(),
-            readPlan: jest.fn(),
-          },
-        },
       ],
     }).compile();
 
     service = module.get<CreatorsService>(CreatorsService);
+  });
+
+  afterEach(() => {
+    debugSpy.mockRestore();
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 
   it('should be defined', () => {
@@ -79,6 +85,9 @@ describe('CreatorsService', () => {
         expect(result.page).toBe(1);
         expect(result.limit).toBe(10);
         expect(mockQueryBuilder.andWhere).not.toHaveBeenCalled();
+        expect(debugSpy).toHaveBeenCalledWith(
+          'Creator search returned 2/2 rows for query ""',
+        );
       });
 
       it('should return all creators when query is undefined', async () => {
@@ -451,68 +460,84 @@ describe('CreatorsService', () => {
     });
   });
 
-  describe('reconcilePlansWithChain', () => {
-    let chainReaderMock: jest.Mocked<SubscriptionChainReaderService>;
+  describe('logging and resilience', () => {
+    it('createPlan logs when EventBus is not injected and still persists plan', async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          CreatorsService,
+          {
+            provide: getRepositoryToken(User),
+            useValue: {
+              createQueryBuilder: jest.fn(() => mockQueryBuilder),
+            },
+          },
+        ],
+      }).compile();
 
-    beforeEach(() => {
-      chainReaderMock = module.get(SubscriptionChainReaderService);
+      const isolated = module.get<CreatorsService>(CreatorsService);
+      const plan = isolated.createPlan('addr1', 'USDC:1', '5', 7);
+
+      expect(plan.creator).toBe('addr1');
+      expect(debugSpy).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /Plan \d+ created for addr1; EventBus not wired, skipping PlanCreatedEvent/,
+        ),
+      );
     });
 
-    it('should skip reconciliation if no contract ID configured', async () => {
-      chainReaderMock.getConfiguredContractId.mockReturnValue(undefined);
-
-      await service.reconcilePlansWithChain();
-
-      expect(chainReaderMock.readPlanCount).not.toHaveBeenCalled();
-    });
-
-    it('should mark backend plans as stale if not on chain', async () => {
-      const contractId = 'test-contract';
-      chainReaderMock.getConfiguredContractId.mockReturnValue(contractId);
-      chainReaderMock.readPlanCount.mockResolvedValue({ ok: true, count: 0 });
-      chainReaderMock.readPlan.mockResolvedValue({ ok: false, error: 'not found' });
-
-      // Add a backend plan
-      service.createPlan('creator1', 'asset1', '1000', 30);
-
-      await service.reconcilePlansWithChain();
-
-      const plan = service.getPlan(1);
-      expect(plan?.syncStatus).toBe('stale');
-    });
-
-    it('should mark backend plans as synced if matching chain', async () => {
-      const contractId = 'test-contract';
-      chainReaderMock.getConfiguredContractId.mockReturnValue(contractId);
-      chainReaderMock.readPlanCount.mockResolvedValue({ ok: true, count: 1 });
-      chainReaderMock.readPlan.mockResolvedValue({
-        ok: true,
-        plan: { creator: 'creator1', asset: 'asset1', amount: '1000', intervalDays: 30 },
+    it('createPlan survives publish throwing and logs a warning', () => {
+      const publish = jest.fn().mockImplementation(() => {
+        throw new Error('bus down');
+      });
+      const busModule = Test.createTestingModule({
+        providers: [
+          CreatorsService,
+          { provide: EventBus, useValue: { publish } },
+          {
+            provide: getRepositoryToken(User),
+            useValue: {
+              createQueryBuilder: jest.fn(() => mockQueryBuilder),
+            },
+          },
+        ],
       });
 
-      // Add a matching backend plan
-      service.createPlan('creator1', 'asset1', '1000', 30);
-
-      await service.reconcilePlansWithChain();
-
-      const plan = service.getPlan(1);
-      expect(plan?.syncStatus).toBe('synced');
+      return busModule.compile().then((m) => {
+        const svc = m.get<CreatorsService>(CreatorsService);
+        const plan = svc.createPlan('c1', 'XLM', '1', 1);
+        expect(plan.id).toBeGreaterThan(0);
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringMatching(
+            /Plan \d+ created but PlanCreatedEvent publish failed: bus down/,
+          ),
+        );
+      });
     });
 
-    it('should add missing chain plans to backend', async () => {
-      const contractId = 'test-contract';
-      chainReaderMock.getConfiguredContractId.mockReturnValue(contractId);
-      chainReaderMock.readPlanCount.mockResolvedValue({ ok: true, count: 1 });
-      chainReaderMock.readPlan.mockResolvedValue({
-        ok: true,
-        plan: { creator: 'creator1', asset: 'asset1', amount: '1000', intervalDays: 30 },
+    it('findAllPlans ignores invalid cursor and logs debug', () => {
+      service.createPlan('a', 'USDC', '1', 30);
+      service.findAllPlans({ cursor: 'not-a-number', limit: 10 } as PaginationDto);
+      expect(debugSpy).toHaveBeenCalledWith(
+        'Ignoring invalid plans pagination cursor "not-a-number"',
+      );
+    });
+
+    it('searchCreators logs error and rethrows when the query fails', async () => {
+      (mockQueryBuilder.getCount as jest.Mock).mockRejectedValue(
+        new Error('connection reset'),
+      );
+      (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
+        entities: [],
+        raw: [],
       });
 
-      await service.reconcilePlansWithChain();
+      await expect(
+        service.searchCreators({ q: 'x', page: 1, limit: 10 }),
+      ).rejects.toThrow('connection reset');
 
-      const plan = service.getPlan(1);
-      expect(plan).toBeDefined();
-      expect(plan?.syncStatus).toBe('missing');
+      expect(errorSpy).toHaveBeenCalledWith(
+        'Creator search failed: connection reset',
+      );
     });
   });
 });

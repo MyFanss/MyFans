@@ -35,19 +35,36 @@ export class PostsService {
   async findAll(
     pagination: PaginationDto,
   ): Promise<PaginatedResponseDto<PostDto>> {
-    const page = pagination.page ?? 1;
     const limit = pagination.limit ?? 20;
-    const [items, total] = await this.postRepo.findAndCount({
-      where: { deletedAt: IsNull() },
-      order: { createdAt: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+    const queryBuilder = this.postRepo
+      .createQueryBuilder('post')
+      .where('post.deletedAt IS NULL')
+      .orderBy('post.id', 'ASC')
+      .take(limit + 1);
+
+    if (pagination.cursor) {
+      const cursorId = parseInt(pagination.cursor, 10);
+      if (!isNaN(cursorId)) {
+        queryBuilder.andWhere('post.id > :cursorId', { cursorId });
+      }
+    }
+
+    const items = await queryBuilder.getMany();
+    const hasMore = items.length > limit;
+    if (hasMore) {
+      items.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (items.length > 0) {
+      nextCursor = String(items[items.length - 1].id);
+    }
+
     return new PaginatedResponseDto(
       items.map((p) => this.toDto(p)),
-      total,
-      page,
       limit,
+      nextCursor,
+      hasMore,
     );
   }
 
@@ -55,19 +72,37 @@ export class PostsService {
     authorId: string,
     pagination: PaginationDto,
   ): Promise<PaginatedResponseDto<PostDto>> {
-    const page = pagination.page ?? 1;
     const limit = pagination.limit ?? 20;
-    const [items, total] = await this.postRepo.findAndCount({
-      where: { authorId, deletedAt: IsNull() },
-      order: { createdAt: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+    const queryBuilder = this.postRepo
+      .createQueryBuilder('post')
+      .where('post.authorId = :authorId', { authorId })
+      .andWhere('post.deletedAt IS NULL')
+      .orderBy('post.id', 'ASC')
+      .take(limit + 1);
+
+    if (pagination.cursor) {
+      const cursorId = parseInt(pagination.cursor, 10);
+      if (!isNaN(cursorId)) {
+        queryBuilder.andWhere('post.id > :cursorId', { cursorId });
+      }
+    }
+
+    const items = await queryBuilder.getMany();
+    const hasMore = items.length > limit;
+    if (hasMore) {
+      items.pop();
+    }
+
+    let nextCursor: string | null = null;
+    if (items.length > 0) {
+      nextCursor = String(items[items.length - 1].id);
+    }
+
     return new PaginatedResponseDto(
       items.map((p) => this.toDto(p)),
-      total,
-      page,
       limit,
+      nextCursor,
+      hasMore,
     );
   }
 

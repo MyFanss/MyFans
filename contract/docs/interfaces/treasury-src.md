@@ -1,4 +1,4 @@
-# Treasury (src/treasury.rs)
+# Treasury (contracts/myfans-contract/src/treasury.rs)
 
 Basic treasury.
 

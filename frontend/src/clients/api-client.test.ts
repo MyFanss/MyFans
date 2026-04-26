@@ -1,10 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import { apiClient, useApiClient, getCurrentUserOrThrow } from './api-client';
 import type { AppError, GetCurrentUserResponse } from '@/types';
 
 // Mock fetch
 global.fetch = vi.fn() as any;
+
+// Mock CSRF module so tests don't hit the network for a token
+vi.mock('@/lib/csrf', () => ({
+  getCsrfToken: vi.fn().mockResolvedValue('test-csrf-token'),
+  invalidateCsrfToken: vi.fn(),
+}));
+
+import { getCsrfToken, invalidateCsrfToken } from '@/lib/csrf';
 
 const mockApiUrl = 'http://localhost:3000/api';
 const mockUser = { id: '1', username: 'test', followers: 0, following: 0, isVerified: false, createdAt: '2024' };
@@ -88,5 +96,49 @@ describe('ApiClient', () => {
     await expect(getCurrentUserOrThrow()).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
+  });
+
+  it('attaches x-csrf-token header on POST requests', async () => {
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ success: true, data: mockUser }),
+    });
+
+    await apiClient.createUser({ stellarAddress: 'GABC', username: 'u' } as any);
+
+    expect(getCsrfToken).toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'x-csrf-token': 'test-csrf-token' }),
+      }),
+    );
+  });
+
+  it('does NOT attach x-csrf-token on GET requests', async () => {
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ success: true, data: mockUser }),
+    });
+
+    await apiClient.getCurrentUser();
+
+    const [, config] = (fetch as any).mock.calls[0];
+    expect(config.headers['x-csrf-token']).toBeUndefined();
+  });
+
+  it('calls invalidateCsrfToken on 403 response', async () => {
+    (fetch as any).mockResolvedValue({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+      json: vi.fn(),
+    });
+
+    await expect(
+      apiClient.createUser({ stellarAddress: 'GABC', username: 'u' } as any),
+    ).rejects.toBeDefined();
+
+    expect(invalidateCsrfToken).toHaveBeenCalled();
   });
 });

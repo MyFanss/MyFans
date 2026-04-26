@@ -6,14 +6,23 @@ can detect accidental breaking changes.
 
 ## How CI uses these
 
-The `contracts-abi` job in CI runs:
+The optional `ABI Snapshot Check` GitHub Actions job runs:
 
 ```bash
 ./scripts/snapshot-abi.sh --check
 ```
 
 It rebuilds every contract WASM, re-generates the ABI, and diffs it against the
-committed snapshot. If anything changed the job fails and the PR is blocked.
+committed snapshot. If anything changed, the job reports the diff, but it is
+configured as non-blocking so maintainers can decide whether to refresh the
+snapshots in a follow-up commit or PR.
+
+You can also run the same verification manually before opening a PR:
+
+```bash
+cd contract
+./scripts/snapshot-abi.sh --check
+```
 
 ## Intentionally updating a snapshot
 
@@ -29,3 +38,13 @@ committed snapshot. If anything changed the job fails and the PR is blocked.
    abi-update: add pagination params to content-likes list function
    ```
 4. Open a PR — reviewers will see the exact ABI diff in the changed files.
+
+## Regenerating snapshots manually
+
+If you intentionally changed a contract interface and want to refresh the
+committed snapshots:
+
+```bash
+cd contract
+./scripts/snapshot-abi.sh
+```

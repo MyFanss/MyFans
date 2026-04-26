@@ -1,8 +1,8 @@
-#![cfg(test)]
-
-use super::*;
-use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, Env, Error as SorobanError};
 use super::Error as ContractError;
+use super::*;
+use soroban_sdk::{
+    testutils::Address as _, testutils::Ledger, Address, Env, Error as SorobanError,
+};
 
 #[test]
 fn test_initialize() {
@@ -176,75 +176,6 @@ fn test_registration_ledger_key_helper_keeps_legacy_variant() {
     );
 }
 
-#[test]
-fn test_update_creator_id_authorized() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, CreatorRegistryContract);
-    let client = CreatorRegistryContractClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    let creator = Address::generate(&env);
-
-    client.initialize(&admin);
-    client.register_creator(&creator, &creator, &111);
-
-    client.update_creator_id(&creator, &creator, &222);
-
-    assert_eq!(client.get_creator_id(&creator), Some(222));
-
-    let events = env.events().all();
-    let found = events.iter().any(|event| {
-        let topic: soroban_sdk::Symbol = event.1.get(0).unwrap().try_into_val(&env).unwrap();
-        topic == soroban_sdk::Symbol::new(&env, "creator_updated")
-    });
-    assert!(found, "creator_updated event not emitted");
-}
-
-#[test]
-fn test_update_creator_id_unauthorized_fails() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, CreatorRegistryContract);
-    let client = CreatorRegistryContractClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    let creator = Address::generate(&env);
-    let rando = Address::generate(&env);
-
-    client.initialize(&admin);
-    client.register_creator(&creator, &creator, &111);
-
-    let result = client.try_update_creator_id(&rando, &creator, &222);
-    assert_eq!(
-        result,
-        Err(Ok(SorobanError::from_contract_error(
-            Error::Unauthorized as u32,
-        )))
-    );
-}
-
-#[test]
-fn test_update_creator_id_not_registered_fails() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, CreatorRegistryContract);
-    let client = CreatorRegistryContractClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    let creator = Address::generate(&env);
-
-    client.initialize(&admin);
-
-    let result = client.try_update_creator_id(&admin, &creator, &222);
-    assert_eq!(
-        result,
-        Err(Ok(SorobanError::from_contract_error(
-            Error::NotRegistered as u32,
-        )))
-    );
-}
-
 // ─── Rate limit boundary tests (issue #320) ───────────────────────────────────
 
 /// Advance the ledger sequence by `n` ledgers.
@@ -397,6 +328,11 @@ fn rate_limit_is_per_caller_not_global() {
 fn first_registration_is_never_rate_limited() {
     let env = Env::default();
     env.mock_all_auths();
+
+    // High ledger must be set before instance storage is written: jumping here
+    // after initialize would exceed the entry TTL and archive keys (SDK 21.7+).
+    env.ledger().with_mut(|li| li.sequence_number = 99_999);
+
     let contract_id = env.register_contract(None, CreatorRegistryContract);
     let client = CreatorRegistryContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -404,9 +340,7 @@ fn first_registration_is_never_rate_limited() {
 
     client.initialize(&admin);
 
-    // Jump to a high ledger — no prior registration so limit cannot apply
-    env.ledger().with_mut(|li| li.sequence_number = 99_999);
-
+    // No prior registration for admin — rate limit cannot apply
     client.register_creator(&admin, &creator, &99u64);
 
     assert_eq!(

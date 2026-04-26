@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { SubscriptionsService, Subscription } from './subscriptions.service';
+import { v4 as uuidv4 } from 'uuid';
+import { SubscriptionsService } from './subscriptions.service';
 import { SubscriptionIndexRepository } from './repositories/subscription-index.repository';
-import { SubscriptionStatus } from './entities/subscription-index.entity';
+import { SubscriptionIndexEntity, SubscriptionStatus } from './entities/subscription-index.entity';
 import { SorobanRpcService } from '../common/services/soroban-rpc.service';
 import { JobLoggerService } from '../common/services/job-logger.service';
+import { RequestContextService } from '../common/services/request-context.service';
 
 export interface ReconcileResult {
   dryRun: boolean;
@@ -29,14 +31,6 @@ export interface ReconcileRecord {
   error?: string;
 }
 
-type ReconcileSub = {
-  id: string;
-  fan: string;
-  creator: string;
-  expiryUnix: number;
-  status: SubscriptionStatus;
-};
-
 /** A subscription is stale when:
  *  1. status='active' but expiry is in the past (missed expiry update), OR
  *  2. status='active' but chain says it's expired/not found, OR
@@ -51,13 +45,26 @@ export class SubscriptionReconcilerService {
     private readonly indexRepo: SubscriptionIndexRepository,
     private readonly soroban: SorobanRpcService,
     private readonly jobLogger: JobLoggerService,
+    private readonly requestContext: RequestContextService,
   ) {}
 
   /** Scheduled: runs every hour in production */
   @Cron(CronExpression.EVERY_HOUR)
   async scheduledReconcile(): Promise<void> {
     const dryRun = process.env.RECONCILER_DRY_RUN === 'true';
-    await this.reconcile(dryRun);
+    const correlationId = uuidv4();
+    await new Promise<void>((resolve, reject) =>
+      this.requestContext.run(
+        {
+          correlationId,
+          requestId: uuidv4(),
+          method: 'CRON',
+          url: 'subscription-reconciler',
+          ip: 'internal',
+        },
+        () => this.reconcile(dryRun).then(resolve, reject),
+      ),
+    );
   }
 
   async reconcile(dryRun = false): Promise<ReconcileResult> {
@@ -65,6 +72,7 @@ export class SubscriptionReconcilerService {
       queue: 'reconciler',
       jobName: 'subscription-reconcile',
       jobId: `reconcile-${Date.now()}`,
+      correlationId: this.requestContext.getCorrelationId() ?? undefined,
     });
 
     const result: ReconcileResult = {
@@ -189,10 +197,6 @@ export class SubscriptionReconcilerService {
     // Stub: real impl would call soroban contract read via SorobanRpcService
     void fan; void creator;
     return null;
-  }
-
-  private getAllSubscriptions(): { id: string; fan: string; creator: string; expiry: number; status: string }[] {
-    return this.subscriptions.getAllSubscriptionsInternal();
   }
 
   private logAudit(result: ReconcileResult): void {

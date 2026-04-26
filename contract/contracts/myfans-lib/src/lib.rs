@@ -52,10 +52,14 @@ pub enum MyfansError {
     MinBalanceViolation = 106,
 }
 
+/// Shared test fixtures for cross-contract integration tests.
+/// Only compiled when the `testutils` feature is enabled.
+#[cfg(any(test, feature = "testutils"))]
+pub mod test_fixtures;
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{Env, IntoVal, TryIntoVal};
 
     #[test]
     fn test_subscription_status_values() {
