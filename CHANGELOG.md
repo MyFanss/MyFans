@@ -112,6 +112,7 @@
 * add creator verification functionality to registry ([a5d9828](https://github.com/MyFanss/MyFans/commit/a5d9828e8a4980d22aa489bfe9508bf053502e6a))
 * add creator_id update support in creator-registry; fix: add tests for creator_id update auth and not-registered handling ([194e2c3](https://github.com/MyFanss/MyFans/commit/194e2c3e227f41d48a18b6fef1491a4c93252538))
 * add database connection resiliency ([#355](https://github.com/MyFanss/MyFans/issues/355)) ([44882f6](https://github.com/MyFanss/MyFans/commit/44882f633b108811a41ac8c5180ab43f4765dde3))
+* add Docker Compose dev profile for one-command local stack ([a433ab2](https://github.com/MyFanss/MyFans/commit/a433ab205d26dcfe2d8f0bc478592babb32868c0))
 * add duplicate earnings prevention via payment_reference idempotency key ([7651ac4](https://github.com/MyFanss/MyFans/commit/7651ac46ee831306aa4553084548fd8e1bfdd04d))
 * add e2e test for secure account deletion flow (closes [#418](https://github.com/MyFanss/MyFans/issues/418)) ([cc27b80](https://github.com/MyFanss/MyFans/commit/cc27b80613402658fd72713551a6ddbacc8a240c))
 * Add E2E tests for cancel/renew subscription flow ([#405](https://github.com/MyFanss/MyFans/issues/405)) ([c697a22](https://github.com/MyFanss/MyFans/commit/c697a2246e9b6e3675f3b66f67c44abd3ae4bbc2))
