@@ -13,6 +13,8 @@ contract/.stellar/
 .env
 .env.*
 !.env.example
+!.env.dev.example
+.env.dev
 
 # OS
 .DS_Store
