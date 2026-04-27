@@ -3,6 +3,7 @@
  */
 
 import { StrKey } from '@stellar/stellar-sdk';
+import { getAssetSymbol, XLM_NATIVE_SENTINEL } from '@/lib/assets';
 
 export type PlanInterval = 'month' | 'year';
 export type PlanTier = 'basic' | 'pro' | 'premium';
@@ -37,12 +38,12 @@ const DEFAULT_PLAN_TOKEN_DECIMALS_FALLBACK = 7;
 export const DEFAULT_PLAN_TOKEN_ADDRESS =
   process.env.NEXT_PUBLIC_PLAN_TOKEN_CONTRACT_ID ??
   process.env.NEXT_PUBLIC_MYFANS_TOKEN_CONTRACT_ID ??
-  '';
+  XLM_NATIVE_SENTINEL;
 
 export const DEFAULT_PLAN_TOKEN_SYMBOL =
   process.env.NEXT_PUBLIC_PLAN_TOKEN_SYMBOL ??
   process.env.NEXT_PUBLIC_MYFANS_TOKEN_SYMBOL ??
-  'TOKEN';
+  'XLM';
 
 const parsedPlanTokenDecimals = Number.parseInt(
   process.env.NEXT_PUBLIC_PLAN_TOKEN_DECIMALS ?? `${DEFAULT_PLAN_TOKEN_DECIMALS_FALLBACK}`,
@@ -69,6 +70,7 @@ export type PlanStatus = 'draft' | 'published' | 'on-chain';
 export function validateTokenAddress(value: string): string | undefined {
   const trimmed = value.trim();
   if (!trimmed) return 'Token contract is required';
+  if (trimmed === XLM_NATIVE_SENTINEL) return undefined;
   if (!StrKey.isValidContract(trimmed)) {
     return 'Enter a valid Soroban contract address';
   }
@@ -116,14 +118,15 @@ export function getIntervalDays(interval: PlanInterval): number {
   return PLAN_INTERVALS.find((option) => option.value === interval)?.days ?? PLAN_INTERVALS[0].days;
 }
 
+/**
+ * Return a human-readable label for a token contract address.
+ * Prefers the symbol from the SUPPORTED_ASSETS registry; falls back to a
+ * truncated address for unknown tokens.
+ */
 export function getTokenDisplayLabel(tokenAddress: string): string {
   const trimmed = tokenAddress.trim();
   if (!trimmed) return DEFAULT_PLAN_TOKEN_SYMBOL;
-  if (trimmed === DEFAULT_PLAN_TOKEN_ADDRESS && DEFAULT_PLAN_TOKEN_ADDRESS) {
-    return DEFAULT_PLAN_TOKEN_SYMBOL;
-  }
-
-  return `${trimmed.slice(0, 6)}...${trimmed.slice(-4)}`;
+  return getAssetSymbol(trimmed);
 }
 
 export function toAtomicPlanAmount(price: string, decimals: number = DEFAULT_PLAN_TOKEN_DECIMALS): string {

@@ -3,6 +3,7 @@
 import { SubscriptionPlan } from '@/types/subscribe';
 import NetworkMismatchBanner from '@/components/NetworkMismatchBanner';
 import { useNetworkGuard } from '@/hooks/useNetworkGuard';
+import { getAssetByContractId } from '@/lib/assets';
 
 interface ConfirmationScreenProps {
   plan: SubscriptionPlan;
@@ -25,6 +26,10 @@ export default function ConfirmationScreen({
   disabled,
 }: ConfirmationScreenProps) {
   const { mismatch } = useNetworkGuard();
+
+  const asset = getAssetByContractId(plan.currency);
+  const assetSymbol = asset?.symbol ?? plan.currency;
+  const isStablecoin = asset?.isStablecoin ?? false;
 
   const billingLabel =
     plan.billingInterval === 'monthly'
@@ -68,7 +73,13 @@ export default function ConfirmationScreen({
           <div className="flex items-center justify-between">
             <dt className="text-sm text-slate-500 dark:text-slate-400">Price</dt>
             <dd className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              {plan.price} {plan.currency}
+              {plan.price}{' '}
+              <span className="font-mono">{assetSymbol}</span>
+              {isStablecoin && (
+                <span className="ml-1.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                  stablecoin
+                </span>
+              )}
             </dd>
           </div>
 
