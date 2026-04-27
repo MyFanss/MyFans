@@ -221,6 +221,8 @@ jobs:
       - name: Backup / restore drill
         run: ./scripts/pg-backup-restore.sh drill
 
+  # Futurenet deploy is intentionally NOT part of this job.
+  # Use the manual "Futurenet Smoke (manual)" workflow_dispatch instead.
   contract:
     name: Contract (Rust)
     runs-on: ubuntu-latest
