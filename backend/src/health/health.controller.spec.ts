@@ -52,6 +52,17 @@ describe('HealthController', () => {
             expect(result.status).toBe('ok');
             expect(result.timestamp).toBeDefined();
         });
+
+        // Validates: docker-compose dev profile — health endpoint used by Docker
+        // healthcheck and CI smoke test must return 200 with correct body shape.
+        it('should return status "ok" with a valid ISO 8601 timestamp', () => {
+            const result = controller.getHealth();
+            expect(result.status).toBe('ok');
+            // ISO 8601 pattern: YYYY-MM-DDTHH:mm:ss.sssZ
+            expect(result.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+            expect(() => new Date(result.timestamp)).not.toThrow();
+            expect(new Date(result.timestamp).toISOString()).toBe(result.timestamp);
+        });
     });
 
     describe('getDetailedHealth', () => {
