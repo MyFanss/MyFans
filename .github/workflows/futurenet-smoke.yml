@@ -1,0 +1,88 @@
+name: Futurenet Smoke (manual)
+
+# Manual-only: never runs on push/pull_request so it cannot block PR CI.
+# Trigger via: Actions → "Futurenet Smoke (manual)" → Run workflow
+on:
+  workflow_dispatch:
+    inputs:
+      stellar_cli:
+        description: "stellar-cli version (e.g. 25.2.0)"
+        required: false
+        default: "25.2.0"
+
+# Prevent two smoke runs from racing on the same network identity.
+concurrency:
+  group: futurenet-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Deploy & verify on Futurenet
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libdbus-1-dev libudev-dev pkg-config
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown,wasm32v1-none
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract
+          prefix-key: futurenet-smoke
+
+      - name: Cache stellar CLI binary
+        id: stellar-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/stellar
+          key: stellar-cli-${{ inputs.stellar_cli }}-${{ runner.os }}-v1
+
+      - name: Install Stellar CLI
+        if: steps.stellar-cache.outputs.cache-hit != 'true'
+        run: cargo install stellar-cli --locked --version ${{ inputs.stellar_cli }}
+
+      - name: Deploy and verify on Futurenet
+        id: deploy
+        run: |
+          ./scripts/deploy.sh \
+            --network futurenet \
+            --source "ci-${{ github.run_id }}-${{ github.run_attempt }}" \
+            --out "./deployed-futurenet-smoke.json" \
+            --env-out "./.env.deployed-futurenet-smoke"
+        working-directory: contract
+
+      - name: Smoke summary
+        if: always()
+        run: |
+          echo "## Futurenet Smoke" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ steps.deploy.outcome }}" == "success" ]]; then
+            echo "✅ Deploy + post-deploy verification passed." >> $GITHUB_STEP_SUMMARY
+            if [[ -f contract/deployed-futurenet-smoke.json ]]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```json' >> $GITHUB_STEP_SUMMARY
+              cat contract/deployed-futurenet-smoke.json >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "❌ Deploy step failed — check logs above." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload deployment artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: futurenet-smoke-${{ github.run_id }}
+          path: |
+            contract/deployed-futurenet-smoke.json
+            contract/.env.deployed-futurenet-smoke
+          retention-days: 7
