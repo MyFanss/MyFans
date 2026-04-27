@@ -16,6 +16,7 @@ import {
 } from '@/lib/plan-form';
 import { createCreatorPlanOnSoroban } from '@/lib/stellar';
 import { createAppError } from '@/types/errors';
+import { DashboardSectionBoundary } from '@/components/dashboard';
 
 interface CreatorDashboardPlan {
   id: string;
@@ -233,6 +234,7 @@ export default function PlansPage() {
         </p>
       </div>
 
+      <DashboardSectionBoundary label="Wallet status">
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <BaseCard padding="lg" as="section">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -312,9 +314,13 @@ export default function PlansPage() {
           </ul>
         </BaseCard>
       </div>
+      </DashboardSectionBoundary>
 
+      <DashboardSectionBoundary label="Plan form">
       <SubscriptionPlanForm onSave={handleSaveDraft} onPublish={handlePublish} />
+      </DashboardSectionBoundary>
 
+      <DashboardSectionBoundary label="Plan pipeline">
       <section className="space-y-4" aria-labelledby="existing-plans-heading">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -388,6 +394,7 @@ export default function PlansPage() {
           </div>
         )}
       </section>
+      </DashboardSectionBoundary>
     </div>
   );
 }
