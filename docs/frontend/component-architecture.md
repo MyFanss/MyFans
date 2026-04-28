@@ -185,3 +185,28 @@ Before opening a frontend PR, check:
 - [Frontend README](../../frontend/README.md)
 - [Component Reference](../../frontend/README_COMPONENTS.md)
 - [Feature Flags](../feature-flags.md)
+
+## Earnings Reconciliation Report
+
+The reconciliation report lives entirely in the earnings feature area.
+
+| File | Role |
+|------|------|
+| `components/earnings/ReconciliationReport.tsx` | UI: date-range filters, gross/fees/net table, pagination, Export CSV button |
+| `lib/earnings-api.ts` — `fetchReconciliationReport` | Calls `GET /v1/analytics/earnings?from=&to=&page=&limit=` |
+| `lib/earnings-api.ts` — `ReconciliationRow`, `ReconciliationReport` | Shared types matching the backend `EarningsSummary` shape |
+| `lib/earnings-export.ts` — `reconciliationToCSV` | Serialises `ReconciliationRow[]` to CSV (Creator, Asset, Gross, Protocol Fees, Net, Payments) |
+| `lib/__tests__/earnings-export.test.ts` | Unit tests for `reconciliationToCSV` |
+
+### Backend endpoint
+
+`GET /v1/analytics/earnings` (NestJS `AnalyticsController`) accepts `creator`, `from`, `to`, `page`, `limit` query params and returns a paginated list of `EarningsSummary` objects (gross, fees, net per creator+asset).
+
+### Manual checklist
+
+1. Navigate to `/earnings`.
+2. Scroll to the **Earnings Reconciliation** card.
+3. Change the date range — table reloads.
+4. Click **Export CSV** — a file named `reconciliation-<from>-to-<to>.csv` downloads.
+5. Open the CSV: verify header row is `Creator,Asset,Gross,Protocol Fees,Net,Payments` and data rows match the table.
+6. With no data in range, the Export button is disabled.

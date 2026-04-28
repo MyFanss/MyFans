@@ -1,10 +1,8 @@
-#![cfg(test)]
-
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Events},
     xdr::SorobanAuthorizationEntry,
-    Address, Env, Symbol, TryIntoVal,
+    Address, Env, Error as SorobanError, Symbol, TryIntoVal,
 };
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -21,6 +19,26 @@ fn setup(env: &Env) -> (Address, Address, EarningsClient<'_>) {
     client.init(&admin);
 
     (admin, creator, client)
+}
+
+#[test]
+fn test_init_second_time_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let contract_id = env.register_contract(None, Earnings);
+    let client = EarningsClient::new(&env, &contract_id);
+
+    client.init(&admin);
+
+    let result = client.try_init(&admin);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::AlreadyInitialized as u32,
+        )))
+    );
 }
 
 // ── #319 – non-admin record reverts ──────────────────────────────────────────

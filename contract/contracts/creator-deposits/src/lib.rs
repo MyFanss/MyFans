@@ -1,5 +1,8 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
+    Symbol,
+};
 
 #[derive(Clone)]
 #[contracttype]
@@ -10,13 +13,33 @@ pub enum DataKey {
     CreatorBalance(Address),
 }
 
+/// Per-contract error codes for the **creator-deposits** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `InvalidFeeBps` |
+/// | 2 | `InsufficientBalance` |
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Error {
+    /// Code 1 – platform fee basis points must be < 10 000 (100 %).
+    InvalidFeeBps = 1,
+    /// Code 2 – creator balance is less than the requested withdrawal amount.
+    InsufficientBalance = 2,
+}
+
 #[contract]
 pub struct CreatorDeposits;
 
 #[contractimpl]
 impl CreatorDeposits {
     pub fn init(env: Env, admin: Address, platform_fee_bps: u32, platform_treasury: Address) {
-        assert!(platform_fee_bps < 10000, "fee must be < 10000 bps");
+        if platform_fee_bps >= 10000 {
+            panic_with_error!(&env, Error::InvalidFeeBps);
+        }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
             .instance()
@@ -69,7 +92,9 @@ impl CreatorDeposits {
         let balance_key = DataKey::CreatorBalance(creator.clone());
         let current: i128 = env.storage().instance().get(&balance_key).unwrap_or(0);
 
-        assert!(current >= amount, "insufficient balance");
+        if current < amount {
+            panic_with_error!(&env, Error::InsufficientBalance);
+        }
 
         env.storage()
             .instance()
@@ -91,7 +116,9 @@ impl CreatorDeposits {
     pub fn set_platform_fee(env: Env, bps: u32) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
-        assert!(bps < 10000, "fee must be < 10000 bps");
+        if bps >= 10000 {
+            panic_with_error!(&env, Error::InvalidFeeBps);
+        }
         env.storage().instance().set(&DataKey::PlatformFeeBps, &bps);
     }
 
@@ -115,7 +142,9 @@ mod test {
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Events},
-        vec, Env, IntoVal, Symbol, TryFromVal,
+        vec,
+        xdr::SorobanAuthorizationEntry,
+        Env, IntoVal, Symbol, TryFromVal,
     };
 
     fn setup() -> (Env, Address, Address, Address, Address) {
@@ -177,7 +206,7 @@ mod test {
         client.deposit(&creator, &token, &1000);
 
         // Verify transfer was called with correct fee (50)
-        assert!(env.auths().len() > 0);
+        assert!(!env.auths().is_empty());
     }
 
     #[test]
@@ -194,18 +223,22 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "fee must be < 10000 bps")]
     fn test_invalid_bps_init_reverts() {
         let (env, admin, treasury, _, _) = setup();
         let contract_id = env.register_contract(None, CreatorDeposits);
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         env.mock_all_auths();
-        client.init(&admin, &10000, &treasury);
+        let result = client.try_init(&admin, &10000, &treasury);
+        assert_eq!(
+            result,
+            Err(Ok(soroban_sdk::Error::from_contract_error(
+                Error::InvalidFeeBps as u32,
+            )))
+        );
     }
 
     #[test]
-    #[should_panic(expected = "fee must be < 10000 bps")]
     fn test_invalid_bps_set_platform_fee_reverts() {
         let (env, admin, treasury, _, _) = setup();
         let contract_id = env.register_contract(None, CreatorDeposits);
@@ -213,7 +246,13 @@ mod test {
 
         env.mock_all_auths();
         client.init(&admin, &500, &treasury);
-        client.set_platform_fee(&10001);
+        let result = client.try_set_platform_fee(&10001);
+        assert_eq!(
+            result,
+            Err(Ok(soroban_sdk::Error::from_contract_error(
+                Error::InvalidFeeBps as u32,
+            )))
+        );
     }
 
     #[test]
@@ -312,7 +351,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "insufficient balance")]
     fn test_withdraw_insufficient_balance() {
         let (env, admin, treasury, creator, token) = setup();
         let contract_id = env.register_contract(None, CreatorDeposits);
@@ -322,6 +360,36 @@ mod test {
         client.init(&admin, &0, &treasury);
         client.deposit(&creator, &token, &1000);
 
-        client.withdraw(&creator, &token, &1001);
+        let result = client.try_withdraw(&creator, &token, &1001);
+        assert_eq!(
+            result,
+            Err(Ok(soroban_sdk::Error::from_contract_error(
+                Error::InsufficientBalance as u32,
+            )))
+        );
+    }
+
+    #[test]
+    fn test_unauthorized_withdraw_reverts() {
+        let (env, admin, treasury, creator, token) = setup();
+        let unauthorized = Address::generate(&env);
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        client.init(&admin, &0, &treasury);
+        client.deposit(&creator, &token, &1000);
+
+        let starting_balance = client.get_balance(&creator);
+        assert_eq!(starting_balance, 1000);
+
+        // Clear auth mocks so withdraw must satisfy the real creator auth check.
+        let empty: &[SorobanAuthorizationEntry] = &[];
+        env.set_auths(empty);
+
+        let result = client.try_withdraw(&unauthorized, &token, &100);
+        assert!(result.is_err(), "expected unauthorized withdraw to revert");
+
+        assert_eq!(client.get_balance(&creator), starting_balance);
     }
 }

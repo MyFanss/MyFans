@@ -44,7 +44,6 @@ fn test_deposit_and_withdraw() {
 }
 
 #[test]
-#[should_panic(expected = "insufficient balance")]
 fn test_withdraw_insufficient_balance() {
     let env = Env::default();
     env.mock_all_auths();
@@ -61,7 +60,13 @@ fn test_withdraw_insufficient_balance() {
     treasury_client.initialize(&admin, &token_address);
     treasury_client.deposit(&user, &100);
 
-    treasury_client.withdraw(&user, &500);
+    let result = treasury_client.try_withdraw(&user, &500);
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            Error::InsufficientBalance as u32,
+        )))
+    );
 }
 
 #[test]
@@ -141,7 +146,6 @@ fn test_unauthorized_withdraw_reverts() {
 }
 
 #[test]
-#[should_panic(expected = "treasury is paused")]
 fn test_pause_blocks_deposit() {
     let env = Env::default();
     env.mock_all_auths();
@@ -157,11 +161,14 @@ fn test_pause_blocks_deposit() {
 
     treasury_client.initialize(&admin, &token_address);
     treasury_client.set_paused(&true);
-    treasury_client.deposit(&user, &100);
+    let result = treasury_client.try_deposit(&user, &100);
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(Error::Paused as u32)))
+    );
 }
 
 #[test]
-#[should_panic(expected = "treasury is paused")]
 fn test_pause_blocks_withdraw() {
     let env = Env::default();
     env.mock_all_auths();
@@ -180,7 +187,11 @@ fn test_pause_blocks_withdraw() {
     assert_eq!(token_client.balance(&treasury_id), 500);
 
     treasury_client.set_paused(&true);
-    treasury_client.withdraw(&user, &100);
+    let result = treasury_client.try_withdraw(&user, &100);
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(Error::Paused as u32)))
+    );
 }
 
 #[test]
@@ -207,7 +218,6 @@ fn test_unpause_allows_deposit_and_withdraw() {
 }
 
 #[test]
-#[should_panic(expected = "withdraw would leave balance below minimum")]
 fn test_min_balance_blocks_withdraw() {
     let env = Env::default();
     env.mock_all_auths();
@@ -228,7 +238,13 @@ fn test_min_balance_blocks_withdraw() {
     // 500 - 300 = 200 would remain; min is 300, so withdraw 300 is ok, withdraw 201 is not
     treasury_client.withdraw(&user, &200);
     assert_eq!(token_client.balance(&treasury_id), 300);
-    treasury_client.withdraw(&user, &1); // would leave 299 < 300
+    let result = treasury_client.try_withdraw(&user, &1); // would leave 299 < 300
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            Error::MinBalanceViolation as u32,
+        )))
+    );
 }
 
 #[test]
@@ -255,7 +271,6 @@ fn test_min_balance_allows_withdraw_above_threshold() {
 }
 
 #[test]
-#[should_panic(expected = "min_balance cannot be negative")]
 fn test_set_min_balance_negative_reverts() {
     let env = Env::default();
     env.mock_all_auths();
@@ -267,7 +282,13 @@ fn test_set_min_balance_negative_reverts() {
     let treasury_client = TreasuryClient::new(&env, &treasury_id);
 
     treasury_client.initialize(&admin, &token_address);
-    treasury_client.set_min_balance(&-1);
+    let result = treasury_client.try_set_min_balance(&-1);
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            Error::NegativeMinBalance as u32,
+        )))
+    );
 }
 
 #[test]
@@ -299,4 +320,116 @@ fn test_deposit_emits_event() {
     assert_eq!(from, user);
     assert_eq!(amount, 500);
     assert_eq!(token, token_address);
+}
+
+/// Asserts exact auth requirements using only `mock_auths` (no `mock_all_auths`):
+///   - `initialize` requires admin auth
+///   - `deposit` requires from (user) auth
+///   - `withdraw` requires admin auth
+///   - unauthorized `withdraw` (no auth) fails
+#[test]
+fn test_mock_auths_granular_auth_requirements() {
+    let env = Env::default();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let unauthorized = Address::generate(&env);
+
+    let (token_address, token_client, admin_client) = create_token_contract(&env, &admin);
+    let treasury_id = env.register_contract(None, Treasury);
+    let treasury_client = TreasuryClient::new(&env, &treasury_id);
+
+    // --- token mint: admin auth ---
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &token_address,
+            fn_name: "mint",
+            args: soroban_sdk::vec![&env, user.clone().into_val(&env), 1000_i128.into_val(&env)],
+            sub_invokes: &[],
+        },
+    }]);
+    admin_client.mint(&user, &1000);
+
+    // --- initialize: requires admin auth ---
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &treasury_id,
+            fn_name: "initialize",
+            args: soroban_sdk::vec![
+                &env,
+                admin.clone().into_val(&env),
+                token_address.clone().into_val(&env),
+            ],
+            sub_invokes: &[],
+        },
+    }]);
+    treasury_client.initialize(&admin, &token_address);
+
+    // --- deposit: requires from (user) auth; sub-invokes token transfer ---
+    let deposit_amount = 600_i128;
+    env.mock_auths(&[MockAuth {
+        address: &user,
+        invoke: &MockAuthInvoke {
+            contract: &treasury_id,
+            fn_name: "deposit",
+            args: soroban_sdk::vec![
+                &env,
+                user.clone().into_val(&env),
+                deposit_amount.into_val(&env),
+            ],
+            sub_invokes: &[MockAuthInvoke {
+                contract: &token_address,
+                fn_name: "transfer",
+                args: soroban_sdk::vec![
+                    &env,
+                    user.clone().into_val(&env),
+                    treasury_id.clone().into_val(&env),
+                    deposit_amount.into_val(&env),
+                ],
+                sub_invokes: &[],
+            }],
+        },
+    }]);
+    treasury_client.deposit(&user, &deposit_amount);
+
+    assert_eq!(token_client.balance(&treasury_id), 600);
+    assert_eq!(token_client.balance(&user), 400);
+
+    // --- withdraw: requires admin auth ---
+    let withdraw_amount = 100_i128;
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &treasury_id,
+            fn_name: "withdraw",
+            args: soroban_sdk::vec![
+                &env,
+                user.clone().into_val(&env),
+                withdraw_amount.into_val(&env),
+            ],
+            sub_invokes: &[MockAuthInvoke {
+                contract: &token_address,
+                fn_name: "transfer",
+                args: soroban_sdk::vec![
+                    &env,
+                    treasury_id.clone().into_val(&env),
+                    user.clone().into_val(&env),
+                    withdraw_amount.into_val(&env),
+                ],
+                sub_invokes: &[],
+            }],
+        },
+    }]);
+    treasury_client.withdraw(&user, &withdraw_amount);
+
+    assert_eq!(token_client.balance(&treasury_id), 500);
+    assert_eq!(token_client.balance(&user), 500);
+
+    // --- unauthorized withdraw: no auth set → must fail ---
+    let empty: &[soroban_sdk::xdr::SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+    let result = treasury_client.try_withdraw(&unauthorized, &50);
+    assert!(result.is_err(), "unauthorized withdraw must fail");
 }

@@ -1,7 +1,24 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, Address, Env, Map, Symbol, Vec};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, panic_with_error, Address, Env, Map, Symbol, Vec,
+};
 
 const MAX_PAGE_LIMIT: u32 = 100;
+
+/// Per-contract error codes for the **content-likes** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `NotLiked` |
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Error {
+    /// Code 1 – user has not liked this content; `unlike` was called without a prior `like`.
+    NotLiked = 1,
+}
 
 #[contract]
 pub struct ContentLikes;
@@ -90,7 +107,7 @@ impl ContentLikes {
 
         // Verify user has liked (revert if not)
         if likes.get(user.clone()).is_none() {
-            panic!("User has not liked this content");
+            panic_with_error!(&env, Error::NotLiked);
         }
 
         // Remove user from map
@@ -201,7 +218,7 @@ impl ContentLikes {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{testutils::Address as _, Error as SorobanError};
 
     #[test]
     fn test_like_and_unlike() {
@@ -287,7 +304,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "User has not liked this content")]
     fn test_unlike_when_not_liked_reverts() {
         let env = Env::default();
         env.mock_all_auths();
@@ -298,11 +314,16 @@ mod test {
         let content_id = 5u32;
 
         // Try to unlike without liking first
-        client.unlike(&user, &content_id);
+        let result = client.try_unlike(&user, &content_id);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::NotLiked as u32,
+            )))
+        );
     }
 
     #[test]
-    #[should_panic(expected = "User has not liked this content")]
     fn test_unlike_twice_reverts() {
         let env = Env::default();
         env.mock_all_auths();
@@ -317,7 +338,13 @@ mod test {
         client.unlike(&user, &content_id);
 
         // Try to unlike again (should panic)
-        client.unlike(&user, &content_id);
+        let result = client.try_unlike(&user, &content_id);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::NotLiked as u32,
+            )))
+        );
     }
 
     #[test]

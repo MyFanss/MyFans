@@ -1,0 +1,86 @@
+name: SBOM Generation
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'frontend/Dockerfile'
+      - 'frontend/package*.json'
+      - 'backend/Dockerfile'
+      - 'backend/package*.json'
+      - '.github/workflows/sbom.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'frontend/Dockerfile'
+      - 'frontend/package*.json'
+      - 'backend/Dockerfile'
+      - 'backend/package*.json'
+      - '.github/workflows/sbom.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sbom-frontend:
+    name: SBOM – Frontend container
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Build frontend Docker image
+        run: |
+          docker build \
+            --file frontend/Dockerfile \
+            --tag myfans/frontend:ci \
+            frontend/
+
+      - name: Generate SBOM (SPDX JSON)
+        uses: anchore/sbom-action@df80a981bc6edbc4e220a492d3cbe9f5547a6e75 # v0.17.9
+        with:
+          image: myfans/frontend:ci
+          format: spdx-json
+          artifact-name: sbom-frontend.spdx.json
+          output-file: sbom-frontend.spdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom-frontend
+          path: sbom-frontend.spdx.json
+          retention-days: 90
+
+  sbom-backend:
+    name: SBOM – Backend container
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Build backend Docker image
+        run: |
+          docker build \
+            --file backend/Dockerfile \
+            --tag myfans/backend:ci \
+            backend/
+
+      - name: Generate SBOM (SPDX JSON)
+        uses: anchore/sbom-action@df80a981bc6edbc4e220a492d3cbe9f5547a6e75 # v0.17.9
+        with:
+          image: myfans/backend:ci
+          format: spdx-json
+          artifact-name: sbom-backend.spdx.json
+          output-file: sbom-backend.spdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom-backend
+          path: sbom-backend.spdx.json
+          retention-days: 90

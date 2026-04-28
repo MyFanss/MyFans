@@ -1,6 +1,9 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
+    Symbol,
+};
 
 #[contracttype]
 pub enum DataKey {
@@ -10,13 +13,44 @@ pub enum DataKey {
     AuthorizedDepositor(Address),
 }
 
-#[contracttype]
+/// Per-contract error codes for the **creator-earnings** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `NotInitialized` |
+/// | 2 | `NotAuthorized` |
+/// | 3 | `InsufficientBalance` |
+/// | 4 | `AlreadyInitialized` |
+/// | 5 | `InvalidAmount` |
+#[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum EarningsError {
+pub enum Error {
+    /// Code 1 – contract was never initialized.
     NotInitialized = 1,
+    /// Code 2 – caller is not the admin or an authorized depositor.
     NotAuthorized = 2,
+    /// Code 3 – creator balance is less than the requested withdrawal amount.
     InsufficientBalance = 3,
+    /// Code 4 – contract was already initialized.
+    AlreadyInitialized = 4,
+    /// Code 5 – deposit or withdrawal amount must be strictly positive.
+    InvalidAmount = 5,
 }
+
+/// -------- Events (INLINE) --------
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WithdrawEvent {
+    pub creator: Address,
+    pub amount: i128,
+    pub token: Address,
+}
+
+/// Avoid magic strings
+const WITHDRAW_EVENT: &str = "withdraw";
 
 #[contract]
 pub struct CreatorEarnings;
@@ -26,7 +60,7 @@ impl CreatorEarnings {
     /// Initialize contract with admin and accepted token
     pub fn initialize(env: Env, admin: Address, token_address: Address) {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
+            panic_with_error!(&env, Error::AlreadyInitialized);
         }
 
         admin.require_auth();
@@ -51,7 +85,7 @@ impl CreatorEarnings {
     /// Callable by authorized contracts or admin
     pub fn deposit(env: Env, from: Address, creator: Address, amount: i128) {
         if amount <= 0 {
-            panic!("invalid amount");
+            panic_with_error!(&env, Error::InvalidAmount);
         }
 
         from.require_auth();
@@ -78,10 +112,10 @@ impl CreatorEarnings {
             .unwrap_or(0)
     }
 
-    /// Withdraw earnings
+    /// Withdraw earnings (WITH EVENT)
     pub fn withdraw(env: Env, creator: Address, amount: i128) {
         if amount <= 0 {
-            panic!("invalid amount");
+            panic_with_error!(&env, Error::InvalidAmount);
         }
 
         creator.require_auth();
@@ -89,24 +123,32 @@ impl CreatorEarnings {
         let current_balance = Self::balance(env.clone(), creator.clone());
 
         if current_balance < amount {
-            panic!("insufficient balance");
+            panic_with_error!(&env, Error::InsufficientBalance);
         }
 
-        let token_address: Address = Self::get_token(&env);
+        let token_address = Self::get_token(&env);
         let token_client = token::Client::new(&env, &token_address);
 
-        // Transfer from contract to creator
+        // transfer first (fail-fast if token fails)
         token_client.transfer(&env.current_contract_address(), &creator, &amount);
 
-        let new_balance = current_balance - amount;
+        // safe subtraction
+        let new_balance = current_balance
+            .checked_sub(amount)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::InsufficientBalance));
 
         env.storage()
             .instance()
             .set(&DataKey::Balance(creator.clone()), &new_balance);
 
+        // ✅ Typed event emission
         env.events().publish(
-            (Symbol::new(&env, "withdraw"),),
-            (creator, amount, token_address),
+            (Symbol::new(&env, WITHDRAW_EVENT),),
+            WithdrawEvent {
+                creator,
+                amount,
+                token: token_address,
+            },
         );
     }
 
@@ -116,14 +158,14 @@ impl CreatorEarnings {
         env.storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("not initialized")
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
     }
 
     fn get_token(env: &Env) -> Address {
         env.storage()
             .instance()
             .get(&DataKey::Token)
-            .expect("not initialized")
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
     }
 
     fn require_authorized(env: &Env, caller: &Address) {
@@ -141,7 +183,7 @@ impl CreatorEarnings {
             return;
         }
 
-        panic!("not authorized");
+        panic_with_error!(env, Error::NotAuthorized);
     }
 }
 

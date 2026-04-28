@@ -70,6 +70,23 @@ export interface FeeTransparency {
   example_final_amount: string;
 }
 
+export interface ReconciliationRow {
+  creator: string;
+  asset: string;
+  totalGross: string;
+  totalFees: string;
+  totalNet: string;
+  paymentCount: number;
+}
+
+export interface ReconciliationReport {
+  data: ReconciliationRow[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -136,4 +153,16 @@ export async function requestWithdrawal(data: {
 
 export async function fetchFeeTransparency(): Promise<FeeTransparency> {
   return fetchApi('/earnings/fees');
+}
+
+export async function fetchReconciliationReport(
+  params: { from?: string; to?: string; page?: number; limit?: number } = {},
+): Promise<ReconciliationReport> {
+  const qs = new URLSearchParams();
+  if (params.from) qs.set('from', params.from);
+  if (params.to) qs.set('to', params.to);
+  if (params.page) qs.set('page', String(params.page));
+  if (params.limit) qs.set('limit', String(params.limit));
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  return fetchApi(`/v1/analytics/earnings${query}`);
 }

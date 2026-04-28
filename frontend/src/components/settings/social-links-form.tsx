@@ -214,6 +214,8 @@ export function SocialLinksForm({
             onBlur={() => handleBlur("website")}
             disabled={disabled}
             placeholder="https://yourwebsite.com"
+            aria-invalid={hasError("website") || undefined}
+            aria-describedby={hasError("website") ? "website-error" : undefined}
             className={`w-full rounded-xl border bg-white px-3 py-2.5 pr-10 text-slate-900 outline-none placeholder:text-slate-400 transition-colors focus:ring-2 focus:ring-slate-300 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:ring-slate-600 ${
               hasError("website")
                 ? "border-red-400 focus:border-red-400"
@@ -232,7 +234,7 @@ export function SocialLinksForm({
           </div>
         </div>
         {hasError("website") && (
-          <p className="text-sm text-red-500">{errors.website}</p>
+          <p id="website-error" className="text-sm text-red-500" aria-live="polite" aria-atomic="true">{errors.website}</p>
         )}
       </div>
 
@@ -256,6 +258,8 @@ export function SocialLinksForm({
             onBlur={() => handleBlur("x")}
             disabled={disabled}
             placeholder="@yourhandle"
+            aria-invalid={hasError("x") || undefined}
+            aria-describedby={hasError("x") ? "x-error" : undefined}
             className={`w-full rounded-xl border bg-white px-3 py-2.5 pr-10 text-slate-900 outline-none placeholder:text-slate-400 transition-colors focus:ring-2 focus:ring-slate-300 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:ring-slate-600 ${
               hasError("x")
                 ? "border-red-400 focus:border-red-400"
@@ -273,7 +277,7 @@ export function SocialLinksForm({
             )}
           </div>
         </div>
-        {hasError("x") && <p className="text-sm text-red-500">{errors.x}</p>}
+        {hasError("x") && <p id="x-error" className="text-sm text-red-500" aria-live="polite" aria-atomic="true">{errors.x}</p>}
       </div>
 
       {/* Instagram Field */}
@@ -296,6 +300,8 @@ export function SocialLinksForm({
             onBlur={() => handleBlur("instagram")}
             disabled={disabled}
             placeholder="username"
+            aria-invalid={hasError("instagram") || undefined}
+            aria-describedby={hasError("instagram") ? "instagram-error" : undefined}
             className={`w-full rounded-xl border bg-white px-3 py-2.5 pr-10 text-slate-900 outline-none placeholder:text-slate-400 transition-colors focus:ring-2 focus:ring-slate-300 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:ring-slate-600 ${
               hasError("instagram")
                 ? "border-red-400 focus:border-red-400"
@@ -314,7 +320,7 @@ export function SocialLinksForm({
           </div>
         </div>
         {hasError("instagram") && (
-          <p className="text-sm text-red-500">{errors.instagram}</p>
+          <p id="instagram-error" className="text-sm text-red-500" aria-live="polite" aria-atomic="true">{errors.instagram}</p>
         )}
       </div>
 
@@ -338,6 +344,8 @@ export function SocialLinksForm({
             onBlur={() => handleBlur("other")}
             disabled={disabled}
             placeholder="https://linkedin.com/in/username"
+            aria-invalid={hasError("other") || undefined}
+            aria-describedby={hasError("other") ? "other-error" : undefined}
             className={`w-full rounded-xl border bg-white px-3 py-2.5 pr-10 text-slate-900 outline-none placeholder:text-slate-400 transition-colors focus:ring-2 focus:ring-slate-300 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:ring-slate-600 ${
               hasError("other")
                 ? "border-red-400 focus:border-red-400"
@@ -356,7 +364,7 @@ export function SocialLinksForm({
           </div>
         </div>
         {hasError("other") && (
-          <p className="text-sm text-red-500">{errors.other}</p>
+          <p id="other-error" className="text-sm text-red-500" aria-live="polite" aria-atomic="true">{errors.other}</p>
         )}
       </div>
 

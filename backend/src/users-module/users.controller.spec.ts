@@ -3,7 +3,9 @@ import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './create-user.dto';
 import { UpdateUserDto } from './update-user.dto';
-import { UserProfileDto, PaginationDto } from './user-profile.dto';
+import { UserProfileDto } from './user-profile.dto';
+import { PaginationDto } from '../common/dto';
+import { PaginatedUsersResponseDto } from './paginated-users-response.dto';
 
 const mockProfile = (): UserProfileDto => ({
   id: 'uuid-1',
@@ -38,6 +40,11 @@ describe('UsersController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  it('uses PaginatedUsersResponseDto as a runtime Swagger response type', () => {
+    expect(typeof PaginatedUsersResponseDto).toBe('function');
+    expect(PaginatedUsersResponseDto.name).toBe('PaginatedUsersResponseDto');
   });
 
   describe('create', () => {

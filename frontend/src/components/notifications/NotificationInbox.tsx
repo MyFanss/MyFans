@@ -11,10 +11,11 @@ import {
 } from '@/lib/notifications';
 import NotificationItem from './NotificationItem';
 import NotificationDetail from './NotificationDetail';
+import NotificationSkeleton from '../ui/NotificationSkeleton';
 
 type Filter = 'all' | 'unread';
 
-const USE_MOCK = true; // set to false when backend is ready
+// USE_MOCK is evaluated dynamically to allow tests to override it.
 
 export default function NotificationInbox() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -27,7 +28,8 @@ export default function NotificationInbox() {
     setLoading(true);
     setError(null);
     try {
-      const data = USE_MOCK
+      const useMock = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS !== 'false';
+      const data = useMock
         ? MOCK_NOTIFICATIONS
         : await fetchNotifications(filter === 'unread');
       const filtered = filter === 'unread' ? data.filter((n) => !n.is_read) : data;
@@ -46,21 +48,24 @@ export default function NotificationInbox() {
       prev.map((n: Notification) => (n.id === id ? { ...n, is_read: isRead } : n)),
     );
     if (selected?.id === id) setSelected((s: Notification | null) => s ? { ...s, is_read: isRead } : s);
-    if (!USE_MOCK) {
+    const useMock = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS !== 'false';
+    if (!useMock) {
       await markNotificationRead(id, isRead).catch(() => load());
     }
   }, [selected, load]);
 
   const handleMarkAllRead = useCallback(async () => {
     setNotifications((prev: Notification[]) => prev.map((n: Notification) => ({ ...n, is_read: true })));
-    if (!USE_MOCK) {
+    const useMock = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS !== 'false';
+    if (!useMock) {
       await markAllNotificationsRead().catch(() => load());
     }
   }, [load]);
 
   const handleDelete = useCallback(async (id: string) => {
     setNotifications((prev: Notification[]) => prev.filter((n: Notification) => n.id !== id));
-    if (!USE_MOCK) {
+    const useMock = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS !== 'false';
+    if (!useMock) {
       await deleteNotification(id).catch(() => load());
     }
   }, [load]);
@@ -111,8 +116,10 @@ export default function NotificationInbox() {
 
       {/* Content */}
       {loading && (
-        <div className="flex justify-center py-12" aria-live="polite" aria-busy="true">
-          <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" aria-label="Loading notifications" />
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden" aria-live="polite" aria-busy="true">
+          {[...Array(5)].map((_, i) => (
+            <NotificationSkeleton key={i} />
+          ))}
         </div>
       )}
 
