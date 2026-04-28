@@ -12,6 +12,7 @@ import {
 import { formatCurrency, formatDate, getCurrencySymbol } from '@/lib/formatting';
 import { BaseCard } from '@/components/cards/BaseCard';
 import HistoryCardSkeleton from '@/components/ui/HistoryCardSkeleton';
+import ActiveSubscriptionSkeleton from '@/components/ui/ActiveSubscriptionSkeleton';
 import { useToast } from '@/contexts/ToastContext';
 import { subscriptionActionToast, subscriptionsLoadFailed } from '@/lib/error-copy';
 import { cancelSubscriptionOnSoroban } from '@/lib/stellar';
@@ -256,7 +257,11 @@ export default function SubscriptionsPage() {
             Active subscriptions
           </h2>
           {isLoading ? (
-            <div className="text-center py-8 text-gray-500">Loading subscriptions...</div>
+            <div className="space-y-3">
+              {[...Array(3)].map((_, i) => (
+                <ActiveSubscriptionSkeleton key={i} />
+              ))}
+            </div>
           ) : activeList.length === 0 ? (
             <EmptyState
               title="No subscriptions found"
@@ -331,8 +336,6 @@ export default function SubscriptionsPage() {
             </ul>
           )}
         </section>
-
-        <HistoryCardSkeleton/>
 
         {/* Payment history */}
         <section aria-labelledby="payments-heading">

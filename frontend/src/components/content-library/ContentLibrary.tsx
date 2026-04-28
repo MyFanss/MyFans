@@ -4,6 +4,8 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ContentCard } from '@/components/cards';
 import { BaseCard } from '@/components/cards/BaseCard';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { useImageLoad } from '@/hooks/useImageLoad';
 import {
   VIEW_PREFERENCE_KEY,
   filterAndSort,
@@ -480,6 +482,8 @@ function ListRow({
   isSelected: boolean;
   onToggleSelect: () => void;
 }) {
+  const thumbnailLoad = useImageLoad();
+
   return (
     <label className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
       <input
@@ -489,18 +493,28 @@ function ListRow({
         className="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
         aria-label={`Select ${item.title}`}
       />
-      <div className="image-skeleton-wrapper flex-shrink-0 w-24 h-14 rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-400 dark:text-gray-500 overflow-hidden">
+      <div className="image-skeleton-wrapper relative flex-shrink-0 w-24 h-14 rounded overflow-hidden">
         {item.thumbnailUrl ? (
-          <img
-            src={item.thumbnailUrl}
-            alt=""
-            width={96}
-            height={56}
-            loading="lazy"
-            className="w-full h-full object-cover"
-          />
+          <>
+            <img
+              src={item.thumbnailUrl}
+              alt=""
+              width={96}
+              height={56}
+              loading="lazy"
+              onLoad={thumbnailLoad.onLoad}
+              className={`lazy-image w-full h-full object-cover ${
+                thumbnailLoad.isLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+            />
+            {!thumbnailLoad.isLoaded && (
+              <Skeleton className="absolute inset-0" rounded="md" />
+            )}
+          </>
         ) : (
-          <span className="text-xs">{item.type}</span>
+          <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
+            <span className="text-xs">{item.type}</span>
+          </div>
         )}
       </div>
       <div className="flex-1 min-w-0">

@@ -15,6 +15,7 @@ import {
 import { FeatureFlag } from "@/lib/feature-flags";
 import { searchCreators, PublicCreator } from "@/lib/api/creators";
 import { usePrefetchCreatorRoute } from "@/hooks/usePrefetchCreatorRoute";
+import { CreatorCardSkeleton } from "@/components/ui/CreatorCardSkeleton";
 
 const DEBOUNCE_DELAY = 300;
 const INITIAL_LOAD = 12;
@@ -362,7 +363,13 @@ function DiscoverContentInner() {
             );
           })}
         </div>
-      ) : !isLoading ? (
+      ) : isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {[...Array(8)].map((_, i) => (
+            <CreatorCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : (
         /* Empty State */
         <div className="flex flex-col items-center justify-center py-16">
           <div className="w-24 h-24 mb-6 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
@@ -397,34 +404,16 @@ function DiscoverContentInner() {
             </button>
           )}
         </div>
-      ) : null}
+      )}
 
       {/* Infinite Scroll Trigger */}
       {hasMore && (
-        <div ref={loadMoreRef} className="flex justify-center py-8">
+        <div ref={loadMoreRef} className="py-8">
           {isLoading && (
-            <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-              <svg
-                className="w-5 h-5 animate-spin"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
-              Loading more creators...
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {[...Array(4)].map((_, i) => (
+                <CreatorCardSkeleton key={i} />
+              ))}
             </div>
           )}
         </div>
@@ -456,10 +445,7 @@ export default function DiscoverContent() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {[...Array(8)].map((_, i) => (
-              <div
-                key={i}
-                className="h-64 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse"
-              ></div>
+              <CreatorCardSkeleton key={i} />
             ))}
           </div>
         </div>
