@@ -23,13 +23,15 @@ import {
 import { UsersService } from './users.service';
 import { CreateUserDto } from './create-user.dto';
 import { UpdateUserDto } from './update-user.dto';
-import { UserProfileDto, PaginationDto, PaginatedUsersDto } from './user-profile.dto';
+import { PaginationDto, PaginatedResponseDto } from '../common/dto';
+import { UserProfileDto } from './user-profile.dto';
+import { PaginatedUsersResponseDto } from './paginated-users-response.dto';
 
 @ApiTags('Users')
-@Controller('users')
+@Controller({ path: 'users', version: '1' })
 @UseInterceptors(ClassSerializerInterceptor)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   // POST /users
   @Post()
@@ -45,8 +47,14 @@ export class UsersController {
   // GET /users
   @Get()
   @ApiOperation({ summary: 'List all users (paginated)' })
-  @ApiResponse({ status: 200, description: 'Paginated users list', type: PaginatedUsersDto })
-  findAll(@Query() pagination: PaginationDto): Promise<PaginatedUsersDto> {
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated users list (cursor-based)',
+    type: PaginatedUsersResponseDto,
+  })
+  findAll(
+    @Query() pagination: PaginationDto,
+  ): Promise<PaginatedResponseDto<UserProfileDto>> {
     return this.usersService.findAll(pagination);
   }
 

@@ -96,7 +96,7 @@ export function FileUpload({
         </span>
       </div>
       {error && (
-        <p id={`${inputId}-error`} className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
+        <p id={`${inputId}-error`} className="mt-1 text-sm text-red-600 dark:text-red-400" aria-live="polite" aria-atomic="true">
           {error}
         </p>
       )}

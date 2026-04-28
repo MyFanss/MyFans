@@ -12,8 +12,10 @@ import {
 import { formatCurrency, formatDate, getCurrencySymbol } from '@/lib/formatting';
 import { BaseCard } from '@/components/cards/BaseCard';
 import HistoryCardSkeleton from '@/components/ui/HistoryCardSkeleton';
+import ActiveSubscriptionSkeleton from '@/components/ui/ActiveSubscriptionSkeleton';
 import { useToast } from '@/contexts/ToastContext';
 import { subscriptionActionToast, subscriptionsLoadFailed } from '@/lib/error-copy';
+import { cancelSubscriptionOnSoroban } from '@/lib/stellar';
 
 export default function SubscriptionsPage() {
   const { showInfo, showSuccess, showError, showLoading, dismiss } = useToast();
@@ -36,13 +38,13 @@ export default function SubscriptionsPage() {
     const fetchSubscriptions = async () => {
       setIsLoading(true);
       try {
-        // Hardcode a fan address for demo purposes, since auth context isn't visible here
-        const fanAddress = 'fan_demo_address';
-        const res = await fetch(`http://localhost:3001/subscriptions/list?fan=${fanAddress}&status=${statusFilter}&sort=${sortOption}`);
+        const params = new URLSearchParams({ status: statusFilter, sort: sortOption });
+        const res = await fetch(`/api/v1/subscriptions/me/list?${params.toString()}`);
         if (!res.ok) throw new Error('Failed to fetch subscriptions');
         const data = await res.json();
         if (mounted) {
-          setActiveList(data);
+          // API returns { data: [...], ... } paginated shape
+          setActiveList(Array.isArray(data) ? data : (data.data ?? []));
         }
       } catch (err) {
         console.error(err);
@@ -130,10 +132,27 @@ export default function SubscriptionsPage() {
     setIsCancelling(true);
     const loadingToastId = showLoading(`Cancelling ${cancelTarget.creatorName}...`);
     try {
-      // Replace with API: await cancelSubscription(cancelTarget.id);
-      setActiveList((prev: ActiveSubscription[]) => prev.filter((s: ActiveSubscription) => s.id !== cancelTarget.id));
+      // Derive fan address from connected wallet; fall back to demo address
+      const fanAddress =
+        typeof window !== 'undefined' &&
+        (window as any).freighter
+          ? await (window as any).freighter.getPublicKey().catch(() => 'fan_demo_address')
+          : 'fan_demo_address';
+
+      await cancelSubscriptionOnSoroban({
+        fanAddress,
+        creatorAddress: cancelTarget.creatorId,
+        reason: 0,
+      });
+
+      setActiveList((prev: ActiveSubscription[]) =>
+        prev.filter((s: ActiveSubscription) => s.id !== cancelTarget.id),
+      );
       setCancelTarget(null);
-      showInfo('Subscription cancelled', `Access remains active until ${formatDate(cancelTarget.currentPeriodEnd)}.`);
+      showInfo(
+        'Subscription cancelled',
+        `Access remains active until ${formatDate(cancelTarget.currentPeriodEnd)}. No refund is issued for the current period.`,
+      );
     } catch {
       showError('TX_FAILED', subscriptionActionToast.cancelFailed());
     } finally {
@@ -153,12 +172,12 @@ export default function SubscriptionsPage() {
       
       showSuccess('Subscription renewed', `${renewTarget.creatorName} ${renewTarget.planName} is active again.`);
       
-      // Refresh list if it was a history item or expired
-      const fanAddress = 'fan_demo_address';
-      const res = await fetch(`http://localhost:3001/subscriptions/list?fan=${fanAddress}&status=${statusFilter}&sort=${sortOption}`);
+      // Refresh list after renewal
+      const params = new URLSearchParams({ status: statusFilter, sort: sortOption });
+      const res = await fetch(`/api/v1/subscriptions/me/list?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setActiveList(data);
+        setActiveList(Array.isArray(data) ? data : (data.data ?? []));
       }
       
       setRenewTarget(null);
@@ -202,20 +221,26 @@ export default function SubscriptionsPage() {
             </div>
 
             <div className="flex items-center gap-3">
+              <label htmlFor="status-filter" className="sr-only">Filter by status</label>
               <select
+                id="status-filter"
                 value={statusFilter}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatusFilter(e.target.value)}
                 className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                aria-label="Filter by status"
               >
                 <option value="active">Active</option>
                 <option value="expired">Expired</option>
                 <option value="cancelled">Cancelled</option>
               </select>
 
+              <label htmlFor="sort-option" className="sr-only">Sort by</label>
               <select
+                id="sort-option"
                 value={sortOption}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSortOption(e.target.value)}
                 className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                aria-label="Sort subscriptions"
               >
                 <option value="expiry">Sort by Expiry</option>
                 <option value="created">Sort by Created</option>
@@ -232,7 +257,11 @@ export default function SubscriptionsPage() {
             Active subscriptions
           </h2>
           {isLoading ? (
-            <div className="text-center py-8 text-gray-500">Loading subscriptions...</div>
+            <div className="space-y-3">
+              {[...Array(3)].map((_, i) => (
+                <ActiveSubscriptionSkeleton key={i} />
+              ))}
+            </div>
           ) : activeList.length === 0 ? (
             <EmptyState
               title="No subscriptions found"
@@ -308,8 +337,6 @@ export default function SubscriptionsPage() {
           )}
         </section>
 
-        <HistoryCardSkeleton/>
-
         {/* Payment history */}
         <section aria-labelledby="payments-heading">
           <h2 id="payments-heading" className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
@@ -348,8 +375,11 @@ export default function SubscriptionsPage() {
               <h3 id="cancel-dialog-title" className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                 Cancel subscription?
               </h3>
-              <p id="cancel-dialog-description" className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              <p id="cancel-dialog-description" className="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 You will lose access to {cancelTarget.creatorName}&apos;s {cancelTarget.planName} content at the end of your current billing period ({formatDate(cancelTarget.currentPeriodEnd)}). You can resubscribe anytime.
+              </p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2 mb-4">
+                ⚠ No refund will be issued for the remaining days in the current period. Cancellation takes effect on-chain immediately.
               </p>
               <div className="flex gap-3 justify-end">
                 <button

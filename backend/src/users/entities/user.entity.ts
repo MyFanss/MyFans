@@ -10,11 +10,9 @@ import {
   DeleteDateColumn,
 } from 'typeorm';
 import { Creator } from '../../creators/entities/creator.entity';
+import { UserRole } from '../../common/enums/user-role.enum';
 
-export enum UserRole {
-  USER = 'user',
-  ADMIN = 'admin',
-}
+export { UserRole };
 
 @Entity('users')
 export class User {
@@ -86,7 +84,7 @@ export class User {
   @Column({ type: 'boolean', default: false })
   push_payout: boolean;
 
-  @Column({
+@Column({
     type: 'enum',
     enum: UserRole,
     default: UserRole.USER,

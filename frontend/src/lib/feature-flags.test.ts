@@ -3,6 +3,7 @@ import {
   FeatureFlag,
   defaultFeatureFlags,
   fetchRemoteFlags,
+  getRemoteFlagsUrl,
   getFeatureFlags,
   isFeatureEnabled,
   loadFeatureFlags,
@@ -58,6 +59,16 @@ describe('feature-flags', () => {
 
     await expect(fetchRemoteFlags()).resolves.toEqual({});
     await expect(loadFeatureFlags()).resolves.toEqual(defaultFeatureFlags);
+  });
+
+  it('derives the backend feature flag endpoint from NEXT_PUBLIC_API_URL', () => {
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'http://localhost:3001/api');
+
+    expect(getRemoteFlagsUrl()).toBe('http://localhost:3001/api/v1/feature-flags');
+  });
+
+  it('uses a safe relative feature flag endpoint when no env is configured', () => {
+    expect(getRemoteFlagsUrl()).toBe('/api/v1/feature-flags');
   });
 
   it('returns a full snapshot of all defined flags', () => {

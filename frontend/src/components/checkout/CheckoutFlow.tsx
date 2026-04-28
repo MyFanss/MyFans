@@ -16,9 +16,12 @@ import {
   CheckoutResult,
 } from "@/lib/checkout";
 import { useTransaction } from "@/hooks/useTransaction";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FeatureFlag } from "@/lib/feature-flags";
 import { useToast } from "@/contexts/ToastContext";
-import { createAppError } from "@/types/errors";
+import { createTrackedTransaction, getExplorerUrl } from "@/lib/transaction-history";
 
+import { createAppError } from "@/types/errors";
 import PlanSummaryComponent from "./PlanSummary";
 import PriceBreakdownComponent from "./PriceBreakdown";
 import AssetSelectorComponent from "./AssetSelector";
@@ -26,6 +29,8 @@ import WalletBalanceComponent from "./WalletBalance";
 import TransactionPreviewComponent from "./TransactionPreview";
 import CheckoutResultDisplay from "./CheckoutResult";
 import TxFailureRecovery from "./TxFailureRecovery";
+import TransactionProgress from "./TransactionProgress"; 
+import { ReferralCodeInput } from "@/components/referral/ReferralCodeInput";
 
 export type CheckoutStep = "select" | "preview" | "confirm" | "result";
 
@@ -75,11 +80,15 @@ export default function CheckoutFlow({
     null
   );
 
+  // Referral code state
+  const referralEnabled = useFeatureFlag(FeatureFlag.REFERRAL_CODES);
+  const [appliedReferralCode, setAppliedReferralCode] = useState<string | null>(null);
+
   // Transaction hook
   const tx = useTransaction({
     type: "subscription",
     amount: priceBreakdown ? parseFloat(priceBreakdown.total) : undefined,
-    onSuccess: (result) => {
+    onSuccess: () => {
       showSuccess(
         "Transaction successful!",
         "You are now subscribed to this creator."
@@ -190,28 +199,47 @@ export default function CheckoutFlow({
     if (!checkoutId) return;
 
     await tx.execute(async () => {
+      const txHash = `tx_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 11)}`;
+
       // Simulate transaction submission
-      // In real app, this would use Freighter wallet to sign and submit
       await new Promise((resolve, reject) => {
         setTimeout(() => {
-          const shouldFail = Math.random() < 0.1; // 10% chance of failure for demo
+          const shouldFail = Math.random() < 0.1; // 10% chance of failure
           if (shouldFail) {
             reject(new Error("Transaction rejected by user"));
           } else {
-            const txHash = `tx_${Date.now()}_${Math.random()
-              .toString(36)
-              .substr(2, 9)}`;
             resolve(txHash);
           }
         }, 2000);
       });
 
       // Confirm with backend
-      const result = await apiConfirmSubscription(checkoutId);
-      setCheckoutResult(result);
+      const result = await apiConfirmSubscription(checkoutId, txHash);
+      const trackedTransaction = createTrackedTransaction({
+        checkoutId,
+        txHash,
+        type: "subscription",
+        description: planSummary
+          ? `Subscription to ${planSummary.creatorName}${planSummary.name ? ` • ${planSummary.name}` : ""}`
+          : "Subscription payment",
+        amount: priceBreakdown?.total ?? checkout?.total ?? "0",
+        currency: priceBreakdown?.currency ?? selectedAsset?.code ?? "XLM",
+        creatorName: planSummary?.creatorName,
+        planName: planSummary?.name,
+      });
+
+      const nextResult = {
+        ...result,
+        txHash,
+        explorerUrl: result.explorerUrl || getExplorerUrl(txHash),
+      };
+
+      setCheckoutResult(nextResult);
       setCurrentStep("result");
-      onComplete?.(result);
-      return result;
+      onComplete?.(nextResult);
+      return { ...nextResult, trackedTransaction };
     });
   }, [checkoutId, tx, onComplete]);
 
@@ -248,9 +276,7 @@ export default function CheckoutFlow({
       <div className="flex items-center justify-center p-8">
         <div className="text-center">
           <div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
-          <p className="text-slate-600 dark:text-slate-400">
-            Loading checkout...
-          </p>
+          <p className="text-slate-600 dark:text-slate-400">Loading checkout...</p>
         </div>
       </div>
     );
@@ -259,7 +285,12 @@ export default function CheckoutFlow({
   // Error state
   if (error) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-center dark:border-red-800 dark:bg-red-900/20">
+      <div
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
+        className="rounded-lg border border-red-200 bg-red-50 p-4 text-center dark:border-red-800 dark:bg-red-900/20"
+      >
         <p className="text-red-700 dark:text-red-300">{error}</p>
         {onCancel && (
           <button
@@ -288,8 +319,7 @@ export default function CheckoutFlow({
               className={`flex h-8 w-8 items-center justify-center rounded-full ${
                 currentStep === step
                   ? "bg-primary-500 text-white"
-                  : ["select", "preview", "confirm"].indexOf(currentStep) >
-                    index
+                  : ["select", "preview", "confirm"].indexOf(currentStep) > index
                   ? "bg-green-500 text-white"
                   : "bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400"
               }`}
@@ -301,12 +331,7 @@ export default function CheckoutFlow({
                   stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               ) : (
                 <span className="text-sm font-medium">{index + 1}</span>
@@ -326,47 +351,49 @@ export default function CheckoutFlow({
       </div>
 
       {/* Step 1: Asset Selection */}
-      {currentStep === "select" &&
-        planSummary &&
-        priceBreakdown &&
-        walletStatus && (
-          <div className="space-y-4">
-            <PlanSummaryComponent plan={planSummary} />
-
-            <AssetSelectorComponent
+      {currentStep === "select" && planSummary && priceBreakdown && walletStatus && (
+        <div className="space-y-4">
+          <PlanSummaryComponent plan={planSummary} />
+          <AssetSelectorComponent
+            walletStatus={walletStatus}
+            selectedAsset={selectedAsset}
+            onSelectAsset={handleAssetSelect}
+          />
+          {selectedAsset && (
+            <WalletBalanceComponent
               walletStatus={walletStatus}
               selectedAsset={selectedAsset}
-              onSelectAsset={handleAssetSelect}
+              requiredAmount={priceBreakdown.total}
+              validation={balanceValidation || undefined}
             />
-
-            {selectedAsset && (
-              <WalletBalanceComponent
-                walletStatus={walletStatus}
-                selectedAsset={selectedAsset}
-                requiredAmount={priceBreakdown.total}
-                validation={balanceValidation || undefined}
-              />
-            )}
-
-            <div className="flex gap-3">
-              {onCancel && (
-                <button
-                  onClick={onCancel}
-                  className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-3 font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-              )}
+          )}
+          {referralEnabled && (
+            <ReferralCodeInput
+              onValidated={(code, valid) => {
+                if (valid) setAppliedReferralCode(code);
+                else setAppliedReferralCode(null);
+              }}
+            />
+          )}
+          <div className="flex gap-3">
+            {onCancel && (
               <button
-                onClick={handleContinueToPreview}
-                disabled={!balanceValidation?.valid}
-                className="flex-1 rounded-lg bg-primary-500 px-4 py-3 font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-600 dark:hover:bg-primary-700"
+                onClick={onCancel}
+                className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-3 font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
               >
-                Continue to Preview
+                Cancel
               </button>
-            </div>
+            )}
+            <button
+              onClick={handleContinueToPreview}
+              disabled={!balanceValidation?.valid}
+              className="flex-1 rounded-lg bg-primary-500 px-4 py-3 font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-600 dark:hover:bg-primary-700"
+            >
+              Continue to Preview
+            </button>
           </div>
-        )}
+        </div>
+      )}
 
       {/* Step 2: Preview */}
       {currentStep === "preview" &&
@@ -378,7 +405,6 @@ export default function CheckoutFlow({
             <PlanSummaryComponent plan={planSummary} />
             <PriceBreakdownComponent breakdown={priceBreakdown} />
             <TransactionPreviewComponent preview={transactionPreview} />
-
             {selectedAsset && (
               <WalletBalanceComponent
                 walletStatus={walletStatus}
@@ -387,7 +413,6 @@ export default function CheckoutFlow({
                 validation={balanceValidation || undefined}
               />
             )}
-
             <div className="flex gap-3">
               <button
                 onClick={() => setCurrentStep("select")}
@@ -425,16 +450,24 @@ export default function CheckoutFlow({
 
             <TransactionPreviewComponent preview={transactionPreview} />
 
-            {/* Transaction error with guided recovery */}
-            {tx.error && (
-              <TxFailureRecovery
-                error={tx.error}
-                onRetry={() => tx.retry()}
-                onDismiss={() => { tx.reset(); setCurrentStep('preview'); }}
-                retryCount={tx.retryCount}
-                maxRetries={3}
-              />
-            )}
+            {/* Transaction progress */}
+            <TransactionProgress
+              stage={
+                tx.isPending
+                  ? "pending"
+                  : tx.isFailed
+                  ? "failed"
+                  : tx.isSuccess
+                  ? "confirmed"
+                  : "signing"
+              }
+              txHash={(tx.data as { txHash?: string } | null)?.txHash}
+              error={tx.error?.message}
+              onRetry={() => {
+                tx.reset();
+                setCurrentStep("preview");
+              }}
+            />
 
             <div className="flex gap-3">
               <button
@@ -446,48 +479,12 @@ export default function CheckoutFlow({
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={tx.isPending}
+                disabled={tx.isPending || tx.isSuccess}
                 className="flex-1 rounded-lg bg-primary-500 px-4 py-3 font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-600 dark:hover:bg-primary-700"
               >
-                {tx.isPending ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg
-                      className="h-5 w-5 animate-spin"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Processing...
-                  </span>
-                ) : (
-                  "Sign & Subscribe"
-                )}
+                {tx.isPending ? "Processing..." : "Sign & Subscribe"}
               </button>
             </div>
-
-            {/* Retry button */}
-            {tx.isFailed && tx.error?.recoverable && (
-              <button
-                onClick={handleRetry}
-                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-              >
-                Try Again
-              </button>
-            )}
           </div>
         )}
     </div>

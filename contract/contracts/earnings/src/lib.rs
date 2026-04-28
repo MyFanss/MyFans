@@ -1,11 +1,28 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env, Symbol,
+};
 
 #[contracttype]
 enum DataKey {
     Admin,
     Earnings(Address),
+}
+
+/// Per-contract error codes for the **earnings** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `AlreadyInitialized` |
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Error {
+    /// Code 1 – contract was already initialized.
+    AlreadyInitialized = 1,
 }
 
 #[contract]
@@ -15,7 +32,7 @@ pub struct Earnings;
 impl Earnings {
     pub fn init(env: Env, admin: Address) {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
+            panic_with_error!(&env, Error::AlreadyInitialized);
         }
 
         admin.require_auth();
@@ -74,4 +91,5 @@ impl Earnings {
     }
 }
 
+#[cfg(test)]
 mod test;

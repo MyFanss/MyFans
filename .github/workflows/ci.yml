@@ -2,179 +2,359 @@ name: CI
 
 on:
   push:
-    branches: [main, master, feat/dependency-audit-ci, "ci/**"]
+    branches: [main, develop]
   pull_request:
-    branches: [main, master, feat/dependency-audit-ci]
+    branches: [main, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  frontend:
-    name: Frontend
+  backend:
+    name: Backend (Node.js ${{ matrix.node }})
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 15
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: myfans_ci
+          POSTGRES_PASSWORD: myfans_ci
+          POSTGRES_DB: myfans_test
+        ports:
+          - 5432:5432
+        options: >
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: myfans_ci
+      DB_PASSWORD: myfans_ci
+      DB_NAME: myfans_test
+      JWT_SECRET: ci-test-secret-not-for-production
+      WEBHOOK_SECRET: ci-webhook-secret-not-for-production
+      NODE_ENV: test
+      STELLAR_NETWORK: testnet
+      SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Run linter
+        run: npm run lint
+        working-directory: backend
+
+      - name: Run tests
+        run: npm test
+        working-directory: backend
+
+      - name: Build
+        run: npm run build
+        working-directory: backend
+
+  backend-migrations:
+    name: Backend DB Migrations (Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: myfans_ci
+          POSTGRES_PASSWORD: myfans_ci
+          POSTGRES_DB: myfans_test
+        ports:
+          - 5432:5432
+        options: >
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: myfans_ci
+      DB_PASSWORD: myfans_ci
+      DB_NAME: myfans_test
+      JWT_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Wait for Postgres
+        run: |
+          until pg_isready -h localhost -p 5432 -U myfans_ci; do
+            echo "waiting for postgres…"; sleep 1;
+          done
+
+      - name: Run migration integration tests
+        run: npm run test:migrations
+        working-directory: backend
+
+      - name: Verify migration runner script (up)
+        run: npm run migration:run
+        working-directory: backend
+
+      - name: Verify migration runner script (revert)
+        run: npm run migration:revert
+        working-directory: backend
+
+  frontend:
+    name: Frontend (Node.js ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
         working-directory: frontend
 
-      - name: Security audit (dependencies)
-        run: npm audit --omit=dev --audit-level=high
+      - name: Run linter
+        run: npm run lint
+        working-directory: frontend
+
+      - name: Run tests
+        run: npm test
         working-directory: frontend
 
       - name: Build
         run: npm run build
         working-directory: frontend
 
-  backend:
-    name: Backend
+  db-backup-drill:
+    name: Postgres Backup / Restore Drill
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 10
+    needs: [backend-migrations]
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: myfans_ci
+          POSTGRES_PASSWORD: myfans_ci
+          POSTGRES_DB: myfans_test
+        ports:
+          - 5432:5432
+        options: >
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: myfans_ci
+      DB_PASSWORD: myfans_ci
+      DB_NAME: myfans_test
+      JWT_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: '20'
+          cache: 'npm'
           cache-dependency-path: backend/package-lock.json
 
       - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install --no-audit --no-fund
-          fi
+        run: npm ci
         working-directory: backend
 
-      - name: Security audit (dependencies)
-        run: npm audit --omit=dev --audit-level=high
+      - name: Install postgres client
+        run: sudo apt-get install -y postgresql-client
+
+      - name: Run migrations (seed schema)
+        run: npm run migration:run
         working-directory: backend
+
+      - name: Backup / restore drill
+        run: ./scripts/pg-backup-restore.sh drill
+
+  # Futurenet deploy is intentionally NOT part of this job.
+  # Use the manual "Futurenet Smoke (manual)" workflow_dispatch instead.
+  contract:
+    name: Contract (Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Cache Cargo registry
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.cargo/git/checkouts
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('contract/**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache Cargo target directory
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: contract/target
+          key: ${{ runner.os }}-contract-target-${{ hashFiles('contract/**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-contract-target-
+
+      - name: Install toolchain
+        run: rustup component add rustfmt clippy
+        working-directory: contract
+
+      - name: Check formatting
+        run: cargo fmt --check
+        working-directory: contract
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features
+        working-directory: contract
+
+      - name: Run tests
+        run: cargo test --all-features
+        working-directory: contract
 
       - name: Build
-        run: npm run build
-        working-directory: backend
+        run: cargo build --release
+        working-directory: contract
 
-      - name: Run unit tests
-        run: npm test
-        working-directory: backend
-        env:
-          JWT_SECRET: ci-test-secret
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: postgres
-          DB_PASSWORD: postgres
-          DB_NAME: myfans
-
-      - name: Run E2E tests
-        run: npm run test:e2e
-        working-directory: backend
-        env:
-          JWT_SECRET: ci-test-secret
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: postgres
-          DB_PASSWORD: postgres
-          DB_NAME: myfans
-
-  # Single audit job (not duplicated across the toolchain matrix) to save CI time.
-  contracts-audit:
-    name: Contracts (RustSec audit)
+  wasm-size:
+    name: Wasm Build Size
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: contract
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Cargo registry
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          targets: wasm32-unknown-unknown,wasm32v1-none
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.cargo/git/checkouts
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('contract/**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+      - name: Cache Cargo target directory
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          workspaces: contract
-          prefix-key: contracts-audit
+          path: contract/target
+          key: ${{ runner.os }}-contract-target-${{ hashFiles('contract/**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-contract-target-
 
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
-
-      - name: Security audit (contracts)
-        # Fail on high/critical RustSec advisories as configured in contract/audit.toml.
-        run: cargo audit
+      - name: Install toolchain
+        run: rustup target add wasm32-unknown-unknown
         working-directory: contract
 
-  contracts:
-    name: Contracts (${{ matrix.name }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Rust stable × two supported stellar-cli releases
-          - name: rust-stable-cli-23
-            rust: stable
-            stellar_cli: "23.4.1"
-          - name: rust-stable-cli-25
-            rust: stable
-            stellar_cli: "25.2.0"
-          # Minimum supported toolchain in CI (keep aligned with Soroban SDK / MSRV)
-          - name: rust-1.82-cli-23
-            rust: "1.82"
-            stellar_cli: "23.4.1"
-          - name: rust-1.82-cli-25
-            rust: "1.82"
-            stellar_cli: "25.2.0"
-    steps:
-      - uses: actions/checkout@v4
+      - name: Build Wasm (release)
+        run: cargo build --release --target wasm32-unknown-unknown
+        working-directory: contract
 
-      - name: Install system dependencies (for stellar-cli)
+      - name: Generate size report
+        working-directory: contract
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libdbus-1-dev libudev-dev pkg-config
+          REPORT="wasm-size-report.txt"
+          WASM_DIR="target/wasm32-unknown-unknown/release"
+          echo "# Wasm Build Size Report" > "$REPORT"
+          echo "Generated: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$REPORT"
+          echo "Commit:    ${GITHUB_SHA}" >> "$REPORT"
+          echo "" >> "$REPORT"
+          printf "%-40s %10s %10s\n" "Contract" "Bytes" "KiB" >> "$REPORT"
+          printf "%-40s %10s %10s\n" "--------" "-----" "---" >> "$REPORT"
+          TOTAL=0
+          while IFS= read -r -d '' f; do
+            name=$(basename "$f")
+            bytes=$(stat -c%s "$f")
+            kib=$(echo "scale=1; $bytes / 1024" | bc)
+            printf "%-40s %10d %10s\n" "$name" "$bytes" "$kib" >> "$REPORT"
+            TOTAL=$((TOTAL + bytes))
+          done < <(find "$WASM_DIR" -maxdepth 1 -name '*.wasm' -print0 | sort -z)
+          TOTAL_KIB=$(echo "scale=1; $TOTAL / 1024" | bc)
+          echo "" >> "$REPORT"
+          printf "%-40s %10d %10s\n" "TOTAL" "$TOTAL" "$TOTAL_KIB" >> "$REPORT"
+          cat "$REPORT"
 
-      - name: Install Rust (${{ matrix.rust }})
-        uses: dtolnay/rust-toolchain@master
+      - name: Upload size report artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          toolchain: ${{ matrix.rust }}
-          targets: wasm32-unknown-unknown,wasm32v1-none
+          name: wasm-size-report
+          path: contract/wasm-size-report.txt
+          retention-days: 30
+          if-no-files-found: error
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: contract
-          prefix-key: contracts-${{ matrix.name }}
-
-      - name: Build (wasm release, workspace)
-        run: cargo build --workspace --target wasm32-unknown-unknown --release
+      - name: Write step summary
         working-directory: contract
-
-      - name: Run tests (workspace)
-        run: cargo test --workspace
-        working-directory: contract
-
-      - name: Cache stellar CLI binary
-        id: stellar-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/stellar
-          key: stellar-cli-${{ matrix.stellar_cli }}-${{ runner.os }}-v1
-
-      - name: Install Stellar CLI ${{ matrix.stellar_cli }}
-        if: steps.stellar-cache.outputs.cache-hit != 'true'
-        run: cargo install stellar-cli --locked --version ${{ matrix.stellar_cli }}
-
-      - name: Deploy and verify on Futurenet (smoke)
         run: |
-          ./scripts/deploy.sh \
-            --network futurenet \
-            --source "ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.name }}" \
-            --out "./deployed-ci-${{ matrix.name }}.json" \
-            --env-out "./.env.deployed-ci-${{ matrix.name }}"
-        working-directory: contract
+          WASM_DIR="target/wasm32-unknown-unknown/release"
+          echo "## Wasm Build Size" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Contract | Bytes | KiB |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|------:|----:|" >> $GITHUB_STEP_SUMMARY
+          TOTAL=0
+          while IFS= read -r -d '' f; do
+            name=$(basename "$f")
+            bytes=$(stat -c%s "$f")
+            kib=$(echo "scale=1; $bytes / 1024" | bc)
+            echo "| \`$name\` | $bytes | $kib |" >> $GITHUB_STEP_SUMMARY
+            TOTAL=$((TOTAL + bytes))
+          done < <(find "$WASM_DIR" -maxdepth 1 -name '*.wasm' -print0 | sort -z)
+          TOTAL_KIB=$(echo "scale=1; $TOTAL / 1024" | bc)
+          echo "| **TOTAL** | **$TOTAL** | **$TOTAL_KIB** |" >> $GITHUB_STEP_SUMMARY

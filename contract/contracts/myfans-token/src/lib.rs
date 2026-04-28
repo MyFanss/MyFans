@@ -32,16 +32,38 @@ pub struct AllowanceData {
     pub expiration_ledger: u32,
 }
 
-/// Token contract errors (codes 1–3 match test expectations)
+/// Token contract errors (codes 1–7 match test expectations)
+/// Per-contract error codes for the **myfans-token** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `InsufficientBalance` |
+/// | 2 | `InsufficientAllowance` |
+/// | 3 | `AllowanceExpired` |
+/// | 4 | `InvalidAmount` |
+/// | 5 | `InvalidExpiration` |
+/// | 6 | `NoAllowance` |
+/// | 7 | `Unauthorized` |
 #[contracterror]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
-    InsufficientBalance = 1,   // transfer: not enough balance
-    InsufficientAllowance = 2, // transfer_from: allowance too low
-    AllowanceExpired = 3,      // transfer_from: allowance expired
+    /// Code 1 – transfer: not enough balance.
+    InsufficientBalance = 1,
+    /// Code 2 – transfer_from: allowance too low.
+    InsufficientAllowance = 2,
+    /// Code 3 – transfer_from: allowance expired.
+    AllowanceExpired = 3,
+    /// Code 4 – amount must be strictly positive.
     InvalidAmount = 4,
+    /// Code 5 – expiration ledger is in the past.
     InvalidExpiration = 5,
+    /// Code 6 – no allowance record found for (from, spender).
     NoAllowance = 6,
+    /// Code 7 – mint: caller is not admin.
+    Unauthorized = 7,
 }
 
 #[contract]
@@ -49,6 +71,23 @@ pub struct MyFansToken;
 
 #[contractimpl]
 impl MyFansToken {
+    /// Temporary allowance entries must stay readable until at least one ledger
+    /// after `expiration_ledger`, so `transfer_from` can return [`Error::AllowanceExpired`]
+    /// instead of [`Error::NoAllowance`] when the logical allowance has expired.
+    fn bump_allowance_temp_ttl(env: &Env, key: &DataKey, expiration_ledger: u32) {
+        let seq = env.ledger().sequence();
+        // Default temp TTL after `set` is typically 16; threshold must be > that
+        // so extend runs, and host requires threshold <= extend_to.
+        let extend_to = expiration_ledger
+            .saturating_sub(seq)
+            .saturating_add(2)
+            .max(17)
+            .min(env.storage().max_ttl());
+        env.storage()
+            .temporary()
+            .extend_ttl(key, extend_to, extend_to);
+    }
+
     /// Initialize the token contract with admin and initial supply
     ///
     /// # Arguments
@@ -103,6 +142,27 @@ impl MyFansToken {
 
         // Update admin in storage
         env.storage().instance().set(&DataKey::Admin, &new_admin);
+    }
+
+    /// Update token name and symbol. Only admin can call this.
+    /// Decimals remain immutable.
+    ///
+    /// # Arguments
+    /// * `new_name` - New token name
+    /// * `new_symbol` - New token symbol
+    pub fn set_metadata(env: Env, new_name: String, new_symbol: String) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not initialized");
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Name, &new_name);
+        env.storage().instance().set(&DataKey::Symbol, &new_symbol);
+
+        env.events()
+            .publish((symbol_short!("meta_upd"),), (new_name, new_symbol));
     }
 
     /// Get the token name (view function)
@@ -161,9 +221,9 @@ impl MyFansToken {
             expiration_ledger,
         };
 
-        // Store and extend TTL for temporary storage
+        // Store and extend TTL for temporary storage (see bump_allowance_temp_ttl).
         env.storage().temporary().set(&key, &data);
-        env.storage().temporary().extend_ttl(&key, 100, 100);
+        Self::bump_allowance_temp_ttl(&env, &key, expiration_ledger);
 
         env.events()
             .publish((symbol_short!("approve"), from, spender), amount);
@@ -204,6 +264,7 @@ impl MyFansToken {
                     expiration_ledger: data.expiration_ledger,
                 };
                 env.storage().temporary().set(&key, &new_allowance);
+                Self::bump_allowance_temp_ttl(&env, &key, data.expiration_ledger);
             }
             None => return Err(Error::NoAllowance),
         }
@@ -217,9 +278,29 @@ impl MyFansToken {
         let balance_to = read_balance(&env, to.clone());
         write_balance(&env, to.clone(), balance_to + amount);
 
+        // Emit transfer_from event so indexers can identify spender-triggered transfers.
+        // Regular `transfer` events use topics (transfer, from, to); this uses
+        // (transfer_from, spender, from, to) to distinguish the two paths.
         env.events()
-            .publish((symbol_short!("transfer"), from, to), amount);
+            .publish((symbol_short!("xfer_from"), spender, from, to), amount);
         Ok(())
+    }
+
+    /// Zero out the allowance for (from, spender). `from` must authorize.
+    pub fn clear_allowance(env: Env, from: Address, spender: Address) {
+        from.require_auth();
+        let key = DataKey::Allowance(AllowanceValueKey {
+            from: from.clone(),
+            spender: spender.clone(),
+        });
+        let data = AllowanceData {
+            amount: 0,
+            expiration_ledger: env.ledger().sequence(),
+        };
+        env.storage().temporary().set(&key, &data);
+        Self::bump_allowance_temp_ttl(&env, &key, data.expiration_ledger);
+        env.events()
+            .publish((symbol_short!("approve"), from, spender), 0i128);
     }
 
     pub fn allowance(env: Env, from: Address, spender: Address) -> i128 {
@@ -231,14 +312,29 @@ impl MyFansToken {
         }
     }
 
-    pub fn mint(env: Env, to: Address, amount: i128) {
-        let admin = Self::admin(env.clone());
+    /// Mint new tokens to `to`. Only the contract admin may call this.
+    ///
+    /// # Errors
+    /// * [`Error::Unauthorized`] – caller is not the stored admin.
+    /// * [`Error::InvalidAmount`] – `amount` is zero or negative.
+    pub fn mint(env: Env, to: Address, amount: i128) -> Result<(), Error> {
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        // Read admin from storage and require their authorisation.
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not initialized");
         admin.require_auth();
 
         let balance = read_balance(&env, to.clone());
         write_balance(&env, to.clone(), balance + amount);
 
-        let total: i128 = env.storage()
+        let total: i128 = env
+            .storage()
             .instance()
             .get(&DataKey::TotalSupply)
             .unwrap_or(0);
@@ -247,10 +343,14 @@ impl MyFansToken {
             .set(&DataKey::TotalSupply, &(total + amount));
 
         env.events().publish((symbol_short!("mint"), to), amount);
+        Ok(())
     }
 
     pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), Error> {
         from.require_auth();
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
         let balance = read_balance(&env, from.clone());
         if balance < amount {
             return Err(Error::InsufficientBalance);
@@ -258,7 +358,8 @@ impl MyFansToken {
 
         write_balance(&env, from.clone(), balance - amount);
 
-        let total: i128 = env.storage()
+        let total: i128 = env
+            .storage()
             .instance()
             .get(&DataKey::TotalSupply)
             .unwrap_or(0);
@@ -307,3 +408,9 @@ fn write_balance(env: &Env, id: Address, amount: i128) {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod allowance_expiry_tests;
+
+#[cfg(test)]
+mod property_tests;

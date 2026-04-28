@@ -149,7 +149,7 @@ checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
 name = "content-access"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "myfans-lib",
  "soroban-sdk",
@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "content-likes"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "soroban-sdk",
 ]
@@ -190,21 +190,21 @@ dependencies = [
 
 [[package]]
 name = "creator-deposits"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "soroban-sdk",
 ]
 
 [[package]]
 name = "creator-earnings"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "soroban-sdk",
 ]
 
 [[package]]
 name = "creator-registry"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "soroban-sdk",
 ]
@@ -395,7 +395,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "earnings"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "soroban-sdk",
 ]
@@ -725,21 +725,21 @@ dependencies = [
 
 [[package]]
 name = "myfans-contract"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "soroban-sdk",
 ]
 
 [[package]]
 name = "myfans-lib"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "soroban-sdk",
 ]
 
 [[package]]
 name = "myfans-token"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "soroban-sdk",
 ]
@@ -1368,9 +1368,13 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "subscription"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
+ "content-access",
+ "creator-registry",
+ "earnings",
  "myfans-lib",
+ "myfans-token",
  "soroban-sdk",
 ]
 
@@ -1393,7 +1397,7 @@ dependencies = [
 
 [[package]]
 name = "test-consumer"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "myfans-lib",
  "soroban-sdk",
@@ -1452,7 +1456,7 @@ dependencies = [
 
 [[package]]
 name = "treasury"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "soroban-sdk",
 ]

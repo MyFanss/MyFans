@@ -13,10 +13,31 @@ import {
   SortOption,
 } from "@/lib/creator-profile";
 import { FeatureFlag } from "@/lib/feature-flags";
+import { searchCreators, PublicCreator } from "@/lib/api/creators";
+import { usePrefetchCreatorRoute } from "@/hooks/usePrefetchCreatorRoute";
+import { CreatorCardSkeleton } from "@/components/ui/CreatorCardSkeleton";
 
 const DEBOUNCE_DELAY = 300;
 const INITIAL_LOAD = 12;
 const LOAD_MORE_COUNT = 8;
+
+const USE_API = process.env.NEXT_PUBLIC_USE_CREATORS_API === "true";
+
+/** Map API result to the shape CreatorCard expects */
+function apiCreatorToProfile(c: PublicCreator): CreatorProfile {
+  return {
+    id: c.id,
+    username: c.username,
+    displayName: c.display_name,
+    bio: c.bio ?? "",
+    avatarUrl: c.avatar_url ?? undefined,
+    subscriberCount: 0,
+    subscriptionPrice: 0,
+    isVerified: false,
+    categories: [],
+    socialLinks: [],
+  };
+}
 
 function DiscoverContentInner() {
   const router = useRouter();
@@ -79,39 +100,85 @@ function DiscoverContentInner() {
 
   // Fetch creators
   useEffect(() => {
-    // Use requestAnimationFrame to avoid cascading renders ESLint warning
-    requestAnimationFrame(() => {
-      const result = getCreators({
-        search: debouncedSearch,
-        categories: selectedCategories,
-        sort,
-        page: 1,
-        limit: INITIAL_LOAD,
-      });
-      setDisplayedCreators(result.creators);
-      setTotal(result.total);
-      setHasMore(result.hasMore);
-      setPage(1);
-    });
+    let cancelled = false;
+
+    async function load() {
+      if (USE_API) {
+        try {
+          const result = await searchCreators({
+            q: debouncedSearch || undefined,
+            page: 1,
+            limit: INITIAL_LOAD,
+          });
+          if (!cancelled) {
+            setDisplayedCreators(result.data.map(apiCreatorToProfile));
+            setTotal(result.total);
+            setHasMore(result.hasMore);
+            setPage(1);
+          }
+        } catch {
+          if (!cancelled) {
+            setDisplayedCreators([]);
+            setTotal(0);
+            setHasMore(false);
+          }
+        }
+      } else {
+        requestAnimationFrame(() => {
+          const result = getCreators({
+            search: debouncedSearch,
+            categories: selectedCategories,
+            sort,
+            page: 1,
+            limit: INITIAL_LOAD,
+          });
+          if (!cancelled) {
+            setDisplayedCreators(result.creators);
+            setTotal(result.total);
+            setHasMore(result.hasMore);
+            setPage(1);
+          }
+        });
+      }
+    }
+
+    void load();
+    return () => { cancelled = true; };
   }, [debouncedSearch, selectedCategories, sort]);
 
   // Infinite scroll - load more
-  const loadMore = useCallback(() => {
+  const loadMore = useCallback(async () => {
     if (isLoading || !hasMore) return;
 
     setIsLoading(true);
     const nextPage = page + 1;
-    const result = getCreators({
-      search: debouncedSearch,
-      categories: selectedCategories,
-      sort,
-      page: nextPage,
-      limit: LOAD_MORE_COUNT,
-    });
 
-    setDisplayedCreators((prev) => [...prev, ...result.creators]);
-    setHasMore(result.hasMore);
-    setPage(nextPage);
+    if (USE_API) {
+      try {
+        const result = await searchCreators({
+          q: debouncedSearch || undefined,
+          page: nextPage,
+          limit: LOAD_MORE_COUNT,
+        });
+        setDisplayedCreators((prev) => [...prev, ...result.data.map(apiCreatorToProfile)]);
+        setHasMore(result.hasMore);
+        setPage(nextPage);
+      } catch {
+        // silently keep current results on load-more failure
+      }
+    } else {
+      const result = getCreators({
+        search: debouncedSearch,
+        categories: selectedCategories,
+        sort,
+        page: nextPage,
+        limit: LOAD_MORE_COUNT,
+      });
+      setDisplayedCreators((prev) => [...prev, ...result.creators]);
+      setHasMore(result.hasMore);
+      setPage(nextPage);
+    }
+
     setIsLoading(false);
   }, [isLoading, hasMore, page, debouncedSearch, selectedCategories, sort]);
 
@@ -263,35 +330,46 @@ function DiscoverContentInner() {
       {/* Creator Cards Grid */}
       {displayedCreators.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {displayedCreators.map((creator) => (
-            <CreatorCard
-              key={creator.id}
-              name={creator.displayName}
-              username={creator.username}
-              avatarUrl={creator.avatarUrl}
-              bio={creator.bio}
-              subscriberCount={creator.subscriberCount}
-              subscriptionPrice={creator.subscriptionPrice}
-              isVerified={creator.isVerified}
-              categories={creator.categories}
-              location={creator.location}
-              headerAccessory={
-                <FeatureGate flag={FeatureFlag.BOOKMARKS}>
-                  <BookmarkButton creatorId={creator.id} />
-                </FeatureGate>
-              }
-              actionButton={
-                <a
-                  href={`/creator/${creator.username}`}
-                  className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors"
-                >
-                  Subscribe
-                </a>
-              }
-            />
+          {displayedCreators.map((creator) => {
+            // eslint-disable-next-line react-hooks/rules-of-hooks
+            const { hoverHandlers } = usePrefetchCreatorRoute(creator.username);
+            return (
+              <CreatorCard
+                key={creator.id}
+                name={creator.displayName}
+                username={creator.username}
+                avatarUrl={creator.avatarUrl}
+                bio={creator.bio}
+                subscriberCount={creator.subscriberCount}
+                subscriptionPrice={creator.subscriptionPrice}
+                isVerified={creator.isVerified}
+                categories={creator.categories}
+                location={creator.location}
+                headerAccessory={
+                  <FeatureGate flag={FeatureFlag.BOOKMARKS}>
+                    <BookmarkButton creatorId={creator.id} />
+                  </FeatureGate>
+                }
+                actionButton={
+                  <a
+                    href={`/creator/${creator.username}`}
+                    {...hoverHandlers}
+                    className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Subscribe
+                  </a>
+                }
+              />
+            );
+          })}
+        </div>
+      ) : isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {[...Array(8)].map((_, i) => (
+            <CreatorCardSkeleton key={i} />
           ))}
         </div>
-      ) : !isLoading ? (
+      ) : (
         /* Empty State */
         <div className="flex flex-col items-center justify-center py-16">
           <div className="w-24 h-24 mb-6 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
@@ -326,34 +404,16 @@ function DiscoverContentInner() {
             </button>
           )}
         </div>
-      ) : null}
+      )}
 
       {/* Infinite Scroll Trigger */}
       {hasMore && (
-        <div ref={loadMoreRef} className="flex justify-center py-8">
+        <div ref={loadMoreRef} className="py-8">
           {isLoading && (
-            <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-              <svg
-                className="w-5 h-5 animate-spin"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
-              Loading more creators...
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {[...Array(4)].map((_, i) => (
+                <CreatorCardSkeleton key={i} />
+              ))}
             </div>
           )}
         </div>
@@ -385,10 +445,7 @@ export default function DiscoverContent() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {[...Array(8)].map((_, i) => (
-              <div
-                key={i}
-                className="h-64 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse"
-              ></div>
+              <CreatorCardSkeleton key={i} />
             ))}
           </div>
         </div>

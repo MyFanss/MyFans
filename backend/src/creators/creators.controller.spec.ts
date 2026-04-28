@@ -1,10 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CreatorsController } from './creators.controller';
 import { CreatorsService } from './creators.service';
+import { CreatorDashboardService } from './creator-dashboard.service';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { PaginatedResponseDto } from '../common/dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
 import { BadRequestException } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 
 describe('CreatorsController', () => {
   let controller: CreatorsController;
@@ -14,6 +16,7 @@ describe('CreatorsController', () => {
     createPlan: jest.fn(),
     findAllPlans: jest.fn(),
     findCreatorPlans: jest.fn(),
+    listCreators: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -24,8 +27,15 @@ describe('CreatorsController', () => {
           provide: CreatorsService,
           useValue: mockCreatorsService,
         },
+        {
+          provide: CreatorDashboardService,
+          useValue: { getDashboard: jest.fn() },
+        },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<CreatorsController>(CreatorsController);
   });
@@ -36,6 +46,20 @@ describe('CreatorsController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  describe('listCreators', () => {
+    it('should call service.listCreators with mergeChain=false by default', async () => {
+      mockCreatorsService.listCreators.mockResolvedValue([]);
+      await controller.listCreators(undefined);
+      expect(mockCreatorsService.listCreators).toHaveBeenCalledWith(false);
+    });
+
+    it('should call service.listCreators with mergeChain=true when chain=true', async () => {
+      mockCreatorsService.listCreators.mockResolvedValue([]);
+      await controller.listCreators('true');
+      expect(mockCreatorsService.listCreators).toHaveBeenCalledWith(true);
+    });
   });
 
 

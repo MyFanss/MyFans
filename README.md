@@ -102,6 +102,18 @@ You will keep only these three folders and this README; other files can be remov
 - **Fans**: Discover creators, view plans, subscribe (sign Soroban tx), manage active subscriptions.
 - **UX**: Show subscription status, next billing, and “access granted” for gated content.
 
+### Wallet support today
+
+The current frontend wallet implementation does not treat all wallets equally:
+
+| Wallet | Current repo status | Practical difference in MyFans |
+|--------|----------------------|--------------------------------|
+| **Freighter** | Fully wired for connection and transaction signing | Best choice for creator and fan flows that need Soroban transaction approval today |
+| **Lobstr** | Wallet selection UI and install guidance exist, but the integration is still marked pending | Discoverability is documented, but users should not assume full signing parity with Freighter yet |
+| **WalletConnect** | Wallet selection UI exists, but protocol integration is still marked pending | Treat it as planned support rather than a production-ready path in this repo |
+
+If you are documenting or testing wallet-based flows in this repository, assume **Freighter is the reference implementation** until Lobstr and WalletConnect move from interface-ready to fully integrated.
+
 ### Tech
 
 - **Next.js** (App Router or Pages as you prefer).
@@ -182,6 +194,21 @@ You will keep only these three folders and this README; other files can be remov
 - **Contract**: `cd contract && cargo build && soroban contract test` (and deploy with soroban-cli).
 - **Backend**: `cd backend && npm i && npm run start:dev`.
 - **Frontend**: `cd frontend && npm i && npm run dev`.
+
+---
+
+## Documentation
+
+### Platform Governance & Operations
+- **[Contract Upgrade Governance](docs/CONTRACT_UPGRADE_GOVERNANCE.md)** - Process for upgrading smart contracts safely
+- **[Security Policy](SECURITY.md)** - Security reporting, penetration testing tracker, and best practices
+- **[Bug Bash Checklist](docs/BUG_BASH_CHECKLIST.md)** - Comprehensive QA checklist before major releases
+- **[Changelog Guide](docs/CHANGELOG_GUIDE.md)** - How to use conventional commits for automatic changelog generation
+- **[Postgres Backup / Restore](docs/POSTGRES_BACKUP_RESTORE.md)** - Backup runbook, restore decision tree, and CI drill
+
+### Development
+- **[Changelog](CHANGELOG.md)** - Automatically generated from conventional commits
+- **[Upgrade Log](docs/upgrade-log.md)** - Historical record of contract upgrades
 
 ---
 

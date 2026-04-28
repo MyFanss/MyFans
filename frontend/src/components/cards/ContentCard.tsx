@@ -1,6 +1,8 @@
 import React from 'react';
 import { BaseCard, BaseCardProps } from './BaseCard';
 import Image from 'next/image';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { useImageLoad } from '@/hooks/useImageLoad';
 
 export type ContentType = 'image' | 'video' | 'audio' | 'text' | 'live';
 export type ContentStatus = 'published' | 'draft' | 'scheduled' | 'archived';
@@ -116,6 +118,8 @@ export const ContentCard: React.FC<ContentCardProps> = ({
   className = '',
   ...baseProps
 }) => {
+  const thumbnailLoad = useImageLoad();
+  const avatarLoad = useImageLoad();
   const formatNumber = (num: number): string => {
     if (num >= 1000000) {
       return `${(num / 1000000).toFixed(1)}M`;
@@ -201,15 +205,24 @@ export const ContentCard: React.FC<ContentCardProps> = ({
       {/* Thumbnail */}
       <div className="image-skeleton-wrapper relative aspect-video overflow-hidden bg-gray-100 dark:bg-gray-800">
         {thumbnailUrl ? (
-          <Image
-            src={thumbnailUrl}
-            alt={title}
-            width={640}
-            height={360}
-            loading="lazy"
-            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-          />
+          <>
+            <Image
+              src={thumbnailUrl}
+              alt={title}
+              width={640}
+              height={360}
+              loading="lazy"
+              onLoad={thumbnailLoad.onLoad}
+              className={`lazy-image absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105 ${
+                thumbnailLoad.isLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            />
+            {/* Shimmer skeleton shown until the image is loaded */}
+            {!thumbnailLoad.isLoaded && (
+              <Skeleton className="absolute inset-0" rounded="md" />
+            )}
+          </>
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
             {getTypeIcon()}
@@ -287,13 +300,22 @@ export const ContentCard: React.FC<ContentCardProps> = ({
         {creatorName && (
           <div className="flex items-center gap-2 mb-3">
             {creatorAvatar ? (
-              <Image
-                src={creatorAvatar}
-                alt={creatorName}
-                width={24}
-                height={24}
-                className="w-6 h-6 rounded-full object-cover"
-              />
+              <div className="image-skeleton-wrapper relative w-6 h-6 rounded-full flex-shrink-0">
+                <Image
+                  src={creatorAvatar}
+                  alt={creatorName}
+                  width={24}
+                  height={24}
+                  loading="lazy"
+                  onLoad={avatarLoad.onLoad}
+                  className={`lazy-image w-6 h-6 rounded-full object-cover ${
+                    avatarLoad.isLoaded ? 'opacity-100' : 'opacity-0'
+                  }`}
+                />
+                {!avatarLoad.isLoaded && (
+                  <Skeleton className="absolute inset-0" rounded="full" />
+                )}
+              </div>
             ) : (
               <div className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs font-medium text-gray-600 dark:text-gray-300">
                 {creatorName.charAt(0).toUpperCase()}

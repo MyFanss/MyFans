@@ -11,7 +11,12 @@ import { plainToInstance } from 'class-transformer';
 import { User } from './user.entity';
 import { CreateUserDto } from './create-user.dto';
 import { UpdateUserDto } from './update-user.dto';
-import { UserProfileDto, PaginationDto, PaginatedUsersDto } from './user-profile.dto';
+import { 
+  PaginationDto, 
+  PaginatedResponseDto 
+} from '../common/dto';
+import { createPaginatedResponse } from '../common/utils/pagination.util';
+import { UserProfileDto } from './user-profile.dto';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -84,23 +89,35 @@ export class UsersService {
     });
   }
 
-  async findAll(pagination: PaginationDto): Promise<PaginatedUsersDto> {
-    const { page = 1, limit = 20 } = pagination;
-    const skip = (page - 1) * limit;
+  async findAll(pagination: PaginationDto): Promise<PaginatedResponseDto<UserProfileDto>> {
+    const { cursor, limit = 20 } = pagination;
 
-    const [users, total] = await this.usersRepository.findAndCount({
-      skip,
-      take: limit,
-      order: { createdAt: 'DESC' },
-    });
+    const qb = this.usersRepository
+      .createQueryBuilder('user')
+      .orderBy('user.id', 'ASC')
+      .take(limit + 1);
 
-    return {
-      data: users.map((u) => this.toProfile(u)),
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+    if (cursor) {
+      const cursorId = parseInt(cursor, 10);
+      if (!isNaN(cursorId)) {
+        qb.andWhere('user.id > :cursorId', { cursorId });
+      }
+    }
+
+    const users = await qb.getMany();
+    const hasMore = users.length > limit;
+    if (hasMore) {
+      users.pop();
+    }
+
+    const data = users.map((u) => this.toProfile(u));
+
+    let nextCursor: string | null = null;
+    if (users.length > 0) {
+      nextCursor = String(users[users.length - 1].id);
+    }
+
+    return new PaginatedResponseDto(data, limit, nextCursor, hasMore);
   }
 
   async findOne(id: string): Promise<UserProfileDto> {
