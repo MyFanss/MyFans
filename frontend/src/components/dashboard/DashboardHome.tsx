@@ -7,6 +7,7 @@ import { ActivityFeed } from './ActivityFeed';
 import { ActivityFeedSkeleton } from './ActivityFeedSkeleton';
 import { QuickActions } from './QuickActions';
 import { DashboardError } from './DashboardError';
+import { DashboardSectionBoundary } from './DashboardSectionBoundary';
 import { fetchDashboardData, type DashboardData } from '@/lib/dashboard';
 
 const PeopleIcon = () => (
@@ -65,22 +66,28 @@ export function DashboardHome({ onCreatePlan, onUploadContent, fetchDashboardDat
   if (state === 'loading') {
     return (
       <div className="grid gap-4 sm:gap-6 max-w-full">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4" role="status" aria-label="Loading metrics">
-          <MetricCardSkeleton />
-          <MetricCardSkeleton />
-          <MetricCardSkeleton />
-        </div>
+        <DashboardSectionBoundary label="Metrics">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4" role="status" aria-label="Loading metrics">
+            <MetricCardSkeleton />
+            <MetricCardSkeleton />
+            <MetricCardSkeleton />
+          </div>
+        </DashboardSectionBoundary>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           <div className="lg:col-span-2 min-w-0">
-            <ActivityFeedSkeleton />
+            <DashboardSectionBoundary label="Activity feed">
+              <ActivityFeedSkeleton />
+            </DashboardSectionBoundary>
           </div>
           <div className="min-w-0">
-            <QuickActions
-              actions={[
-                { id: 'plan', label: 'Create plan', description: 'New subscription plan', onClick: onCreatePlan ?? (() => {}), icon: <PlanIcon /> },
-                { id: 'upload', label: 'Upload content', description: 'Publish new content', onClick: onUploadContent ?? (() => {}), icon: <UploadIcon /> },
-              ]}
-            />
+            <DashboardSectionBoundary label="Quick actions">
+              <QuickActions
+                actions={[
+                  { id: 'plan', label: 'Create plan', description: 'New subscription plan', onClick: onCreatePlan ?? (() => {}), icon: <PlanIcon /> },
+                  { id: 'upload', label: 'Upload content', description: 'Publish new content', onClick: onUploadContent ?? (() => {}), icon: <UploadIcon /> },
+                ]}
+              />
+            </DashboardSectionBoundary>
           </div>
         </div>
       </div>
@@ -93,44 +100,50 @@ export function DashboardHome({ onCreatePlan, onUploadContent, fetchDashboardDat
 
   return (
     <div className="grid gap-4 sm:gap-6 max-w-full">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        <MetricCard
-          title="Total subscribers"
-          value={metrics.totalSubscribers}
-          changePercent={metrics.totalSubscribersChangePercent}
-          trend={metrics.totalSubscribersChangePercent >= 0 ? 'up' : 'down'}
-          comparisonLabel="vs last month"
-          icon={<PeopleIcon />}
-        />
-        <MetricCard
-          title="MRR"
-          value={metrics.mrr}
-          valuePrefix="$"
-          changePercent={metrics.mrrChangePercent}
-          trend={metrics.mrrChangePercent >= 0 ? 'up' : 'down'}
-          comparisonLabel="vs last month"
-          icon={<CurrencyIcon />}
-        />
-        <MetricCard
-          title="Active subscriptions"
-          value={metrics.activeSubscriptions}
-          changePercent={metrics.activeSubscriptionsChangePercent}
-          trend={metrics.activeSubscriptionsChangePercent >= 0 ? 'up' : 'down'}
-          comparisonLabel="vs last month"
-          icon={<SubscriptionIcon />}
-        />
-      </div>
+      <DashboardSectionBoundary label="Metrics">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          <MetricCard
+            title="Total subscribers"
+            value={metrics.totalSubscribers}
+            changePercent={metrics.totalSubscribersChangePercent}
+            trend={metrics.totalSubscribersChangePercent >= 0 ? 'up' : 'down'}
+            comparisonLabel="vs last month"
+            icon={<PeopleIcon />}
+          />
+          <MetricCard
+            title="MRR"
+            value={metrics.mrr}
+            valuePrefix="$"
+            changePercent={metrics.mrrChangePercent}
+            trend={metrics.mrrChangePercent >= 0 ? 'up' : 'down'}
+            comparisonLabel="vs last month"
+            icon={<CurrencyIcon />}
+          />
+          <MetricCard
+            title="Active subscriptions"
+            value={metrics.activeSubscriptions}
+            changePercent={metrics.activeSubscriptionsChangePercent}
+            trend={metrics.activeSubscriptionsChangePercent >= 0 ? 'up' : 'down'}
+            comparisonLabel="vs last month"
+            icon={<SubscriptionIcon />}
+          />
+        </div>
+      </DashboardSectionBoundary>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="lg:col-span-2 min-w-0">
-          <ActivityFeed items={recentActivity} />
+          <DashboardSectionBoundary label="Activity feed">
+            <ActivityFeed items={recentActivity} />
+          </DashboardSectionBoundary>
         </div>
         <div className="min-w-0">
-          <QuickActions
-            actions={[
-              { id: 'plan', label: 'Create plan', description: 'New subscription plan', onClick: onCreatePlan ?? (() => {}), icon: <PlanIcon /> },
-              { id: 'upload', label: 'Upload content', description: 'Publish new content', onClick: onUploadContent ?? (() => {}), icon: <UploadIcon /> },
-            ]}
-          />
+          <DashboardSectionBoundary label="Quick actions">
+            <QuickActions
+              actions={[
+                { id: 'plan', label: 'Create plan', description: 'New subscription plan', onClick: onCreatePlan ?? (() => {}), icon: <PlanIcon /> },
+                { id: 'upload', label: 'Upload content', description: 'Publish new content', onClick: onUploadContent ?? (() => {}), icon: <UploadIcon /> },
+              ]}
+            />
+          </DashboardSectionBoundary>
         </div>
       </div>
     </div>
