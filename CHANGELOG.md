@@ -1,4 +1,4 @@
-#  (2026-04-27)
+#  (2026-04-28)
 
 
 ### Bug Fixes
@@ -212,6 +212,7 @@
 * **frontend:** add bundle analyzer and lazy-load recharts EarningsChart ([1aeb835](https://github.com/MyFanss/MyFans/commit/1aeb83543f3dad51646aafe91fdfc0366fbab1ea))
 * **frontend:** add transaction status polling and history UI ([478ccdb](https://github.com/MyFanss/MyFans/commit/478ccdb8d287c5e3fe72f01c76189e660fd30e5d))
 * **frontend:** creator onboarding — skip/resume, progress, tests ([7ee6e00](https://github.com/MyFanss/MyFans/commit/7ee6e00a441b7f154fd21fe0834d857db71c1729))
+* **frontend:** error boundaries on dashboard sections ([#626](https://github.com/MyFanss/MyFans/issues/626)) ([b464df5](https://github.com/MyFanss/MyFans/commit/b464df56eb0f99de7049678395d9656935e63954))
 * **frontend:** fan onboarding quickstart with wallet and first sub flow ([a87a4ad](https://github.com/MyFanss/MyFans/commit/a87a4add391f154734428bbcc76b2df1ebe4bb26))
 * **frontend:** fix appearance.test.tsx and add theme e2e tests ([2f01f0f](https://github.com/MyFanss/MyFans/commit/2f01f0f3153f1eee6459df63b3af8b631eaef802)), closes [#24](https://github.com/MyFanss/MyFans/issues/24)
 * **frontend:** persist wallet/subscription state for e2e critical flow ([2442b3b](https://github.com/MyFanss/MyFans/commit/2442b3b0e59b73f7f8598cb5193fe4f8a7d2c97e))
