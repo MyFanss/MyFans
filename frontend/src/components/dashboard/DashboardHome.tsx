@@ -64,7 +64,7 @@ export function DashboardHome({ onCreatePlan, onUploadContent }: DashboardHomePr
   if (state === 'loading') {
     return (
       <div className="grid gap-4 sm:gap-6 max-w-full">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4" role="status" aria-label="Loading metrics">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4" role="status" aria-label="Loading metrics">
           <MetricCardSkeleton />
           <MetricCardSkeleton />
           <MetricCardSkeleton />
@@ -92,7 +92,7 @@ export function DashboardHome({ onCreatePlan, onUploadContent }: DashboardHomePr
 
   return (
     <div className="grid gap-4 sm:gap-6 max-w-full">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         <MetricCard
           title="Total subscribers"
           value={metrics.totalSubscribers}
