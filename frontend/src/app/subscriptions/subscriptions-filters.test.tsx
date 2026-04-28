@@ -21,7 +21,11 @@ vi.mock('@/components/cards/BaseCard', () => ({
 }));
 
 vi.mock('@/components/ui/HistoryCardSkeleton', () => ({
-  default: () => null,
+  default: () => <div data-testid="history-skeleton" />,
+}));
+
+vi.mock('@/components/ui/ActiveSubscriptionSkeleton', () => ({
+  default: () => <div data-testid="active-skeleton" />,
 }));
 
 vi.mock('@/lib/error-copy', () => ({
@@ -154,5 +158,16 @@ describe('SubscriptionsPage – filter and sort controls', () => {
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('shows skeletons while loading active subscriptions', async () => {
+    // Return a promise that doesn't resolve immediately
+    mockFetch.mockReturnValue(new Promise(() => {}));
+    
+    render(<SubscriptionsPage />);
+    
+    // Should show multiple skeletons
+    const skeletons = screen.getAllByTestId('active-skeleton');
+    expect(skeletons.length).toBeGreaterThan(0);
   });
 });
