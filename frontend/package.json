@@ -28,6 +28,7 @@
     "@next/bundle-analyzer": "^16.2.4",
     "@playwright/test": "^1.58.2",
     "@storybook/addon-essentials": "8.6.12",
+    "@storybook/nextjs": "^8.6.12",
     "@storybook/react": "^8.6.12",
     "@storybook/react-vite": "^8.6.12",
     "@storybook/test": "8.6.12",
