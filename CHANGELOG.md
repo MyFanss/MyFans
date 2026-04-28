@@ -43,6 +43,7 @@
 * **contract:** virtual workspace root for release profiles ([12dee38](https://github.com/MyFanss/MyFans/commit/12dee387aaa6d9b29c67f7725f1a57d3a7b0e702))
 * Correct Stellar SDK imports and add missing error codes ([1128a69](https://github.com/MyFanss/MyFans/commit/1128a692e53131a02cb9766f695388fe078dfb6c))
 * Correct Stellar SDK imports for backend build ([1861a9d](https://github.com/MyFanss/MyFans/commit/1861a9d8c5a27050834fe2eaecc7ad53a882226e))
+* **dashboard:** creator dashboard mobile audit ([#629](https://github.com/MyFanss/MyFans/issues/629)) ([2517daa](https://github.com/MyFanss/MyFans/commit/2517daa2f9bd32eb300d46cd30d80df56f91f9d7))
 * failed workflows in backend ([4274634](https://github.com/MyFanss/MyFans/commit/42746348cfc462e0e06bf51b1f9406a55016ca42))
 * failed workflows in backend and contracts ([431c15f](https://github.com/MyFanss/MyFans/commit/431c15f13043ea4a1cc12ed2e51b1f6497fd2548))
 * failed workflows in backend and contracts and add audit.toml in contracts folder ([621b247](https://github.com/MyFanss/MyFans/commit/621b247312d790c642386c97acdd24ec0fa45c4a))
