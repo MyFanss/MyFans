@@ -5,7 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import WalletConnect from '@/components/WalletConnect';
 import { BookmarkButton } from '@/components/BookmarkButton';
 import { CreatorCard } from '@/components/cards';
-import { CardSkeletonGrid, EmptyState } from '@/components/ui/states';
+import { EmptyState } from '@/components/ui/states';
+import { CreatorCardSkeleton } from '@/components/ui/CreatorCardSkeleton';
 import { useToast } from '@/contexts/ToastContext';
 import {
   loadFanQuickstartState,
@@ -137,7 +138,11 @@ export default function SubscribeView() {
         <section>
           <h3 className="mb-4 text-lg font-semibold text-slate-900">Available creators</h3>
           {isLoadingCreators ? (
-            <CardSkeletonGrid count={3} />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {[...Array(3)].map((_, i) => (
+                <CreatorCardSkeleton key={i} />
+              ))}
+            </div>
           ) : filteredCreators.length === 0 ? (
             <EmptyState
               ctaLabel="Clear search"
