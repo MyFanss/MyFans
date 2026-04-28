@@ -174,6 +174,32 @@ export default function SubscribersTable() {
         </button>
       </div>
 
+      {/* Mobile sort controls */}
+      <div className="md:hidden">
+        <label htmlFor="mobile-sort" className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+          Sort by
+        </label>
+        <select
+          id="mobile-sort"
+          value={sortConfig.key ? `${sortConfig.key}-${sortConfig.direction}` : ''}
+          onChange={(e) => {
+            const [key, dir] = e.target.value.split('-') as [keyof Subscriber, 'asc' | 'desc'];
+            setSortConfig({ key, direction: dir });
+          }}
+          className="w-full pl-3 pr-10 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent appearance-none min-h-[44px]"
+          style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.25rem' }}
+        >
+          <option value="joinDate-desc">Newest first</option>
+          <option value="joinDate-asc">Oldest first</option>
+          <option value="name-asc">Name A–Z</option>
+          <option value="name-desc">Name Z–A</option>
+          <option value="totalPaid-desc">Highest paid</option>
+          <option value="totalPaid-asc">Lowest paid</option>
+          <option value="status-asc">Status</option>
+          <option value="plan-asc">Plan</option>
+        </select>
+      </div>
+
       {/* Table / Cards */}
       <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden max-w-full">
         {/* Desktop Table */}
