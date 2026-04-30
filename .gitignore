@@ -32,6 +32,12 @@ build/
 .next/
 out/
 *.tsbuildinfo
+**/node_modules/
+**/.next/
+**/dist/
+**/target/
+**/coverage/
+**/*.tsbuildinfo
 
 # IDE
 .idea/
@@ -52,4 +58,6 @@ vrickish_issues.md
 **/__snapshots__/
 frontend/playwright-report/
 frontend/test-results/
+contract/wasm-size-report.txt
+**/wasm-size-report.txt
 **/*.snap
