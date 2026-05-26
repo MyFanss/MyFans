@@ -210,3 +210,35 @@ fn withdraw_emits_event() {
     assert_eq!(withdraw_data.amount, 200);
     assert_eq!(withdraw_data.token, token_address);
 }
+
+#[test]
+fn withdraw_failed_emits_no_event() {
+    let env = Env::default();
+
+    let (_admin, creator, depositor, client, _, _) = setup(&env);
+
+    client.deposit(&depositor, &creator, &500);
+
+    let events_before = env.events().all().len();
+    let result = client.try_withdraw(&creator, &600);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InsufficientBalance as u32,
+        )))
+    );
+
+    let withdraw_events = env.events().all().iter().filter(|evt| {
+        let (id, topics, _) = evt;
+        if *id != client.address {
+            return false;
+        }
+        topics
+            .first()
+            .and_then(|v| v.try_into_val(&env).ok())
+            == Some(Symbol::new(&env, "withdraw"))
+    });
+    assert_eq!(withdraw_events.count(), 0);
+    assert_eq!(client.balance(&creator), 500);
+    assert!(env.events().all().len() >= events_before);
+}
