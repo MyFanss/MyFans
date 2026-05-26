@@ -540,10 +540,9 @@ mod test {
         );
     }
 
-    // ── Issue #4: expired / wrong-buyer / wrong-content_id tests ─────────────
+    // ── #848: expired / wrong-buyer / wrong-content_id unlock tests ──────────
 
-    /// Unlock with an expired purchase: `has_access` returns false and
-    /// `verify_access` returns `PurchaseExpired`.
+    /// Expired purchase: after expiry, access checks must fail with `PurchaseExpired`.
     #[test]
     fn test_unlock_with_expired_purchase() {
         let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
@@ -552,14 +551,12 @@ mod test {
         client.initialize(&admin, &token_address);
         client.set_content_price(&creator, &1, &100);
 
-        // Purchase expires at ledger 1100 (current is 1000, so valid for 100 ledgers).
         client.unlock_content(&buyer, &creator, &1, &1100);
         assert!(
             client.has_access(&buyer, &creator, &1),
             "should have access before expiry"
         );
 
-        // Advance ledger past expiry.
         env.ledger().with_mut(|li| li.sequence_number = 1101);
 
         assert!(
@@ -567,7 +564,7 @@ mod test {
             "has_access must return false after expiry"
         );
 
-        // verify_access must return PurchaseExpired.
+        env.set_auths(EMPTY_AUTHS);
         let result = client.try_verify_access(&buyer, &creator, &1);
         assert_eq!(
             result,
@@ -578,8 +575,7 @@ mod test {
         );
     }
 
-    /// Unlock with wrong content_id: buyer purchased content 1 but tries to
-    /// verify access for content 2 – must return `NotBuyer` (no record).
+    /// Wrong content ID: buyer purchased content 1 but checks access for content 2.
     #[test]
     fn test_unlock_with_wrong_content_id() {
         let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
@@ -589,10 +585,9 @@ mod test {
         client.set_content_price(&creator, &1, &100);
         client.set_content_price(&creator, &2, &200);
 
-        // Buyer purchases content 1 only.
         client.unlock_content(&buyer, &creator, &1, &NO_EXPIRY);
 
-        // Attempting to verify access for content 2 (never purchased) must fail.
+        env.set_auths(EMPTY_AUTHS);
         let result = client.try_verify_access(&buyer, &creator, &2);
         assert_eq!(
             result,
@@ -602,15 +597,13 @@ mod test {
             "verify_access must return NotBuyer when content_id was never purchased"
         );
 
-        // has_access for the wrong content_id must also be false.
         assert!(
             !client.has_access(&buyer, &creator, &2),
             "has_access must be false for wrong content_id"
         );
     }
 
-    /// Unlock as non-buyer: a different address tries to verify access for
-    /// content purchased by the original buyer – must return `NotBuyer`.
+    /// Wrong caller: a non-buyer cannot access content purchased by another buyer.
     #[test]
     fn test_unlock_as_non_buyer() {
         let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
@@ -620,11 +613,10 @@ mod test {
         client.initialize(&admin, &token_address);
         client.set_content_price(&creator, &1, &100);
 
-        // Original buyer purchases content.
         client.unlock_content(&buyer, &creator, &1, &NO_EXPIRY);
         assert!(client.has_access(&buyer, &creator, &1));
 
-        // Non-buyer has no purchase record – verify_access must return NotBuyer.
+        env.set_auths(EMPTY_AUTHS);
         let result = client.try_verify_access(&non_buyer, &creator, &1);
         assert_eq!(
             result,
@@ -634,7 +626,6 @@ mod test {
             "verify_access must return NotBuyer for a caller who never purchased"
         );
 
-        // has_access for non-buyer must also be false.
         assert!(
             !client.has_access(&non_buyer, &creator, &1),
             "has_access must be false for non-buyer"
