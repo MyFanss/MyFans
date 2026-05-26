@@ -141,11 +141,13 @@ impl CreatorDeposits {
 mod test {
     use super::*;
     use soroban_sdk::{
-        testutils::{Address as _, Events},
+        testutils::{Address as _, Events, MockAuth, MockAuthInvoke},
         vec,
         xdr::SorobanAuthorizationEntry,
         Env, IntoVal, Symbol, TryFromVal,
     };
+
+    const EMPTY_AUTHS: &[SorobanAuthorizationEntry] = &[];
 
     fn setup() -> (Env, Address, Address, Address, Address) {
         let env = Env::default();
@@ -376,16 +378,29 @@ mod test {
         let contract_id = env.register_contract(None, CreatorDeposits);
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
-        env.mock_all_auths();
         client.init(&admin, &0, &treasury);
-        client.deposit(&creator, &token, &1000);
+
+        let deposit_amount = 1000_i128;
+        env.mock_auths(&[MockAuth {
+            address: &creator,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "deposit",
+                args: vec![
+                    &env,
+                    creator.clone().into_val(&env),
+                    token.clone().into_val(&env),
+                    deposit_amount.into_val(&env),
+                ],
+                sub_invokes: &[],
+            },
+        }]);
+        client.deposit(&creator, &token, &deposit_amount);
 
         let starting_balance = client.get_balance(&creator);
         assert_eq!(starting_balance, 1000);
 
-        // Clear auth mocks so withdraw must satisfy the real creator auth check.
-        let empty: &[SorobanAuthorizationEntry] = &[];
-        env.set_auths(empty);
+        env.set_auths(EMPTY_AUTHS);
 
         let result = client.try_withdraw(&unauthorized, &token, &100);
         assert!(result.is_err(), "expected unauthorized withdraw to revert");
