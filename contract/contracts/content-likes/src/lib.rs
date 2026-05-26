@@ -185,13 +185,13 @@ impl ContentLikes {
     /// * `limit` - Max number of items to return (capped at MAX_PAGE_LIMIT)
     ///
     /// # Returns
-    /// (page of content_ids, has_more)
+    /// (page of content_ids, next_cursor) — `next_cursor` is 0 when there is no next page
     pub fn list_likes_by_user(
         env: Env,
         user: Address,
         cursor: u32,
         limit: u32,
-    ) -> (Vec<u32>, bool) {
+    ) -> (Vec<u32>, u32) {
         let limit = core::cmp::min(limit, MAX_PAGE_LIMIT);
         let user_likes_key = ("user_likes", user);
         let list: Vec<u32> = env
@@ -202,7 +202,7 @@ impl ContentLikes {
 
         let len = list.len();
         if cursor >= len || limit == 0 {
-            return (Vec::new(&env), false);
+            return (Vec::new(&env), 0);
         }
 
         let end = core::cmp::min(cursor + limit, len);
@@ -210,8 +210,8 @@ impl ContentLikes {
         for i in cursor..end {
             page.push_back(list.get(i).unwrap());
         }
-        let has_more = end < len;
-        (page, has_more)
+        let next_cursor = if end < len { end } else { 0 };
+        (page, next_cursor)
     }
 }
 
@@ -404,9 +404,9 @@ mod test {
 
         let user = Address::generate(&env);
 
-        let (page, has_more) = client.list_likes_by_user(&user, &0, &10);
+        let (page, next_cursor) = client.list_likes_by_user(&user, &0, &10);
         assert_eq!(page.len(), 0);
-        assert!(!has_more);
+        assert_eq!(next_cursor, 0);
     }
 
     #[test]
@@ -421,12 +421,12 @@ mod test {
         client.like(&user, &2u32);
         client.like(&user, &3u32);
 
-        let (page, has_more) = client.list_likes_by_user(&user, &0, &10);
+        let (page, next_cursor) = client.list_likes_by_user(&user, &0, &10);
         assert_eq!(page.len(), 3);
         assert_eq!(page.get(0).unwrap(), 1);
         assert_eq!(page.get(1).unwrap(), 2);
         assert_eq!(page.get(2).unwrap(), 3);
-        assert!(!has_more);
+        assert_eq!(next_cursor, 0);
     }
 
     #[test]
@@ -441,8 +441,58 @@ mod test {
         client.like(&user, &2u32);
 
         // Request limit > MAX_PAGE_LIMIT (100); contract clamps to 100, we get 2 items
-        let (page, has_more) = client.list_likes_by_user(&user, &0, &1000);
+        let (page, next_cursor) = client.list_likes_by_user(&user, &0, &1000);
         assert_eq!(page.len(), 2);
-        assert!(!has_more);
+        assert_eq!(next_cursor, 0);
+    }
+
+    #[test]
+    fn test_list_likes_by_user_pagination_boundary() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        for id in 1u32..=5 {
+            client.like(&user, &id);
+        }
+
+        let (page1, next1) = client.list_likes_by_user(&user, &0, &2);
+        assert_eq!(page1.len(), 2);
+        assert_eq!(page1.get(0).unwrap(), 1);
+        assert_eq!(page1.get(1).unwrap(), 2);
+        assert_eq!(next1, 2);
+
+        let (page2, next2) = client.list_likes_by_user(&user, &next1, &2);
+        assert_eq!(page2.len(), 2);
+        assert_eq!(page2.get(0).unwrap(), 3);
+        assert_eq!(page2.get(1).unwrap(), 4);
+        assert_eq!(next2, 4);
+
+        let (page3, next3) = client.list_likes_by_user(&user, &next2, &2);
+        assert_eq!(page3.len(), 1);
+        assert_eq!(page3.get(0).unwrap(), 5);
+        assert_eq!(next3, 0);
+    }
+
+    #[test]
+    fn test_list_likes_by_user_unlike_updates_list() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        client.like(&user, &10u32);
+        client.like(&user, &20u32);
+        client.unlike(&user, &10u32);
+
+        let (page, next_cursor) = client.list_likes_by_user(&user, &0, &10);
+        assert_eq!(page.len(), 1);
+        assert_eq!(page.get(0).unwrap(), 20);
+        assert_eq!(next_cursor, 0);
+        assert!(client.has_liked(&user, &20u32));
+        assert!(!client.has_liked(&user, &10u32));
     }
 }
