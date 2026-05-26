@@ -792,6 +792,21 @@ fn test_cancel_after_snapshot_restore() {
         !client2.is_subscriber(&fan2, &creator2),
         "cancel after restore: subscription should be removed"
     );
+
+    let sub_removed = env2.as_contract(&contract_id2, || {
+        env2.storage()
+            .instance()
+            .has::<DataKey>(&DataKey::subscription(fan2.clone(), creator2.clone()))
+    });
+    assert!(
+        !sub_removed,
+        "cancel after restore: subscription storage entry should be cleared"
+    );
+    assert_eq!(
+        client2.get_expiry_unix(&fan2, &creator2),
+        (0, 0),
+        "cancel after restore: expiry should be zeroed"
+    );
 }
 
 // ── #287 – paused state enforcement ──────────────────────────────────────────
