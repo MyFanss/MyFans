@@ -146,6 +146,57 @@ fn test_unauthorized_withdraw_reverts() {
 }
 
 #[test]
+fn test_unauthorized_cannot_set_paused() {
+    let env = Env::default();
+
+    let admin = Address::generate(&env);
+    let unauthorized = Address::generate(&env);
+    let (token_address, _, _) = create_token_contract(&env, &admin);
+
+    let treasury_id = env.register_contract(None, Treasury);
+    let treasury_client = TreasuryClient::new(&env, &treasury_id);
+
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &treasury_id,
+            fn_name: "initialize",
+            args: soroban_sdk::vec![
+                &env,
+                admin.clone().into_val(&env),
+                token_address.clone().into_val(&env),
+            ],
+            sub_invokes: &[],
+        },
+    }]);
+    treasury_client.initialize(&admin, &token_address);
+
+    env.set_auths(EMPTY_AUTHS);
+    assert!(
+        treasury_client.try_set_paused(&true).is_err(),
+        "non-admin must not set paused"
+    );
+    assert!(
+        treasury_client.try_set_paused(&false).is_err(),
+        "non-admin must not clear paused"
+    );
+
+    env.mock_auths(&[MockAuth {
+        address: &unauthorized,
+        invoke: &MockAuthInvoke {
+            contract: &treasury_id,
+            fn_name: "set_paused",
+            args: soroban_sdk::vec![&env, true.into_val(&env)],
+            sub_invokes: &[],
+        },
+    }]);
+    assert!(
+        treasury_client.try_set_paused(&true).is_err(),
+        "unauthorized address must not set paused"
+    );
+}
+
+#[test]
 fn test_pause_blocks_deposit() {
     let env = Env::default();
     env.mock_all_auths();

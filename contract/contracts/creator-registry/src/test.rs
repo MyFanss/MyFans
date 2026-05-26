@@ -1,8 +1,10 @@
 use super::Error as ContractError;
 use super::*;
 use soroban_sdk::{
-    testutils::Address as _, testutils::Ledger, Address, Env, Error as SorobanError,
+    testutils::Address as _, testutils::Ledger, token::StellarAssetClient, Address, Env,
+    Error as SorobanError,
 };
+use soroban_sdk::token::Client as TokenClient;
 
 #[test]
 fn test_initialize() {
@@ -388,4 +390,74 @@ fn repeated_attempts_before_boundary_all_rejected() {
         ))),
         "second attempt at ledger 109 must also be rate-limited"
     );
+}
+
+fn setup_token(env: &Env) -> (Address, TokenClient, StellarAssetClient) {
+    let token_admin = Address::generate(env);
+    let token_id = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+    (
+        token_id.clone(),
+        TokenClient::new(env, &token_id),
+        StellarAssetClient::new(env, &token_id),
+    )
+}
+
+#[test]
+fn test_registration_fee_transfers_to_contract() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    let (token_id, token_client, token_admin_client) = setup_token(&env);
+    client.initialize(&admin);
+    client.set_spam_fee(&token_id, &100);
+
+    token_admin_client.mint(&creator, &1000);
+    client.register_creator(&creator, &creator, &42);
+
+    assert_eq!(client.get_creator_id(&creator), Some(42));
+    assert_eq!(token_client.balance(&creator), 900);
+    assert_eq!(token_client.balance(&contract_id), 100);
+}
+
+#[test]
+fn test_registration_fee_insufficient_balance_reverts() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    let (token_id, _, token_admin_client) = setup_token(&env);
+    client.initialize(&admin);
+    client.set_spam_fee(&token_id, &100);
+
+    token_admin_client.mint(&creator, &50);
+    let result = client.try_register_creator(&creator, &creator, &42);
+    assert!(result.is_err());
+    assert_eq!(client.get_creator_id(&creator), None);
+}
+
+#[test]
+fn test_registration_fee_zero_allows_free_registration() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.register_creator(&creator, &creator, &7);
+
+    assert_eq!(client.get_creator_id(&creator), Some(7));
 }
