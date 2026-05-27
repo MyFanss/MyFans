@@ -13,6 +13,11 @@ export interface RequestContext {
 
 const storage = new AsyncLocalStorage<RequestContext>();
 
+/** Exported so the Winston format in logger.config.ts can read the store directly. */
+export function getRequestContextStorage(): AsyncLocalStorage<RequestContext> {
+  return storage;
+}
+
 @Injectable()
 export class RequestContextService {
   /** Run a callback inside a new request context store. */
