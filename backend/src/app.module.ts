@@ -1,4 +1,4 @@
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
@@ -25,6 +25,8 @@ import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { ReferralModule } from './referral/referral.module';
 import { CsrfModule } from './csrf/csrf.module';
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
+import { CorrelationExceptionFilter } from './common/filters/correlation-exception.filter';
+import { RequestContextService } from './common/services/request-context.service';
 
 /** Routes where idempotency protection is enforced. */
 const IDEMPOTENCY_ROUTES = [
@@ -66,6 +68,11 @@ const IDEMPOTENCY_ROUTES = [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PublicGuard },
+    RequestContextService,
+    {
+      provide: APP_FILTER,
+      useClass: CorrelationExceptionFilter,
+    },
   ],
 })
 export class AppModule {

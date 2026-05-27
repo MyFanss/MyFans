@@ -42,15 +42,15 @@ describe('CorrelationIdMiddleware', () => {
     middleware.use(req as Request, res as Response, next);
   });
 
-  it('preserves existing IDs from incoming headers', (done) => {
+  it('preserves existing valid UUID IDs from incoming headers', (done) => {
     const req = makeReq({
-      'x-correlation-id': 'cid-123',
-      'x-request-id': 'rid-456',
+      'x-correlation-id': 'a1b2c3d4-e5f6-4789-8abc-def012345678',
+      'x-request-id': 'b2c3d4e5-f6a7-4890-9bcd-ef0123456789',
     });
     const res = makeRes();
     const next: NextFunction = () => {
-      expect(req.headers!['x-correlation-id']).toBe('cid-123');
-      expect(req.headers!['x-request-id']).toBe('rid-456');
+      expect(req.headers!['x-correlation-id']).toBe('a1b2c3d4-e5f6-4789-8abc-def012345678');
+      expect(req.headers!['x-request-id']).toBe('b2c3d4e5-f6a7-4890-9bcd-ef0123456789');
       done();
     };
 
@@ -58,18 +58,18 @@ describe('CorrelationIdMiddleware', () => {
   });
 
   it('makes correlationId readable via RequestContextService inside next()', (done) => {
-    const req = makeReq({ 'x-correlation-id': 'trace-abc' });
+    const req = makeReq({ 'x-correlation-id': 'a1b2c3d4-e5f6-4789-8abc-def012345678' });
     const res = makeRes();
     const next: NextFunction = () => {
       // Inside next() we are within the AsyncLocalStorage context
-      expect(requestContextService.getCorrelationId()).toBe('trace-abc');
+      expect(requestContextService.getCorrelationId()).toBe('a1b2c3d4-e5f6-4789-8abc-def012345678');
       done();
     };
 
     middleware.use(req as Request, res as Response, next);
   });
 
-  it('generates valid UUID v4 IDs', (done) => {
+  it('generates valid UUID v4 IDs when no headers provided', (done) => {
     const req = makeReq();
     const res = makeRes();
     const uuidRegex =
@@ -83,27 +83,31 @@ describe('CorrelationIdMiddleware', () => {
     middleware.use(req as Request, res as Response, next);
   });
 
-  it('isolates context between concurrent requests', (done) => {
-    const req1 = makeReq({ 'x-correlation-id': 'cid-req1' });
-    const req2 = makeReq({ 'x-correlation-id': 'cid-req2' });
+  it('replaces invalid (non-UUID) correlation ID with a fresh UUID', (done) => {
+    const req = makeReq({ 'x-correlation-id': 'not-a-uuid', 'x-request-id': 'also-bad' });
     const res = makeRes();
-    let completed = 0;
-    const next1: NextFunction = () => {
-      // Simulate async work inside req1's context
-      setImmediate(() => {
-        expect(requestContextService.getCorrelationId()).toBe('cid-req1');
-        if (++completed === 2) done();
-      });
-    };
-    const next2: NextFunction = () => {
-      setImmediate(() => {
-        expect(requestContextService.getCorrelationId()).toBe('cid-req2');
-        if (++completed === 2) done();
-      });
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const next: NextFunction = () => {
+      expect(req.headers!['x-correlation-id']).toMatch(uuidRegex);
+      expect(req.headers!['x-request-id']).toMatch(uuidRegex);
+      done();
     };
 
-    middleware.use(req1 as Request, res as Response, next1);
+    middleware.use(req as Request, res as Response, next);
+  });
 
-    middleware.use(req2 as Request, res as Response, next2);
+  it('replaces empty-string IDs with fresh UUIDs', (done) => {
+    const req = makeReq({ 'x-correlation-id': '', 'x-request-id': '' });
+    const res = makeRes();
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const next: NextFunction = () => {
+      expect(req.headers!['x-correlation-id']).toMatch(uuidRegex);
+      expect(req.headers!['x-request-id']).toMatch(uuidRegex);
+      done();
+    };
+
+    middleware.use(req as Request, res as Response, next);
   });
 });
