@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CreatorsService } from './creators.service';
 import { CreatorDashboardService } from './creator-dashboard.service';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
@@ -19,10 +19,25 @@ export class CreatorsController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Search creators by display name or username' })
+  @ApiOperation({
+    summary: 'Search creators by display name or username',
+    description:
+      'Cursor-paginated creator search. Pass `cursor` and `limit` query params; responses include `data`, `limit`, `nextCursor`, and `hasMore`.',
+  })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'Pagination cursor (`nextCursor` from the previous page)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Number of items per page (default 20, max 100)',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Paginated list of creators matching search query',
+    description:
+      'Cursor-paginated list of creators matching search query (`data`, `limit`, `nextCursor`, `hasMore`)',
     type: PaginatedResponseDto<PublicCreatorDto>,
   })
   @ApiResponse({

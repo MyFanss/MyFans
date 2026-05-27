@@ -81,7 +81,6 @@ describe('CreatorsService - Property-Based Tests', () => {
             // Execute
             const result = await service.searchCreators({
               q: searchQuery,
-              page: 1,
               limit: 10,
             });
 
@@ -127,12 +126,10 @@ describe('CreatorsService - Property-Based Tests', () => {
             // Test with different case variations
             await service.searchCreators({
               q: searchQuery.toLowerCase(),
-              page: 1,
               limit: 10,
             });
             await service.searchCreators({
               q: searchQuery.toUpperCase(),
-              page: 1,
               limit: 10,
             });
 
@@ -175,7 +172,6 @@ describe('CreatorsService - Property-Based Tests', () => {
             // Execute
             await service.searchCreators({
               q: searchQuery,
-              page: 1,
               limit: 10,
             });
 
@@ -195,68 +191,46 @@ describe('CreatorsService - Property-Based Tests', () => {
   describe('Property 4: Pagination result limit', () => {
     it('should return data.length <= limit', async () => {
       await fc.assert(
-        fc.asyncProperty(
-          fc.integer({ min: 1, max: 100 }),
-          fc.integer({ min: 1, max: 100 }),
-          async (page, limit) => {
-            const mockUsers = Array.from({ length: limit }, (_, i) =>
-              createMockUser(`${i}`, `user${i}`, `User ${i}`),
-            );
+        fc.asyncProperty(fc.integer({ min: 1, max: 100 }), async (limit) => {
+          const mockUsers = Array.from({ length: limit + 1 }, (_, i) =>
+            createMockUser(`${i}`, `user${i}`, `User ${i}`),
+          );
 
-            (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(200);
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
-              {
-                entities: mockUsers.slice(0, limit),
-                raw: mockUsers
-                  .slice(0, limit)
-                  .map(() => ({ creator_bio: 'Bio' })),
-              },
-            );
+          (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
+            entities: mockUsers,
+            raw: mockUsers.map(() => ({ creator_bio: 'Bio' })),
+          });
 
-            // Execute
-            const result = await service.searchCreators({ page, limit });
+          const result = await service.searchCreators({ limit });
 
-            // Verify
-            expect(result.data.length).toBeLessThanOrEqual(limit);
-          },
-        ),
+          expect(result.data.length).toBeLessThanOrEqual(limit);
+        }),
         { numRuns: 100 },
       );
     });
   });
 
-  // Feature: creator-search, Property 5: Total count accuracy
-  describe('Property 5: Total count accuracy', () => {
-    it('should return accurate total count', async () => {
+  // Feature: creator-search, Property 5: Cursor pagination metadata
+  describe('Property 5: Cursor pagination metadata', () => {
+    it('should expose nextCursor and hasMore on cursor responses', async () => {
       await fc.assert(
         fc.asyncProperty(
           fc.option(fc.string({ maxLength: 50 }), { nil: undefined }),
-          fc.integer({ min: 0, max: 100 }),
-          async (searchQuery, totalCount) => {
-            const mockUsers = Array.from(
-              { length: Math.min(totalCount, 20) },
-              (_, i) => createMockUser(`${i}`, `user${i}`, `User ${i}`),
-            );
-
-            (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(
-              totalCount,
-            );
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
-              {
-                entities: mockUsers,
-                raw: mockUsers.map(() => ({ creator_bio: 'Bio' })),
-              },
-            );
-
-            // Execute
-            const result = await service.searchCreators({
-              q: searchQuery,
-              page: 1,
-              limit: 20,
+          fc.integer({ min: 1, max: 100 }),
+          async (searchQuery, limit) => {
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
+              entities: [],
+              raw: [],
             });
 
-            // Verify
-            expect(result.total).toBe(totalCount);
+            const result = await service.searchCreators({
+              q: searchQuery,
+              limit,
+            });
+
+            expect(result).toHaveProperty('nextCursor');
+            expect(result).toHaveProperty('hasMore');
+            expect(typeof result.hasMore).toBe('boolean');
           },
         ),
         { numRuns: 100 },
@@ -264,29 +238,25 @@ describe('CreatorsService - Property-Based Tests', () => {
     });
   });
 
-  // Feature: creator-search, Property 6: Total pages calculation
-  describe('Property 6: Total pages calculation', () => {
-    it('should calculate totalPages as Math.ceil(total / limit)', async () => {
+  // Feature: creator-search, Property 6: Stale cursor returns empty slice
+  describe('Property 6: Stale cursor returns empty slice', () => {
+    it('should return empty data when cursor is beyond all usernames', async () => {
       await fc.assert(
-        fc.asyncProperty(
-          fc.integer({ min: 0, max: 1000 }),
-          fc.integer({ min: 1, max: 100 }),
-          async (total, limit) => {
-            (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(total);
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
-              {
-                entities: [],
-                raw: [],
-              },
-            );
+        fc.asyncProperty(fc.integer({ min: 1, max: 100 }), async (limit) => {
+          (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
+            entities: [],
+            raw: [],
+          });
 
-            // Execute
-            const result = await service.searchCreators({ page: 1, limit });
+          const result = await service.searchCreators({
+            cursor: 'zzzzzzzzzz',
+            limit,
+          });
 
-            // Verify
-            expect(result.totalPages).toBe(Math.ceil(total / limit));
-          },
-        ),
+          expect(result.data).toHaveLength(0);
+          expect(result.hasMore).toBe(false);
+          expect(result.nextCursor).toBeNull();
+        }),
         { numRuns: 100 },
       );
     });
@@ -294,37 +264,28 @@ describe('CreatorsService - Property-Based Tests', () => {
 
   // Feature: creator-search, Property 7: Response structure format
   describe('Property 7: Response structure format', () => {
-    it('should return response with required fields', async () => {
+    it('should return response with required cursor pagination fields', async () => {
       await fc.assert(
         fc.asyncProperty(
           fc.option(fc.string({ maxLength: 50 }), { nil: undefined }),
           async (searchQuery) => {
-            (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(0);
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
-              {
-                entities: [],
-                raw: [],
-              },
-            );
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
+              entities: [],
+              raw: [],
+            });
 
-            // Execute
             const result = await service.searchCreators({
               q: searchQuery,
-              page: 1,
               limit: 20,
             });
 
-            // Verify structure
             expect(result).toHaveProperty('data');
-            expect(result).toHaveProperty('total');
-            expect(result).toHaveProperty('page');
             expect(result).toHaveProperty('limit');
-            expect(result).toHaveProperty('totalPages');
+            expect(result).toHaveProperty('nextCursor');
+            expect(result).toHaveProperty('hasMore');
             expect(Array.isArray(result.data)).toBe(true);
-            expect(typeof result.total).toBe('number');
-            expect(typeof result.page).toBe('number');
             expect(typeof result.limit).toBe('number');
-            expect(typeof result.totalPages).toBe('number');
+            expect(typeof result.hasMore).toBe('boolean');
           },
         ),
         { numRuns: 100 },
@@ -341,7 +302,6 @@ describe('CreatorsService - Property-Based Tests', () => {
           async (searchQuery) => {
             const mockUsers = [createMockUser('1', 'testuser', 'Test User')];
 
-            (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(1);
             (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
               {
                 entities: mockUsers,
@@ -352,7 +312,6 @@ describe('CreatorsService - Property-Based Tests', () => {
             // Execute
             const result = await service.searchCreators({
               q: searchQuery,
-              page: 1,
               limit: 20,
             });
 
@@ -425,7 +384,6 @@ describe('CreatorsService - Property-Based Tests', () => {
             // Execute - should not throw
             const result = await service.searchCreators({
               q: validQuery,
-              page: 1,
               limit: 20,
             });
 
@@ -462,7 +420,6 @@ describe('CreatorsService - Property-Based Tests', () => {
             // Execute
             await service.searchCreators({
               q: searchQuery,
-              page: 1,
               limit: 20,
             });
 
@@ -484,10 +441,9 @@ describe('CreatorsService - Property-Based Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           fc.option(fc.string({ maxLength: 100 }), { nil: undefined }),
+          fc.option(fc.string({ minLength: 1, maxLength: 20 }), { nil: undefined }),
           fc.integer({ min: 1, max: 100 }),
-          fc.integer({ min: 1, max: 100 }),
-          async (searchQuery, page, limit) => {
-            (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(0);
+          async (searchQuery, cursor, limit) => {
             (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
               {
                 entities: [],
@@ -495,16 +451,13 @@ describe('CreatorsService - Property-Based Tests', () => {
               },
             );
 
-            // Execute - should not throw
             const result = await service.searchCreators({
               q: searchQuery,
-              page,
+              cursor: cursor ?? undefined,
               limit,
             });
 
-            // Verify successful execution
             expect(result).toBeDefined();
-            expect(result.page).toBe(page);
             expect(result.limit).toBe(limit);
           },
         ),

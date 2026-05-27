@@ -29,17 +29,31 @@ describe('PostsService', () => {
     create: jest.Mock;
     save: jest.Mock;
     findOne: jest.Mock;
-    findAndCount: jest.Mock;
+    createQueryBuilder: jest.Mock;
     delete: jest.Mock;
+  };
+  let queryBuilder: {
+    where: jest.Mock;
+    andWhere: jest.Mock;
+    orderBy: jest.Mock;
+    take: jest.Mock;
+    getMany: jest.Mock;
   };
   let eventBus: { publish: jest.Mock };
 
   beforeEach(async () => {
+    queryBuilder = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest.fn(),
+    };
     repo = {
       create: jest.fn(),
       save: jest.fn(),
       findOne: jest.fn(),
-      findAndCount: jest.fn(),
+      createQueryBuilder: jest.fn(() => queryBuilder),
       delete: jest.fn(),
     };
     eventBus = { publish: jest.fn() };
@@ -58,30 +72,61 @@ describe('PostsService', () => {
   describe('findAll', () => {
     it('excludes soft-deleted posts', async () => {
       const active = makePost();
-      repo.findAndCount.mockResolvedValue([[active], 1]);
+      queryBuilder.getMany.mockResolvedValue([active]);
 
-      const result = await service.findAll({ page: 1, limit: 20 });
+      await service.findAll({ limit: 20 });
 
-      expect(result.total).toBe(1);
-      // Verify the query filters by deletedAt: IsNull()
-      const [options] = repo.findAndCount.mock.calls[0] as [
-        { where: Record<string, unknown> },
+      expect(repo.createQueryBuilder).toHaveBeenCalledWith('post');
+      expect(queryBuilder.where).toHaveBeenCalledWith('post.deletedAt IS NULL');
+    });
+
+    it('returns first page with nextCursor when more posts exist', async () => {
+      const posts = [
+        makePost({ id: 'post-1' }),
+        makePost({ id: 'post-2' }),
+        makePost({ id: 'post-3' }),
       ];
-      expect(Object.keys(options.where)).toContain('deletedAt');
+      queryBuilder.getMany.mockResolvedValue(posts);
+
+      const result = await service.findAll({ limit: 2 });
+
+      expect(result.data).toHaveLength(2);
+      expect(result.nextCursor).toBe('post-2');
+      expect(result.hasMore).toBe(true);
+      expect(queryBuilder.take).toHaveBeenCalledWith(3);
+    });
+
+    it('returns the next slice when cursor is provided', async () => {
+      queryBuilder.getMany.mockResolvedValue([makePost({ id: '3' })]);
+
+      await service.findAll({ cursor: '2', limit: 2 });
+
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith('post.id > :cursorId', {
+        cursorId: 2,
+      });
+    });
+
+    it('ignores invalid cursor and returns the first page', async () => {
+      queryBuilder.getMany.mockResolvedValue([makePost({ id: 'post-1' })]);
+
+      const result = await service.findAll({ cursor: 'invalid', limit: 20 });
+
+      expect(queryBuilder.andWhere).not.toHaveBeenCalled();
+      expect(result.data).toHaveLength(1);
+      expect(result.hasMore).toBe(false);
     });
   });
 
   describe('findByAuthor', () => {
     it('excludes soft-deleted posts for the author', async () => {
-      repo.findAndCount.mockResolvedValue([[], 0]);
+      queryBuilder.getMany.mockResolvedValue([]);
 
-      await service.findByAuthor('author-1', { page: 1, limit: 20 });
+      await service.findByAuthor('author-1', { limit: 20 });
 
-      const [options] = repo.findAndCount.mock.calls[0] as [
-        { where: Record<string, unknown> },
-      ];
-      expect(options.where).toHaveProperty('authorId', 'author-1');
-      expect(Object.keys(options.where)).toContain('deletedAt');
+      expect(queryBuilder.where).toHaveBeenCalledWith('post.authorId = :authorId', {
+        authorId: 'author-1',
+      });
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith('post.deletedAt IS NULL');
     });
   });
 

@@ -75,7 +75,7 @@ describe('CreatorsController', () => {
       it('should accept query parameter q', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: 'test', page: 1, limit: 10 };
-        const mockResponse = new PaginatedResponseDto([], 0, 1, 10);
+        const mockResponse = new PaginatedResponseDto([], 10, null, false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
         // Act
@@ -90,25 +90,22 @@ describe('CreatorsController', () => {
         );
       });
 
-      it('should accept query parameter page', async () => {
-        // Arrange
-        const searchDto: SearchCreatorsDto = { q: '', page: 2, limit: 10 };
-        const mockResponse = new PaginatedResponseDto([], 0, 2, 10);
+      it('should accept query parameter cursor', async () => {
+        const searchDto: SearchCreatorsDto = { q: '', cursor: 'alice', limit: 10 };
+        const mockResponse = new PaginatedResponseDto([], 10, null, false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
-        // Act
         await controller.searchCreators(searchDto);
 
-        // Assert
         expect(mockCreatorsService.searchCreators).toHaveBeenCalledWith(
-          expect.objectContaining({ page: 2 }),
+          expect.objectContaining({ cursor: 'alice' }),
         );
       });
 
       it('should accept query parameter limit', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: '', page: 1, limit: 20 };
-        const mockResponse = new PaginatedResponseDto([], 0, 1, 20);
+        const mockResponse = new PaginatedResponseDto([], 20, null, false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
         // Act
@@ -122,17 +119,15 @@ describe('CreatorsController', () => {
 
       it('should accept all query parameters together', async () => {
         // Arrange
-        const searchDto: SearchCreatorsDto = { q: 'alice', page: 3, limit: 15 };
-        const mockResponse = new PaginatedResponseDto([], 0, 3, 15);
+        const searchDto: SearchCreatorsDto = { q: 'alice', cursor: 'bob', limit: 15 };
+        const mockResponse = new PaginatedResponseDto([], 15, null, false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
-        // Act
         await controller.searchCreators(searchDto);
 
-        // Assert
         expect(mockCreatorsService.searchCreators).toHaveBeenCalledWith({
           q: 'alice',
-          page: 3,
+          cursor: 'bob',
           limit: 15,
         });
       });
@@ -151,7 +146,7 @@ describe('CreatorsController', () => {
             bio: 'Test bio',
           },
         ];
-        const mockResponse = new PaginatedResponseDto(mockData, 1, 1, 10);
+        const mockResponse = new PaginatedResponseDto(mockData, 10, 'testuser', false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
         // Act
@@ -159,10 +154,9 @@ describe('CreatorsController', () => {
 
         // Assert
         expect(result).toHaveProperty('data');
-        expect(result).toHaveProperty('total');
-        expect(result).toHaveProperty('page');
         expect(result).toHaveProperty('limit');
-        expect(result).toHaveProperty('totalPages');
+        expect(result).toHaveProperty('nextCursor');
+        expect(result).toHaveProperty('hasMore');
       });
 
       it('should return data array with PublicCreatorDto objects', async () => {
@@ -177,7 +171,7 @@ describe('CreatorsController', () => {
             bio: 'Test bio',
           },
         ];
-        const mockResponse = new PaginatedResponseDto(mockData, 1, 1, 10);
+        const mockResponse = new PaginatedResponseDto(mockData, 10, 'testuser', false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
         // Act
@@ -197,7 +191,7 @@ describe('CreatorsController', () => {
       it('should return 200 status for valid request with query', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: 'test', page: 1, limit: 10 };
-        const mockResponse = new PaginatedResponseDto([], 0, 1, 10);
+        const mockResponse = new PaginatedResponseDto([], 10, null, false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
         // Act
@@ -211,7 +205,7 @@ describe('CreatorsController', () => {
       it('should return 200 status for valid request without query', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { page: 1, limit: 10 };
-        const mockResponse = new PaginatedResponseDto([], 0, 1, 10);
+        const mockResponse = new PaginatedResponseDto([], 10, null, false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
         // Act
@@ -229,7 +223,7 @@ describe('CreatorsController', () => {
           page: 1,
           limit: 10,
         };
-        const mockResponse = new PaginatedResponseDto([], 0, 1, 10);
+        const mockResponse = new PaginatedResponseDto([], 10, null, false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
         // Act
@@ -238,7 +232,7 @@ describe('CreatorsController', () => {
         // Assert
         expect(result).toBeDefined();
         expect(result.data).toHaveLength(0);
-        expect(result.total).toBe(0);
+        expect(result.hasMore).toBe(false);
       });
     });
 
@@ -313,7 +307,7 @@ describe('CreatorsController', () => {
       it('should use default values when pagination parameters are omitted', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: 'test' };
-        const mockResponse = new PaginatedResponseDto([], 0, 1, 20);
+        const mockResponse = new PaginatedResponseDto([], 20, null, false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
         // Act
@@ -328,7 +322,7 @@ describe('CreatorsController', () => {
       it('should use default page when only limit is provided', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: 'test', limit: 10 };
-        const mockResponse = new PaginatedResponseDto([], 0, 1, 10);
+        const mockResponse = new PaginatedResponseDto([], 10, null, false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
         // Act
@@ -340,18 +334,15 @@ describe('CreatorsController', () => {
         );
       });
 
-      it('should use default limit when only page is provided', async () => {
-        // Arrange
-        const searchDto: SearchCreatorsDto = { q: 'test', page: 2 };
-        const mockResponse = new PaginatedResponseDto([], 0, 2, 20);
+      it('should use default limit when only cursor is provided', async () => {
+        const searchDto: SearchCreatorsDto = { q: 'test', cursor: 'alice' };
+        const mockResponse = new PaginatedResponseDto([], 20, null, false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
-        // Act
         await controller.searchCreators(searchDto);
 
-        // Assert
         expect(mockCreatorsService.searchCreators).toHaveBeenCalledWith(
-          expect.objectContaining({ page: 2 }),
+          expect.objectContaining({ cursor: 'alice' }),
         );
       });
     });
@@ -359,8 +350,8 @@ describe('CreatorsController', () => {
     describe('CreatorsService.searchCreators method is called', () => {
       it('should call service.searchCreators with correct parameters', async () => {
         // Arrange
-        const searchDto: SearchCreatorsDto = { q: 'alice', page: 2, limit: 15 };
-        const mockResponse = new PaginatedResponseDto([], 0, 2, 15);
+        const searchDto: SearchCreatorsDto = { q: 'alice', cursor: 'bob', limit: 15 };
+        const mockResponse = new PaginatedResponseDto([], 15, null, false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
         // Act
@@ -376,7 +367,7 @@ describe('CreatorsController', () => {
       it('passes mixed-case query to service for case-insensitive search', async () => {
         const searchDto: SearchCreatorsDto = { q: 'ALICE', page: 1, limit: 10 };
         mockCreatorsService.searchCreators.mockResolvedValue(
-          new PaginatedResponseDto([], 0, 1, 10),
+          new PaginatedResponseDto([], 10, null, false),
         );
 
         await controller.searchCreators(searchDto);
@@ -398,7 +389,7 @@ describe('CreatorsController', () => {
             bio: 'Test bio',
           },
         ];
-        const mockResponse = new PaginatedResponseDto(mockData, 1, 1, 10);
+        const mockResponse = new PaginatedResponseDto(mockData, 10, 'testuser', false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
         // Act
@@ -407,7 +398,7 @@ describe('CreatorsController', () => {
         // Assert
         expect(result).toEqual(mockResponse);
         expect(result.data).toEqual(mockData);
-        expect(result.total).toBe(1);
+        expect(result.nextCursor).toBe('testuser');
       });
     });
   });
