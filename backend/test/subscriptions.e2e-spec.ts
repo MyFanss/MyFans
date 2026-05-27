@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, VersioningType } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -188,6 +188,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       .compile();
 
     app = moduleRef.createNestApplication();
+    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
     await app.init();
   });
 
@@ -199,7 +200,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
 
   it('creates checkout and powers the full flow via RPC stubs', async () => {
     const createRes = await request(app.getHttpServer())
-      .post('/subscriptions/checkout')
+      .post('/v1/subscriptions/checkout')
       .send({
         fanAddress: 'GTESTFAN1',
         creatorAddress: 'GTESTCREATOR1',
@@ -213,7 +214,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
     const checkoutId = createRes.body.id;
 
     await request(app.getHttpServer())
-      .get(`/subscriptions/checkout/${checkoutId}`)
+      .get(`/v1/subscriptions/checkout/${checkoutId}`)
       .expect(200)
       .expect((res) => {
         expect(res.body.id).toBe(checkoutId);
@@ -221,7 +222,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       });
 
     await request(app.getHttpServer())
-      .get(`/subscriptions/checkout/${checkoutId}/plan`)
+      .get(`/v1/subscriptions/checkout/${checkoutId}/plan`)
       .expect(200)
       .expect((res) => {
         expect(res.body.creatorAddress).toBe('GAAAAAAAAAAAAAAA');
@@ -229,7 +230,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       });
 
     await request(app.getHttpServer())
-      .get(`/subscriptions/checkout/${checkoutId}/price`)
+      .get(`/v1/subscriptions/checkout/${checkoutId}/price`)
       .expect(200)
       .expect((res) => {
         expect(res.body.subtotal).toBe('10');
@@ -237,7 +238,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       });
 
     await request(app.getHttpServer())
-      .get(`/subscriptions/checkout/${checkoutId}/wallet`)
+      .get(`/v1/subscriptions/checkout/${checkoutId}/wallet`)
       .expect(200)
       .expect((res) => {
         const xlm = res.body.balances.find((b) => b.code === 'XLM');
@@ -248,7 +249,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       });
 
     await request(app.getHttpServer())
-      .post(`/subscriptions/checkout/${checkoutId}/validate`)
+      .post(`/v1/subscriptions/checkout/${checkoutId}/validate`)
       .send({ assetCode: 'XLM', amount: '10' })
       .expect(201)
       .expect((res) => {
@@ -256,7 +257,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       });
 
     await request(app.getHttpServer())
-      .post(`/subscriptions/checkout/${checkoutId}/validate`)
+      .post(`/v1/subscriptions/checkout/${checkoutId}/validate`)
       .send({ assetCode: 'USDC', amount: '50' })
       .expect(201)
       .expect((res) => {
@@ -265,7 +266,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       });
 
     await request(app.getHttpServer())
-      .get('/subscriptions/check')
+      .get('/v1/subscriptions/check')
       .query({ fan: 'GTESTFAN1', creator: 'GTESTCREATOR1' })
       .expect(200)
       .expect((res) => {
@@ -273,7 +274,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       });
 
     await request(app.getHttpServer())
-      .post(`/subscriptions/checkout/${checkoutId}/confirm`)
+      .post(`/v1/subscriptions/checkout/${checkoutId}/confirm`)
       .send({ txHash: 'tx-101' })
       .expect(201)
       .expect((res) => {
@@ -282,7 +283,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       });
 
     await request(app.getHttpServer())
-      .get('/subscriptions/check')
+      .get('/v1/subscriptions/check')
       .query({ fan: 'GTESTFAN1', creator: 'GTESTCREATOR1' })
       .expect(200)
       .expect((res) => {
@@ -291,7 +292,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
 
     // confirmation has side effects on the checkout record
     await request(app.getHttpServer())
-      .get(`/subscriptions/checkout/${checkoutId}`)
+      .get(`/v1/subscriptions/checkout/${checkoutId}`)
       .expect(200)
       .expect((res) => {
         expect(res.body.status).toBe('completed');
@@ -301,7 +302,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
 
   it('handles failed checkout path', async () => {
     const createRes = await request(app.getHttpServer())
-      .post('/subscriptions/checkout')
+      .post('/v1/subscriptions/checkout')
       .send({
         fanAddress: 'GTESTFAN2',
         creatorAddress: 'GTESTCREATOR2',
@@ -312,7 +313,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
     const checkoutId = createRes.body.id;
 
     await request(app.getHttpServer())
-      .post(`/subscriptions/checkout/${checkoutId}/fail`)
+      .post(`/v1/subscriptions/checkout/${checkoutId}/fail`)
       .send({ error: 'Insufficient funds' })
       .expect(201)
       .expect((res) => {
@@ -320,7 +321,7 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       });
 
     await request(app.getHttpServer())
-      .get(`/subscriptions/checkout/${checkoutId}`)
+      .get(`/v1/subscriptions/checkout/${checkoutId}`)
       .expect(200)
       .expect((res) => {
         expect(res.body.status).toBe('failed');

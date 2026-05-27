@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, VersioningType } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 
@@ -13,6 +13,7 @@ describe('CORS and Security Headers (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
     await app.init();
   });
 
@@ -21,8 +22,8 @@ describe('CORS and Security Headers (e2e)', () => {
   });
 
   describe('Security Headers', () => {
-    it('/ (GET) - should include security headers', async () => {
-      const response = await request(app.getHttpServer()).get('/').expect(200);
+    it('/v1 (GET) - should include security headers', async () => {
+      const response = await request(app.getHttpServer()).get('/v1').expect(200);
 
       // Check security headers are present
       expect(response.headers['x-frame-options']).toBe('DENY');
@@ -46,28 +47,28 @@ describe('CORS and Security Headers (e2e)', () => {
       expect(response.headers['content-security-policy']).toBeDefined();
     });
 
-    it('/ (GET) - should not expose X-Powered-By header', async () => {
-      const response = await request(app.getHttpServer()).get('/').expect(200);
+    it('/v1 (GET) - should not expose X-Powered-By header', async () => {
+      const response = await request(app.getHttpServer()).get('/v1').expect(200);
 
       expect(response.headers['x-powered-by']).toBeUndefined();
     });
 
-    it('/ (GET) - should include correlation ID headers in response', async () => {
+    it('/v1 (GET) - should include correlation ID headers in response', async () => {
       const response = await request(app.getHttpServer())
-        .get('/')
-        .set('X-Correlation-ID', 'test-correlation-id')
-        .set('X-Request-ID', 'test-request-id')
+        .get('/v1')
+        .set('X-Correlation-ID', 'a1b2c3d4-e5f6-4789-8abc-def012345678')
+        .set('X-Request-ID', 'b2c3d4e5-f6a7-4890-9bcd-ef0123456789')
         .expect(200);
 
-      expect(response.headers['x-correlation-id']).toBe('test-correlation-id');
-      expect(response.headers['x-request-id']).toBe('test-request-id');
+      expect(response.headers['x-correlation-id']).toBe('a1b2c3d4-e5f6-4789-8abc-def012345678');
+      expect(response.headers['x-request-id']).toBe('b2c3d4e5-f6a7-4890-9bcd-ef0123456789');
     });
   });
 
   describe('CORS', () => {
     it('should handle CORS preflight requests', async () => {
       const response = await request(app.getHttpServer())
-        .options('/')
+        .options('/v1')
         .set('Origin', 'http://localhost:3000')
         .set('Access-Control-Request-Method', 'GET')
         .set('Access-Control-Request-Headers', 'Content-Type, Authorization')
@@ -86,7 +87,7 @@ describe('CORS and Security Headers (e2e)', () => {
 
     it('should include CORS headers on actual requests', async () => {
       const response = await request(app.getHttpServer())
-        .get('/')
+        .get('/v1')
         .set('Origin', 'http://localhost:3000')
         .expect(200);
 
@@ -97,7 +98,7 @@ describe('CORS and Security Headers (e2e)', () => {
     });
 
     it('should handle requests without Origin header', async () => {
-      const response = await request(app.getHttpServer()).get('/').expect(200);
+      const response = await request(app.getHttpServer()).get('/v1').expect(200);
 
       // Should still work without Origin header
       expect(response.status).toBe(200);
@@ -117,7 +118,7 @@ describe('CORS and Security Headers (e2e)', () => {
 
     it('should block disallowed origins in production', async () => {
       const response = await request(app.getHttpServer())
-        .get('/')
+        .get('/v1')
         .set('Origin', 'https://malicious.com')
         .expect(200);
 
