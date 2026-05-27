@@ -12,7 +12,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import * as request from 'supertest';
-import { SocialLinksModule } from '../social-links.module';
+import { SocialLinksModule } from './social-links.module';
 
 // ── Minimal stubs so the test module compiles without the full app ────────────
 
@@ -126,17 +126,28 @@ describe('Social Links – Integration', () => {
       const res = await request(app.getHttpServer())
         .patch('/users/user-uuid/social-links')
         .send({
-          websiteUrl: 'https://johndoe.com',
+          websiteUrl: 'https://twitter.com/johndoe',
           twitterHandle: '@johndoe',
           instagramHandle: 'johndoe',
-          otherLink: 'https://linktr.ee/johndoe',
+          otherLink: 'https://instagram.com/johndoe',
         })
         .expect(200);
 
-      expect(res.body.websiteUrl).toBe('https://johndoe.com/');
+      expect(res.body.websiteUrl).toBe('https://twitter.com/johndoe');
       expect(res.body.twitterHandle).toBe('johndoe');
       expect(res.body.instagramHandle).toBe('johndoe');
-      expect(res.body.otherLink).toBe('https://linktr.ee/johndoe/');
+      expect(res.body.otherLink).toBe('https://instagram.com/johndoe');
+    });
+
+    it('AC: disallowed domain returns 400 with domain identified', async () => {
+      const res = await request(app.getHttpServer())
+        .patch('/users/user-uuid/social-links')
+        .send({ websiteUrl: 'https://evil.com/phish' })
+        .expect(400);
+
+      const message = JSON.stringify(res.body);
+      expect(message).toMatch(/evil\.com/i);
+      expect(message).toMatch(/not allowed/i);
     });
 
     it('AC: invalid URL returns 400', async () => {
@@ -176,10 +187,10 @@ describe('Social Links – Integration', () => {
     it('allows partial update (only one field)', async () => {
       const res = await request(app.getHttpServer())
         .patch('/users/user-uuid/social-links')
-        .send({ websiteUrl: 'https://partial.com' })
+        .send({ websiteUrl: 'https://linkedin.com/in/johndoe' })
         .expect(200);
 
-      expect(res.body.websiteUrl).toBe('https://partial.com/');
+      expect(res.body.websiteUrl).toBe('https://linkedin.com/in/johndoe');
     });
 
     it('strips @ from twitter handle', async () => {

@@ -1,7 +1,12 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { SocialLinksDto } from './social-links.dto';
 import { SocialLinksResponseDto } from './user-profile.dto';
-import { isAllowedDomain, ALLOWED_DOMAINS } from './social-links.validator';
+import {
+  isAllowedDomain,
+  getAllowedDomains,
+  isDomainAllowlistEnabled,
+  getUrlHostname,
+} from './social-links.validator';
 
 /**
  * SocialLinksService
@@ -24,6 +29,11 @@ export class SocialLinksService {
    * reach the persistence layer.
    */
   validateDomainAllowlist(dto: SocialLinksDto): void {
+    if (!isDomainAllowlistEnabled()) {
+      return;
+    }
+
+    const allowed = getAllowedDomains();
     const urlFields: { key: keyof SocialLinksDto; label: string }[] = [
       { key: 'websiteUrl', label: 'website_url' },
       { key: 'otherLink', label: 'other_link' },
@@ -33,8 +43,9 @@ export class SocialLinksService {
       const value = dto[key];
       if (value !== undefined && value !== null && value !== '') {
         if (!isAllowedDomain(value)) {
+          const hostname = getUrlHostname(value) ?? 'unknown';
           throw new BadRequestException(
-            `${label} domain is not allowed. Allowed domains: ${ALLOWED_DOMAINS.join(', ')}`,
+            `${label} domain "${hostname}" is not allowed. Allowed domains: ${allowed.join(', ')}`,
           );
         }
       }

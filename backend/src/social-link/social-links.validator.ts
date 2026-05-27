@@ -1,16 +1,14 @@
 import {
   registerDecorator,
   ValidationOptions,
+  ValidationArguments,
   ValidatorConstraint,
   ValidatorConstraintInterface,
 } from 'class-validator';
 
 // ─── Domain Allowlist ────────────────────────────────────────────────────────
 
-/**
- * Only URLs with these domains (or subdomains thereof) are accepted
- * for social link fields that use URL-based validation.
- */
+/** Default allowlist when SOCIAL_LINKS_ALLOWED_DOMAINS is not set. */
 export const ALLOWED_DOMAINS: readonly string[] = [
   'twitter.com',
   'instagram.com',
@@ -18,14 +16,50 @@ export const ALLOWED_DOMAINS: readonly string[] = [
 ];
 
 /**
+ * Resolves the domain allowlist from SOCIAL_LINKS_ALLOWED_DOMAINS.
+ * When unset, uses ALLOWED_DOMAINS. When set to empty string, allowlist is
+ * disabled and any valid http(s) URL passes domain checks.
+ */
+export function getAllowedDomains(): readonly string[] {
+  const raw = process.env.SOCIAL_LINKS_ALLOWED_DOMAINS;
+  if (raw === undefined) {
+    return ALLOWED_DOMAINS;
+  }
+  if (raw.trim() === '') {
+    return [];
+  }
+  return raw
+    .split(',')
+    .map((domain) => domain.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isDomainAllowlistEnabled(): boolean {
+  return getAllowedDomains().length > 0;
+}
+
+/**
  * Checks whether a given hostname matches one of the allowed domains,
  * including subdomains (e.g. www.twitter.com → twitter.com ✓).
  */
 function hostnameMatchesAllowlist(hostname: string): boolean {
+  const allowed = getAllowedDomains();
+  if (allowed.length === 0) {
+    return true;
+  }
+
   const lower = hostname.toLowerCase();
-  return ALLOWED_DOMAINS.some(
+  return allowed.some(
     (domain) => lower === domain || lower.endsWith(`.${domain}`),
   );
+}
+
+export function getUrlHostname(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -39,6 +73,9 @@ export function isAllowedDomain(url: string | null | undefined): boolean {
 
   try {
     const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false;
+    }
     return hostnameMatchesAllowlist(parsed.hostname);
   } catch {
     return false;
@@ -97,8 +134,18 @@ export class IsAllowedDomainConstraint implements ValidatorConstraintInterface {
     }
   }
 
-  defaultMessage(): string {
-    return `URL domain is not allowed. Allowed domains: ${ALLOWED_DOMAINS.join(', ')}`;
+  defaultMessage(args?: ValidationArguments): string {
+    const value = args?.value;
+    const hostname =
+      typeof value === 'string' ? getUrlHostname(value) : null;
+    const allowed = getAllowedDomains();
+    const domainPart = hostname
+      ? `Domain "${hostname}" is not allowed.`
+      : 'URL domain is not allowed.';
+    if (allowed.length === 0) {
+      return domainPart;
+    }
+    return `${domainPart} Allowed domains: ${allowed.join(', ')}`;
   }
 }
 

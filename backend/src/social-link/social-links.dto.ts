@@ -24,7 +24,7 @@ export class SocialLinksDto {
   @IsString()
   @MaxLength(500)
   @IsSafeUrl({ message: 'website_url must be a valid http or https URL' })
-  @IsAllowedDomain({ message: 'website_url domain is not allowed. Allowed: twitter.com, instagram.com, linkedin.com' })
+  @IsAllowedDomain()
   @Transform(({ value }) => {
     const sanitized = sanitizeUrl(value);
     return sanitized !== null ? sanitized : value ?? null;
@@ -61,7 +61,7 @@ export class SocialLinksDto {
   @IsString()
   @MaxLength(500)
   @IsSafeUrl({ message: 'other_link must be a valid http or https URL' })
-  @IsAllowedDomain({ message: 'other_link domain is not allowed. Allowed: twitter.com, instagram.com, linkedin.com' })
+  @IsAllowedDomain()
   @Transform(({ value }) => {
     const sanitized = sanitizeUrl(value);
     return sanitized !== null ? sanitized : value ?? null;
