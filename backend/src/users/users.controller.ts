@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { UsersService } from './users.service';
-import { UpdateUserDto, UserProfileDto, DeleteAccountDto } from './dto';
+import { UpdateUserDto, UserProfileDto, DeleteAccountDto, UpdateOnboardingDto } from './dto';
 import { plainToInstance } from 'class-transformer';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
 import { AuthGuard } from '../utils/auth.guard';
@@ -46,6 +46,26 @@ export class UsersController {
     // TODO: Get user ID from auth token/session
     const userId = 'temp-user-id';
     const user = await this.usersService.update(userId, updateUserDto);
+    return plainToInstance(UserProfileDto, user);
+  }
+
+  @UseGuards(AuthGuard)
+  @Patch('me/onboarding')
+  @ApiOperation({ summary: 'Update creator onboarding progress' })
+  @ApiResponse({ status: 200, description: 'Onboarding progress updated', type: UserProfileDto })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async updateOnboarding(
+    @Req() req,
+    @Body() dto: UpdateOnboardingDto,
+  ): Promise<UserProfileDto> {
+    const userId = req.user.id;
+    const user = await this.usersService.updateOnboarding(userId, {
+      currentStep: dto.currentStep,
+      completedSteps: dto.completedSteps,
+      skippedSteps: dto.skippedSteps,
+      intent: dto.intent ?? null,
+      updatedAt: dto.updatedAt,
+    });
     return plainToInstance(UserProfileDto, user);
   }
 

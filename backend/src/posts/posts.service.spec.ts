@@ -30,18 +30,25 @@ describe('PostsService', () => {
     create: jest.Mock;
     save: jest.Mock;
     findOne: jest.Mock;
-    findAndCount: jest.Mock;
+    createQueryBuilder: jest.Mock;
     delete: jest.Mock;
   };
   let auditRepo: { create: jest.Mock; save: jest.Mock };
   let eventBus: { publish: jest.Mock };
 
   beforeEach(async () => {
+    queryBuilder = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest.fn(),
+    };
     repo = {
       create: jest.fn(),
       save: jest.fn(),
       findOne: jest.fn(),
-      findAndCount: jest.fn(),
+      createQueryBuilder: jest.fn(() => queryBuilder),
       delete: jest.fn(),
     };
     auditRepo = {
@@ -97,9 +104,9 @@ describe('PostsService', () => {
   describe('findAll', () => {
     it('calls findAndCount with deletedAt: IsNull() filter', async () => {
       const active = makePost();
-      repo.findAndCount.mockResolvedValue([[active], 1]);
+      queryBuilder.getMany.mockResolvedValue([active]);
 
-      const result = await service.findAll({ page: 1, limit: 20 });
+      await service.findAll({ limit: 20 });
 
       expect(repo.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -147,7 +154,7 @@ describe('PostsService', () => {
     it('filters by authorId and deletedAt: IsNull()', async () => {
       repo.findAndCount.mockResolvedValue([[], 0]);
 
-      await service.findByAuthor('author-1', { page: 1, limit: 20 });
+      await service.findByAuthor('author-1', { limit: 20 });
 
       expect(repo.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({

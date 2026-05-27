@@ -77,8 +77,26 @@ export class SubscriptionsController {
   @Get('me/list')
   @UseGuards(FanBearerGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'List subscriptions for the authenticated fan with status and sort filters' })
-  @ApiResponse({ status: 200, description: 'Paginated subscriptions list' })
+  @ApiOperation({
+    summary: 'List subscriptions for the authenticated fan with status and sort filters',
+    description:
+      'Cursor-paginated subscription list. Pass `cursor` and `limit`; responses include `data`, `limit`, `nextCursor`, and `hasMore`.',
+  })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'Pagination cursor (`nextCursor` from the previous page)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Number of items per page (default 20, max 100)',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Cursor-paginated subscriptions list (`data`, `limit`, `nextCursor`, `hasMore`)',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   listMySubscriptions(
     @Req() req: RequestWithFan,
@@ -94,6 +112,26 @@ export class SubscriptionsController {
   }
 
   @Get('creator-subscribers')
+  @ApiOperation({
+    summary: 'List subscribers for a creator',
+    description:
+      'Cursor-paginated subscriber list. Pass `cursor` and `limit`; responses include `data`, `limit`, `nextCursor`, and `hasMore`.',
+  })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'Pagination cursor (`nextCursor` from the previous page)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Number of items per page (default 20, max 100)',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Cursor-paginated subscribers list (`data`, `limit`, `nextCursor`, `hasMore`)',
+  })
   listCreatorSubscribers(@Query() query: ListCreatorSubscribersQueryDto) {
     return this.subscriptionsService.listCreatorSubscribers(
       query.creator,

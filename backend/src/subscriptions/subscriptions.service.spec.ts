@@ -265,6 +265,61 @@ describe('SubscriptionsService', () => {
     expect(result.data[0].fanAddress).toBe('GFAN_E');
   });
 
+  describe('cursor pagination', () => {
+    it('returns nextCursor and hasMore on the first page', async () => {
+      const fan = 'GFANPAG111111111111111111111111111111111111111111111111111';
+      currentSubs.push(
+        makeSub({ id: 'sub-1', fan, creator: 'GAAAAAAAAAAAAAAA' }),
+        makeSub({ id: 'sub-2', fan, creator: 'GBBBBBBBBBBBBBBBB' }),
+        makeSub({ id: 'sub-3', fan, creator: 'GCCCCCCCCCCCCCCCC' }),
+      );
+
+      const result = await service.listSubscriptions(fan, undefined, undefined, undefined, 2);
+
+      expect(result.data).toHaveLength(2);
+      expect(result.nextCursor).toBeTruthy();
+      expect(result.hasMore).toBe(true);
+    });
+
+    it('returns the next slice when cursor is provided', async () => {
+      const fan = 'GFANPAG222222222222222222222222222222222222222222222222222';
+      currentSubs.push(
+        makeSub({ id: 'sub-a', fan, creator: 'GAAAAAAAAAAAAAAA' }),
+        makeSub({ id: 'sub-b', fan, creator: 'GBBBBBBBBBBBBBBBB' }),
+        makeSub({ id: 'sub-c', fan, creator: 'GCCCCCCCCCCCCCCCC' }),
+      );
+
+      const result = await service.listSubscriptions(fan, undefined, undefined, 'sub-a', 2);
+
+      expect(result.data.length).toBeGreaterThan(0);
+      expect(repo.findWithCursor).toHaveBeenCalledWith(fan, undefined, undefined, 'sub-a', 2);
+    });
+
+    it('respects the limit parameter', async () => {
+      const fan = 'GFANPAG333333333333333333333333333333333333333333333333333';
+      currentSubs.push(
+        makeSub({ id: 'sub-x', fan, creator: 'GAAAAAAAAAAAAAAA' }),
+        makeSub({ id: 'sub-y', fan, creator: 'GBBBBBBBBBBBBBBBB' }),
+      );
+
+      const result = await service.listSubscriptions(fan, undefined, undefined, undefined, 1);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.limit).toBe(1);
+    });
+
+    it('returns empty data for stale cursor without crashing', async () => {
+      const fan = 'GFANPAG444444444444444444444444444444444444444444444444444';
+      currentSubs.push(makeSub({ id: 'sub-z', fan, creator: 'GAAAAAAAAAAAAAAA' }));
+
+      const result = await service.listSubscriptions(fan, undefined, undefined, 'sub-zzzz', 20);
+
+      expect(result.data).toHaveLength(0);
+      expect(result.hasMore).toBe(false);
+      expect(result.nextCursor).toBeNull();
+    });
+  });
+
   it('publishes a renewal event when confirming an existing subscription', async () => {
     const handler = jest.fn();
     eventBus.subscribe('subscription.renewed', handler);
