@@ -81,7 +81,7 @@ describe('SocialLinksService', () => {
     it('rejects websiteUrl on disallowed domain with user-friendly message', () => {
       expect(() =>
         service.validateDomainAllowlist({ websiteUrl: 'https://evil.com/phish' }),
-      ).toThrow(/website_url domain is not allowed/);
+      ).toThrow(/website_url domain "evil.com" is not allowed/);
     });
 
     it('rejects otherLink on disallowed domain', () => {

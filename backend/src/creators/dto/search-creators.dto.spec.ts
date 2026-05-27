@@ -8,6 +8,18 @@ describe('SearchCreatorsDto', () => {
     return validate(dto);
   }
 
+  describe('search alias parameter', () => {
+    it('accepts search as optional query alias', async () => {
+      const errors = await validateDto({ search: 'alice' });
+      expect(errors).toHaveLength(0);
+    });
+
+    it('trims whitespace from search parameter', () => {
+      const dto = plainToInstance(SearchCreatorsDto, { search: '  alice  ' });
+      expect(dto.search).toBe('alice');
+    });
+  });
+
   describe('query parameter (q)', () => {
     it('accepts optional query parameter (undefined accepted)', async () => {
       const errors = await validateDto({});

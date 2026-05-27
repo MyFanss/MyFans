@@ -197,8 +197,8 @@ export class CreatorsService {
   async searchCreators(
     searchDto: SearchCreatorsDto,
   ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
-    const { page = 1, limit = 20, q } = searchDto;
-    const trimmed = q?.trim();
+    const { page = 1, limit = 20, q, search } = searchDto;
+    const trimmed = (q ?? search)?.trim();
 
     const qb = this.userRepository
       .createQueryBuilder('user')

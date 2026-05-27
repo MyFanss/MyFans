@@ -8,6 +8,8 @@ import {
   normalizeHandle,
   isAllowedDomain,
   ALLOWED_DOMAINS,
+  getAllowedDomains,
+  isDomainAllowlistEnabled,
 } from './social-links.validator';
 import { SocialLinksDto } from './social-links.dto';
 
@@ -163,6 +165,37 @@ describe('IsAllowedDomainConstraint', () => {
     expect(message).toContain('twitter.com');
     expect(message).toContain('instagram.com');
     expect(message).toContain('linkedin.com');
+  });
+});
+
+// ─── getAllowedDomains / optional allowlist ───────────────────────────────────
+
+describe('getAllowedDomains', () => {
+  const originalEnv = process.env.SOCIAL_LINKS_ALLOWED_DOMAINS;
+
+  afterEach(() => {
+    if (originalEnv === undefined) {
+      delete process.env.SOCIAL_LINKS_ALLOWED_DOMAINS;
+    } else {
+      process.env.SOCIAL_LINKS_ALLOWED_DOMAINS = originalEnv;
+    }
+  });
+
+  it('returns default allowlist when env is unset', () => {
+    delete process.env.SOCIAL_LINKS_ALLOWED_DOMAINS;
+    expect(getAllowedDomains()).toEqual(ALLOWED_DOMAINS);
+    expect(isDomainAllowlistEnabled()).toBe(true);
+  });
+
+  it('returns empty allowlist when env is empty string', () => {
+    process.env.SOCIAL_LINKS_ALLOWED_DOMAINS = '';
+    expect(getAllowedDomains()).toEqual([]);
+    expect(isDomainAllowlistEnabled()).toBe(false);
+  });
+
+  it('allows any valid URL when allowlist is disabled', () => {
+    process.env.SOCIAL_LINKS_ALLOWED_DOMAINS = '';
+    expect(isAllowedDomain('https://example.com/page')).toBe(true);
   });
 });
 
@@ -418,11 +451,11 @@ describe('SocialLinksDto validation', () => {
     expect(errors.some((e) => e.property === 'websiteUrl')).toBe(true);
   });
 
-  it('error message mentions "not allowed" for disallowed websiteUrl domain', async () => {
+  it('error message mentions disallowed domain for websiteUrl', async () => {
     const errors = await validate_({ websiteUrl: 'https://facebook.com' });
     const websiteErrors = errors.find((e) => e.property === 'websiteUrl');
     const messages = Object.values(websiteErrors?.constraints || {});
-    expect(messages.some((m) => /not allowed/i.test(m))).toBe(true);
+    expect(messages.some((m) => /facebook\.com/i.test(m) && /not allowed/i.test(m))).toBe(true);
   });
 
   it('fails for otherLink on disallowed domain evil.com', async () => {
