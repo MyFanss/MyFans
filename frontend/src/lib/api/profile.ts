@@ -75,6 +75,29 @@ export async function patchMe(body: PatchUserBody): Promise<MeResponse> {
   return res.json() as Promise<MeResponse>;
 }
 
+export type PatchOnboardingBody = Partial<{
+  currentStep: string;
+  completedSteps: string[];
+  skippedSteps: string[];
+  intent: string;
+  updatedAt: string;
+}>;
+
+export async function patchMyOnboarding(
+  body: PatchOnboardingBody,
+): Promise<MeResponse> {
+  const res = await fetch(`${API_BASE}/users/me/onboarding`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err || `PATCH /users/me/onboarding failed: ${res.status}`);
+  }
+  return res.json() as Promise<MeResponse>;
+}
+
 export type PatchCreatorBody = Partial<{
   bio: string;
   subscription_price: number;

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { OnboardingIntent, OnboardingStep } from '@/lib/onboarding-types';
+import { patchMyOnboarding } from '@/lib/api/profile';
 
 export const ONBOARDING_STORAGE_KEY = 'myfans_onboarding_state';
 export const ONBOARDING_PROFILE_DRAFT_KEY = 'myfans_onboarding_profile_draft';
@@ -19,6 +20,14 @@ export interface OnboardingState {
   onboardingIntent: OnboardingIntent;
   savedAt: string | null;
 }
+
+type ServerOnboardingState = Partial<{
+  currentStep: OnboardingStep;
+  completedSteps: OnboardingStep[];
+  skippedSteps: OnboardingStep[];
+  intent: OnboardingIntent;
+  updatedAt: string;
+}>;
 
 interface OnboardingData {
   accountType?: 'creator' | 'fan' | 'both';
@@ -134,6 +143,18 @@ export function useOnboarding() {
     localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(next));
   }, [state]);
 
+  useEffect(() => {
+    // Best-effort server persistence; localStorage remains the offline source.
+    // If auth is not configured, this will fail silently.
+    void patchMyOnboarding({
+      currentStep: state.currentStep,
+      completedSteps: state.completedSteps,
+      skippedSteps: state.skippedSteps,
+      intent: state.onboardingIntent ?? undefined,
+      updatedAt: state.savedAt ?? undefined,
+    }).catch(() => {});
+  }, [state.currentStep, state.completedSteps, state.skippedSteps, state.onboardingIntent, state.savedAt]);
+
   const completeStep = useCallback((step: OnboardingStep) => {
     setState((prev) => {
       if (prev.completedSteps.includes(step)) {
@@ -207,6 +228,31 @@ export function useOnboarding() {
     localStorage.removeItem(ONBOARDING_PROFILE_DRAFT_KEY);
   }, []);
 
+  const hydrateFromServer = useCallback((server: ServerOnboardingState | null | undefined) => {
+    if (!server) return;
+    setState((prev) => {
+      const serverUpdatedAt = server.updatedAt ? new Date(server.updatedAt).getTime() : NaN;
+      const prevSavedAt = prev.savedAt ? new Date(prev.savedAt).getTime() : NaN;
+      if (isFinite(serverUpdatedAt) && isFinite(prevSavedAt) && serverUpdatedAt < prevSavedAt) {
+        return prev;
+      }
+      const completedSteps = (server.completedSteps ?? prev.completedSteps).filter(isValidStep);
+      const skippedSteps = (server.skippedSteps ?? prev.skippedSteps).filter(isValidStep);
+      const currentStep = isValidStep(server.currentStep) ? server.currentStep : prev.currentStep;
+      const onboardingIntent = isValidIntent(server.intent) ? server.intent : prev.onboardingIntent;
+      const isComplete = isFlowFinished(completedSteps, skippedSteps);
+      return {
+        ...prev,
+        currentStep,
+        completedSteps,
+        skippedSteps,
+        onboardingIntent,
+        isComplete,
+        savedAt: server.updatedAt ?? prev.savedAt,
+      };
+    });
+  }, []);
+
   const checkAndUpdateProgress = useCallback(
     (data: OnboardingData) => {
       const stepsToComplete: OnboardingStep[] = [];
@@ -244,6 +290,7 @@ export function useOnboarding() {
     goToStep,
     setOnboardingIntent,
     resetOnboarding,
+    hydrateFromServer,
     checkAndUpdateProgress,
     progressCount,
     canResume,

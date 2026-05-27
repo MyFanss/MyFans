@@ -18,6 +18,9 @@ export class UserProfileDto {
   @Expose()
   is_creator: boolean;
 
+  @Expose()
+  onboarding_state?: unknown;
+
   email_notifications: boolean;
   push_notifications: boolean;
   marketing_emails: boolean;

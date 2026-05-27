@@ -11,6 +11,7 @@ import AccountType from "@/components/AccountType";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { SocialLinksForm } from "@/components/settings/social-links-form";
+import { fetchMe } from "@/lib/api/profile";
 
 export default function OnboardingPage() {
   const { showSuccess, showInfo } = useToast();
@@ -26,6 +27,7 @@ export default function OnboardingPage() {
     setOnboardingIntent,
     resetOnboarding,
     canResume,
+    hydrateFromServer,
   } = useOnboarding();
 
   const [accountType, setAccountType] = useState<
@@ -60,6 +62,23 @@ export default function OnboardingPage() {
       setAccountType(onboardingIntent);
     }
   }, [onboardingIntent]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const me = await fetchMe();
+        if (cancelled) return;
+        const serverState = (me as any).onboarding_state ?? null;
+        hydrateFromServer(serverState);
+      } catch {
+        // best-effort hydration; local state still works offline
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrateFromServer]);
 
   useEffect(() => {
     localStorage.setItem(
