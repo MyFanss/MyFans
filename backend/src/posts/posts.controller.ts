@@ -9,6 +9,8 @@ import {
   Query,
   UseInterceptors,
   ClassSerializerInterceptor,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PostsService } from './posts.service';
@@ -110,8 +112,10 @@ export class PostsController {
   }
 
   @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Soft-delete a post (sets deletedAt / deletedBy)' })
   @ApiResponse({ status: 204, description: 'Post soft-deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Post not found or already deleted' })
   async remove(
     @Param('id') id: string,
     @Query('deletedBy') deletedBy?: string,

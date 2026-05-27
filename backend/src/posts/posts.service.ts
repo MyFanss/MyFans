@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
 import { Post } from './entities/post.entity';
+import { PostAuditLog } from './entities/post-audit-log.entity';
 import { CreatePostDto, PostDto, UpdatePostDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 import { EventBus } from '../events/event-bus';
@@ -13,6 +14,8 @@ export class PostsService {
   constructor(
     @InjectRepository(Post)
     private readonly postRepo: Repository<Post>,
+    @InjectRepository(PostAuditLog)
+    private readonly auditRepo: Repository<PostAuditLog>,
     private readonly eventBus: EventBus,
   ) {}
 
@@ -35,36 +38,22 @@ export class PostsService {
   async findAll(
     pagination: PaginationDto,
   ): Promise<PaginatedResponseDto<PostDto>> {
+    const page = pagination.page ?? 1;
     const limit = pagination.limit ?? 20;
-    const queryBuilder = this.postRepo
-      .createQueryBuilder('post')
-      .where('post.deletedAt IS NULL')
-      .orderBy('post.id', 'ASC')
-      .take(limit + 1);
+    const skip = (page - 1) * limit;
 
-    if (pagination.cursor) {
-      const cursorId = parseInt(pagination.cursor, 10);
-      if (!isNaN(cursorId)) {
-        queryBuilder.andWhere('post.id > :cursorId', { cursorId });
-      }
-    }
-
-    const items = await queryBuilder.getMany();
-    const hasMore = items.length > limit;
-    if (hasMore) {
-      items.pop();
-    }
-
-    let nextCursor: string | null = null;
-    if (items.length > 0) {
-      nextCursor = String(items[items.length - 1].id);
-    }
+    const [items, total] = await this.postRepo.findAndCount({
+      where: { deletedAt: IsNull() },
+      order: { createdAt: 'DESC' },
+      skip,
+      take: limit,
+    });
 
     return new PaginatedResponseDto(
       items.map((p) => this.toDto(p)),
+      total,
+      page,
       limit,
-      nextCursor,
-      hasMore,
     );
   }
 
@@ -72,37 +61,22 @@ export class PostsService {
     authorId: string,
     pagination: PaginationDto,
   ): Promise<PaginatedResponseDto<PostDto>> {
+    const page = pagination.page ?? 1;
     const limit = pagination.limit ?? 20;
-    const queryBuilder = this.postRepo
-      .createQueryBuilder('post')
-      .where('post.authorId = :authorId', { authorId })
-      .andWhere('post.deletedAt IS NULL')
-      .orderBy('post.id', 'ASC')
-      .take(limit + 1);
+    const skip = (page - 1) * limit;
 
-    if (pagination.cursor) {
-      const cursorId = parseInt(pagination.cursor, 10);
-      if (!isNaN(cursorId)) {
-        queryBuilder.andWhere('post.id > :cursorId', { cursorId });
-      }
-    }
-
-    const items = await queryBuilder.getMany();
-    const hasMore = items.length > limit;
-    if (hasMore) {
-      items.pop();
-    }
-
-    let nextCursor: string | null = null;
-    if (items.length > 0) {
-      nextCursor = String(items[items.length - 1].id);
-    }
+    const [items, total] = await this.postRepo.findAndCount({
+      where: { authorId, deletedAt: IsNull() },
+      order: { createdAt: 'DESC' },
+      skip,
+      take: limit,
+    });
 
     return new PaginatedResponseDto(
       items.map((p) => this.toDto(p)),
+      total,
+      page,
       limit,
-      nextCursor,
-      hasMore,
     );
   }
 
@@ -129,8 +103,11 @@ export class PostsService {
   }
 
   /**
-   * Soft-delete a post: sets deletedAt and deletedBy, then emits a
-   * PostDeletedEvent for the audit trail.
+   * Soft-delete a post: sets deletedAt and deletedBy, persists an audit log
+   * row, then emits a PostDeletedEvent for downstream consumers.
+   *
+   * Idempotent guard: throws NotFoundException if the post is already deleted
+   * or does not exist, so callers cannot double-delete.
    */
   async softDelete(id: string, deletedBy: string): Promise<void> {
     const post = await this.postRepo.findOne({
@@ -139,9 +116,15 @@ export class PostsService {
     if (!post) {
       throw new NotFoundException(`Post with ID ${id} not found`);
     }
+
     post.deletedAt = new Date();
     post.deletedBy = deletedBy;
     await this.postRepo.save(post);
+
+    await this.auditRepo.save(
+      this.auditRepo.create({ postId: id, deletedBy, action: 'soft_delete' }),
+    );
+
     this.eventBus.publish(new PostDeletedEvent(id, deletedBy));
   }
 
