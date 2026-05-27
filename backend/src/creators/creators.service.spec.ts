@@ -81,12 +81,12 @@ describe('CreatorsService', () => {
 
         // Assert
         expect(result.data).toHaveLength(2);
-        expect(result.total).toBe(2);
-        expect(result.page).toBe(1);
         expect(result.limit).toBe(10);
+        expect(result.hasMore).toBe(false);
+        expect(result.nextCursor).toBe('bob');
         expect(mockQueryBuilder.andWhere).not.toHaveBeenCalled();
         expect(debugSpy).toHaveBeenCalledWith(
-          'Creator search returned 2/2 rows for query ""',
+          'Creator search returned 2 rows for query ""',
         );
       });
 
@@ -106,21 +106,18 @@ describe('CreatorsService', () => {
 
         // Assert
         expect(result.data).toHaveLength(1);
-        expect(result.total).toBe(1);
         expect(mockQueryBuilder.andWhere).not.toHaveBeenCalled();
       });
     });
 
-    describe('query with no matches returns empty data array with total = 0', () => {
+    describe('query with no matches returns empty data array', () => {
       it('should return empty results when no creators match', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = {
           q: 'nonexistent',
-          page: 1,
           limit: 10,
         };
 
-        (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(0);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
           entities: [],
           raw: [],
@@ -131,8 +128,8 @@ describe('CreatorsService', () => {
 
         // Assert
         expect(result.data).toHaveLength(0);
-        expect(result.total).toBe(0);
-        expect(result.page).toBe(1);
+        expect(result.nextCursor).toBeNull();
+        expect(result.hasMore).toBe(false);
         expect(result.limit).toBe(10);
       });
     });
@@ -304,81 +301,76 @@ describe('CreatorsService', () => {
     });
 
     describe('pagination', () => {
-      it('should return correct offset for page 2', async () => {
-        // Arrange
-        const searchDto: SearchCreatorsDto = { q: '', page: 2, limit: 10 };
+      it('should apply cursor filter for the second page', async () => {
+        const searchDto: SearchCreatorsDto = { q: '', cursor: 'user10', limit: 10 };
         const mockUsers: User[] = [createMockUser('11', 'user11', 'User 11')];
 
-        (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(25);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
           entities: mockUsers,
           raw: [{ creator_bio: 'Bio' }],
         });
 
-        // Act
         await service.searchCreators(searchDto);
 
-        // Assert
-        expect(mockQueryBuilder.skip).toHaveBeenCalledWith(10);
-        expect(mockQueryBuilder.take).toHaveBeenCalledWith(10);
+        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+          'user.username > :cursorUsername',
+          { cursorUsername: 'user10' },
+        );
+        expect(mockQueryBuilder.take).toHaveBeenCalledWith(11);
       });
 
       it('should respect pagination limit', async () => {
-        // Arrange
-        const searchDto: SearchCreatorsDto = { q: '', page: 1, limit: 5 };
-        const mockUsers: User[] = Array.from({ length: 5 }, (_, i) =>
+        const searchDto: SearchCreatorsDto = { q: '', limit: 5 };
+        const mockUsers: User[] = Array.from({ length: 6 }, (_, i) =>
           createMockUser(`${i}`, `user${i}`, `User ${i}`),
         );
 
-        (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(20);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
           entities: mockUsers,
           raw: mockUsers.map(() => ({ creator_bio: 'Bio' })),
         });
 
-        // Act
         const result = await service.searchCreators(searchDto);
 
-        // Assert
         expect(result.data).toHaveLength(5);
         expect(result.limit).toBe(5);
-        expect(mockQueryBuilder.take).toHaveBeenCalledWith(5);
+        expect(result.hasMore).toBe(true);
+        expect(result.nextCursor).toBe('user4');
+        expect(mockQueryBuilder.take).toHaveBeenCalledWith(6);
       });
 
-      it('should calculate total count accurately', async () => {
-        // Arrange
-        const searchDto: SearchCreatorsDto = { q: 'test', page: 1, limit: 10 };
-        const mockUsers: User[] = [createMockUser('1', 'test1', 'Test User 1')];
+      it('should return nextCursor on the first page when more results exist', async () => {
+        const searchDto: SearchCreatorsDto = { q: 'test', limit: 1 };
+        const mockUsers: User[] = [
+          createMockUser('1', 'test1', 'Test User 1'),
+          createMockUser('2', 'test2', 'Test User 2'),
+        ];
 
-        (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(15);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
           entities: mockUsers,
-          raw: [{ creator_bio: 'Bio' }],
+          raw: [{ creator_bio: 'Bio' }, { creator_bio: 'Bio 2' }],
         });
 
-        // Act
         const result = await service.searchCreators(searchDto);
 
-        // Assert
-        expect(result.total).toBe(15);
+        expect(result.data).toHaveLength(1);
+        expect(result.nextCursor).toBe('test1');
+        expect(result.hasMore).toBe(true);
       });
 
-      it('should calculate totalPages correctly', async () => {
-        // Arrange
-        const searchDto: SearchCreatorsDto = { q: '', page: 1, limit: 10 };
-        const mockUsers: User[] = [createMockUser('1', 'user1', 'User 1')];
+      it('should return empty data for stale cursor beyond results', async () => {
+        const searchDto: SearchCreatorsDto = { q: '', cursor: 'zzzzz', limit: 10 };
 
-        (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(25);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-          entities: mockUsers,
-          raw: [{ creator_bio: 'Bio' }],
+          entities: [],
+          raw: [],
         });
 
-        // Act
         const result = await service.searchCreators(searchDto);
 
-        // Assert
-        expect(result.totalPages).toBe(3); // Math.ceil(25 / 10)
+        expect(result.data).toHaveLength(0);
+        expect(result.nextCursor).toBeNull();
+        expect(result.hasMore).toBe(false);
       });
     });
 
@@ -458,24 +450,20 @@ describe('CreatorsService', () => {
       });
     });
 
-    describe('page beyond available results returns empty data with accurate total', () => {
-      it('should return empty data for page beyond results', async () => {
-        // Arrange
-        const searchDto: SearchCreatorsDto = { q: '', page: 10, limit: 10 };
+    describe('stale cursor returns empty data', () => {
+      it('should return empty data when cursor is beyond available results', async () => {
+        const searchDto: SearchCreatorsDto = { q: '', cursor: 'zzzzz', limit: 10 };
 
-        (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(5);
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
           entities: [],
           raw: [],
         });
 
-        // Act
         const result = await service.searchCreators(searchDto);
 
-        // Assert
         expect(result.data).toHaveLength(0);
-        expect(result.total).toBe(5);
-        expect(result.page).toBe(10);
+        expect(result.nextCursor).toBeNull();
+        expect(result.hasMore).toBe(false);
       });
     });
   });
@@ -543,16 +531,12 @@ describe('CreatorsService', () => {
     });
 
     it('searchCreators logs error and rethrows when the query fails', async () => {
-      (mockQueryBuilder.getCount as jest.Mock).mockRejectedValue(
+      (mockQueryBuilder.getRawAndEntities as jest.Mock).mockRejectedValue(
         new Error('connection reset'),
       );
-      (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-        entities: [],
-        raw: [],
-      });
 
       await expect(
-        service.searchCreators({ q: 'x', page: 1, limit: 10 }),
+        service.searchCreators({ q: 'x', limit: 10 }),
       ).rejects.toThrow('connection reset');
 
       expect(errorSpy).toHaveBeenCalledWith(

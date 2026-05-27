@@ -94,6 +94,15 @@ export class User {
   @Column({ default: false })
   is_creator: boolean;
 
+  @Column({ type: 'jsonb', nullable: true })
+  onboarding_state?: {
+    currentStep: string;
+    completedSteps: string[];
+    skippedSteps: string[];
+    intent: string | null;
+    updatedAt: string;
+  } | null;
+
   @OneToOne(() => Creator, (creator) => creator.user, { nullable: true })
   @JoinColumn({ name: 'id' })
   creator?: Creator;

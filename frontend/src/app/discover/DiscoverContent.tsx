@@ -59,7 +59,7 @@ function DiscoverContentInner() {
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [page, setPage] = useState(1);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
 
   // Debounced search
   const [debouncedSearch, setDebouncedSearch] = useState(search);
@@ -107,14 +107,13 @@ function DiscoverContentInner() {
         try {
           const result = await searchCreators({
             q: debouncedSearch || undefined,
-            page: 1,
             limit: INITIAL_LOAD,
           });
           if (!cancelled) {
             setDisplayedCreators(result.data.map(apiCreatorToProfile));
-            setTotal(result.total);
+            setTotal(result.data.length);
             setHasMore(result.hasMore);
-            setPage(1);
+            setNextCursor(result.nextCursor);
           }
         } catch {
           if (!cancelled) {
@@ -136,7 +135,6 @@ function DiscoverContentInner() {
             setDisplayedCreators(result.creators);
             setTotal(result.total);
             setHasMore(result.hasMore);
-            setPage(1);
           }
         });
       }
@@ -151,22 +149,22 @@ function DiscoverContentInner() {
     if (isLoading || !hasMore) return;
 
     setIsLoading(true);
-    const nextPage = page + 1;
 
     if (USE_API) {
       try {
         const result = await searchCreators({
           q: debouncedSearch || undefined,
-          page: nextPage,
+          cursor: nextCursor ?? undefined,
           limit: LOAD_MORE_COUNT,
         });
         setDisplayedCreators((prev) => [...prev, ...result.data.map(apiCreatorToProfile)]);
         setHasMore(result.hasMore);
-        setPage(nextPage);
+        setNextCursor(result.nextCursor);
       } catch {
         // silently keep current results on load-more failure
       }
     } else {
+      const nextPage = Math.floor(displayedCreators.length / LOAD_MORE_COUNT) + 2;
       const result = getCreators({
         search: debouncedSearch,
         categories: selectedCategories,
@@ -176,11 +174,10 @@ function DiscoverContentInner() {
       });
       setDisplayedCreators((prev) => [...prev, ...result.creators]);
       setHasMore(result.hasMore);
-      setPage(nextPage);
     }
 
     setIsLoading(false);
-  }, [isLoading, hasMore, page, debouncedSearch, selectedCategories, sort]);
+  }, [isLoading, hasMore, debouncedSearch, selectedCategories, sort, nextCursor, displayedCreators.length]);
 
   // Intersection observer for infinite scroll
   useEffect(() => {

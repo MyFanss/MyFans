@@ -10,6 +10,7 @@ describe('UsersController', () => {
 
     const mockUsersService = {
         findOne: jest.fn(),
+        updateOnboarding: jest.fn(),
         validatePassword: jest.fn(),
         remove: jest.fn(),
     };
@@ -60,6 +61,44 @@ describe('UsersController', () => {
             service.validatePassword.mockResolvedValue(false);
 
             await expect(controller.removeMe(req, dto)).rejects.toThrow(UnauthorizedException);
+        });
+    });
+
+    describe('updateOnboarding', () => {
+        it('should call service.updateOnboarding with req.user.id and dto', async () => {
+            const req = { user: { id: 'user-id' } };
+            const dto = {
+                currentStep: 'profile',
+                completedSteps: ['account-type'],
+                skippedSteps: [],
+                intent: 'creator',
+                updatedAt: new Date().toISOString(),
+            };
+            mockUsersService.updateOnboarding.mockResolvedValue({
+                id: 'user-id',
+                username: 'u',
+                display_name: 'd',
+                avatar_url: null,
+                is_creator: false,
+                onboarding_state: {
+                    currentStep: dto.currentStep,
+                    completedSteps: dto.completedSteps,
+                    skippedSteps: dto.skippedSteps,
+                    intent: dto.intent,
+                    updatedAt: dto.updatedAt,
+                },
+            });
+
+            const result = await controller.updateOnboarding(req as any, dto as any);
+
+            expect(mockUsersService.updateOnboarding).toHaveBeenCalledWith('user-id', {
+                currentStep: 'profile',
+                completedSteps: ['account-type'],
+                skippedSteps: [],
+                intent: 'creator',
+                updatedAt: dto.updatedAt,
+            });
+            expect(result).toHaveProperty('onboarding_state');
         });
     });
 });

@@ -107,6 +107,19 @@ describe('Wallet Auth Endpoints (integration)', () => {
         });
     });
 
+    it('rejects when x-network does not match the server network', () => {
+      return request(app.getHttpServer())
+        .post('/v1/auth/login')
+        .set('x-network', 'mainnet')
+        .send({ address: VALID_ADDRESS })
+        .expect(400)
+        .expect((res) => {
+          expect(res.body).toMatchObject({
+            error: 'NETWORK_MISMATCH',
+          });
+        });
+    });
+
     it('token is the base64-encoded address', () => {
       return request(app.getHttpServer())
         .post('/v1/auth/login')
@@ -203,6 +216,19 @@ describe('Wallet Auth Endpoints (integration)', () => {
         .expect(400);
     });
 
+    it('rejects when x-network does not match the server network', () => {
+      return request(app.getHttpServer())
+        .post('/v1/auth/challenge')
+        .set('x-network', 'mainnet')
+        .send({ address: VALID_ADDRESS })
+        .expect(400)
+        .expect((res) => {
+          expect(res.body).toMatchObject({
+            error: 'NETWORK_MISMATCH',
+          });
+        });
+    });
+
     it('rejects a missing address', () => {
       return request(app.getHttpServer())
         .post('/v1/auth/challenge')
@@ -239,6 +265,31 @@ describe('Wallet Auth Endpoints (integration)', () => {
         .expect((res) => {
           expect(res.body).toHaveProperty('access_token', 'mock-jwt-token');
           expect(res.body).toHaveProperty('token_type', 'Bearer');
+        });
+    });
+
+    it('rejects when x-network does not match the server network', async () => {
+      const keypair = Keypair.random();
+      const address = keypair.publicKey();
+
+      const challengeRes = await request(app.getHttpServer())
+        .post('/v1/auth/challenge')
+        .send({ address })
+        .expect(200);
+
+      const { nonce } = challengeRes.body as { nonce: string };
+      const sig = keypair.sign(Buffer.from(nonce, 'utf8'));
+      const sigHex = Buffer.from(sig).toString('hex');
+
+      await request(app.getHttpServer())
+        .post('/v1/auth/challenge/verify')
+        .set('x-network', 'mainnet')
+        .send({ address, nonce, signature: sigHex })
+        .expect(400)
+        .expect((res) => {
+          expect(res.body).toMatchObject({
+            error: 'NETWORK_MISMATCH',
+          });
         });
     });
 
