@@ -197,7 +197,7 @@ export class CreatorsService {
   async searchCreators(
     searchDto: SearchCreatorsDto,
   ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
-    const { page = 1, limit = 20, q, search } = searchDto;
+    const { cursor, limit = 20, q, search } = searchDto;
     const trimmed = (q ?? search)?.trim();
 
     const qb = this.userRepository
@@ -206,8 +206,7 @@ export class CreatorsService {
       .addSelect('creator.bio', 'creator_bio')
       .where('user.is_creator = :isCreator', { isCreator: true })
       .orderBy('user.username', 'ASC')
-      .skip((page - 1) * limit)
-      .take(limit);
+      .take(limit + 1);
 
     if (trimmed) {
       qb.andWhere(
@@ -216,21 +215,26 @@ export class CreatorsService {
       );
     }
 
+    if (cursor) {
+      qb.andWhere('user.username > :cursorUsername', { cursorUsername: cursor });
+    }
+
     let entities: User[];
     let raw: { creator_bio?: string }[];
-    let total: number;
     try {
-      const [{ entities: e, raw: r }, t] = await Promise.all([
-        qb.getRawAndEntities(),
-        qb.getCount(),
-      ]);
-      entities = e;
-      raw = r as { creator_bio?: string }[];
-      total = t;
+      const result = await qb.getRawAndEntities();
+      entities = result.entities;
+      raw = result.raw as { creator_bio?: string }[];
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Creator search failed: ${message}`);
       throw err;
+    }
+
+    const hasMore = entities.length > limit;
+    if (hasMore) {
+      entities.pop();
+      raw.pop();
     }
 
     const data = entities.map((user, index) => {
@@ -239,10 +243,16 @@ export class CreatorsService {
       return dto;
     });
 
+    let nextCursor: string | null = null;
+    if (data.length > 0) {
+      nextCursor = data[data.length - 1].username;
+    }
+
     this.logger.debug(
-      `Creator search returned ${data.length}/${total} rows for query "${trimmed ?? ''}"`,
+      `Creator search returned ${data.length} rows for query "${trimmed ?? ''}"` +
+        (cursor ? ` after cursor "${cursor}"` : ''),
     );
 
-    return new PaginatedResponseDto(data, total, page, limit);
+    return new PaginatedResponseDto(data, limit, nextCursor, hasMore);
   }
 }

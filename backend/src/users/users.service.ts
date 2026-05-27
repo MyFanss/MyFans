@@ -32,6 +32,31 @@ export class UsersService {
     return this.usersRepository.save(user);
   }
 
+  async updateOnboarding(
+    id: string,
+    onboarding: {
+      currentStep?: string;
+      completedSteps?: string[];
+      skippedSteps?: string[];
+      intent?: string | null;
+      updatedAt?: string;
+    },
+  ): Promise<User> {
+    const user = await this.findOne(id);
+    const prev = user.onboarding_state ?? null;
+    user.onboarding_state = {
+      currentStep: onboarding.currentStep ?? prev?.currentStep ?? 'account-type',
+      completedSteps: onboarding.completedSteps ?? prev?.completedSteps ?? [],
+      skippedSteps: onboarding.skippedSteps ?? prev?.skippedSteps ?? [],
+      intent:
+        onboarding.intent ??
+        prev?.intent ??
+        null,
+      updatedAt: onboarding.updatedAt ?? new Date().toISOString(),
+    };
+    return this.usersRepository.save(user);
+  }
+
   async findById(id: string): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id } });
 

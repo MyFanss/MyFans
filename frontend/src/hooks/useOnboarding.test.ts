@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import {
   useOnboarding,
@@ -31,6 +31,9 @@ describe("isFlowFinished", () => {
 describe("useOnboarding", () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("starts at account-type with empty progress", () => {
@@ -71,6 +74,33 @@ describe("useOnboarding", () => {
     expect(raw).toBeTruthy();
     const parsed = JSON.parse(raw!);
     expect(parsed.completedSteps).toContain("account-type");
+  });
+
+  it("hydrates from server state when provided", () => {
+    const { result } = renderHook(() => useOnboarding());
+    act(() => {
+      result.current.hydrateFromServer({
+        currentStep: "social-links",
+        completedSteps: ["account-type", "profile"],
+        skippedSteps: [],
+        intent: "creator",
+        updatedAt: new Date().toISOString(),
+      });
+    });
+    expect(result.current.currentStep).toBe("social-links");
+    expect(result.current.completedSteps).toEqual(["account-type", "profile"]);
+    expect(result.current.onboardingIntent).toBe("creator");
+  });
+
+  it("persists to server best-effort on state changes", () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch" as any)
+      .mockResolvedValue({ ok: false, text: () => Promise.resolve("") } as any);
+    const { result } = renderHook(() => useOnboarding());
+    act(() => {
+      result.current.completeStep("account-type");
+    });
+    expect(fetchSpy).toHaveBeenCalled();
   });
 
   it("setOnboardingIntent stores creator intent", () => {

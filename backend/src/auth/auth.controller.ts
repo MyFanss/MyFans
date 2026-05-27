@@ -1,4 +1,14 @@
-import { BadRequestException, Body, Controller, HttpCode, HttpStatus, Post, UseInterceptors } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Headers,
+  HttpCode,
+  HttpException,
+  HttpStatus,
+  Post,
+  UseInterceptors,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -12,17 +22,39 @@ import { IS_PUBLIC_KEY } from '../common/decorators/public.decorator';
 @ApiTags('auth')
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
+  private readonly serverNetwork = process.env.STELLAR_NETWORK ?? 'testnet';
+
   constructor(
     private readonly authService: AuthService,
     private readonly walletAuthService: WalletAuthService,
   ) {}
+
+  private assertNetworkMatch(requestNetwork: string | undefined): void {
+    if (!requestNetwork) return;
+    const normalised = requestNetwork.trim().toLowerCase();
+    if (normalised !== this.serverNetwork.toLowerCase()) {
+      throw new HttpException(
+        {
+          error: 'NETWORK_MISMATCH',
+          message: 'Wallet network does not match server network',
+          expectedNetwork: this.serverNetwork,
+          currentNetwork: requestNetwork,
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
 
   @Post('login')
   @Throttle({ auth: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Authenticate with a Stellar wallet address' })
   @ApiResponse({ status: 201, description: 'Session created' })
   @ApiResponse({ status: 400, description: 'Invalid Stellar address' })
-  async login(@Body() body: { address?: string }) {
+  async login(
+    @Body() body: { address?: string },
+    @Headers('x-network') requestNetwork?: string,
+  ) {
+    this.assertNetworkMatch(requestNetwork);
     const address = body.address ?? '';
     if (!this.authService.validateStellarAddress(address)) {
       throw new BadRequestException('Invalid Stellar address');
@@ -41,7 +73,11 @@ export class AuthController {
   @ApiOperation({ summary: '[Deprecated] Register with a Stellar wallet address', deprecated: true })
   @ApiResponse({ status: 201, description: 'Session created' })
   @ApiResponse({ status: 400, description: 'Invalid Stellar address' })
-  async register(@Body() body: { address?: string }) {
+  async register(
+    @Body() body: { address?: string },
+    @Headers('x-network') requestNetwork?: string,
+  ) {
+    this.assertNetworkMatch(requestNetwork);
     const address = body.address ?? '';
     if (!this.authService.validateStellarAddress(address)) {
       throw new BadRequestException('Invalid Stellar address');
@@ -58,7 +94,11 @@ export class AuthController {
   @Throttle({ auth: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Request a sign-in challenge for a Stellar wallet' })
   @ApiResponse({ status: 200, description: 'Nonce and expiry returned' })
-  async requestChallenge(@Body() dto: RequestChallengeDto) {
+  async requestChallenge(
+    @Body() dto: RequestChallengeDto,
+    @Headers('x-network') requestNetwork?: string,
+  ) {
+    this.assertNetworkMatch(requestNetwork);
     if (!this.authService.validateStellarAddress(dto.address)) {
       throw new BadRequestException('Invalid Stellar address');
     }
@@ -76,7 +116,11 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'JWT access token' })
   @ApiResponse({ status: 400, description: 'Invalid signature' })
   @ApiResponse({ status: 401, description: 'Expired or replayed challenge' })
-  async verifyChallenge(@Body() dto: VerifyChallengeDto) {
+  async verifyChallenge(
+    @Body() dto: VerifyChallengeDto,
+    @Headers('x-network') requestNetwork?: string,
+  ) {
+    this.assertNetworkMatch(requestNetwork);
     if (!this.authService.validateStellarAddress(dto.address)) {
       throw new BadRequestException('Invalid Stellar address');
     }

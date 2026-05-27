@@ -12,9 +12,8 @@ export interface PublicCreator {
 
 export interface CreatorsSearchResult {
   data: PublicCreator[];
-  total: number;
-  page: number;
   limit: number;
+  nextCursor: string | null;
   hasMore: boolean;
 }
 
@@ -22,12 +21,12 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v
 
 export async function searchCreators(params: {
   q?: string;
-  page?: number;
+  cursor?: string;
   limit?: number;
 }): Promise<CreatorsSearchResult> {
   const qs = new URLSearchParams();
   if (params.q) qs.set('q', params.q);
-  if (params.page) qs.set('page', String(params.page));
+  if (params.cursor) qs.set('cursor', params.cursor);
   if (params.limit) qs.set('limit', String(params.limit));
 
   const res = await fetch(`${API_BASE}/creators?${qs.toString()}`, {
