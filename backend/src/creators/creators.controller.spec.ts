@@ -373,6 +373,19 @@ describe('CreatorsController', () => {
         );
       });
 
+      it('passes mixed-case query to service for case-insensitive search', async () => {
+        const searchDto: SearchCreatorsDto = { q: 'ALICE', page: 1, limit: 10 };
+        mockCreatorsService.searchCreators.mockResolvedValue(
+          new PaginatedResponseDto([], 0, 1, 10),
+        );
+
+        await controller.searchCreators(searchDto);
+
+        expect(mockCreatorsService.searchCreators).toHaveBeenCalledWith(
+          expect.objectContaining({ q: 'ALICE' }),
+        );
+      });
+
       it('should return the result from service.searchCreators', async () => {
         // Arrange
         const searchDto: SearchCreatorsDto = { q: 'test', page: 1, limit: 10 };

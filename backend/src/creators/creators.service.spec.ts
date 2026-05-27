@@ -219,6 +219,26 @@ describe('CreatorsService', () => {
       });
     });
 
+    describe('search query alias', () => {
+      it('should filter when only search param is provided', async () => {
+        const searchDto: SearchCreatorsDto = { search: 'bob', page: 1, limit: 10 };
+        const mockUsers: User[] = [createMockUser('1', 'bob123', 'Bob Smith')];
+
+        (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(1);
+        (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
+          entities: mockUsers,
+          raw: [{ creator_bio: 'Bio' }],
+        });
+
+        await service.searchCreators(searchDto);
+
+        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+          '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
+          { search: 'bob%' },
+        );
+      });
+    });
+
     describe('case-insensitive matching', () => {
       it('should match uppercase query', async () => {
         // Arrange
@@ -461,6 +481,7 @@ describe('CreatorsService', () => {
   });
 
   describe('logging and resilience', () => {
+    it('createPlan logs debug when EventBus is not wired', async () => {
       const module: TestingModule = await Test.createTestingModule({
         providers: [
           CreatorsService,
