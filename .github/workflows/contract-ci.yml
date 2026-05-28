@@ -39,3 +39,29 @@ jobs:
       - name: Build wasm target
         run: cargo build --release --target wasm32-unknown-unknown --manifest-path Cargo.toml
         working-directory: contract
+
+      - name: Verify wasm artifacts
+        run: |
+          WASM_DIR="target/wasm32-unknown-unknown/release"
+          EXPECTED=(
+            subscription
+            myfans_token
+            content_access
+            creator_registry
+            earnings
+          )
+          MISSING=0
+          for pkg in "${EXPECTED[@]}"; do
+            WASM_FILE="${WASM_DIR}/${pkg}.wasm"
+            if [[ -f "$WASM_FILE" && -s "$WASM_FILE" ]]; then
+              echo "✅ ${pkg}.wasm ($(du -sh "$WASM_FILE" | cut -f1))"
+            else
+              echo "❌ ${pkg}.wasm: missing or empty"
+              MISSING=1
+            fi
+          done
+          if [[ "$MISSING" -eq 1 ]]; then
+            echo "::error::One or more expected wasm artifacts are missing or empty after build."
+            exit 1
+          fi
+        working-directory: contract

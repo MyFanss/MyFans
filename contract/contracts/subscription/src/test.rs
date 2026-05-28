@@ -854,7 +854,6 @@ fn test_subscribe_fails_when_paused() {
 }
 
 #[test]
-#[should_panic(expected = "contract is paused")]
 fn test_extend_subscription_fails_when_paused() {
     let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
@@ -865,7 +864,11 @@ fn test_extend_subscription_fails_when_paused() {
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
     client.subscribe(&fan, &plan_id, &token.address);
     client.pause();
-    client.extend_subscription(&fan, &creator, &17280, &token.address);
+    let result = client.try_extend_subscription(&fan, &creator, &17280, &token.address);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
 }
 
 #[test]
@@ -884,10 +887,13 @@ fn test_cancel_fails_when_paused() {
 }
 
 #[test]
-#[should_panic]
 fn test_create_subscription_fails_when_paused() {
     let (_env, client, _admin, creator, fan, _token, _token_admin) = setup_paused();
-    client.create_subscription(&fan, &creator, &518400);
+    let result = client.try_create_subscription(&fan, &creator, &518400);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
 }
 
 /// Views must remain available while paused.
@@ -1286,4 +1292,71 @@ fn test_ping_works_on_uninitialized_contract() {
 
     let seq = client.ping();
     assert_eq!(seq, env.ledger().sequence());
+}
+
+// ── #895 – error code validation ─────────────────────────────────────────────
+
+/// subscribe with a plan_id that was never created returns Error::PlanNotFound (code 10).
+#[test]
+fn test_subscribe_nonexistent_plan_returns_plan_not_found() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let fan = Address::generate(&env);
+
+    let result = client.try_subscribe(&fan, &9999u32, &token.address);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::PlanNotFound as u32
+        )))
+    );
+}
+
+/// create_plan when paused returns Error::Paused (code 2).
+#[test]
+fn test_create_plan_paused_returns_typed_error() {
+    let (_env, client, _admin, creator, _fan, token, _token_admin) = setup_paused();
+    let result = client.try_create_plan(&creator, &token.address, &1000, &30);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
+}
+
+/// subscribe when paused returns Error::Paused (code 2).
+#[test]
+fn test_subscribe_paused_returns_typed_error() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    token_admin.mint(&fan, &50000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.pause();
+    let result = client.try_subscribe(&fan, &plan_id, &token.address);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
+}
+
+/// cancel when paused returns Error::Paused (code 2).
+#[test]
+fn test_cancel_paused_returns_typed_error() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    token_admin.mint(&fan, &50000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    client.pause();
+    let result = client.try_cancel(&fan, &creator, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
 }
