@@ -253,14 +253,32 @@ mod test {
         /// published in `myfans_lib::error_codes::subscription`.
         #[test]
         fn subscription_error_codes_match_stable_constants() {
-            assert_eq!(SubError::AlreadyInitialized as u32, sub_err::ALREADY_INITIALIZED);
+            assert_eq!(
+                SubError::AlreadyInitialized as u32,
+                sub_err::ALREADY_INITIALIZED
+            );
             assert_eq!(SubError::Paused as u32, sub_err::PAUSED);
-            assert_eq!(SubError::SubscriptionNotFound as u32, sub_err::SUBSCRIPTION_NOT_FOUND);
-            assert_eq!(SubError::SubscriptionExpired as u32, sub_err::SUBSCRIPTION_EXPIRED);
-            assert_eq!(SubError::AdminNotInitialized as u32, sub_err::ADMIN_NOT_INITIALIZED);
-            assert_eq!(SubError::InvalidFeeRecipient as u32, sub_err::INVALID_FEE_RECIPIENT);
+            assert_eq!(
+                SubError::SubscriptionNotFound as u32,
+                sub_err::SUBSCRIPTION_NOT_FOUND
+            );
+            assert_eq!(
+                SubError::SubscriptionExpired as u32,
+                sub_err::SUBSCRIPTION_EXPIRED
+            );
+            assert_eq!(
+                SubError::AdminNotInitialized as u32,
+                sub_err::ADMIN_NOT_INITIALIZED
+            );
+            assert_eq!(
+                SubError::InvalidFeeRecipient as u32,
+                sub_err::INVALID_FEE_RECIPIENT
+            );
             assert_eq!(SubError::InvalidFeeBps as u32, sub_err::INVALID_FEE_BPS);
-            assert_eq!(SubError::InvalidTokenAddress as u32, sub_err::INVALID_TOKEN_ADDRESS);
+            assert_eq!(
+                SubError::InvalidTokenAddress as u32,
+                sub_err::INVALID_TOKEN_ADDRESS
+            );
             assert_eq!(SubError::InvalidPrice as u32, sub_err::INVALID_PRICE);
             assert_eq!(SubError::PlanNotFound as u32, sub_err::PLAN_NOT_FOUND);
         }
@@ -292,7 +310,10 @@ mod test {
             assert_eq!(token.balance(&fan), 4_000i128);
             assert_eq!(token.balance(&creator), 950i128);
             assert_eq!(token.balance(&fee_recipient), 50i128);
-            assert!(sub.is_subscriber(&fan, &creator), "fan must be active subscriber");
+            assert!(
+                sub.is_subscriber(&fan, &creator),
+                "fan must be active subscriber"
+            );
         }
 
         /// `subscribe` with a non-existent plan returns `Error::PlanNotFound` (code 10).
@@ -313,7 +334,9 @@ mod test {
             let result = sub.try_subscribe(&fan, &9999u32, &token.address);
             assert_eq!(
                 result,
-                Err(Ok(SorobanError::from_contract_error(sub_err::PLAN_NOT_FOUND))),
+                Err(Ok(SorobanError::from_contract_error(
+                    sub_err::PLAN_NOT_FOUND
+                ))),
                 "subscribing to non-existent plan must return PlanNotFound (code 10)"
             );
         }
@@ -370,7 +393,10 @@ mod test {
             assert!(sub.is_subscriber(&fan, &creator));
 
             sub.cancel(&fan, &creator, &0u32);
-            assert!(!sub.is_subscriber(&fan, &creator), "cancelled sub must be inactive");
+            assert!(
+                !sub.is_subscriber(&fan, &creator),
+                "cancelled sub must be inactive"
+            );
             assert_eq!(
                 sub.get_expiry_unix(&fan, &creator),
                 (0u64, 0u64),

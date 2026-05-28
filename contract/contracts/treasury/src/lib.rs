@@ -44,6 +44,11 @@ pub struct Treasury;
 
 #[contractimpl]
 impl Treasury {
+    /// One-time setup: store `admin` and `token_address` and set defaults
+    /// (`paused = false`, `min_balance = 0`).
+    ///
+    /// Panics with [`Error::NotInitialized`] if called a second time.
+    /// Requires authorization from `admin`.
     pub fn initialize(env: Env, admin: Address, token_address: Address) {
         admin.require_auth();
 
@@ -57,12 +62,21 @@ impl Treasury {
         env.storage().instance().set(&MIN_BALANCE, &0i128);
     }
 
+    /// Pause (`true`) or unpause (`false`) the contract.
+    ///
+    /// While paused, [`deposit`](Self::deposit) and [`withdraw`](Self::withdraw)
+    /// both panic with [`Error::Paused`].
+    /// Requires authorization from the admin.
     pub fn set_paused(env: Env, paused: bool) {
         let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
         admin.require_auth();
         env.storage().instance().set(&PAUSED, &paused);
     }
 
+    /// Set the minimum token balance the contract must retain after any withdrawal.
+    ///
+    /// `amount` must be ≥ 0; negative values panic with [`Error::NegativeMinBalance`].
+    /// Requires authorization from the admin.
     pub fn set_min_balance(env: Env, amount: i128) {
         let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
         admin.require_auth();
@@ -72,6 +86,13 @@ impl Treasury {
         env.storage().instance().set(&MIN_BALANCE, &amount);
     }
 
+    /// Transfer `amount` tokens from `from` into the treasury.
+    ///
+    /// - `amount` must be > 0 ([`Error::InvalidAmount`]).
+    /// - Contract must not be paused ([`Error::Paused`]).
+    /// - Requires authorization from `from`.
+    ///
+    /// Emits a `deposit` event with `(from, amount, token_address)`.
     pub fn deposit(env: Env, from: Address, amount: i128) {
         if amount <= 0 {
             panic_with_error!(&env, Error::InvalidAmount);
@@ -94,6 +115,15 @@ impl Treasury {
         );
     }
 
+    /// Transfer `amount` tokens from the treasury to `to`.
+    ///
+    /// - `amount` must be > 0 ([`Error::InvalidAmount`]).
+    /// - Contract must not be paused ([`Error::Paused`]).
+    /// - Treasury balance must be ≥ `amount` ([`Error::InsufficientBalance`]).
+    /// - Remaining balance after withdrawal must be ≥ `min_balance` ([`Error::MinBalanceViolation`]).
+    /// - Requires authorization from the admin.
+    ///
+    /// Emits a `withdraw` event with `(to, amount, token_address)`.
     pub fn withdraw(env: Env, to: Address, amount: i128) {
         if amount <= 0 {
             panic_with_error!(&env, Error::InvalidAmount);
