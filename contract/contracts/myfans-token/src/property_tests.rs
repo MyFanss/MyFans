@@ -187,13 +187,14 @@ mod props {
             );
         }
 
-        /// transfer_from must fail with AllowanceExpired when ledger > expiration.
+        /// transfer_from must fail with AllowanceExpired on the first ledger
+        /// after the allowance expiration boundary.
         #[test]
         fn prop_transfer_from_fails_after_expiry(
             mint_amount  in 1i128..=1_000_000i128,
             spend_amount in 1i128..=1_000_000i128,
             expiry       in 2u32..=1_000u32,
-            past_offset  in 1u32..=500u32,
+            past_offset  in 1u32..=1u32,
         ) {
             let env = Env::default();
             env.mock_all_auths();

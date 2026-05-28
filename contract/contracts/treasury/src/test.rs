@@ -215,7 +215,9 @@ fn test_pause_blocks_deposit() {
     let result = treasury_client.try_deposit(&user, &100);
     assert_eq!(
         result,
-        Err(Ok(soroban_sdk::Error::from_contract_error(Error::Paused as u32)))
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            Error::Paused as u32
+        )))
     );
 }
 
@@ -241,7 +243,9 @@ fn test_pause_blocks_withdraw() {
     let result = treasury_client.try_withdraw(&user, &100);
     assert_eq!(
         result,
-        Err(Ok(soroban_sdk::Error::from_contract_error(Error::Paused as u32)))
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            Error::Paused as u32
+        )))
     );
 }
 
@@ -445,9 +449,7 @@ fn test_deposit_requires_from_auth() {
     let deposit_amount = 500_i128;
     env.set_auths(EMPTY_AUTHS);
     assert!(
-        treasury_client
-            .try_deposit(&user, &deposit_amount)
-            .is_err(),
+        treasury_client.try_deposit(&user, &deposit_amount).is_err(),
         "deposit must fail without from auth"
     );
 
@@ -572,5 +574,8 @@ fn test_withdraw_requires_admin_auth() {
         },
     }]);
     treasury_client.withdraw(&user, &withdraw_amount);
-    assert_eq!(token_client.balance(&treasury_id), deposit_amount - withdraw_amount);
+    assert_eq!(
+        token_client.balance(&treasury_id),
+        deposit_amount - withdraw_amount
+    );
 }

@@ -186,12 +186,7 @@ impl ContentLikes {
     ///
     /// # Returns
     /// (page of content_ids, next_cursor) — `next_cursor` is 0 when there is no next page
-    pub fn list_likes_by_user(
-        env: Env,
-        user: Address,
-        cursor: u32,
-        limit: u32,
-    ) -> (Vec<u32>, u32) {
+    pub fn list_likes_by_user(env: Env, user: Address, cursor: u32, limit: u32) -> (Vec<u32>, u32) {
         let limit = core::cmp::min(limit, MAX_PAGE_LIMIT);
         let user_likes_key = ("user_likes", user);
         let list: Vec<u32> = env
