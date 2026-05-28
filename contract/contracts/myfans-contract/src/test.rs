@@ -943,3 +943,90 @@ impl MockToken {
     ) {
     }
 }
+
+// ============================================================================
+// HEALTH CHECK / PING TESTS
+// Verifies Soroban RPC / contract connectivity probe (issue: health-check).
+// ============================================================================
+
+#[test]
+fn test_ping_returns_current_ledger_sequence() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    // Default ledger sequence in the test environment is 0.
+    let seq = client.ping();
+    assert_eq!(seq, env.ledger().sequence());
+}
+
+#[test]
+fn test_ping_reflects_advanced_ledger_sequence() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    // Advance the ledger and confirm ping tracks it.
+    env.ledger().set_sequence_number(42);
+    assert_eq!(client.ping(), 42);
+
+    env.ledger().set_sequence_number(1_000_000);
+    assert_eq!(client.ping(), 1_000_000);
+}
+
+#[test]
+fn test_ping_requires_no_auth() {
+    // ping() must be callable without any authorization — it is a pure read.
+    // We deliberately do NOT call env.mock_all_auths() here.
+    let env = Env::default();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    // Should not panic even without mocked auths.
+    let _ = client.ping();
+}
+
+#[test]
+fn test_ping_works_regardless_of_pause_state() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &250, &fee_recipient);
+
+    // ping works when contract is live
+    assert!(client.ping() >= 0);
+
+    // ping works when contract is paused
+    client.pause();
+    assert!(client.is_paused());
+    assert!(client.ping() >= 0);
+
+    // ping works after unpause
+    client.unpause();
+    assert!(!client.is_paused());
+    assert!(client.ping() >= 0);
+}
+
+#[test]
+fn test_ping_works_on_uninitialized_contract() {
+    // ping() must work even before init() is called — it is a connectivity
+    // probe and must never depend on contract state.
+    let env = Env::default();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    // No init() called — ping must still succeed.
+    let seq = client.ping();
+    assert_eq!(seq, env.ledger().sequence());
+}
