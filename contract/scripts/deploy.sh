@@ -175,29 +175,55 @@ for package in "${PACKAGES[@]}"; do
   "${STELLAR[@]}" -q contract build --manifest-path "$ROOT_DIR/Cargo.toml" --package "$package"
 done
 
+# ── Issue #888: verify_wasm ───────────────────────────────────────────────────
+# Checks that a release WASM artifact exists and is a valid WebAssembly binary
+# (magic bytes \0asm).  Called unconditionally after every build so CI catches
+# a broken myfans-token wasm before any deployment attempt.
+verify_wasm() {
+  local package="$1"
+  local wasm_name="${package//-/_}.wasm"
+  local wasm_path
+  wasm_path="$(find "$ROOT_DIR/target" -type f -path "*/release/$wasm_name" -print -quit)"
+
+  if [[ -z "$wasm_path" ]]; then
+    echo "[deploy] ERROR: WASM not found for package '$package'" >&2
+    return 1
+  fi
+
+  # Validate WebAssembly magic bytes: 0x00 0x61 0x73 0x6D (\0asm)
+  local magic
+  magic="$(xxd -p -l 4 "$wasm_path" 2>/dev/null || od -A n -N 4 -t x1 "$wasm_path" | tr -d ' \n')"
+  if [[ "$magic" != "0061736d" ]]; then
+    echo "[deploy] ERROR: '$wasm_path' is not a valid WASM binary (magic=$magic)" >&2
+    return 1
+  fi
+
+  echo "[deploy] verified: $wasm_path"
+  return 0
+}
+
 # ── Dry-run: validate WASM artifacts exist, then exit ────────────────────────
 if [[ "$DRY_RUN" == "true" ]]; then
   echo "[deploy] validating WASM artifacts"
   dry_run_ok=true
   for package in "${PACKAGES[@]}"; do
-    wasm_name="${package//-/_}.wasm"
-    wasm_path="$(find "$ROOT_DIR/target" -type f -path "*/release/$wasm_name" -print -quit)"
-    if [[ -z "$wasm_path" ]]; then
-      echo "[deploy] ERROR: WASM not found for package '$package'" >&2
-      dry_run_ok=false
-    else
-      echo "[deploy] found: $wasm_path"
-    fi
+    verify_wasm "$package" || dry_run_ok=false
   done
 
   if [[ "$dry_run_ok" != "true" ]]; then
-    echo "[deploy] dry-run FAILED — missing WASM artifacts" >&2
+    echo "[deploy] dry-run FAILED — missing or invalid WASM artifacts" >&2
     exit 1
   fi
 
   echo "[deploy] dry-run passed — build and config are valid"
   exit 0
 fi
+
+# ── Post-build WASM verification (Issue #888) ─────────────────────────────────
+# Always verify myfans-token wasm after build, even outside dry-run, so a
+# corrupted or missing artifact is caught before any on-chain deployment.
+echo "[deploy] verifying myfans-token WASM artifact"
+verify_wasm "myfans-token"
 
 deploy_contract() {
   local package="$1"
