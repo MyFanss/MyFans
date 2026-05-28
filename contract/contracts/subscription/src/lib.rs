@@ -156,6 +156,10 @@ impl MyfansContract {
             .instance()
             .set(&DataKey::token_address(), &token);
         env.storage().instance().set(&DataKey::Price, &price);
+
+        // topics: (initialized, admin)  data: fee_bps
+        env.events()
+            .publish((Symbol::new(&env, "initialized"), admin), fee_bps);
     }
 
     pub fn create_plan(
