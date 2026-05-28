@@ -211,4 +211,171 @@ mod test {
             assert_eq!(token.balance(&user), 100);
         }
     }
+
+    // ── subscription integration (Issue #897) ────────────────────────────────
+
+    mod subscription_integration {
+        use myfans_lib::error_codes::subscription as sub_err;
+        use myfans_token::{MyFansToken, MyFansTokenClient};
+        use soroban_sdk::{
+            testutils::{Address as _, Ledger as _},
+            Address, Env, Error as SorobanError, String,
+        };
+        use subscription::{Error as SubError, MyfansContract, MyfansContractClient};
+
+        fn deploy_token(env: &Env) -> (MyFansTokenClient<'_>, Address) {
+            let admin = Address::generate(env);
+            let id = env.register_contract(None, MyFansToken);
+            let client = MyFansTokenClient::new(env, &id);
+            client.initialize(
+                &admin,
+                &String::from_str(env, "MyFans Token"),
+                &String::from_str(env, "MFAN"),
+                &7,
+                &0,
+            );
+            (client, admin)
+        }
+
+        fn deploy_subscription<'a>(
+            env: &'a Env,
+            admin: &Address,
+            fee_recipient: &Address,
+            token_id: &Address,
+        ) -> MyfansContractClient<'a> {
+            let id = env.register_contract(None, MyfansContract);
+            let client = MyfansContractClient::new(env, &id);
+            client.init(admin, &500u32, fee_recipient, token_id, &1000i128);
+            client
+        }
+
+        /// Subscription contract error discriminants must match the stable constants
+        /// published in `myfans_lib::error_codes::subscription`.
+        #[test]
+        fn subscription_error_codes_match_stable_constants() {
+            assert_eq!(SubError::AlreadyInitialized as u32, sub_err::ALREADY_INITIALIZED);
+            assert_eq!(SubError::Paused as u32, sub_err::PAUSED);
+            assert_eq!(SubError::SubscriptionNotFound as u32, sub_err::SUBSCRIPTION_NOT_FOUND);
+            assert_eq!(SubError::SubscriptionExpired as u32, sub_err::SUBSCRIPTION_EXPIRED);
+            assert_eq!(SubError::AdminNotInitialized as u32, sub_err::ADMIN_NOT_INITIALIZED);
+            assert_eq!(SubError::InvalidFeeRecipient as u32, sub_err::INVALID_FEE_RECIPIENT);
+            assert_eq!(SubError::InvalidFeeBps as u32, sub_err::INVALID_FEE_BPS);
+            assert_eq!(SubError::InvalidTokenAddress as u32, sub_err::INVALID_TOKEN_ADDRESS);
+            assert_eq!(SubError::InvalidPrice as u32, sub_err::INVALID_PRICE);
+            assert_eq!(SubError::PlanNotFound as u32, sub_err::PLAN_NOT_FOUND);
+        }
+
+        /// End-to-end: create plan → subscribe → verify balance and active state.
+        #[test]
+        fn subscription_create_and_subscribe_flow() {
+            let env = Env::default();
+            env.mock_all_auths();
+            env.ledger().with_mut(|li| {
+                li.min_persistent_entry_ttl = 10_000_000;
+                li.min_temp_entry_ttl = 10_000_000;
+            });
+
+            let (token, admin) = deploy_token(&env);
+            let fee_recipient = Address::generate(&env);
+            let sub = deploy_subscription(&env, &admin, &fee_recipient, &token.address);
+
+            let creator = Address::generate(&env);
+            let fan = Address::generate(&env);
+            token.mint(&fan, &5_000i128);
+
+            let plan_id = sub.create_plan(&creator, &token.address, &1000i128, &30u32);
+            assert_eq!(plan_id, 1u32, "first plan should have id 1");
+
+            sub.subscribe(&fan, &plan_id, &token.address);
+
+            // 5% fee on 1000
+            assert_eq!(token.balance(&fan), 4_000i128);
+            assert_eq!(token.balance(&creator), 950i128);
+            assert_eq!(token.balance(&fee_recipient), 50i128);
+            assert!(sub.is_subscriber(&fan, &creator), "fan must be active subscriber");
+        }
+
+        /// `subscribe` with a non-existent plan returns `Error::PlanNotFound` (code 10).
+        #[test]
+        fn subscription_plan_not_found_returns_typed_error() {
+            let env = Env::default();
+            env.mock_all_auths();
+            env.ledger().with_mut(|li| {
+                li.min_persistent_entry_ttl = 10_000_000;
+                li.min_temp_entry_ttl = 10_000_000;
+            });
+
+            let (token, admin) = deploy_token(&env);
+            let fee_recipient = Address::generate(&env);
+            let sub = deploy_subscription(&env, &admin, &fee_recipient, &token.address);
+            let fan = Address::generate(&env);
+
+            let result = sub.try_subscribe(&fan, &9999u32, &token.address);
+            assert_eq!(
+                result,
+                Err(Ok(SorobanError::from_contract_error(sub_err::PLAN_NOT_FOUND))),
+                "subscribing to non-existent plan must return PlanNotFound (code 10)"
+            );
+        }
+
+        /// `subscribe` when contract is paused returns `Error::Paused` (code 2).
+        #[test]
+        fn subscription_paused_returns_typed_error() {
+            let env = Env::default();
+            env.mock_all_auths();
+            env.ledger().with_mut(|li| {
+                li.min_persistent_entry_ttl = 10_000_000;
+                li.min_temp_entry_ttl = 10_000_000;
+            });
+
+            let (token, admin) = deploy_token(&env);
+            let fee_recipient = Address::generate(&env);
+            let sub = deploy_subscription(&env, &admin, &fee_recipient, &token.address);
+
+            let creator = Address::generate(&env);
+            let fan = Address::generate(&env);
+            token.mint(&fan, &5_000i128);
+
+            let plan_id = sub.create_plan(&creator, &token.address, &1000i128, &30u32);
+            sub.pause();
+
+            let result = sub.try_subscribe(&fan, &plan_id, &token.address);
+            assert_eq!(
+                result,
+                Err(Ok(SorobanError::from_contract_error(sub_err::PAUSED))),
+                "subscribe while paused must return Paused (code 2)"
+            );
+        }
+
+        /// Cancelling a subscription removes it and `is_subscriber` returns false.
+        #[test]
+        fn subscription_cancel_clears_state() {
+            let env = Env::default();
+            env.mock_all_auths();
+            env.ledger().with_mut(|li| {
+                li.min_persistent_entry_ttl = 10_000_000;
+                li.min_temp_entry_ttl = 10_000_000;
+            });
+
+            let (token, admin) = deploy_token(&env);
+            let fee_recipient = Address::generate(&env);
+            let sub = deploy_subscription(&env, &admin, &fee_recipient, &token.address);
+
+            let creator = Address::generate(&env);
+            let fan = Address::generate(&env);
+            token.mint(&fan, &5_000i128);
+
+            let plan_id = sub.create_plan(&creator, &token.address, &1000i128, &30u32);
+            sub.subscribe(&fan, &plan_id, &token.address);
+            assert!(sub.is_subscriber(&fan, &creator));
+
+            sub.cancel(&fan, &creator, &0u32);
+            assert!(!sub.is_subscriber(&fan, &creator), "cancelled sub must be inactive");
+            assert_eq!(
+                sub.get_expiry_unix(&fan, &creator),
+                (0u64, 0u64),
+                "expiry must be zeroed after cancel"
+            );
+        }
+    }
 }
