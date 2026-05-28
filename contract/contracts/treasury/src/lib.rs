@@ -55,12 +55,20 @@ impl Treasury {
         env.storage().instance().set(&TOKEN, &token_address);
         env.storage().instance().set(&PAUSED, &false);
         env.storage().instance().set(&MIN_BALANCE, &0i128);
+
+        env.events().publish(
+            (Symbol::new(&env, "initialized"),),
+            (admin, token_address),
+        );
     }
 
     pub fn set_paused(env: Env, paused: bool) {
         let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
         admin.require_auth();
         env.storage().instance().set(&PAUSED, &paused);
+
+        env.events()
+            .publish((Symbol::new(&env, "paused_set"),), paused);
     }
 
     pub fn set_min_balance(env: Env, amount: i128) {
@@ -70,6 +78,9 @@ impl Treasury {
             panic_with_error!(&env, Error::NegativeMinBalance);
         }
         env.storage().instance().set(&MIN_BALANCE, &amount);
+
+        env.events()
+            .publish((Symbol::new(&env, "min_balance_set"),), amount);
     }
 
     pub fn deposit(env: Env, from: Address, amount: i128) {
