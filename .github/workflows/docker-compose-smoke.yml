@@ -1,0 +1,46 @@
+name: Docker Compose Dev Smoke Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  smoke-test:
+    name: Dev Stack Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Copy env template
+        run: cp .env.dev.example .env.dev
+
+      - name: Start dev stack
+        run: docker compose -f docker-compose.dev.yml --profile dev up -d --build
+
+      - name: Wait for backend health endpoint
+        run: |
+          echo "Polling http://localhost:3001/v1/health (60s timeout)..."
+          timeout 60 bash -c '
+            until curl -sf http://localhost:3001/v1/health > /dev/null; do
+              echo "  waiting..."; sleep 2;
+            done
+          '
+          echo "Health endpoint responded OK"
+
+      - name: Verify health response body
+        run: |
+          RESPONSE=$(curl -sf http://localhost:3001/v1/health)
+          echo "Response: $RESPONSE"
+          echo "$RESPONSE" | grep -q '"status"' || (echo "ERROR: missing status field" && exit 1)
+
+      - name: Print backend logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.dev.yml --profile dev logs backend
+
+      - name: Cleanup
+        if: always()
+        run: docker compose -f docker-compose.dev.yml --profile dev down -v

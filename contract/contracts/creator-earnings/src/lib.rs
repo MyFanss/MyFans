@@ -1,0 +1,191 @@
+#![no_std]
+
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
+    Symbol,
+};
+
+#[contracttype]
+pub enum DataKey {
+    Admin,
+    Token,
+    Balance(Address),
+    AuthorizedDepositor(Address),
+}
+
+/// Per-contract error codes for the **creator-earnings** contract.
+///
+/// These discriminants are stable and form part of the public client API.
+/// Do **not** renumber existing variants; add new ones at the end.
+///
+/// | Code | Variant |
+/// |------|---------|
+/// | 1 | `NotInitialized` |
+/// | 2 | `NotAuthorized` |
+/// | 3 | `InsufficientBalance` |
+/// | 4 | `AlreadyInitialized` |
+/// | 5 | `InvalidAmount` |
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum Error {
+    /// Code 1 – contract was never initialized.
+    NotInitialized = 1,
+    /// Code 2 – caller is not the admin or an authorized depositor.
+    NotAuthorized = 2,
+    /// Code 3 – creator balance is less than the requested withdrawal amount.
+    InsufficientBalance = 3,
+    /// Code 4 – contract was already initialized.
+    AlreadyInitialized = 4,
+    /// Code 5 – deposit or withdrawal amount must be strictly positive.
+    InvalidAmount = 5,
+}
+
+/// -------- Events (INLINE) --------
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WithdrawEvent {
+    pub creator: Address,
+    pub amount: i128,
+    pub token: Address,
+}
+
+/// Avoid magic strings
+const WITHDRAW_EVENT: &str = "withdraw";
+
+#[contract]
+pub struct CreatorEarnings;
+
+#[contractimpl]
+impl CreatorEarnings {
+    /// Initialize contract with admin and accepted token
+    pub fn initialize(env: Env, admin: Address, token_address: Address) {
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic_with_error!(&env, Error::AlreadyInitialized);
+        }
+
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage()
+            .instance()
+            .set(&DataKey::Token, &token_address);
+    }
+
+    /// Add authorized depositor contract (admin only)
+    pub fn add_authorized(env: Env, contract: Address) {
+        let admin: Address = Self::get_admin(&env);
+        admin.require_auth();
+
+        env.storage()
+            .instance()
+            .set(&DataKey::AuthorizedDepositor(contract), &true);
+    }
+
+    /// Deposit earnings for creator
+    /// Callable by authorized contracts or admin
+    pub fn deposit(env: Env, from: Address, creator: Address, amount: i128) {
+        if amount <= 0 {
+            panic_with_error!(&env, Error::InvalidAmount);
+        }
+
+        from.require_auth();
+        Self::require_authorized(&env, &from);
+
+        let token_address: Address = Self::get_token(&env);
+        let token_client = token::Client::new(&env, &token_address);
+
+        token_client.transfer(&from, &env.current_contract_address(), &amount);
+
+        let balance = Self::balance(env.clone(), creator.clone());
+        let new_balance = balance + amount;
+
+        env.storage()
+            .instance()
+            .set(&DataKey::Balance(creator.clone()), &new_balance);
+    }
+
+    /// Get creator balance
+    pub fn balance(env: Env, creator: Address) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::Balance(creator))
+            .unwrap_or(0)
+    }
+
+    /// Withdraw earnings (WITH EVENT)
+    pub fn withdraw(env: Env, creator: Address, amount: i128) {
+        if amount <= 0 {
+            panic_with_error!(&env, Error::InvalidAmount);
+        }
+
+        creator.require_auth();
+
+        let current_balance = Self::balance(env.clone(), creator.clone());
+
+        if current_balance < amount {
+            panic_with_error!(&env, Error::InsufficientBalance);
+        }
+
+        let token_address = Self::get_token(&env);
+        let token_client = token::Client::new(&env, &token_address);
+
+        // transfer first (fail-fast if token fails)
+        token_client.transfer(&env.current_contract_address(), &creator, &amount);
+
+        // safe subtraction
+        let new_balance = current_balance
+            .checked_sub(amount)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::InsufficientBalance));
+
+        env.storage()
+            .instance()
+            .set(&DataKey::Balance(creator.clone()), &new_balance);
+
+        // ✅ Typed event emission
+        env.events().publish(
+            (Symbol::new(&env, WITHDRAW_EVENT),),
+            WithdrawEvent {
+                creator,
+                amount,
+                token: token_address,
+            },
+        );
+    }
+
+    // -------- Internal helpers --------
+
+    fn get_admin(env: &Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
+    }
+
+    fn get_token(env: &Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Token)
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
+    }
+
+    fn require_authorized(env: &Env, caller: &Address) {
+        let admin = Self::get_admin(env);
+
+        if caller == &admin {
+            return;
+        }
+
+        if env
+            .storage()
+            .instance()
+            .has(&DataKey::AuthorizedDepositor(caller.clone()))
+        {
+            return;
+        }
+
+        panic_with_error!(env, Error::NotAuthorized);
+    }
+}
+
+#[cfg(test)]
+mod test;

@@ -1,0 +1,14 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install all deps including devDependencies (needed for nest CLI, ts-node, etc.)
+COPY package*.json ./
+RUN npm ci --include=dev
+
+# Source is bind-mounted at runtime — no COPY . . needed
+# No build step — nest start --watch compiles on the fly
+
+EXPOSE 3001
+
+CMD ["npm", "run", "start:dev"]

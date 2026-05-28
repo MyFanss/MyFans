@@ -1,0 +1,64 @@
+version: '3.8'
+
+# Dev profile override — run with: docker compose --profile dev up
+# Copy .env.dev.example to .env.dev and fill in required values before starting.
+
+env_file:
+  - .env.dev
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: myfans-db-dev
+    profiles: [dev]
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-myfans}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: myfans-backend-dev
+    profiles: [dev]
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-myfans}
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: ${PORT:-3001}
+      STELLAR_NETWORK: ${STELLAR_NETWORK:-testnet}
+      SOROBAN_RPC_URL: ${SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org}
+      STARTUP_MODE: ${STARTUP_MODE:-degraded}
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: npm run start:dev
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/v1/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  postgres_dev_data:
+    name: myfans_postgres_dev_data

@@ -1,6 +1,8 @@
 import React from 'react';
 import { BaseCard, BaseCardProps } from './BaseCard';
 import Image from 'next/image';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { useImageLoad } from '@/hooks/useImageLoad';
 
 export interface CreatorCardProps extends Omit<BaseCardProps, 'children'> {
   /**
@@ -40,6 +42,10 @@ export interface CreatorCardProps extends Omit<BaseCardProps, 'children'> {
    */
   actionButton?: React.ReactNode;
   /**
+   * Optional accessory shown in the card header.
+   */
+  headerAccessory?: React.ReactNode;
+  /**
    * Location string
    */
   location?: string;
@@ -75,6 +81,7 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
   isVerified = false,
   categories = [],
   actionButton,
+  headerAccessory,
   location,
   className = '',
   ...baseProps
@@ -89,6 +96,8 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
     return count.toString();
   };
 
+  const avatarLoad = useImageLoad();
+
   return (
     <BaseCard
       className={`flex flex-col gap-4 ${className}`}
@@ -100,13 +109,22 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
         {/* Avatar */}
         <div className="relative flex-shrink-0">
           {avatarUrl ? (
-            <Image
-              src={avatarUrl}
-              alt={name}
-              width={16}
-              height={16}
-              className="w-16 h-16 rounded-full object-cover ring-2 ring-gray-100 dark:ring-gray-700"
-            />
+            <div className="image-skeleton-wrapper relative w-16 h-16 rounded-full">
+              <Image
+                src={avatarUrl}
+                alt={name}
+                width={64}
+                height={64}
+                loading="lazy"
+                onLoad={avatarLoad.onLoad}
+                className={`lazy-image w-16 h-16 rounded-full object-cover ring-2 ring-gray-100 dark:ring-gray-700 ${
+                  avatarLoad.isLoaded ? 'opacity-100' : 'opacity-0'
+                }`}
+              />
+              {!avatarLoad.isLoaded && (
+                <Skeleton className="absolute inset-0" rounded="full" />
+              )}
+            </div>
           ) : (
             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 dark:from-primary-500 dark:to-primary-700 flex items-center justify-center text-white text-xl font-semibold">
               {name.charAt(0).toUpperCase()}
@@ -138,6 +156,7 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
             </p>
           )}
         </div>
+        {headerAccessory ? <div className="flex-shrink-0">{headerAccessory}</div> : null}
       </div>
 
       {/* Bio */}

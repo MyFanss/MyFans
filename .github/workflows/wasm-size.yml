@@ -1,0 +1,109 @@
+name: Wasm Build Size
+
+# Builds every cdylib contract to wasm32-unknown-unknown (release profile),
+# writes a size report, and uploads it as a downloadable CI artifact.
+# Runs on every PR / push that touches contract code, and on demand.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'contract/**'
+      - '.github/workflows/wasm-size.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'contract/**'
+      - '.github/workflows/wasm-size.yml'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+
+permissions:
+  contents: read
+
+jobs:
+  wasm-size:
+    name: Wasm Build Size Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: contract
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo registry
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          workspaces: contract
+
+      - name: Build Wasm (release)
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Generate size report
+        run: |
+          REPORT="wasm-size-report.txt"
+          WASM_DIR="target/wasm32-unknown-unknown/release"
+
+          echo "# Wasm Build Size Report" > "$REPORT"
+          echo "Generated: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$REPORT"
+          echo "Commit:    ${GITHUB_SHA:-local}" >> "$REPORT"
+          echo "" >> "$REPORT"
+          printf "%-40s %10s %10s\n" "Contract" "Bytes" "KiB" >> "$REPORT"
+          printf "%-40s %10s %10s\n" "--------" "-----" "---" >> "$REPORT"
+
+          TOTAL=0
+          while IFS= read -r -d '' f; do
+            name=$(basename "$f")
+            bytes=$(stat -c%s "$f")
+            kib=$(echo "scale=1; $bytes / 1024" | bc)
+            printf "%-40s %10d %10s\n" "$name" "$bytes" "${kib}" >> "$REPORT"
+            TOTAL=$((TOTAL + bytes))
+          done < <(find "$WASM_DIR" -maxdepth 1 -name '*.wasm' -print0 | sort -z)
+
+          TOTAL_KIB=$(echo "scale=1; $TOTAL / 1024" | bc)
+          echo "" >> "$REPORT"
+          printf "%-40s %10d %10s\n" "TOTAL" "$TOTAL" "${TOTAL_KIB}" >> "$REPORT"
+
+          cat "$REPORT"
+
+      - name: Upload size report artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: wasm-size-report
+          path: contract/wasm-size-report.txt
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Write step summary
+        run: |
+          WASM_DIR="target/wasm32-unknown-unknown/release"
+          echo "## Wasm Build Size Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Contract | Bytes | KiB |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|------:|----:|" >> $GITHUB_STEP_SUMMARY
+
+          TOTAL=0
+          while IFS= read -r -d '' f; do
+            name=$(basename "$f")
+            bytes=$(stat -c%s "$f")
+            kib=$(echo "scale=1; $bytes / 1024" | bc)
+            echo "| \`$name\` | $bytes | $kib |" >> $GITHUB_STEP_SUMMARY
+            TOTAL=$((TOTAL + bytes))
+          done < <(find "$WASM_DIR" -maxdepth 1 -name '*.wasm' -print0 | sort -z)
+
+          TOTAL_KIB=$(echo "scale=1; $TOTAL / 1024" | bc)
+          echo "| **TOTAL** | **$TOTAL** | **$TOTAL_KIB** |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Artifact: \`wasm-size-report\` (retained 30 days)" >> $GITHUB_STEP_SUMMARY

@@ -1,157 +1,157 @@
 'use client';
-import { useState, useId } from 'react';
-import WalletConnect from '@/components/WalletConnect';
-import { Modal } from '@/components/Modal';
 
-type SubscribeState = 'idle' | 'loading' | 'subscribed' | 'error';
-type UnlockState = 'locked' | 'loading' | 'unlocked' | 'error';
+import { useEffect, useMemo, useState } from 'react';
+import WalletConnect from '@/components/WalletConnect';
+import { BookmarkButton } from '@/components/BookmarkButton';
+import { CreatorCard } from '@/components/cards';
+import { CardSkeletonGrid, EmptyState } from '@/components/ui/states';
+import { useToast } from '@/contexts/ToastContext';
+import { FeatureGate } from '@/components/FeatureGate';
+import { FeatureFlag } from '@/lib/feature-flags';
+import { getWalletSession, setSubscriptionStatusForCreator } from '@/lib/client-session';
+
+interface Creator {
+  id: string;
+  name: string;
+  username: string;
+  bio: string;
+  subscriptionPrice: number;
+  subscriberCount: number;
+}
+
+const CREATOR_DATA: Creator[] = [
+  {
+    id: 'c1',
+    name: 'Lena Nova',
+    username: 'lena.nova',
+    bio: 'Daily music snippets and behind-the-scenes studio sessions.',
+    subscriptionPrice: 8,
+    subscriberCount: 1840,
+  },
+  {
+    id: 'c2',
+    name: 'Orion Pixel',
+    username: 'orion.pixel',
+    bio: 'Concept art tutorials, raw PSD files, and process walkthroughs.',
+    subscriptionPrice: 12,
+    subscriberCount: 962,
+  },
+  {
+    id: 'c3',
+    name: 'Vera Script',
+    username: 'vera.script',
+    bio: 'Writing prompts, serialized fiction, and monthly Q&A streams.',
+    subscriptionPrice: 6,
+    subscriberCount: 1513,
+  },
+];
 
 export default function SubscribePage() {
-  const [creator, setCreator] = useState('');
-  const [subscribeState, setSubscribeState] = useState<SubscribeState>('idle');
-  const [unlockState, setUnlockState] = useState<UnlockState>('locked');
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  const creatorInputId = useId();
-  const statusId = useId();
-
-  const handleSubscribeClick = () => {
-    if (!creator.trim()) return;
-    setIsConfirmOpen(true);
-  };
-
-  const handleConfirmSubscribe = async () => {
-    setIsConfirmOpen(false);
-    setSubscribeState('loading');
-    setErrorMsg('');
+  const [query, setQuery] = useState('');
+  const [isLoadingCreators] = useState(false);
+  const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
+  const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
+  const { showError, showSuccess } = useToast();
+  
+  useEffect(() => {
+    const session = getWalletSession();
+    setConnectedAddress(session?.address ?? null);
+  }, []);
+  const filteredCreators = useMemo(
+    () => CREATOR_DATA.filter((c) =>
+      c.name.toLowerCase().includes(query.toLowerCase()) ||
+      c.username.toLowerCase().includes(query.toLowerCase())
+    ),
+    [query]
+  );
+  const handleSubscribe = async (creator: Creator) => {
+    if (!connectedAddress) {
+      showError('WALLET_CONNECTION_REQUIRED', {
+        message: 'Connect your wallet first',
+        description: 'Wallet connection is required before subscribing.',
+      });
+      return;
+    }
+    setIsSubscribing(creator.id);
     try {
-      // Simulate contract call
-      await new Promise((r) => setTimeout(r, 500));
-      setSubscribeState('subscribed');
-    } catch {
-      setSubscribeState('error');
-      setErrorMsg('Subscription failed. Please try again.');
+      setSubscriptionStatusForCreator(creator.id, 'active');
+      setSubscriptionStatusForCreator(creator.username, 'active');
+      showSuccess(`Subscribed to ${creator.name}`, 'Your access is now active.');
+    } finally {
+      setIsSubscribing(null);
     }
   };
-
-  const handleUnlock = async () => {
-    setUnlockState('loading');
-    try {
-      await new Promise((r) => setTimeout(r, 500));
-      setUnlockState('unlocked');
-    } catch {
-      setUnlockState('error');
-    }
-  };
-
   return (
-    <div className="min-h-screen p-8">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-blue-600 text-white px-4 py-2 rounded z-50"
-      >
-        Skip to main content
-      </a>
-
-      <header className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold">Subscribe to Creators</h1>
-        <WalletConnect />
+    <div className="min-h-screen bg-slate-50 p-8">
+      <header className="mb-8 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-slate-900">Subscribe to Creators</h1>
+        <WalletConnect
+          onConnect={(address) => setConnectedAddress(address)}
+          onDisconnect={() => setConnectedAddress(null)}
+        />
       </header>
 
-      <main id="main-content" className="max-w-2xl mx-auto">
-        <section aria-labelledby="subscribe-heading">
-          <h2 id="subscribe-heading" className="text-xl mb-4">Find a Creator</h2>
+      <div className="mx-auto max-w-5xl space-y-6">
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-slate-900">Find a Creator</h2>
+          <p className="mt-1 text-sm text-slate-600">Browse current creators and start supporting your favorites.</p>
 
-          <div className="space-y-4">
-            <div>
-              <label htmlFor={creatorInputId} className="block text-sm font-medium mb-1">
-                Creator Stellar Address
-              </label>
-              <input
-                id={creatorInputId}
-                type="text"
-                placeholder="G..."
-                value={creator}
-                onChange={(e) => setCreator(e.target.value)}
-                aria-describedby={statusId}
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+          <label htmlFor="creator-search" className="sr-only">
+            Search creators
+          </label>
+          <input
+            id="creator-search"
+            className="mt-4 w-full rounded border border-slate-300 p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by name, handle, or content"
+            type="text"
+            value={query}
+          />
 
-            <button
-              onClick={handleSubscribeClick}
-              disabled={!creator.trim() || subscribeState === 'loading'}
-              aria-busy={subscribeState === 'loading'}
-              className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {subscribeState === 'loading' ? 'Subscribing…' : 'Subscribe'}
-            </button>
-
-            <div id={statusId} role="status" aria-live="polite" className="text-sm">
-              {subscribeState === 'subscribed' && (
-                <p className="text-green-600">✓ Subscribed successfully!</p>
-              )}
-              {subscribeState === 'error' && (
-                <p role="alert" className="text-red-600">{errorMsg}</p>
-              )}
-            </div>
-          </div>
         </section>
 
-        {/* Unlock content section */}
-        {subscribeState === 'subscribed' && (
-          <section aria-labelledby="content-heading" className="mt-8">
-            <h2 id="content-heading" className="text-xl mb-4">Exclusive Content</h2>
-            <div className="border rounded p-4">
-              <p className="mb-3 text-sm text-gray-600">
-                {unlockState === 'unlocked'
-                  ? 'Content unlocked! Enjoy your exclusive access.'
-                  : 'This content is available to subscribers.'}
-              </p>
-              {unlockState !== 'unlocked' && (
-                <button
-                  onClick={handleUnlock}
-                  disabled={unlockState === 'loading'}
-                  aria-busy={unlockState === 'loading'}
-                  className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50"
-                >
-                  {unlockState === 'loading' ? 'Unlocking…' : 'Unlock Content'}
-                </button>
-              )}
-              {unlockState === 'error' && (
-                <p role="alert" className="mt-2 text-sm text-red-600">
-                  Failed to unlock. Please try again.
-                </p>
-              )}
+        <section>
+          <h3 className="mb-4 text-lg font-semibold text-slate-900">Available creators</h3>
+          {isLoadingCreators ? (
+            <CardSkeletonGrid count={3} />
+          ) : filteredCreators.length === 0 ? (
+            <EmptyState
+              ctaLabel="Clear search"
+              description="Try a different keyword or clear your filter to see all creators."
+              onCtaClick={() => setQuery('')}
+              title="No creators matched your search"
+            />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredCreators.map((creator) => (
+                <CreatorCard
+                  actionButton={
+                    <button
+                      className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                      disabled={isSubscribing === creator.id || !connectedAddress}
+                      onClick={() => handleSubscribe(creator)}
+                      type="button"
+                    >
+                      {isSubscribing === creator.id ? 'Subscribing...' : 'Subscribe'}
+                    </button>
+                  }
+                  bio={creator.bio}
+                  key={creator.id}
+                  headerAccessory={
+                    <FeatureGate flag={FeatureFlag.BOOKMARKS}>
+                      <BookmarkButton creatorId={creator.id} />
+                    </FeatureGate>
+                  }
+                  name={creator.name}
+                  subscriberCount={creator.subscriberCount}
+                  subscriptionPrice={creator.subscriptionPrice}
+                  username={creator.username}
+                />
+              ))}
             </div>
-          </section>
-        )}
-      </main>
-
-      {/* Confirm subscribe modal with focus trap */}
-      <Modal
-        isOpen={isConfirmOpen}
-        onClose={() => setIsConfirmOpen(false)}
-        title="Confirm Subscription"
-      >
-        <p className="mb-4 text-sm text-gray-600">
-          Subscribe to <span className="font-mono font-medium">{creator}</span>?
-        </p>
-        <div className="flex gap-3 justify-end">
-          <button
-            onClick={() => setIsConfirmOpen(false)}
-            className="px-4 py-2 border rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleConfirmSubscribe}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-          >
-            Confirm
-          </button>
-        </div>
-      </Modal>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

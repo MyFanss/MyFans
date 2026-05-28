@@ -3,11 +3,18 @@ node_modules/
 
 # Contract (Rust / Soroban)
 contract/target/
+contract/deployed.json
+contract/.env.deployed
+contract/deployed-ci.json
+contract/.env.deployed-ci
+contract/.stellar/
 
 # Environment
 .env
 .env.*
 !.env.example
+!.env.dev.example
+.env.dev
 
 # OS
 .DS_Store
@@ -25,6 +32,12 @@ build/
 .next/
 out/
 *.tsbuildinfo
+**/node_modules/
+**/.next/
+**/dist/
+**/target/
+**/coverage/
+**/*.tsbuildinfo
 
 # IDE
 .idea/
@@ -36,3 +49,15 @@ out/
 *.pem
 .vercel
 coverage/
+
+# Local-only backlog (optional: paste into GitHub Issues); not part of the tracked tree
+ENGAGEMENT_ISSUES_125.md
+vrickish_issues.md
+
+# Test snapshots & reports
+**/__snapshots__/
+frontend/playwright-report/
+frontend/test-results/
+contract/wasm-size-report.txt
+**/wasm-size-report.txt
+**/*.snap

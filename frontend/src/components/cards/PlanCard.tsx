@@ -47,6 +47,16 @@ export interface PlanCardProps extends Omit<BaseCardProps, 'children'> {
    * Discount percentage for yearly plans
    */
   yearlyDiscount?: number;
+  /**
+   * Currency symbol for price (default: $)
+   * @deprecated Use `assetSymbol` for Stellar assets (e.g. "XLM", "USDC").
+   */
+  currencySymbol?: string;
+  /**
+   * Stellar asset symbol shown next to the price (e.g. "XLM", "USDC").
+   * Takes precedence over `currencySymbol` when both are provided.
+   */
+  assetSymbol?: string;
 }
 
 /**
@@ -83,6 +93,8 @@ export const PlanCard: React.FC<PlanCardProps> = ({
   badge,
   actionButton,
   yearlyDiscount,
+  currencySymbol = '$',
+  assetSymbol,
   className = '',
   variant = 'default',
   ...baseProps
@@ -126,9 +138,20 @@ export const PlanCard: React.FC<PlanCardProps> = ({
       {/* Price */}
       <div className="text-center mb-6">
         <div className="flex items-baseline justify-center gap-1">
-          <span className="text-4xl font-bold text-gray-900 dark:text-white">
-            ${price.toFixed(2)}
-          </span>
+          {assetSymbol ? (
+            <>
+              <span className="text-4xl font-bold text-gray-900 dark:text-white">
+                {price.toFixed(2)}
+              </span>
+              <span className="text-lg font-semibold text-gray-600 dark:text-gray-300">
+                {assetSymbol}
+              </span>
+            </>
+          ) : (
+            <span className="text-4xl font-bold text-gray-900 dark:text-white">
+              {currencySymbol}{price.toFixed(2)}
+            </span>
+          )}
           <span className="text-gray-500 dark:text-gray-400">
             /{billingPeriod}
           </span>

@@ -173,17 +173,17 @@ export const MetricCard: React.FC<MetricCardProps> = ({
       {isLoading ? (
         <div className="h-8 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
       ) : (
-        <div className="flex items-baseline gap-1 mb-2">
+        <div className="flex items-baseline gap-1 mb-2 flex-wrap">
           {valuePrefix && (
-            <span className="text-lg text-gray-600 dark:text-gray-300">
+            <span className="text-base sm:text-lg text-gray-600 dark:text-gray-300">
               {valuePrefix}
             </span>
           )}
-          <span className="text-3xl font-bold text-gray-900 dark:text-white">
+          <span className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
             {formatValue(value)}
           </span>
           {valueSuffix && (
-            <span className="text-lg text-gray-600 dark:text-gray-300">
+            <span className="text-base sm:text-lg text-gray-600 dark:text-gray-300">
               {valueSuffix}
             </span>
           )}

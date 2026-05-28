@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# storybook
+/storybook-static/
+
+# playwright
+/playwright-report/
+/test-results/
+/blob-report/
