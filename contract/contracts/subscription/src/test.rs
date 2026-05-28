@@ -1213,3 +1213,181 @@ fn admin_is_stable_after_pause_and_unpause() {
         "admin() must be unchanged after unpause"
     );
 }
+
+// ── #891 – unauthorized caller revert tests ───────────────────────────────────
+
+/// pause must revert when called by a non-admin.
+#[test]
+fn test_pause_rejects_non_admin() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &100);
+
+    let attacker = Address::generate(&env);
+    let contract_id = client.address.clone();
+    env.mock_auths(&[MockAuth {
+        address: &attacker,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "pause",
+            args: vec![&env],
+            sub_invokes: &[],
+        },
+    }]);
+
+    let r = client.try_pause();
+    assert!(r.is_err(), "pause must revert for non-admin");
+}
+
+/// unpause must revert when called by a non-admin.
+#[test]
+fn test_unpause_rejects_non_admin() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &100);
+    client.pause();
+
+    let attacker = Address::generate(&env);
+    let contract_id = client.address.clone();
+    env.mock_auths(&[MockAuth {
+        address: &attacker,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "unpause",
+            args: vec![&env],
+            sub_invokes: &[],
+        },
+    }]);
+
+    let r = client.try_unpause();
+    assert!(r.is_err(), "unpause must revert for non-admin");
+}
+
+/// set_fee_bps must revert when called without any authorization.
+#[test]
+fn test_set_fee_bps_rejects_no_auth() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &100);
+
+    let empty: &[SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+
+    let r = client.try_set_fee_bps(&100u32);
+    assert!(r.is_err(), "set_fee_bps must revert without auth");
+}
+
+/// set_fee_recipient must revert when called without any authorization.
+#[test]
+fn test_set_fee_recipient_rejects_no_auth() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let new_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &100);
+
+    let empty: &[SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+
+    let r = client.try_set_fee_recipient(&new_recipient);
+    assert!(r.is_err(), "set_fee_recipient must revert without auth");
+}
+
+/// cancel must revert when a different address tries to cancel another fan's subscription.
+#[test]
+fn test_cancel_rejects_non_fan() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    let attacker = Address::generate(&env);
+    let contract_id = client.address.clone();
+    env.mock_auths(&[MockAuth {
+        address: &attacker,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "cancel",
+            args: vec![
+                &env,
+                fan.clone().into_val(&env),
+                creator.clone().into_val(&env),
+                0u32.into_val(&env),
+            ],
+            sub_invokes: &[],
+        },
+    }]);
+
+    let r = client.try_cancel(&fan, &creator, &0);
+    assert!(r.is_err(), "cancel must revert when caller is not the fan");
+}
+
+/// create_plan must revert when a different address tries to create a plan on behalf of a creator.
+#[test]
+fn test_create_plan_rejects_non_creator() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &100);
+
+    let creator = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    let contract_id = client.address.clone();
+
+    env.mock_auths(&[MockAuth {
+        address: &attacker,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "create_plan",
+            args: vec![
+                &env,
+                creator.clone().into_val(&env),
+                token.address.clone().into_val(&env),
+                1000i128.into_val(&env),
+                30u32.into_val(&env),
+            ],
+            sub_invokes: &[],
+        },
+    }]);
+
+    let r = client.try_create_plan(&creator, &token.address, &1000, &30);
+    assert!(r.is_err(), "create_plan must revert when caller is not the creator");
+}
+
+/// extend_subscription must revert when a different address tries to extend another fan's subscription.
+#[test]
+fn test_extend_subscription_rejects_non_fan() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    let attacker = Address::generate(&env);
+    let contract_id = client.address.clone();
+    env.mock_auths(&[MockAuth {
+        address: &attacker,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "extend_subscription",
+            args: vec![
+                &env,
+                fan.clone().into_val(&env),
+                creator.clone().into_val(&env),
+                100u32.into_val(&env),
+                token.address.clone().into_val(&env),
+            ],
+            sub_invokes: &[],
+        },
+    }]);
+
+    let r = client.try_extend_subscription(&fan, &creator, &100, &token.address);
+    assert!(r.is_err(), "extend_subscription must revert when caller is not the fan");
+}
