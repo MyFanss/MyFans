@@ -1,220 +1,147 @@
 'use client';
-
-import { useEffect, useState } from 'react';
+import { useState, useId } from 'react';
 import WalletConnect from '@/components/WalletConnect';
-import { MetricCard } from '@/components/cards';
-import { ChartSkeleton, EmptyState, SuccessAnimation, TableSkeleton } from '@/components/ui/states';
+import { ErrorBoundary } from '@/components/error-boundary/ErrorBoundary';
+import { CreatorListSkeleton } from '@/components/skeletons';
 
-interface MetricItem {
-  title: string;
-  value: string | number;
-  valuePrefix?: string;
-  changePercent?: number;
-  trend: 'up' | 'down' | 'neutral';
-}
+type PlanState = 'idle' | 'loading' | 'success' | 'error';
 
-interface Transaction {
-  id: string;
-  fan: string;
-  amount: string;
-  date: string;
-}
-
-export default function CreatorsPage() {
-  const [asset, setAsset] = useState('USDC');
+function CreatorDashboardContent() {
+  const [asset, setAsset] = useState('');
   const [amount, setAmount] = useState('');
   const [days, setDays] = useState('30');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
-
-  const [isLoadingMetrics, setIsLoadingMetrics] = useState(true);
-  const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
-  const [isLoadingChart, setIsLoadingChart] = useState(true);
-
-  const [metrics] = useState<MetricItem[]>([
-    { title: 'Monthly Revenue', value: 0, valuePrefix: '$', changePercent: 0, trend: 'neutral' },
-    { title: 'Active Fans', value: 0, changePercent: 0, trend: 'neutral' },
-    { title: 'Renewal Rate', value: 0, valuePrefix: '', changePercent: 0, trend: 'neutral' },
-  ]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [chartPoints, setChartPoints] = useState<number[]>([]);
-
-  useEffect(() => {
-    const metricsTimer = setTimeout(() => setIsLoadingMetrics(false), 900);
-    const transactionsTimer = setTimeout(() => setIsLoadingTransactions(false), 1300);
-    const chartTimer = setTimeout(() => setIsLoadingChart(false), 1100);
-
-    return () => {
-      clearTimeout(metricsTimer);
-      clearTimeout(transactionsTimer);
-      clearTimeout(chartTimer);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!showSuccess) return;
-    const timer = setTimeout(() => setShowSuccess(false), 2400);
-    return () => clearTimeout(timer);
-  }, [showSuccess]);
+  const [planState, setPlanState] = useState<PlanState>('idle');
+  const [isLoadingCreators, setIsLoadingCreators] = useState(false);
+  const assetId = useId();
+  const amountId = useId();
+  const daysId = useId();
+  const statusId = useId();
 
   const handleCreatePlan = async () => {
-    if (!amount || Number(amount) <= 0) return;
-    setIsSubmitting(true);
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    setIsSubmitting(false);
-    setShowSuccess(true);
-    setTransactions((current) => [
-      {
-        id: `sub_${Date.now()}`,
-        fan: 'New subscriber',
-        amount: `$${Number(amount).toFixed(2)} ${asset}`,
-        date: 'Just now',
-      },
-      ...current,
-    ]);
-    if (chartPoints.length === 0) {
-      setChartPoints([24, 45, 39, 58, 61, 56, 72]);
+    if (!asset.trim() || !amount.trim()) return;
+    setPlanState('loading');
+    try {
+      await new Promise((r) => setTimeout(r, 500));
+      setPlanState('success');
+      setAsset('');
+      setAmount('');
+      setDays('30');
+    } catch {
+      setPlanState('error');
     }
-    setAmount('');
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
-      <header className="mb-8 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Creator Dashboard</h1>
+    <div className="max-w-2xl mx-auto">
+      <section aria-labelledby="create-plan-heading">
+        <h2 id="create-plan-heading" className="text-xl mb-4">
+          Create Subscription Plan
+        </h2>
+
+        <div className="space-y-4">
+          <div>
+            <label htmlFor={assetId} className="block text-sm font-medium mb-1">
+              Asset (e.g., USDC address)
+            </label>
+            <input
+              id={assetId}
+              type="text"
+              value={asset}
+              onChange={(e) => setAsset(e.target.value)}
+              className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor={amountId} className="block text-sm font-medium mb-1">
+              Amount
+            </label>
+            <input
+              id={amountId}
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor={daysId} className="block text-sm font-medium mb-1">
+              Interval (days)
+            </label>
+            <input
+              id={daysId}
+              type="number"
+              value={days}
+              onChange={(e) => setDays(e.target.value)}
+              className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <button
+            onClick={handleCreatePlan}
+            disabled={!asset.trim() || !amount.trim() || planState === 'loading'}
+            aria-busy={planState === 'loading'}
+            aria-describedby={statusId}
+            className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {planState === 'loading' ? 'Creating…' : 'Create Plan'}
+          </button>
+
+          <div id={statusId} role="status" aria-live="polite" className="text-sm">
+            {planState === 'success' && (
+              <p className="text-green-600">✓ Plan created successfully!</p>
+            )}
+            {planState === 'error' && (
+              <p role="alert" className="text-red-600">
+                Failed to create plan. Please try again.
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Creator list with skeleton */}
+      <section aria-labelledby="creators-list-heading" className="mt-10">
+        <div className="flex items-center justify-between mb-4">
+          <h2 id="creators-list-heading" className="text-xl">All Creators</h2>
+          <button
+            onClick={() => { setIsLoadingCreators(true); setTimeout(() => setIsLoadingCreators(false), 1500); }}
+            className="text-sm text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+          >
+            Refresh
+          </button>
+        </div>
+        {isLoadingCreators ? (
+          <CreatorListSkeleton count={3} />
+        ) : (
+          <p className="text-sm text-gray-500">No creators yet.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+export default function CreatorsPage() {
+  return (
+    <div className="min-h-screen p-8">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-blue-600 text-white px-4 py-2 rounded z-50"
+      >
+        Skip to main content
+      </a>
+
+      <header className="flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-bold">Creator Dashboard</h1>
         <WalletConnect />
       </header>
 
-      <div className="mx-auto max-w-5xl space-y-8">
-        <section>
-          <h2 className="mb-4 text-lg font-semibold text-slate-900">Performance Overview</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {metrics.map((metric) => (
-              <MetricCard
-                changePercent={metric.changePercent}
-                comparisonLabel="vs last month"
-                isLoading={isLoadingMetrics}
-                key={metric.title}
-                title={metric.title}
-                trend={metric.trend}
-                value={metric.value}
-                valuePrefix={metric.valuePrefix}
-              />
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="mb-4 text-lg font-semibold text-slate-900">Revenue Trend</h2>
-          {isLoadingChart ? (
-            <ChartSkeleton />
-          ) : chartPoints.length === 0 ? (
-            <EmptyState
-              ctaLabel="Publish your first offer"
-              description="Revenue analytics appears after your first subscription payment."
-              onCtaClick={() => setChartPoints([14, 26, 34, 22, 41, 59, 63])}
-              title="No chart data yet"
-            />
-          ) : (
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-sm font-medium text-slate-600">Last 7 days revenue (USD)</p>
-              <div className="mt-4 flex h-44 items-end gap-2">
-                {chartPoints.map((point, index) => (
-                  <div
-                    className="rounded-t-md bg-gradient-to-t from-sky-500 to-sky-300"
-                    key={`${point}-${index}`}
-                    style={{ height: `${point}%`, width: `${100 / chartPoints.length}%` }}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-
-        <section>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">Recent Transactions</h2>
-          </div>
-          {isLoadingTransactions ? (
-            <TableSkeleton rows={5} />
-          ) : transactions.length === 0 ? (
-            <EmptyState
-              ctaLabel="Create your first plan"
-              description="Transactions will appear after a fan subscribes."
-              title="No transactions yet"
-            />
-          ) : (
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <table className="min-w-full text-left text-sm text-slate-700">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3">Transaction</th>
-                    <th className="px-4 py-3">Fan</th>
-                    <th className="px-4 py-3">Amount</th>
-                    <th className="px-4 py-3">Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {transactions.map((item) => (
-                    <tr className="border-t border-slate-200" key={item.id}>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{item.id.slice(0, 14)}...</td>
-                      <td className="px-4 py-3">{item.fan}</td>
-                      <td className="px-4 py-3">{item.amount}</td>
-                      <td className="px-4 py-3">{item.date}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="text-lg font-semibold text-slate-900">Create Subscription Plan</h2>
-          <p className="mt-1 text-sm text-slate-600">Set your pricing and start monetizing content.</p>
-
-          <div className="mt-5 space-y-4">
-            <input
-              className="w-full rounded border border-slate-300 p-2"
-              onChange={(e) => setAsset(e.target.value)}
-              placeholder="Asset (e.g., USDC)"
-              type="text"
-              value={asset}
-            />
-
-            <input
-              className="w-full rounded border border-slate-300 p-2"
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="Amount"
-              type="number"
-              value={amount}
-            />
-
-            <input
-              className="w-full rounded border border-slate-300 p-2"
-              onChange={(e) => setDays(e.target.value)}
-              placeholder="Interval (days)"
-              type="number"
-              value={days}
-            />
-
-            <button
-              className="w-full rounded bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-              disabled={isSubmitting || !amount || Number(amount) <= 0}
-              onClick={handleCreatePlan}
-              type="button"
-            >
-              {isSubmitting ? 'Creating plan...' : 'Create Plan'}
-            </button>
-          </div>
-
-          {showSuccess ? (
-            <div className="mt-4">
-              <SuccessAnimation message="Plan created successfully" />
-            </div>
-          ) : null}
-        </section>
-      </div>
+      <main id="main-content">
+        <ErrorBoundary section="creator-dashboard">
+          <CreatorDashboardContent />
+        </ErrorBoundary>
+      </main>
     </div>
   );
 }
