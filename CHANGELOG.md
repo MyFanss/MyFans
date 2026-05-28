@@ -1,4 +1,4 @@
-#  (2026-05-27)
+#  (2026-05-28)
 
 
 ### Bug Fixes
@@ -187,6 +187,7 @@
 * **contract:** emit cancel reason code in subscription events ([ab8dd96](https://github.com/MyFanss/MyFans/commit/ab8dd96bcc19fa55162d3042002e4845d1a8c8d3)), closes [#286](https://github.com/MyFanss/MyFans/issues/286)
 * **contract:** enforce content price bounds and validation ([#294](https://github.com/MyFanss/MyFans/issues/294)) ([9ea8fcc](https://github.com/MyFanss/MyFans/commit/9ea8fcc62253a382c52413fec2459d62c53773c0))
 * **contract:** enforce mint admin authorization (closes [#276](https://github.com/MyFanss/MyFans/issues/276)) ([05bc556](https://github.com/MyFanss/MyFans/commit/05bc556c8607fed2769f3596e44a41a4a7eaeb22))
+* **contract:** improve myfans-token — error codes, gas, integration tests, CI wasm verify ([5e42b41](https://github.com/MyFanss/MyFans/commit/5e42b419f32b2ce81931a83fb2fbcb235e54a4b8)), closes [#885](https://github.com/MyFanss/MyFans/issues/885) [#886](https://github.com/MyFanss/MyFans/issues/886) [#887](https://github.com/MyFanss/MyFans/issues/887) [#888](https://github.com/MyFanss/MyFans/issues/888) [#885](https://github.com/MyFanss/MyFans/issues/885) [#N](https://github.com/MyFanss/MyFans/issues/N) [#886](https://github.com/MyFanss/MyFans/issues/886) [#887](https://github.com/MyFanss/MyFans/issues/887) [#888](https://github.com/MyFanss/MyFans/issues/888)
 * **contract:** link interface docs to code with drift check ([3b9ca8a](https://github.com/MyFanss/MyFans/commit/3b9ca8a3efbab66fd6b2867e3837b8810d92d50c))
 * **contract:** property tests for token transfers + non-interactive deploy mode ([e481c43](https://github.com/MyFanss/MyFans/commit/e481c439a17b517970f99fe58878cd6bcdbe2df9))
 * **contract:** release checklist automation linked to docs/release/ ([16208b0](https://github.com/MyFanss/MyFans/commit/16208b0ae2ca83afa9acf6e98383175e8ca7300f))
@@ -227,6 +228,7 @@
 * **frontend:** show offline banner when RPC or network is unavailable ([11a4a2c](https://github.com/MyFanss/MyFans/commit/11a4a2cb54b8fbd36d089358a3b36744cd9eaba6))
 * **frontend:** standardize error copy with actionable recovery steps ([53e8b4f](https://github.com/MyFanss/MyFans/commit/53e8b4fbb0721d7df0eea13702de2b1c878d81ed))
 * harden backend secret management ([#350](https://github.com/MyFanss/MyFans/issues/350)) ([4cc8a96](https://github.com/MyFanss/MyFans/commit/4cc8a9662faa27a06a9c3ead0a9b4f6e5d437c26))
+* Health check for Soroban RPC ([5f189be](https://github.com/MyFanss/MyFans/commit/5f189be70eec41873edeb0fcb666bec2fd10d283))
 * **idempotency:** document TTL & harden collision behavior ([770024e](https://github.com/MyFanss/MyFans/commit/770024e7281b58bbf4f3ebb9884fd4ef3f7017c2))
 * implement authentication module with registration, login, and JWT strategy ([60927f9](https://github.com/MyFanss/MyFans/commit/60927f934e2dfb20a648285be82d4408dd12965b))
 * implement Backend API SLA metrics instrumentation ([e8201bd](https://github.com/MyFanss/MyFans/commit/e8201bd36db8a011ce0bad4b0d29dc62d8728642))
@@ -270,6 +272,7 @@
 * make creator dashboard mobile responsive ([858fc4d](https://github.com/MyFanss/MyFans/commit/858fc4db3416c5227a0756713181bb0ead472474))
 * make IMyFans trait public and add subscribe and get_subscription_details methods ([aecd378](https://github.com/MyFanss/MyFans/commit/aecd3788c6dfdc7a483e97fabffc590fc107fed9))
 * **moderation:** add content moderation flags model and admin endpoints ([#353](https://github.com/MyFanss/MyFans/issues/353)) ([227a0ec](https://github.com/MyFanss/MyFans/commit/227a0ec3686f6e3c9a6c747323b79acc6bda0275))
+* **myfans-token:** add property tests for allowance, approve, clear_allowance, set_admin, total_supply invariants ([#889](https://github.com/MyFanss/MyFans/issues/889)) ([1316e4b](https://github.com/MyFanss/MyFans/commit/1316e4b48d61fea106b75b16f48d5a3670ffeae1))
 * normalize subscription expiry ledger calculations ([#288](https://github.com/MyFanss/MyFans/issues/288)) ([31ccf63](https://github.com/MyFanss/MyFans/commit/31ccf63483e9d83269a1d4baa998a54704210375))
 * **onboarding:** add creator onboarding progress indicator ([#864](https://github.com/MyFanss/MyFans/issues/864)) ([72234ea](https://github.com/MyFanss/MyFans/commit/72234ea413e1cf27466581019dbf3526e7b3e2d8))
 * **onboarding:** creator onboarding progress UI — stale state handling + tests ([3ca82f8](https://github.com/MyFanss/MyFans/commit/3ca82f84f0fd8ecf3f3068333845374574adb6f7))
