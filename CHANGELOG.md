@@ -1,4 +1,4 @@
-#  (2026-05-27)
+#  (2026-05-28)
 
 
 ### Bug Fixes
@@ -187,6 +187,7 @@
 * **contract:** emit cancel reason code in subscription events ([ab8dd96](https://github.com/MyFanss/MyFans/commit/ab8dd96bcc19fa55162d3042002e4845d1a8c8d3)), closes [#286](https://github.com/MyFanss/MyFans/issues/286)
 * **contract:** enforce content price bounds and validation ([#294](https://github.com/MyFanss/MyFans/issues/294)) ([9ea8fcc](https://github.com/MyFanss/MyFans/commit/9ea8fcc62253a382c52413fec2459d62c53773c0))
 * **contract:** enforce mint admin authorization (closes [#276](https://github.com/MyFanss/MyFans/issues/276)) ([05bc556](https://github.com/MyFanss/MyFans/commit/05bc556c8607fed2769f3596e44a41a4a7eaeb22))
+* **contract:** improve myfans-token — error codes, gas, integration tests, CI wasm verify ([5e42b41](https://github.com/MyFanss/MyFans/commit/5e42b419f32b2ce81931a83fb2fbcb235e54a4b8)), closes [#885](https://github.com/MyFanss/MyFans/issues/885) [#886](https://github.com/MyFanss/MyFans/issues/886) [#887](https://github.com/MyFanss/MyFans/issues/887) [#888](https://github.com/MyFanss/MyFans/issues/888) [#885](https://github.com/MyFanss/MyFans/issues/885) [#N](https://github.com/MyFanss/MyFans/issues/N) [#886](https://github.com/MyFanss/MyFans/issues/886) [#887](https://github.com/MyFanss/MyFans/issues/887) [#888](https://github.com/MyFanss/MyFans/issues/888)
 * **contract:** link interface docs to code with drift check ([3b9ca8a](https://github.com/MyFanss/MyFans/commit/3b9ca8a3efbab66fd6b2867e3837b8810d92d50c))
 * **contract:** property tests for token transfers + non-interactive deploy mode ([e481c43](https://github.com/MyFanss/MyFans/commit/e481c439a17b517970f99fe58878cd6bcdbe2df9))
 * **contract:** release checklist automation linked to docs/release/ ([16208b0](https://github.com/MyFanss/MyFans/commit/16208b0ae2ca83afa9acf6e98383175e8ca7300f))
