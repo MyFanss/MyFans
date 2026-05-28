@@ -420,6 +420,198 @@ fn test_subscription_state_after_snapshot_restore() {
     assert_eq!(plan_count, 1, "plan count matches after restore");
 }
 
+/// Protocol config (admin, fee_bps, fee_recipient) is fully preserved after snapshot/restore.
+#[test]
+fn test_protocol_config_preserved_after_snapshot_restore() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(
+        &admin,
+        &DUMMY_FEE_BPS,
+        &fee_recipient,
+        &token.address,
+        &DUMMY_PRICE,
+    );
+
+    let contract_id = client.address.clone();
+    let sc_admin: ScAddress = admin.clone().into();
+    let sc_fee_recipient: ScAddress = fee_recipient.clone().into();
+    let sc_contract: ScAddress = contract_id.clone().into();
+
+    let snapshot = env.to_snapshot();
+    let env2 = Env::from_snapshot(snapshot);
+    env2.mock_all_auths();
+
+    let contract_id2: Address = Address::try_from_val(&env2, &sc_contract).unwrap();
+    let admin2: Address = Address::try_from_val(&env2, &sc_admin).unwrap();
+    let fee_recipient2: Address = Address::try_from_val(&env2, &sc_fee_recipient).unwrap();
+
+    env2.register_contract(Some(&contract_id2), MyfansContract);
+    let client2 = MyfansContractClient::new(&env2, &contract_id2);
+
+    assert_eq!(
+        client2.admin(),
+        admin2,
+        "admin address must survive snapshot/restore"
+    );
+
+    let stored_fee_bps: u32 = env2.as_contract(&contract_id2, || {
+        env2.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::FeeBps)
+            .unwrap_or(0)
+    });
+    assert_eq!(
+        stored_fee_bps, DUMMY_FEE_BPS,
+        "fee_bps must survive snapshot/restore"
+    );
+
+    let stored_fee_recipient: Address = env2.as_contract(&contract_id2, || {
+        env2.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::FeeRecipient)
+            .unwrap()
+    });
+    assert_eq!(
+        stored_fee_recipient, fee_recipient2,
+        "fee_recipient must survive snapshot/restore"
+    );
+
+    let stored_price: i128 = env2.as_contract(&contract_id2, || {
+        env2.storage()
+            .instance()
+            .get::<DataKey, i128>(&DataKey::Price)
+            .unwrap()
+    });
+    assert_eq!(
+        stored_price, DUMMY_PRICE,
+        "price must survive snapshot/restore"
+    );
+}
+
+/// Paused state (true) survives snapshot/restore and continues to block mutations.
+#[test]
+fn test_paused_state_preserved_after_snapshot_restore() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(
+        &admin,
+        &DUMMY_FEE_BPS,
+        &fee_recipient,
+        &token.address,
+        &DUMMY_PRICE,
+    );
+    client.pause();
+    assert!(client.is_paused());
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &DUMMY_FAN_BALANCE);
+
+    let contract_id = client.address.clone();
+    let sc_contract: ScAddress = contract_id.clone().into();
+    let sc_fan: ScAddress = fan.clone().into();
+    let sc_creator: ScAddress = creator.clone().into();
+
+    let snapshot = env.to_snapshot();
+    let env2 = Env::from_snapshot(snapshot);
+    env2.mock_all_auths();
+
+    let contract_id2: Address = Address::try_from_val(&env2, &sc_contract).unwrap();
+    let fan2: Address = Address::try_from_val(&env2, &sc_fan).unwrap();
+    let creator2: Address = Address::try_from_val(&env2, &sc_creator).unwrap();
+
+    env2.register_contract(Some(&contract_id2), MyfansContract);
+    let client2 = MyfansContractClient::new(&env2, &contract_id2);
+
+    assert!(
+        client2.is_paused(),
+        "paused state must survive snapshot/restore"
+    );
+
+    // Mutations must remain blocked after restore
+    let r = client2.try_create_subscription(&fan2, &creator2, &17280);
+    assert!(
+        r.is_err(),
+        "create_subscription must remain blocked while paused after restore"
+    );
+}
+
+/// Extend subscription works correctly after snapshot/restore, updating expiry by exact ledger count.
+#[test]
+fn test_extend_subscription_after_snapshot_restore() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(
+        &admin,
+        &0,
+        &fee_recipient,
+        &token.address,
+        &DUMMY_PRICE,
+    );
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &(DUMMY_FAN_BALANCE * 3));
+
+    env.ledger().with_mut(|li| li.sequence_number = 1000);
+
+    let plan_id = client.create_plan(
+        &creator,
+        &token.address,
+        &DUMMY_PLAN_AMOUNT,
+        &DUMMY_INTERVAL_DAYS,
+    );
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    let expiry_before: u64 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, Subscription>(&DataKey::Sub(fan.clone(), creator.clone()))
+            .unwrap()
+            .expiry
+    });
+
+    let contract_id = client.address.clone();
+    let sc_fan: ScAddress = fan.clone().into();
+    let sc_creator: ScAddress = creator.clone().into();
+    let sc_contract: ScAddress = contract_id.clone().into();
+    let sc_token: ScAddress = token.address.clone().into();
+
+    let snapshot = env.to_snapshot();
+    let env2 = Env::from_snapshot(snapshot);
+    env2.mock_all_auths();
+
+    let contract_id2: Address = Address::try_from_val(&env2, &sc_contract).unwrap();
+    let fan2: Address = Address::try_from_val(&env2, &sc_fan).unwrap();
+    let creator2: Address = Address::try_from_val(&env2, &sc_creator).unwrap();
+    let token_addr2: Address = Address::try_from_val(&env2, &sc_token).unwrap();
+
+    env2.register_contract(Some(&contract_id2), MyfansContract);
+    let client2 = MyfansContractClient::new(&env2, &contract_id2);
+
+    const EXTRA: u32 = 7_000;
+    client2.extend_subscription(&fan2, &creator2, &EXTRA, &token_addr2);
+
+    let expiry_after: u64 = env2.as_contract(&contract_id2, || {
+        env2.storage()
+            .instance()
+            .get::<DataKey, Subscription>(&DataKey::subscription(fan2.clone(), creator2.clone()))
+            .unwrap()
+            .expiry
+    });
+
+    assert_eq!(
+        expiry_after,
+        expiry_before + EXTRA as u64,
+        "extend after restore must increment expiry by exact extra_ledgers"
+    );
+    assert!(
+        client2.is_subscriber(&fan2, &creator2),
+        "fan must still be active subscriber after extend"
+    );
+}
+
 // ── #311 – event topic standardization ───────────────────────────────────────
 
 /// Helper: find the first event whose first topic matches `name`.
