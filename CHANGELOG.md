@@ -302,6 +302,7 @@
 * standardize API error response format across all endpoints ([#340](https://github.com/MyFanss/MyFans/issues/340)) ([51c928b](https://github.com/MyFanss/MyFans/commit/51c928b468547cfe9df5dc578bfcb3bbfdfa8b64))
 * standardize deployed contract env vars with backward-compatible aliases ([e976fe2](https://github.com/MyFanss/MyFans/commit/e976fe2ecad5435e46e6e0ae1b9a39e6ae2ae7b8))
 * Subscription List Filter by Status & Sorting ([cc37385](https://github.com/MyFanss/MyFans/commit/cc37385e6ff45abe89b46f4fea01fe1086ba085b))
+* **subscription:** add unit tests for initialize and admin paths ([#890](https://github.com/MyFanss/MyFans/issues/890)) ([9b3d0b9](https://github.com/MyFanss/MyFans/commit/9b3d0b944192676a42bca6b4ccbfccba8e7e08a9))
 * **subscription:** admin set_fee_bps with bounds and fee_updated event ([5a7c7e2](https://github.com/MyFanss/MyFans/commit/5a7c7e26f5546b4b14ea65e71644765be2346475))
 * **subscription:** admin set_fee_recipient with validation and event ([c372cab](https://github.com/MyFanss/MyFans/commit/c372caba4c9716bcdc3fa1e4825f70af8158cd20))
 * **subscriptions:** add status filter and sort to subscription list endpoints ([ddaf69a](https://github.com/MyFanss/MyFans/commit/ddaf69a0f5b8da995d52d0505a8fc0204325f879))
