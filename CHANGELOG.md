@@ -272,6 +272,7 @@
 * make creator dashboard mobile responsive ([858fc4d](https://github.com/MyFanss/MyFans/commit/858fc4db3416c5227a0756713181bb0ead472474))
 * make IMyFans trait public and add subscribe and get_subscription_details methods ([aecd378](https://github.com/MyFanss/MyFans/commit/aecd3788c6dfdc7a483e97fabffc590fc107fed9))
 * **moderation:** add content moderation flags model and admin endpoints ([#353](https://github.com/MyFanss/MyFans/issues/353)) ([227a0ec](https://github.com/MyFanss/MyFans/commit/227a0ec3686f6e3c9a6c747323b79acc6bda0275))
+* **myfans-token:** add property tests for allowance, approve, clear_allowance, set_admin, total_supply invariants ([#889](https://github.com/MyFanss/MyFans/issues/889)) ([1316e4b](https://github.com/MyFanss/MyFans/commit/1316e4b48d61fea106b75b16f48d5a3670ffeae1))
 * normalize subscription expiry ledger calculations ([#288](https://github.com/MyFanss/MyFans/issues/288)) ([31ccf63](https://github.com/MyFanss/MyFans/commit/31ccf63483e9d83269a1d4baa998a54704210375))
 * **onboarding:** add creator onboarding progress indicator ([#864](https://github.com/MyFanss/MyFans/issues/864)) ([72234ea](https://github.com/MyFanss/MyFans/commit/72234ea413e1cf27466581019dbf3526e7b3e2d8))
 * **onboarding:** creator onboarding progress UI — stale state handling + tests ([3ca82f8](https://github.com/MyFanss/MyFans/commit/3ca82f84f0fd8ecf3f3068333845374574adb6f7))
