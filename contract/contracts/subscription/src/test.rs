@@ -1213,3 +1213,199 @@ fn admin_is_stable_after_pause_and_unpause() {
         "admin() must be unchanged after unpause"
     );
 }
+
+// ── #890 – initialize and admin path unit tests ───────────────────────────────
+
+/// init stores all fields correctly and they are readable via storage.
+#[test]
+fn test_init_stores_all_fields() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &300, &fee_recipient, &token.address, &500);
+
+    let stored_admin: Address = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::Admin)
+            .unwrap()
+    });
+    let stored_fee_bps: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::FeeBps)
+            .unwrap()
+    });
+    let stored_fee_recipient: Address = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::FeeRecipient)
+            .unwrap()
+    });
+    let stored_price: i128 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, i128>(&DataKey::Price)
+            .unwrap()
+    });
+    let stored_plan_count: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::PlanCount)
+            .unwrap_or(0)
+    });
+
+    assert_eq!(stored_admin, admin);
+    assert_eq!(stored_fee_bps, 300);
+    assert_eq!(stored_fee_recipient, fee_recipient);
+    assert_eq!(stored_price, 500);
+    assert_eq!(stored_plan_count, 0);
+}
+
+/// init rejects a second call (AlreadyInitialized).
+#[test]
+fn test_init_rejects_double_init() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &0, &fee_recipient, &token.address, &100);
+
+    let result = client.try_init(&admin, &0, &fee_recipient, &token.address, &100);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::AlreadyInitialized as u32,
+        )))
+    );
+}
+
+/// init with fee_bps = 0 is valid (no protocol fee).
+#[test]
+fn test_init_accepts_zero_fee_bps() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &0, &fee_recipient, &token.address, &1);
+
+    let stored: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::FeeBps)
+            .unwrap()
+    });
+    assert_eq!(stored, 0);
+}
+
+/// init with fee_bps = 10_000 (100%) is the maximum valid value.
+#[test]
+fn test_init_accepts_max_fee_bps() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &10_000, &fee_recipient, &token.address, &1);
+
+    let stored: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::FeeBps)
+            .unwrap()
+    });
+    assert_eq!(stored, 10_000);
+}
+
+/// pause sets the Paused flag; is_paused() returns true.
+#[test]
+fn test_pause_sets_paused_flag() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &100);
+
+    assert!(!client.is_paused());
+    client.pause();
+    assert!(client.is_paused());
+}
+
+/// unpause clears the Paused flag; is_paused() returns false.
+#[test]
+fn test_unpause_clears_paused_flag() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &100);
+
+    client.pause();
+    assert!(client.is_paused());
+    client.unpause();
+    assert!(!client.is_paused());
+}
+
+/// pause emits a `paused` event with the admin address.
+#[test]
+fn test_pause_emits_event() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &100);
+
+    client.pause();
+
+    let ev = find_event(&env, "paused").expect("paused event not emitted");
+    assert_eq!(ev.1.len(), 1);
+    let t_name: Symbol = ev.1.get(0).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(t_name, Symbol::new(&env, "paused"));
+}
+
+/// unpause emits an `unpaused` event with the admin address.
+#[test]
+fn test_unpause_emits_event() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &100);
+
+    client.pause();
+    client.unpause();
+
+    let ev = find_event(&env, "unpaused").expect("unpaused event not emitted");
+    assert_eq!(ev.1.len(), 1);
+    let t_name: Symbol = ev.1.get(0).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(t_name, Symbol::new(&env, "unpaused"));
+}
+
+/// set_fee_bps updates storage and emits fee_updated event.
+#[test]
+fn test_set_fee_bps_updates_and_emits() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &100);
+
+    client.set_fee_bps(&100u32);
+
+    let stored: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::FeeBps)
+            .unwrap()
+    });
+    assert_eq!(stored, 100);
+
+    let ev = find_event(&env, "fee_updated").expect("fee_updated event not emitted");
+    let (old, new): (u32, u32) = ev.2.try_into_val(&env).unwrap();
+    assert_eq!(old, 500);
+    assert_eq!(new, 100);
+}
+
+/// set_fee_bps to 0 is valid (disables protocol fee).
+#[test]
+fn test_set_fee_bps_to_zero_is_valid() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &100);
+
+    client.set_fee_bps(&0u32);
+
+    let stored: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::FeeBps)
+            .unwrap()
+    });
+    assert_eq!(stored, 0);
+}
