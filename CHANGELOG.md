@@ -83,6 +83,7 @@
 * resolve TypeScript errors in pagination implementation ([1ba68e0](https://github.com/MyFanss/MyFans/commit/1ba68e0041ce903e2ff737bb50c61d63b31a56da))
 * restore Jest configuration for UUID module handling ([272c2ed](https://github.com/MyFanss/MyFans/commit/272c2ed7e4a937f49a2ff560d72a84eb791aae56))
 * **security:** remediate frontend high-severity npm audit vulnerabilities ([93a35a1](https://github.com/MyFanss/MyFans/commit/93a35a1ab77c679b0cd5976d86eb90e60df66719)), closes [hi#severity](https://github.com/hi/issues/severity)
+* **subscription:** validate error codes, optimize gas, add integration tests, verify wasm CI ([#895](https://github.com/MyFanss/MyFans/issues/895) [#896](https://github.com/MyFanss/MyFans/issues/896) [#897](https://github.com/MyFanss/MyFans/issues/897) [#898](https://github.com/MyFanss/MyFans/issues/898)) ([0ab1336](https://github.com/MyFanss/MyFans/commit/0ab13369ee87aa193d3ea8e7fca69f56bec28119))
 * test errors ([d48694f](https://github.com/MyFanss/MyFans/commit/d48694f2a32b5021c29fdd817add9a17a6331df0))
 * **test:** add CreatorDashboardService mock to creators controller spec ([70db6a7](https://github.com/MyFanss/MyFans/commit/70db6a7694ad813fcd10fd0041ee62cbe7134e0c))
 * **tests:** resolve all failing test suite dependency errors ([e7bb906](https://github.com/MyFanss/MyFans/commit/e7bb90679d7a49bd2c701b2dae89ccb58b1225ea))
