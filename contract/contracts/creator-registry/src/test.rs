@@ -1,10 +1,10 @@
 use super::Error as ContractError;
 use super::*;
+use soroban_sdk::token::Client as TokenClient;
 use soroban_sdk::{
     testutils::Address as _, testutils::Ledger, token::StellarAssetClient, Address, Env,
     Error as SorobanError,
 };
-use soroban_sdk::token::Client as TokenClient;
 
 #[test]
 fn test_initialize() {

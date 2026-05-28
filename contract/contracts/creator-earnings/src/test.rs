@@ -233,9 +233,7 @@ fn withdraw_failed_emits_no_event() {
         if *id != client.address {
             return false;
         }
-        topics
-            .first()
-            .and_then(|v| v.try_into_val(&env).ok())
+        topics.first().and_then(|v| v.try_into_val(&env).ok())
             == Some(Symbol::new(&env, "withdraw"))
     });
     assert_eq!(withdraw_events.count(), 0);
