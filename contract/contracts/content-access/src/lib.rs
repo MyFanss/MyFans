@@ -798,4 +798,88 @@ mod test {
             "re-purchase should restore access"
         );
     }
+
+    // ── Property tests for invariants ────────────────────────────────────────
+
+    /// Invariant: If has_access returns true, verify_access should succeed.
+    #[test]
+    fn test_has_access_implies_verify_access_succeeds() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &1, &100);
+
+        // Initially no access
+        assert!(!client.has_access(&buyer, &creator, &1));
+        let result = client.try_verify_access(&buyer, &creator, &1);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::NotBuyer as u32,
+            )))
+        );
+
+        // After unlock, access should be granted and verify should succeed
+        client.unlock_content(&buyer, &creator, &1, &NO_EXPIRY);
+        assert!(client.has_access(&buyer, &creator, &1));
+        // verify_access should not panic (we test this by not expecting an error)
+        let verify_result = client.try_verify_access(&buyer, &creator, &1);
+        assert!(verify_result.is_ok(), "verify_access should succeed when has_access is true");
+    }
+
+    /// Invariant: If verify_access succeeds, has_access should return true.
+    #[test]
+    fn test_verify_access_succeeds_implies_has_access() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &1, &100);
+
+        // Initially neither should work
+        assert!(!client.has_access(&buyer, &creator, &1));
+        let result = client.try_verify_access(&buyer, &creator, &1);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::NotBuyer as u32,
+            )))
+        );
+
+        // After unlock, both should work
+        client.unlock_content(&buyer, &creator, &1, &NO_EXPIRY);
+        assert!(client.has_access(&buyer, &creator, &1));
+        let verify_result = client.try_verify_access(&buyer, &creator, &1);
+        assert!(verify_result.is_ok(), "verify_access should succeed after unlock");
+    }
+
+    /// Invariant: Price set by creator should be retrievable.
+    #[test]
+    fn test_price_set_is_retrievable() {
+        let (env, contract_id, admin, token_address, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        let test_price = 1_000_000;
+        client.set_content_price(&creator, &1, &test_price);
+
+        let retrieved = client.get_content_price(&creator, &1);
+        assert_eq!(retrieved, Some(test_price));
+    }
+
+    /// Invariant: Admin function returns the currently set admin.
+    #[test]
+    fn test_admin_returns_current_admin() {
+        let (env, contract_id, admin1, token_address) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin1, &token_address);
+        assert_eq!(client.admin(), admin1);
+
+        // Change admin and verify it returns the new one
+        let admin2 = Address::generate(&env);
+        client.set_admin(&admin2);
+        assert_eq!(client.admin(), admin2);
+    }
 }
