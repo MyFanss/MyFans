@@ -65,6 +65,12 @@ pub enum Error {
     PurchaseExpired = 4,
     /// Code 6 – no purchase record found for the claimer (not the buyer).
     NotBuyer = 6,
+    /// Code 7 – provided price is invalid (non-positive).
+    InvalidPrice = 7,
+    /// Code 8 – provided price exceeds configured maximum.
+    PriceExceedsMax = 8,
+    /// Code 9 – provided max price is invalid (negative).
+    InvalidMaxPrice = 9,
 }
 
 #[contract]
@@ -107,15 +113,15 @@ impl ContentAccess {
     ) {
         buyer.require_auth();
 
+        // Cache current ledger sequence once (hot path optimization).
+        let current_seq: u64 = env.ledger().sequence() as u64;
+
         // Check if already unlocked (idempotent) – but re-check expiry.
         let access_key = DataKey::Access(buyer.clone(), creator.clone(), content_id);
-        if let Some(existing) = env
-            .storage()
-            .instance()
-            .get::<DataKey, Purchase>(&access_key)
+        if let Some(existing) = env.storage().instance().get::<DataKey, Purchase>(&access_key)
         {
             // If the existing purchase is still valid, treat as no-op.
-            if existing.expiry > env.ledger().sequence() as u64 {
+            if existing.expiry > current_seq {
                 return;
             }
             // Expired purchase: allow re-purchase by falling through.
@@ -142,25 +148,18 @@ impl ContentAccess {
         };
         env.storage().instance().set(&access_key, &purchase);
 
-        env.events().publish(
-            (
-                Symbol::new(&env, "content_unlocked"),
-                buyer.clone(),
-                creator.clone(),
-            ),
-            (content_id, price),
-        );
+        // Emit event (construct symbol once)
+        let topic = Symbol::new(&env, "content_unlocked");
+        env.events()
+            .publish((topic, buyer.clone(), creator.clone()), (content_id, price));
     }
 
     /// Check if buyer has valid (non-expired) access to content.
     pub fn has_access(env: Env, buyer: Address, creator: Address, content_id: u64) -> bool {
         let access_key = DataKey::Access(buyer, creator, content_id);
-        if let Some(purchase) = env
-            .storage()
-            .instance()
-            .get::<DataKey, Purchase>(&access_key)
-        {
-            purchase.expiry > env.ledger().sequence() as u64
+        if let Some(purchase) = env.storage().instance().get::<DataKey, Purchase>(&access_key) {
+            let current_seq: u64 = env.ledger().sequence() as u64;
+            purchase.expiry > current_seq
         } else {
             false
         }
@@ -180,7 +179,8 @@ impl ContentAccess {
             .get::<DataKey, Purchase>(&access_key)
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotBuyer));
 
-        if purchase.expiry <= env.ledger().sequence() as u64 {
+        let current_seq: u64 = env.ledger().sequence() as u64;
+        if purchase.expiry <= current_seq {
             panic_with_error!(&env, Error::PurchaseExpired);
         }
     }
@@ -196,7 +196,7 @@ impl ContentAccess {
         creator.require_auth();
 
         if price <= 0 {
-            panic!("price must be positive");
+            panic_with_error!(&env, Error::InvalidPrice);
         }
 
         if let Some(max_price) = env
@@ -205,7 +205,7 @@ impl ContentAccess {
             .get::<DataKey, i128>(&DataKey::MaxPrice)
         {
             if price > max_price {
-                panic!("price exceeds maximum allowed");
+                panic_with_error!(&env, Error::PriceExceedsMax);
             }
         }
 
@@ -220,14 +220,13 @@ impl ContentAccess {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("not initialized");
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
         admin.require_auth();
-
         if max_price == 0 {
             env.storage().instance().remove(&DataKey::MaxPrice);
         } else {
             if max_price < 0 {
-                panic!("max price must be positive or zero to remove cap");
+                panic_with_error!(&env, Error::InvalidMaxPrice);
             }
             env.storage().instance().set(&DataKey::MaxPrice, &max_price);
         }
@@ -840,5 +839,35 @@ mod test {
                 .unwrap()
         });
         assert_eq!(purchase.expiry, NO_EXPIRY);
+    }
+
+    /// Quick micro-bench-style test: exercise hot paths repeatedly to catch
+    /// regressions and ensure behavior remains correct under repeated calls.
+    #[test]
+    fn test_hot_path_many_has_access_and_unlocks() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &1, &100);
+
+        // Prime state: buyer unlocks content
+        client.unlock_content(&buyer, &creator, &1, &NO_EXPIRY);
+
+        // Call hot-path `has_access` many times
+        for _ in 0..100 {
+            assert!(client.has_access(&buyer, &creator, &1));
+        }
+
+        // Advance ledger to expire the purchase
+        env.ledger().with_mut(|li| li.sequence_number += 10_000);
+        assert!(!client.has_access(&buyer, &creator, &1));
+
+        // Repeatedly re-purchase (unlock) to ensure no regressions in unlock path
+        for i in 0..20 {
+            let expiry = (env.ledger().sequence() as u64) + (i as u64) + 1000;
+            client.unlock_content(&buyer, &creator, &1, &expiry);
+            assert!(client.has_access(&buyer, &creator, &1));
+        }
     }
 }
