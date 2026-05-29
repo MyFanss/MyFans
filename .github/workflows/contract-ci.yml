@@ -24,6 +24,11 @@ jobs:
           targets: wasm32-unknown-unknown
           components: rustfmt, clippy
 
+      - name: Cache Cargo registry and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract
+
       - name: Check formatting
         run: cargo fmt --all --check --manifest-path Cargo.toml
         working-directory: contract
