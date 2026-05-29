@@ -266,8 +266,8 @@ mod test {
     use soroban_sdk::{
         testutils::{Address as _, Events, Ledger},
         vec,
-        xdr::SorobanAuthorizationEntry,
-        Address, Env, Error as SorobanError, IntoVal, Symbol, TryIntoVal,
+        xdr::{ScAddress, SorobanAuthorizationEntry},
+        Address, Env, Error as SorobanError, IntoVal, Symbol, TryFromVal, TryIntoVal,
     };
 
     const EMPTY_AUTHS: &[SorobanAuthorizationEntry] = &[];
@@ -797,5 +797,48 @@ mod test {
             client.has_access(&buyer, &creator, &1),
             "re-purchase should restore access"
         );
+    }
+
+    /// Snapshot/restore consistency test – ensures state is readable after
+    /// snapshot and after further operations, mirroring patterns in other
+    /// contracts.
+    #[test]
+    fn test_snapshot_restore_consistency() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &1, &100);
+        client.unlock_content(&buyer, &creator, &1, &NO_EXPIRY);
+
+        // Snapshot current env state and create a restored Env
+        let sc_contract: ScAddress = contract_id.clone().into();
+        let sc_buyer: ScAddress = buyer.clone().into();
+        let sc_creator: ScAddress = creator.clone().into();
+
+        let snapshot = env.to_snapshot();
+        let env2 = Env::from_snapshot(snapshot);
+        env2.mock_all_auths();
+
+        let contract_id2: Address = Address::try_from_val(&env2, &sc_contract).unwrap();
+        let buyer2: Address = Address::try_from_val(&env2, &sc_buyer).unwrap();
+        let creator2: Address = Address::try_from_val(&env2, &sc_creator).unwrap();
+
+        // Re-register the contract at the same address in the restored env
+        env2.register_contract(Some(&contract_id2), ContentAccess);
+        let client2 = ContentAccessClient::new(&env2, &contract_id2);
+
+        // Verify price and access survive snapshot/restore
+        assert_eq!(client2.get_content_price(&creator2, &1), Some(100));
+        assert!(client2.has_access(&buyer2, &creator2, &1));
+
+        // Also verify underlying stored Purchase record is present and non-expired
+        let purchase = env2.as_contract(&contract_id2, || {
+            env2.storage()
+                .instance()
+                .get::<DataKey, Purchase>(&DataKey::Access(buyer2.clone(), creator2.clone(), 1))
+                .unwrap()
+        });
+        assert_eq!(purchase.expiry, NO_EXPIRY);
     }
 }
