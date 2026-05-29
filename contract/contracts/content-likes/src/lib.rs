@@ -490,4 +490,201 @@ mod test {
         assert!(client.has_liked(&user, &20u32));
         assert!(!client.has_liked(&user, &10u32));
     }
+
+    // ── Issue #924 – Snapshot/Restore Consistency Test ──────────────────────
+    //
+    // This test verifies that the contract's state remains consistent and readable
+    // after a series of like/unlike operations across snapshot/restore boundaries.
+    // It ensures:
+    // 1. Like counts are preserved across snapshot/restore
+    // 2. User like lists are preserved and queryable
+    // 3. Individual like status (has_liked) is consistent
+    // 4. Pagination state is correct after restore
+    // 5. Multiple users' likes remain independent
+    #[test]
+    fn test_snapshot_restore_consistency() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        // ── Setup: Create multiple users and content ────────────────────────
+        let user1 = Address::generate(&env);
+        let user2 = Address::generate(&env);
+        let user3 = Address::generate(&env);
+
+        // ── Phase 1: Perform initial operations ────────────────────────────
+        // User1 likes content 1, 2, 3
+        client.like(&user1, &1u32);
+        client.like(&user1, &2u32);
+        client.like(&user1, &3u32);
+
+        // User2 likes content 1, 2
+        client.like(&user2, &1u32);
+        client.like(&user2, &2u32);
+
+        // User3 likes content 1
+        client.like(&user3, &1u32);
+
+        // ── Snapshot Phase 1: Capture state before restore ──────────────────
+        let snapshot_content1_count = client.like_count(&1u32);
+        let snapshot_content2_count = client.like_count(&2u32);
+        let snapshot_content3_count = client.like_count(&3u32);
+
+        let snapshot_user1_likes_content1 = client.has_liked(&user1, &1u32);
+        let snapshot_user1_likes_content2 = client.has_liked(&user1, &2u32);
+        let snapshot_user1_likes_content3 = client.has_liked(&user1, &3u32);
+
+        let snapshot_user2_likes_content1 = client.has_liked(&user2, &1u32);
+        let snapshot_user2_likes_content2 = client.has_liked(&user2, &2u32);
+
+        let snapshot_user3_likes_content1 = client.has_liked(&user3, &1u32);
+
+        let (snapshot_user1_page, snapshot_user1_next) =
+            client.list_likes_by_user(&user1, &0, &10);
+        let (snapshot_user2_page, snapshot_user2_next) =
+            client.list_likes_by_user(&user2, &0, &10);
+        let (snapshot_user3_page, snapshot_user3_next) =
+            client.list_likes_by_user(&user3, &0, &10);
+
+        // ── Perform additional operations before restore ────────────────────
+        client.unlike(&user1, &2u32);
+        client.like(&user2, &3u32);
+
+        // ── Restore from snapshot ──────────────────────────────────────────
+        let sc_contract: soroban_sdk::ScAddress = contract_id.clone().into();
+        let sc_user1: soroban_sdk::ScAddress = user1.clone().into();
+        let sc_user2: soroban_sdk::ScAddress = user2.clone().into();
+        let sc_user3: soroban_sdk::ScAddress = user3.clone().into();
+
+        let snapshot = env.to_snapshot();
+        let env2 = Env::from_snapshot(snapshot);
+        env2.mock_all_auths();
+
+        let contract_id2: Address =
+            Address::try_from_val(&env2, &sc_contract).unwrap();
+        let user1_2: Address = Address::try_from_val(&env2, &sc_user1).unwrap();
+        let user2_2: Address = Address::try_from_val(&env2, &sc_user2).unwrap();
+        let user3_2: Address = Address::try_from_val(&env2, &sc_user3).unwrap();
+
+        env2.register_contract(Some(&contract_id2), ContentLikes);
+        let client2 = ContentLikesClient::new(&env2, &contract_id2);
+
+        // ── Verify state after restore ─────────────────────────────────────
+        // Content like counts should match snapshot
+        assert_eq!(
+            client2.like_count(&1u32),
+            snapshot_content1_count,
+            "content 1 like count mismatch after restore"
+        );
+        assert_eq!(
+            client2.like_count(&2u32),
+            snapshot_content2_count,
+            "content 2 like count mismatch after restore"
+        );
+        assert_eq!(
+            client2.like_count(&3u32),
+            snapshot_content3_count,
+            "content 3 like count mismatch after restore"
+        );
+
+        // User1 like status should match snapshot
+        assert_eq!(
+            client2.has_liked(&user1_2, &1u32),
+            snapshot_user1_likes_content1,
+            "user1 content1 like status mismatch after restore"
+        );
+        assert_eq!(
+            client2.has_liked(&user1_2, &2u32),
+            snapshot_user1_likes_content2,
+            "user1 content2 like status mismatch after restore"
+        );
+        assert_eq!(
+            client2.has_liked(&user1_2, &3u32),
+            snapshot_user1_likes_content3,
+            "user1 content3 like status mismatch after restore"
+        );
+
+        // User2 like status should match snapshot
+        assert_eq!(
+            client2.has_liked(&user2_2, &1u32),
+            snapshot_user2_likes_content1,
+            "user2 content1 like status mismatch after restore"
+        );
+        assert_eq!(
+            client2.has_liked(&user2_2, &2u32),
+            snapshot_user2_likes_content2,
+            "user2 content2 like status mismatch after restore"
+        );
+
+        // User3 like status should match snapshot
+        assert_eq!(
+            client2.has_liked(&user3_2, &1u32),
+            snapshot_user3_likes_content1,
+            "user3 content1 like status mismatch after restore"
+        );
+
+        // User1 pagination should match snapshot
+        let (restored_user1_page, restored_user1_next) =
+            client2.list_likes_by_user(&user1_2, &0, &10);
+        assert_eq!(
+            restored_user1_page.len(),
+            snapshot_user1_page.len(),
+            "user1 page length mismatch after restore"
+        );
+        for i in 0..restored_user1_page.len() {
+            assert_eq!(
+                restored_user1_page.get(i).unwrap(),
+                snapshot_user1_page.get(i).unwrap(),
+                "user1 page content mismatch at index {} after restore",
+                i
+            );
+        }
+        assert_eq!(
+            restored_user1_next, snapshot_user1_next,
+            "user1 next cursor mismatch after restore"
+        );
+
+        // User2 pagination should match snapshot
+        let (restored_user2_page, restored_user2_next) =
+            client2.list_likes_by_user(&user2_2, &0, &10);
+        assert_eq!(
+            restored_user2_page.len(),
+            snapshot_user2_page.len(),
+            "user2 page length mismatch after restore"
+        );
+        for i in 0..restored_user2_page.len() {
+            assert_eq!(
+                restored_user2_page.get(i).unwrap(),
+                snapshot_user2_page.get(i).unwrap(),
+                "user2 page content mismatch at index {} after restore",
+                i
+            );
+        }
+        assert_eq!(
+            restored_user2_next, snapshot_user2_next,
+            "user2 next cursor mismatch after restore"
+        );
+
+        // User3 pagination should match snapshot
+        let (restored_user3_page, restored_user3_next) =
+            client2.list_likes_by_user(&user3_2, &0, &10);
+        assert_eq!(
+            restored_user3_page.len(),
+            snapshot_user3_page.len(),
+            "user3 page length mismatch after restore"
+        );
+        for i in 0..restored_user3_page.len() {
+            assert_eq!(
+                restored_user3_page.get(i).unwrap(),
+                snapshot_user3_page.get(i).unwrap(),
+                "user3 page content mismatch at index {} after restore",
+                i
+            );
+        }
+        assert_eq!(
+            restored_user3_next, snapshot_user3_next,
+            "user3 next cursor mismatch after restore"
+        );
+    }
 }

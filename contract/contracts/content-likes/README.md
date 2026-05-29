@@ -77,3 +77,4 @@ Coverage:
 - Count accuracy
 - Revert on unlike when not liked
 - Edge cases (zero likes, multiple users)
+- **Snapshot/restore consistency** (Issue #924): Verifies state integrity across environment boundaries
