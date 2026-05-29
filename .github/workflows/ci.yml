@@ -270,8 +270,11 @@ jobs:
             ${{ runner.os }}-contract-target-
 
       - name: Install toolchain
-        run: rustup component add rustfmt clippy
+        run: rustup component add rustfmt clippy llvm-tools-preview
         working-directory: contract
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Check formatting
         run: cargo fmt --check
@@ -281,8 +284,23 @@ jobs:
         run: cargo clippy --all-targets --all-features
         working-directory: contract
 
-      - name: Run tests
-        run: cargo test --all-features
+      - name: Run tests with coverage
+        run: cargo llvm-cov --all-features --lcov --output-path lcov.info
+        working-directory: contract
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: contract-coverage-lcov
+          path: contract/lcov.info
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Write coverage summary
+        run: |
+          echo "## Contract Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cargo llvm-cov report --summary-only 2>&1 | tail -5 >> $GITHUB_STEP_SUMMARY
         working-directory: contract
 
       - name: Build
