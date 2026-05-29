@@ -5,6 +5,14 @@ use soroban_sdk::{
 
 const MAX_PAGE_LIMIT: u32 = 100;
 
+/// Storage keys for content likes contract
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKey {
+    /// Admin address
+    Admin,
+}
+
 /// Per-contract error codes for the **content-likes** contract.
 ///
 /// These discriminants are stable and form part of the public client API.
@@ -25,6 +33,22 @@ pub struct ContentLikes;
 
 #[contractimpl]
 impl ContentLikes {
+    /// Initialize the contract with admin address
+    pub fn initialize(env: Env, admin: Address) {
+        admin.require_auth();
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic_with_error!(&env, "already initialized");
+        }
+        env.storage().instance().set(&DataKey::Admin, &admin);
+    }
+
+    /// Get the configured admin address
+    pub fn admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("contract not initialized")
+    }
     /// Like a content item (idempotent)
     ///
     /// # Arguments
@@ -489,5 +513,81 @@ mod test {
         assert_eq!(next_cursor, 0);
         assert!(client.has_liked(&user, &20u32));
         assert!(!client.has_liked(&user, &10u32));
+    }
+
+    #[test]
+    fn test_initialize() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        // Should initialize successfully
+        assert_eq!(client.admin(), admin);
+    }
+
+    #[test]
+    fn test_initialize_fails_if_already_initialized() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        // Trying to initialize again should fail
+        let result = client.try_initialize(&admin);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                1 as u32, // Custom error for "already initialized"
+            )))
+        );
+    }
+
+    #[test]
+    fn test_admin_view_returns_configured_admin() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+        assert_eq!(client.admin(), admin);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_admin_view_uninitialized_panics() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+        client.admin(); // Should panic as contract is not initialized
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_initialize_fails_if_not_authorized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let non_admin = Address::generate(&env);
+        client.initialize(&admin); // Initialize with admin
+
+        // Non-admin trying to initialize again should fail
+        env.set_auths(&[]);
+        let result = client.try_initialize(&non_admin);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                1 as u32, // Custom error for "already initialized"
+            )))
+        );
     }
 }
