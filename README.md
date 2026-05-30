@@ -42,7 +42,8 @@
 │   dashboard     │ • Webhooks / events     │ • Multi-asset payments      │
 │ • Fan discovery │ • Indexer / analytics   │ • Pause, cancel, renew      │
 │ • Subscription  │ • Notifications         │                             │
-│   management    │                         │                             │
+│   management    │ • Contract event poller │                             │
+│                 │ • JWT auth (Stellar key) │                             │
 └────────┬────────┴────────────┬────────────┴──────────────┬──────────────┘
          │                     │                            │
          └─────────────────────┼────────────────────────────┘
@@ -209,6 +210,8 @@ If you are documenting or testing wallet-based flows in this repository, assume 
 ### Platform Governance & Operations
 - **[Contract Upgrade Governance](docs/CONTRACT_UPGRADE_GOVERNANCE.md)** - Process for upgrading smart contracts safely
 - **[Security Policy](SECURITY.md)** - Security reporting, penetration testing tracker, and best practices
+- **[Secret Management](backend/docs/SECRET_MANAGEMENT.md)** - JWT and secret rotation runbooks
+- **[CORS & Security Headers](backend/docs/CORS_AND_SECURITY_HEADERS.md)** - Per-environment CORS allowlist and header configuration
 - **[Bug Bash Checklist](docs/BUG_BASH_CHECKLIST.md)** - Comprehensive QA checklist before major releases
 - **[Changelog Guide](docs/CHANGELOG_GUIDE.md)** - How to use conventional commits for automatic changelog generation
 - **[Postgres Backup / Restore](docs/POSTGRES_BACKUP_RESTORE.md)** - Backup runbook, restore decision tree, and CI drill
