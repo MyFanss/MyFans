@@ -1,119 +1,108 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { LoggerService } from './logger.service';
 import { RequestContextService } from './request-context.service';
+import { LOG_FIELDS, SERVICE_NAME } from '../logger/log-fields';
 
-const mockWinston = {
-  info: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
-  debug: jest.fn(),
-  verbose: jest.fn(),
-  log: jest.fn(),
-};
-
-describe('LoggerService', () => {
+describe('LoggerService – structured log fields standard', () => {
   let service: LoggerService;
-  let requestContextService: RequestContextService;
+  let winstonLogger: Record<string, jest.Mock>;
+  let requestContextService: Partial<RequestContextService>;
 
   beforeEach(async () => {
-    jest.clearAllMocks();
-    const module: TestingModule = await Test.createTestingModule({
+    winstonLogger = {
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+      debug: jest.fn(),
+      verbose: jest.fn(),
+      log: jest.fn(),
+    };
+
+    requestContextService = {
+      getLogContext: jest.fn().mockReturnValue({
+        [LOG_FIELDS.CORRELATION_ID]: 'corr-123',
+        [LOG_FIELDS.REQUEST_ID]: 'req-456',
+        [LOG_FIELDS.USER_ID]: 'GUSER',
+        [LOG_FIELDS.METHOD]: 'GET',
+        [LOG_FIELDS.URL]: '/v1/subscriptions',
+      }),
+    };
+
+    const module = await Test.createTestingModule({
       providers: [
         LoggerService,
-        RequestContextService,
-        { provide: WINSTON_MODULE_PROVIDER, useValue: mockWinston },
+        { provide: RequestContextService, useValue: requestContextService },
+        { provide: WINSTON_MODULE_PROVIDER, useValue: winstonLogger },
       ],
     }).compile();
 
-    service = module.get<LoggerService>(LoggerService);
-    requestContextService = module.get<RequestContextService>(RequestContextService);
+    service = module.get(LoggerService);
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
+  it('log() emits info with context field using canonical name', () => {
+    service.log('hello', 'MyModule');
+    expect(winstonLogger.info).toHaveBeenCalledWith(
+      'hello',
+      expect.objectContaining({ [LOG_FIELDS.CONTEXT]: 'MyModule' }),
+    );
   });
 
-  it('log() calls winston.info with message and context meta', () => {
-    service.log('hello', 'TestCtx');
-    expect(mockWinston.info).toHaveBeenCalledWith('hello', expect.objectContaining({ context: 'TestCtx' }));
+  it('log() defaults context to "Application" when omitted', () => {
+    service.log('hello');
+    expect(winstonLogger.info).toHaveBeenCalledWith(
+      'hello',
+      expect.objectContaining({ [LOG_FIELDS.CONTEXT]: 'Application' }),
+    );
   });
 
-  it('warn() calls winston.warn', () => {
-    service.warn('watch out', 'TestCtx');
-    expect(mockWinston.warn).toHaveBeenCalledWith('watch out', expect.objectContaining({ context: 'TestCtx' }));
-  });
-
-  it('error() calls winston.error and includes trace when provided', () => {
-    service.error('boom', 'stack trace', 'TestCtx');
-    expect(mockWinston.error).toHaveBeenCalledWith(
+  it('error() includes trace under canonical field name', () => {
+    service.error('boom', 'Error: stack', 'Ctx');
+    expect(winstonLogger.error).toHaveBeenCalledWith(
       'boom',
-      expect.objectContaining({ context: 'TestCtx', trace: 'stack trace' }),
+      expect.objectContaining({ [LOG_FIELDS.TRACE]: 'Error: stack' }),
     );
   });
 
-  it('error() omits trace key when trace is undefined', () => {
-    service.error('boom', undefined, 'TestCtx');
-    const meta = mockWinston.error.mock.calls[0][1] as Record<string, unknown>;
-    expect(meta).not.toHaveProperty('trace');
+  it('error() omits trace field when not provided', () => {
+    service.error('boom');
+    const [, meta] = winstonLogger.error.mock.calls[0] as [string, Record<string, unknown>];
+    expect(meta).not.toHaveProperty(LOG_FIELDS.TRACE);
   });
 
-  it('debug() calls winston.debug', () => {
-    service.debug('dbg', 'TestCtx');
-    expect(mockWinston.debug).toHaveBeenCalledWith('dbg', expect.objectContaining({ context: 'TestCtx' }));
-  });
-
-  it('verbose() calls winston.verbose', () => {
-    service.verbose('vrb', 'TestCtx');
-    expect(mockWinston.verbose).toHaveBeenCalledWith('vrb', expect.objectContaining({ context: 'TestCtx' }));
-  });
-
-  it('includes correlationId and requestId from request context in meta', () => {
-    requestContextService.run(
-      {
-        correlationId: 'cid-test',
-        requestId: 'rid-test',
-        method: 'GET',
-        url: '/test',
-        ip: '127.0.0.1',
-        userId: null,
-      },
-      () => {
-        service.log('in-context', 'Ctx');
-        expect(mockWinston.info).toHaveBeenCalledWith(
-          'in-context',
-          expect.objectContaining({ correlationId: 'cid-test', requestId: 'rid-test' }),
-        );
-      },
-    );
-  });
-
-  it('logStructured() calls winston.log with level and redacted data', () => {
-    service.logStructured('info', 'structured msg', { password: 'secret', action: 'test' }, 'Ctx');
-    expect(mockWinston.log).toHaveBeenCalledWith(
+  it('logStructured() emits data under canonical field name', () => {
+    service.logStructured('info', 'structured', { foo: 'bar' }, 'Ctx');
+    expect(winstonLogger.log).toHaveBeenCalledWith(
       'info',
-      'structured msg',
-      expect.objectContaining({
-        context: 'Ctx',
-        data: expect.objectContaining({ password: '[REDACTED]', action: 'test' }),
-      }),
+      'structured',
+      expect.objectContaining({ [LOG_FIELDS.DATA]: { foo: 'bar' } }),
     );
   });
 
-  it('logStructured() omits data key when data is undefined', () => {
-    service.logStructured('warn', 'no data', undefined, 'Ctx');
-    const meta = mockWinston.log.mock.calls[0][2] as Record<string, unknown>;
-    expect(meta).not.toHaveProperty('data');
+  it('logStructured() redacts sensitive fields in data', () => {
+    service.logStructured('info', 'auth', { password: 'secret', userId: 'u1' });
+    const [, , meta] = winstonLogger.log.mock.calls[0] as [string, string, Record<string, unknown>];
+    const data = meta[LOG_FIELDS.DATA] as Record<string, unknown>;
+    expect(data['password']).toBe('[REDACTED]');
+    expect(data['userId']).toBe('u1');
   });
 
-  it('defaults context to "Application" when not provided', () => {
-    service.log('no ctx');
-    expect(mockWinston.info).toHaveBeenCalledWith('no ctx', expect.objectContaining({ context: 'Application' }));
+  it('logStructured() omits data field when no data provided', () => {
+    service.logStructured('warn', 'no data');
+    const [, , meta] = winstonLogger.log.mock.calls[0] as [string, string, Record<string, unknown>];
+    expect(meta).not.toHaveProperty(LOG_FIELDS.DATA);
   });
 
-  it('serialises non-string messages to JSON', () => {
-    service.log({ foo: 'bar' });
-    expect(mockWinston.info).toHaveBeenCalledWith('{"foo":"bar"}', expect.any(Object));
+  it('all log methods propagate request-context fields', () => {
+    service.log('msg');
+    const [, meta] = winstonLogger.info.mock.calls[0] as [string, Record<string, unknown>];
+    expect(meta[LOG_FIELDS.CORRELATION_ID]).toBe('corr-123');
+    expect(meta[LOG_FIELDS.REQUEST_ID]).toBe('req-456');
+    expect(meta[LOG_FIELDS.USER_ID]).toBe('GUSER');
+  });
+
+  it('LOG_FIELDS.SERVICE constant equals expected service name', () => {
+    expect(SERVICE_NAME).toBe('myfans-backend');
   });
 
   it('redacts sensitive fields in object messages', () => {

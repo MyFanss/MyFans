@@ -588,3 +588,6 @@ pub mod dummy_data;
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod property_tests;

@@ -2,13 +2,14 @@ import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class SubscriptionIndexerEventDto {
-  @ApiProperty({ enum: ['renewed', 'cancelled'] })
-  @IsIn(['renewed', 'cancelled'])
-  event: 'renewed' | 'cancelled';
+  @ApiProperty({ enum: ['renewed', 'cancelled', 'renewal_failed'] })
+  @IsIn(['renewed', 'cancelled', 'renewal_failed'])
+  event: 'renewed' | 'cancelled' | 'renewal_failed';
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  subscriptionId: string;
+  subscriptionId?: string;
 
   @ApiProperty({ description: 'Fan Stellar G-address' })
   @IsString()

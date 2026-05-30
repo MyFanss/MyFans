@@ -6,6 +6,11 @@ One-command local stack using Docker Compose with the `dev` profile.
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine + Compose plugin)
 - Git
+- **For contract development**: Rust stable with wasm32 target
+  ```bash
+  rustup install stable
+  rustup target add wasm32-unknown-unknown
+  ```
 
 ## Quick Start
 
@@ -48,6 +53,73 @@ curl http://localhost:3001/v1/health
 ```
 
 Or open `http://localhost:3001/v1/health` in your browser.
+
+---
+
+## Contract Development
+
+Contracts are in the `contract/` directory and use Soroban SDK.
+
+### Running Tests
+
+Test contract code before committing:
+
+```bash
+cd contract
+
+# Run all tests
+cargo test --all-features
+
+# Run tests for a specific contract
+cd contract/contracts/myfans-token && cargo test
+
+# Run with output for debugging
+cargo test -- --nocapture
+
+# Watch mode (requires cargo-watch: cargo install cargo-watch)
+cargo watch -x test
+```
+
+### Pre-commit Verification
+
+Before pushing contract changes, run all CI checks locally:
+
+```bash
+cd contract && \
+  cargo fmt --all --check && \
+  cargo clippy --all-targets --all-features -- -D warnings && \
+  cargo test --all-features && \
+  cargo build --release --target wasm32-unknown-unknown
+```
+
+### Building WASM Artifacts
+
+To build optimized WASM files for deployment:
+
+```bash
+cd contract
+cargo build --release --target wasm32-unknown-unknown
+```
+
+Artifacts appear in: `contract/target/wasm32-unknown-unknown/release/`
+
+### Contract Testing Guide
+
+For comprehensive testing patterns, see [contract/TESTING.md](./contract/TESTING.md)
+
+Key points:
+- All tests use the Soroban test environment (no network access required)
+- Tests cover happy path, error conditions, and edge cases
+- Authorization and cross-contract interactions are tested
+- Every PR requires passing contract tests in CI
+
+### Regression Prevention
+
+Use the [Regression Prevention Checklist](./contract/REGRESSION_CHECKLIST.md) when:
+- Adding new contracts
+- Modifying contract interfaces
+- Adding new contract methods
+- Changing authorization rules
 
 ---
 
@@ -118,3 +190,17 @@ Force a rebuild:
 ```bash
 docker compose -f docker-compose.dev.yml --profile dev up --build
 ```
+
+**Contract tests failing locally but passing in CI**
+Ensure you're using the same workspace manifest:
+```bash
+cd contract && cargo test --all-features --manifest-path Cargo.toml
+```
+
+**Rust toolchain not found**
+Install Rust and add the wasm32 target:
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+rustup target add wasm32-unknown-unknown
+```
+

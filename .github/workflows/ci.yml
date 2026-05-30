@@ -1,3 +1,15 @@
+# Jobs run in parallel by default (no `needs:` between backend/frontend/contract).
+# Only db-backup-drill and wasm-size have explicit sequencing requirements.
+#
+# Parallelism layout:
+#   backend  ──────────────────────────────────────────────────────┐
+#   backend-migrations ──────────────────────────────────────────┐ │
+#   frontend ──────────────────────────────────────────────────┐ │ │
+#   contract ──────────────────────────────────────────────┐   │ │ │
+#                                                           │   │ │ │
+#   wasm-size (needs: contract) ──────────────────────────►│   │ │ │
+#   db-backup-drill (needs: backend-migrations) ──────────►│   │ │ │
+#   ci-gate (needs: all) ─────────────────────────────────►└───┘─┘─┘
 name: CI
 
 on:
@@ -56,6 +68,15 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
+
+      - name: Check package-lock is up to date
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          git diff --exit-code package-lock.json || {
+            echo "::error::package-lock.json is out of sync with package.json. Run 'npm install' locally and commit the updated lockfile."
+            exit 1
+          }
+        working-directory: backend
 
       - name: Install dependencies
         run: npm ci
@@ -151,6 +172,15 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
+
+      - name: Check package-lock is up to date
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          git diff --exit-code package-lock.json || {
+            echo "::error::package-lock.json is out of sync with package.json. Run 'npm install' locally and commit the updated lockfile."
+            exit 1
+          }
+        working-directory: frontend
 
       - name: Install dependencies
         run: npm ci
@@ -252,8 +282,11 @@ jobs:
             ${{ runner.os }}-contract-target-
 
       - name: Install toolchain
-        run: rustup component add rustfmt clippy
+        run: rustup component add rustfmt clippy llvm-tools-preview
         working-directory: contract
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Check formatting
         run: cargo fmt --check
@@ -263,8 +296,23 @@ jobs:
         run: cargo clippy --all-targets --all-features
         working-directory: contract
 
-      - name: Run tests
-        run: cargo test --all-features
+      - name: Run tests with coverage
+        run: cargo llvm-cov --all-features --lcov --output-path lcov.info
+        working-directory: contract
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: contract-coverage-lcov
+          path: contract/lcov.info
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Write coverage summary
+        run: |
+          echo "## Contract Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cargo llvm-cov report --summary-only 2>&1 | tail -5 >> $GITHUB_STEP_SUMMARY
         working-directory: contract
 
       - name: Build
@@ -358,3 +406,24 @@ jobs:
           done < <(find "$WASM_DIR" -maxdepth 1 -name '*.wasm' -print0 | sort -z)
           TOTAL_KIB=$(echo "scale=1; $TOTAL / 1024" | bc)
           echo "| **TOTAL** | **$TOTAL** | **$TOTAL_KIB** |" >> $GITHUB_STEP_SUMMARY
+
+  # Single required status check for branch protection.
+  # All parallel jobs must pass before a PR can merge.
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - backend
+      - backend-migrations
+      - frontend
+      - contract
+      - wasm-size
+      - db-backup-drill
+    steps:
+      - name: Check all jobs passed
+        run: |
+          results='${{ toJSON(needs) }}'
+          echo "$results" | grep -q '"result": "failure"' && exit 1
+          echo "$results" | grep -q '"result": "cancelled"' && exit 1
+          echo "All parallel jobs passed."
