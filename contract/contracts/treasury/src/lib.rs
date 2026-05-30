@@ -60,6 +60,11 @@ impl Treasury {
         env.storage().instance().set(&TOKEN, &token_address);
         env.storage().instance().set(&PAUSED, &false);
         env.storage().instance().set(&MIN_BALANCE, &0i128);
+
+        env.events().publish(
+            (Symbol::new(&env, "initialized"),),
+            (admin, token_address),
+        );
     }
 
     /// Pause (`true`) or unpause (`false`) the contract.
@@ -71,6 +76,9 @@ impl Treasury {
         let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
         admin.require_auth();
         env.storage().instance().set(&PAUSED, &paused);
+
+        env.events()
+            .publish((Symbol::new(&env, "paused_set"),), paused);
     }
 
     /// Set the minimum token balance the contract must retain after any withdrawal.
@@ -84,6 +92,9 @@ impl Treasury {
             panic_with_error!(&env, Error::NegativeMinBalance);
         }
         env.storage().instance().set(&MIN_BALANCE, &amount);
+
+        env.events()
+            .publish((Symbol::new(&env, "min_balance_set"),), amount);
     }
 
     /// Transfer `amount` tokens from `from` into the treasury.
