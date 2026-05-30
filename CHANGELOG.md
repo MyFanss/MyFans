@@ -302,6 +302,7 @@
 * Request ID and correlation ID in logs ([dec6d3a](https://github.com/MyFanss/MyFans/commit/dec6d3a94576a0efe05bec551b89beb6da09e1b3))
 * resolve issues [#728](https://github.com/MyFanss/MyFans/issues/728) [#730](https://github.com/MyFanss/MyFans/issues/730) [#731](https://github.com/MyFanss/MyFans/issues/731) [#740](https://github.com/MyFanss/MyFans/issues/740) ([8db36fb](https://github.com/MyFanss/MyFans/commit/8db36fb2618681f3dd600342e4b6b17650771acf))
 * **scripts:** add --dry-run flag to deploy script ([bb5fbbc](https://github.com/MyFanss/MyFans/commit/bb5fbbc8a83aaa8ac17a8ba25b050ee0e2630b83)), closes [#306](https://github.com/MyFanss/MyFans/issues/306)
+* security audit in ci ([55f0a4f](https://github.com/MyFanss/MyFans/commit/55f0a4fcefa6b227f7d7ce6426b2f4b47e0f0e6d))
 * **security:** CSRF double-submit cookie strategy for BFF ([23c5fdb](https://github.com/MyFanss/MyFans/commit/23c5fdbf0955e117e12c6b5bc74eb3aa48139428))
 * skeleton loading states for major pages ([49203d1](https://github.com/MyFanss/MyFans/commit/49203d13b66710d72eaa24c519b44a0beab67904))
 * skeleton loading states for major pages ([b221ebd](https://github.com/MyFanss/MyFans/commit/b221ebd0f6c1036270055be551659c4c49ccd0b6))
