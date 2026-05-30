@@ -5,6 +5,7 @@ use soroban_sdk::{
     xdr::SorobanAuthorizationEntry,
     Address, Env, IntoVal, Symbol, TryIntoVal,
 };
+extern crate std;
 
 fn create_token_contract<'a>(
     env: &Env,
@@ -378,6 +379,113 @@ fn test_deposit_emits_event() {
 }
 
 const EMPTY_AUTHS: &[SorobanAuthorizationEntry] = &[];
+
+// ---------------------------------------------------------------------------
+// Snapshot / restore consistency test
+// ---------------------------------------------------------------------------
+
+/// Verify that restoring an `Env` from a snapshot produces a contract whose
+/// observable state is identical to the state at the time the snapshot was
+/// taken, regardless of mutations applied after the snapshot.
+#[test]
+fn test_snapshot_restore_consistency() {
+    // ── Setup ────────────────────────────────────────────────────────────────
+    let mut env = Env::default();
+    env.set_config(soroban_sdk::testutils::EnvTestConfig {
+        capture_snapshot_at_drop: false,
+    });
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let (token_address, token_client, admin_client) = create_token_contract(&env, &admin);
+    admin_client.mint(&user, &1_000);
+
+    let treasury_id = env.register_contract(None, Treasury);
+    let treasury_client = TreasuryClient::new(&env, &treasury_id);
+
+    treasury_client.initialize(&admin, &token_address);
+    treasury_client.deposit(&user, &600);
+    treasury_client.set_min_balance(&100);
+
+    // Record the state we want to snapshot.
+    let balance_before = token_client.balance(&treasury_id);
+    let user_balance_before = token_client.balance(&user);
+
+    // Capture strkeys before taking the snapshot so we can re-bind them to the
+    // restored env (Address objects are host-specific and cannot cross envs).
+    let to_std = |s: soroban_sdk::String| -> std::string::String {
+        <soroban_sdk::String as std::string::ToString>::to_string(&s)
+    };
+    let treasury_strkey = to_std(treasury_id.to_string());
+    let token_strkey = to_std(token_address.to_string());
+    let user_strkey = to_std(user.to_string());
+
+    // ── Take snapshot ────────────────────────────────────────────────────────
+    let snapshot = env.to_snapshot();
+
+    // ── Mutate state after snapshot ──────────────────────────────────────────
+    treasury_client.withdraw(&user, &200);
+    treasury_client.set_paused(&true);
+
+    // Confirm mutations took effect.
+    assert_eq!(token_client.balance(&treasury_id), balance_before - 200);
+    assert!(
+        treasury_client.try_deposit(&user, &1).is_err(),
+        "contract should be paused after mutation"
+    );
+
+    // ── Restore from snapshot ────────────────────────────────────────────────
+    let mut restored_env = Env::from_snapshot(snapshot);
+    // Disable snapshot-at-drop to avoid writing test_snapshots/ files to disk.
+    restored_env.set_config(soroban_sdk::testutils::EnvTestConfig {
+        capture_snapshot_at_drop: false,
+    });
+    restored_env.mock_all_auths();
+
+    // Re-bind addresses to the restored env using their strkeys.
+    let r_treasury_id = Address::from_string(&soroban_sdk::String::from_str(
+        &restored_env,
+        &treasury_strkey,
+    ));
+    let r_token_address =
+        Address::from_string(&soroban_sdk::String::from_str(&restored_env, &token_strkey));
+    let r_user = Address::from_string(&soroban_sdk::String::from_str(&restored_env, &user_strkey));
+
+    // Re-register the native Treasury contract at its original address so the
+    // restored env can dispatch calls to it (native contracts are not stored in
+    // ledger entries and therefore are not part of the snapshot).
+    restored_env.register_contract(Some(&r_treasury_id), Treasury);
+
+    let restored_treasury = TreasuryClient::new(&restored_env, &r_treasury_id);
+    let restored_token = TokenClient::new(&restored_env, &r_token_address);
+
+    // ── Assert consistency ───────────────────────────────────────────────────
+    // Token balances must match the pre-mutation values.
+    assert_eq!(
+        restored_token.balance(&r_treasury_id),
+        balance_before,
+        "treasury token balance must match snapshot"
+    );
+    assert_eq!(
+        restored_token.balance(&r_user),
+        user_balance_before,
+        "user token balance must match snapshot"
+    );
+
+    // Contract must not be paused (it was unpaused at snapshot time).
+    assert!(
+        restored_treasury.try_deposit(&r_user, &50).is_ok(),
+        "deposit must succeed on restored (unpaused) contract"
+    );
+
+    assert_eq!(
+        restored_token.balance(&r_treasury_id),
+        balance_before + 50,
+        "post-restore deposit must be reflected correctly"
+    );
+}
 
 #[test]
 fn test_initialize_requires_admin_auth() {
