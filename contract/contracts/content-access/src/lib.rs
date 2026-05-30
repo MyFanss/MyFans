@@ -1,4 +1,9 @@
 #![no_std]
+mod events;
+
+use crate::events::{
+    AdminTransferredEvent, ContentPriceSetEvent, MaxPriceClearedEvent, MaxPriceSetEvent,
+};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
     Symbol,
@@ -13,6 +18,10 @@ pub struct ContentInfo {
     /// Whether the content is currently available for purchase.
     pub is_active: bool,
 }
+
+#[cfg(test)]
+#[path = "tests/event_tests.rs"]
+mod event_tests;
 
 /// A purchase record stored per (buyer, creator, content_id).
 /// `expiry` is the ledger sequence number after which the purchase is considered expired.
@@ -187,7 +196,7 @@ impl ContentAccess {
 
     /// Get the price for (creator, content_id). Returns None if not set.
     pub fn get_content_price(env: Env, creator: Address, content_id: u64) -> Option<i128> {
-        let key = DataKey::ContentPrice(creator, content_id);
+        let key = DataKey::ContentPrice(creator.clone(), content_id);
         env.storage().instance().get(&key)
     }
 
@@ -209,8 +218,16 @@ impl ContentAccess {
             }
         }
 
-        let key = DataKey::ContentPrice(creator, content_id);
+        let key = DataKey::ContentPrice(creator.clone(), content_id);
         env.storage().instance().set(&key, &price);
+        env.events().publish(
+            (Symbol::new(&env, "content_price_set"), creator.clone()),
+            ContentPriceSetEvent {
+                creator,
+                content_id,
+                price,
+            },
+        );
     }
 
     /// Set a global maximum price cap. Only admin may call this.
@@ -225,11 +242,22 @@ impl ContentAccess {
 
         if max_price == 0 {
             env.storage().instance().remove(&DataKey::MaxPrice);
+            env.events().publish(
+                (Symbol::new(&env, "max_price_cleared"), admin.clone()),
+                MaxPriceClearedEvent { cleared_by: admin },
+            );
         } else {
             if max_price < 0 {
                 panic!("max price must be positive or zero to remove cap");
             }
             env.storage().instance().set(&DataKey::MaxPrice, &max_price);
+            env.events().publish(
+                (Symbol::new(&env, "max_price_set"), admin.clone()),
+                MaxPriceSetEvent {
+                    price: max_price,
+                    set_by: admin,
+                },
+            );
         }
     }
 
@@ -247,6 +275,13 @@ impl ContentAccess {
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
         current_admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
+        env.events().publish(
+            (Symbol::new(&env, "admin_transferred"),),
+            AdminTransferredEvent {
+                old_admin: current_admin,
+                new_admin,
+            },
+        );
     }
 
     /// Returns the configured admin address.
@@ -265,7 +300,6 @@ mod test {
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Events, Ledger},
-        vec,
         xdr::SorobanAuthorizationEntry,
         Address, Env, Error as SorobanError, IntoVal, Symbol, TryIntoVal,
     };
@@ -337,22 +371,17 @@ mod test {
         assert!(client.has_access(&buyer, &creator, &1));
 
         let events = env.events().all();
-        assert_eq!(
-            events,
-            vec![
-                &env,
-                (
-                    contract_id.clone(),
-                    (
+        assert!(events.iter().any(|event| {
+            event.0 == contract_id
+                && event.1
+                    == (
                         Symbol::new(&env, "content_unlocked"),
                         buyer.clone(),
-                        creator.clone()
+                        creator.clone(),
                     )
-                        .into_val(&env),
-                    (1u64, 100i128).into_val(&env)
-                )
-            ]
-        );
+                        .into_val(&env)
+                && event.2.try_into_val(&env).ok() == Some((1u64, 100i128))
+        }));
     }
 
     #[test]
