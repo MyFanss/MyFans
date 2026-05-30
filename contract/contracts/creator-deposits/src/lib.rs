@@ -61,6 +61,8 @@ impl CreatorDeposits {
     pub fn deposit(env: Env, creator: Address, token: Address, amount: i128) {
         creator.require_auth();
 
+        // Optimization: Read both config values once and cache in local variables
+        // to avoid redundant storage reads during a single transaction.
         let fee_bps: u32 = env
             .storage()
             .instance()
@@ -81,10 +83,13 @@ impl CreatorDeposits {
 
         let token_client = token::Client::new(&env, &token);
 
+        // Optimization: Only transfer fee if nonzero, avoiding unnecessary transfer calls.
         if fee > 0 {
             token_client.transfer(&creator, &treasury, &fee);
         }
 
+        // Optimization: Read balance once and update in single write;
+        // use unwrap_or(0) to avoid panicking on first deposit.
         let balance_key = DataKey::CreatorBalance(creator.clone());
         let current: i128 = env.storage().instance().get(&balance_key).unwrap_or(0);
         env.storage().instance().set(&balance_key, &(current + net));
@@ -102,6 +107,8 @@ impl CreatorDeposits {
     pub fn withdraw(env: Env, creator: Address, token: Address, amount: i128) {
         creator.require_auth();
 
+        // Optimization: Read balance once, validate, and update in single write;
+        // use unwrap_or(0) to handle accounts with no prior deposits.
         let balance_key = DataKey::CreatorBalance(creator.clone());
         let current: i128 = env.storage().instance().get(&balance_key).unwrap_or(0);
 
@@ -109,6 +116,7 @@ impl CreatorDeposits {
             panic_with_error!(&env, Error::InsufficientBalance);
         }
 
+        // Optimization: Only update storage if withdrawal succeeds validation.
         env.storage()
             .instance()
             .set(&balance_key, &(current - amount));
