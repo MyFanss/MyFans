@@ -37,6 +37,10 @@ impl ContentLikes {
     /// - Adds user to the liked map for this content
     /// - Increments the like count
     /// - If user already liked, this is a no-op (idempotent)
+    ///
+    /// # Gas optimization
+    /// - Caches the idempotent check in local `already_liked` bool to avoid redundant storage lookup
+    /// - Only writes storage if state changes (not already liked)
     pub fn like(env: Env, user: Address, content_id: u32) {
         user.require_auth();
 
@@ -50,7 +54,7 @@ impl ContentLikes {
             .get(&like_map_key)
             .unwrap_or_else(|| Map::new(&env));
 
-        // Check if already liked (idempotent)
+        // Check if already liked (idempotent); cache result to avoid redundant storage operations
         let already_liked = likes.get(user.clone()).is_some();
 
         if !already_liked {
@@ -92,6 +96,11 @@ impl ContentLikes {
     /// - Removes user from the liked map
     /// - Decrements the like count
     /// - Reverts if user hasn't liked the content
+    ///
+    /// # Gas optimization
+    /// - Single storage read for likes map; early return with error if user not found
+    /// - Caches count value locally to minimize storage round-trips
+    /// - Bounded iteration for user_likes list cleanup (stored by user, not global)
     pub fn unlike(env: Env, user: Address, content_id: u32) {
         user.require_auth();
 
@@ -105,7 +114,7 @@ impl ContentLikes {
             .get(&like_map_key)
             .unwrap_or_else(|| Map::new(&env));
 
-        // Verify user has liked (revert if not)
+        // Verify user has liked (revert early if not, avoiding redundant writes)
         if likes.get(user.clone()).is_none() {
             panic_with_error!(&env, Error::NotLiked);
         }
@@ -151,6 +160,9 @@ impl ContentLikes {
     ///
     /// # Returns
     /// Total number of likes for this content (0 if never liked)
+    ///
+    /// # Gas optimization
+    /// - Single storage read; O(1) operation
     pub fn like_count(env: Env, content_id: u32) -> u32 {
         let count_key = ("count", content_id);
         env.storage().instance().get(&count_key).unwrap_or(0)
@@ -489,5 +501,11 @@ mod test {
         assert_eq!(next_cursor, 0);
         assert!(client.has_liked(&user, &20u32));
         assert!(!client.has_liked(&user, &10u32));
+    }
+
+    #[test]
+    fn test_error_code_discriminant() {
+        // Verify NotLiked error has the correct discriminant (code 1)
+        assert_eq!(Error::NotLiked as u32, 1);
     }
 }
