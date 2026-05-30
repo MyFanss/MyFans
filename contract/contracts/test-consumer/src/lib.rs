@@ -542,4 +542,198 @@ mod test {
             assert!(content_access.has_access(&buyer, &creator, content_id));
         }
     }
+
+    // ── treasury integration (Issue #907) ─────────────────────────────────
+    //
+    // Test-consumer pattern: drive `treasury` exclusively through its public
+    // `TreasuryClient` interface — no internal function access.  This mirrors
+    // how any external contract (e.g. a subscription or earnings contract)
+    // would interact with the treasury in production.
+
+    mod treasury_integration {
+        extern crate std;
+
+        use soroban_sdk::{
+            testutils::Address as _,
+            token::{StellarAssetClient, TokenClient},
+            Address, Env,
+        };
+        use treasury::{Treasury, TreasuryClient};
+
+        fn create_token<'a>(
+            env: &Env,
+            admin: &Address,
+        ) -> (Address, TokenClient<'a>, StellarAssetClient<'a>) {
+            let addr = env
+                .register_stellar_asset_contract_v2(admin.clone())
+                .address();
+            (addr.clone(), TokenClient::new(env, &addr), StellarAssetClient::new(env, &addr))
+        }
+
+        fn setup(
+            env: &Env,
+        ) -> (TreasuryClient<'_>, Address, Address, TokenClient<'_>, Address) {
+            env.mock_all_auths();
+            let admin = Address::generate(env);
+            let depositor = Address::generate(env);
+            let (token_addr, token_client, sac) = create_token(env, &admin);
+            sac.mint(&depositor, &10_000_000);
+            let treasury_id = env.register_contract(None, Treasury);
+            let client = TreasuryClient::new(env, &treasury_id);
+            client.initialize(&admin, &token_addr);
+            (client, admin, depositor, token_client, treasury_id)
+        }
+
+        // ── initialize ────────────────────────────────────────────────────
+
+        /// initialize stores admin and token; second call is rejected.
+        #[test]
+        fn initialize_once_only() {
+            let env = Env::default();
+            let (client, admin, _, _, _) = setup(&env);
+            let token2 = Address::generate(&env);
+            let result = client.try_initialize(&admin, &token2);
+            assert!(result.is_err(), "second initialize must be rejected");
+        }
+
+        // ── deposit ───────────────────────────────────────────────────────
+
+        /// Deposit via client moves tokens from depositor to treasury.
+        #[test]
+        fn deposit_moves_tokens_to_treasury() {
+            let env = Env::default();
+            let (client, _, depositor, token_client, treasury_id) = setup(&env);
+
+            client.deposit(&depositor, &2_000_000);
+
+            assert_eq!(token_client.balance(&treasury_id), 2_000_000);
+            assert_eq!(token_client.balance(&depositor), 8_000_000);
+        }
+
+        /// Multiple deposits from the same depositor accumulate correctly.
+        #[test]
+        fn multiple_deposits_accumulate() {
+            let env = Env::default();
+            let (client, _, depositor, token_client, treasury_id) = setup(&env);
+
+            client.deposit(&depositor, &1_000_000);
+            client.deposit(&depositor, &500_000);
+            client.deposit(&depositor, &250_000);
+
+            assert_eq!(token_client.balance(&treasury_id), 1_750_000);
+        }
+
+        /// Zero deposit is rejected before auth.
+        #[test]
+        fn deposit_zero_rejected() {
+            let env = Env::default();
+            let (client, _, depositor, _, _) = setup(&env);
+            assert!(client.try_deposit(&depositor, &0).is_err());
+        }
+
+        // ── withdraw ──────────────────────────────────────────────────────
+
+        /// Admin can withdraw and recipient receives the tokens.
+        #[test]
+        fn withdraw_credits_recipient() {
+            let env = Env::default();
+            let (client, _, depositor, token_client, treasury_id) = setup(&env);
+            let recipient = Address::generate(&env);
+
+            client.deposit(&depositor, &3_000_000);
+            client.withdraw(&recipient, &1_000_000);
+
+            assert_eq!(token_client.balance(&treasury_id), 2_000_000);
+            assert_eq!(token_client.balance(&recipient), 1_000_000);
+        }
+
+        /// Overdraft is rejected with InsufficientBalance.
+        #[test]
+        fn withdraw_overdraft_rejected() {
+            let env = Env::default();
+            let (client, _, depositor, _, _) = setup(&env);
+            let recipient = Address::generate(&env);
+
+            client.deposit(&depositor, &100_000);
+            assert!(client.try_withdraw(&recipient, &100_001).is_err());
+        }
+
+        /// Full withdrawal leaves treasury at zero.
+        #[test]
+        fn withdraw_full_balance_succeeds() {
+            let env = Env::default();
+            let (client, _, depositor, token_client, treasury_id) = setup(&env);
+            let recipient = Address::generate(&env);
+
+            client.deposit(&depositor, &5_000_000);
+            client.withdraw(&recipient, &5_000_000);
+
+            assert_eq!(token_client.balance(&treasury_id), 0);
+            assert_eq!(token_client.balance(&recipient), 5_000_000);
+        }
+
+        // ── min_balance guard ─────────────────────────────────────────────
+
+        /// Withdrawing below min_balance is rejected with MinBalanceViolation.
+        #[test]
+        fn withdraw_below_min_balance_rejected() {
+            let env = Env::default();
+            let (client, _, depositor, _, _) = setup(&env);
+            let recipient = Address::generate(&env);
+
+            client.deposit(&depositor, &1_000_000);
+            client.set_min_balance(&500_000);
+
+            // Withdrawing 600_000 would leave 400_000 < 500_000 min_balance.
+            assert!(client.try_withdraw(&recipient, &600_000).is_err());
+        }
+
+        /// Withdraw that leaves exactly min_balance succeeds.
+        #[test]
+        fn withdraw_to_exact_min_balance_succeeds() {
+            let env = Env::default();
+            let (client, _, depositor, token_client, treasury_id) = setup(&env);
+            let recipient = Address::generate(&env);
+
+            client.deposit(&depositor, &1_000_000);
+            client.set_min_balance(&500_000);
+
+            // Withdraw exactly 500_000 — leaves balance == min_balance.
+            client.withdraw(&recipient, &500_000);
+            assert_eq!(token_client.balance(&treasury_id), 500_000);
+        }
+
+        // ── pause guard ───────────────────────────────────────────────────
+
+        /// Paused treasury rejects both deposit and withdraw.
+        #[test]
+        fn paused_blocks_deposit_and_withdraw() {
+            let env = Env::default();
+            let (client, _, depositor, _, _) = setup(&env);
+            let recipient = Address::generate(&env);
+
+            client.deposit(&depositor, &1_000_000);
+            client.set_paused(&true);
+
+            assert!(client.try_deposit(&depositor, &100_000).is_err());
+            assert!(client.try_withdraw(&recipient, &100_000).is_err());
+        }
+
+        /// Unpausing restores normal operation.
+        #[test]
+        fn unpause_restores_operations() {
+            let env = Env::default();
+            let (client, _, depositor, token_client, treasury_id) = setup(&env);
+            let recipient = Address::generate(&env);
+
+            client.deposit(&depositor, &1_000_000);
+            client.set_paused(&true);
+            client.set_paused(&false);
+
+            client.deposit(&depositor, &500_000);
+            client.withdraw(&recipient, &200_000);
+
+            assert_eq!(token_client.balance(&treasury_id), 1_300_000);
+        }
+    }
 }
