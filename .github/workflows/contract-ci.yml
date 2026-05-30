@@ -43,10 +43,12 @@ jobs:
       - name: Verify wasm artifacts
         run: |
           WASM_DIR="target/wasm32-unknown-unknown/release"
+          # Verify all contract wasm artifacts are built and non-empty
           EXPECTED=(
             subscription
             myfans_token
             content_access
+            content_likes
             creator_registry
             earnings
           )
