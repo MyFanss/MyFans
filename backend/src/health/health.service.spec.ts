@@ -214,7 +214,7 @@ describe('HealthService', () => {
         it('should return down with message', async () => {
             const result = await service.checkRedis();
             expect(result.status).toBe('down');
-            expect(result.message).toBe('Redis not configured');
+            expect(result.error).toBe('Redis not configured');
         });
     });
 
@@ -227,6 +227,106 @@ describe('HealthService', () => {
 
             expect(result.timestamp).toBeDefined();
             expect(result.queues).toEqual(mockSnapshot);
+        });
+    });
+
+    describe('getAggregatedHealth', () => {
+        it('should return up when all subsystems are up', async () => {
+            mockDataSource.query.mockResolvedValue([1]);
+            mockSorobanRpcService.checkConnectivity.mockResolvedValue({ status: 'up', timestamp: new Date().toISOString() });
+            mockSorobanRpcService.checkKnownContract.mockResolvedValue({ status: 'up', timestamp: new Date().toISOString() });
+
+            const result = await service.getAggregatedHealth();
+
+            expect(result.status).toBe('up');
+            expect(result.summary.total).toBe(4);
+            // database + sorobanRpc + sorobanContract are up; redis is down (not configured)
+            expect(result.summary.up).toBe(3);
+            expect(result.summary.down).toBe(1); // redis
+            expect(result.subsystems.database.status).toBe('up');
+            expect(result.subsystems.sorobanRpc.status).toBe('up');
+            expect(result.subsystems.sorobanContract.status).toBe('up');
+            expect(result.subsystems.redis.status).toBe('down');
+        });
+
+        it('should return down when database is down', async () => {
+            mockDataSource.query.mockRejectedValue(new Error('DB unreachable'));
+            mockSorobanRpcService.checkConnectivity.mockResolvedValue({ status: 'up', timestamp: new Date().toISOString() });
+            mockSorobanRpcService.checkKnownContract.mockResolvedValue({ status: 'up', timestamp: new Date().toISOString() });
+
+            const result = await service.getAggregatedHealth();
+
+            expect(result.status).toBe('down');
+            expect(result.subsystems.database.status).toBe('down');
+            expect(result.subsystems.database.error).toBe('DB unreachable');
+        });
+
+        it('should return degraded when a non-database subsystem is down', async () => {
+            mockDataSource.query.mockResolvedValue([1]);
+            mockSorobanRpcService.checkConnectivity.mockResolvedValue({ status: 'down', timestamp: new Date().toISOString() });
+            mockSorobanRpcService.checkKnownContract.mockResolvedValue({ status: 'up', timestamp: new Date().toISOString() });
+
+            const result = await service.getAggregatedHealth();
+
+            // sorobanRpc is down but DB is up → degraded (not fatal)
+            expect(result.status).toBe('degraded');
+            expect(result.subsystems.sorobanRpc.status).toBe('down');
+        });
+
+        it('should return degraded when any subsystem is degraded', async () => {
+            mockDataSource.query.mockResolvedValue([1]);
+            mockSorobanRpcService.checkConnectivity.mockResolvedValue({ status: 'degraded', timestamp: new Date().toISOString() });
+            mockSorobanRpcService.checkKnownContract.mockResolvedValue({ status: 'up', timestamp: new Date().toISOString() });
+
+            const result = await service.getAggregatedHealth();
+
+            expect(result.status).toBe('degraded');
+            expect(result.summary.degraded).toBe(1);
+        });
+
+        it('should include uptime as a non-negative integer', async () => {
+            mockDataSource.query.mockResolvedValue([1]);
+            mockSorobanRpcService.checkConnectivity.mockResolvedValue({ status: 'up', timestamp: new Date().toISOString() });
+            mockSorobanRpcService.checkKnownContract.mockResolvedValue({ status: 'up', timestamp: new Date().toISOString() });
+
+            const result = await service.getAggregatedHealth();
+
+            expect(typeof result.uptime).toBe('number');
+            expect(result.uptime).toBeGreaterThanOrEqual(0);
+            expect(Number.isInteger(result.uptime)).toBe(true);
+        });
+
+        it('should include a valid ISO 8601 timestamp', async () => {
+            mockDataSource.query.mockResolvedValue([1]);
+            mockSorobanRpcService.checkConnectivity.mockResolvedValue({ status: 'up', timestamp: new Date().toISOString() });
+            mockSorobanRpcService.checkKnownContract.mockResolvedValue({ status: 'up', timestamp: new Date().toISOString() });
+
+            const result = await service.getAggregatedHealth();
+
+            expect(result.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+            expect(() => new Date(result.timestamp)).not.toThrow();
+        });
+
+        it('should include database latencyMs when db is up', async () => {
+            mockDataSource.query.mockResolvedValue([1]);
+            mockSorobanRpcService.checkConnectivity.mockResolvedValue({ status: 'up', timestamp: new Date().toISOString() });
+            mockSorobanRpcService.checkKnownContract.mockResolvedValue({ status: 'up', timestamp: new Date().toISOString() });
+
+            const result = await service.getAggregatedHealth();
+
+            expect(typeof result.subsystems.database.latencyMs).toBe('number');
+            expect(result.subsystems.database.latencyMs).toBeGreaterThanOrEqual(0);
+        });
+
+        it('summary counts should add up to total', async () => {
+            mockDataSource.query.mockResolvedValue([1]);
+            mockSorobanRpcService.checkConnectivity.mockResolvedValue({ status: 'degraded', timestamp: new Date().toISOString() });
+            mockSorobanRpcService.checkKnownContract.mockResolvedValue({ status: 'up', timestamp: new Date().toISOString() });
+
+            const result = await service.getAggregatedHealth();
+
+            const { total, up, degraded, down } = result.summary;
+            expect(up + degraded + down).toBe(total);
         });
     });
 });
