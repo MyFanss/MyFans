@@ -191,13 +191,20 @@ If you are documenting or testing wallet-based flows in this repository, assume 
 
 ## Getting Started (After Initialization)
 
-- **Contract**: `cd contract && cargo build && soroban contract test` (and deploy with soroban-cli).
+- **Contract**: `cd contract && cargo test` for unit tests; `cargo build --release --target wasm32-unknown-unknown` for WASM artifacts (and deploy with soroban-cli). See [Contract Testing Guide](./contract/TESTING.md) for comprehensive testing documentation.
 - **Backend**: `cd backend && npm i && npm run start:dev`.
 - **Frontend**: `cd frontend && npm i && npm run dev`.
 
 ---
 
 ## Documentation
+
+### Contract Development
+- **[Contract Testing Guide](contract/TESTING.md)** - Comprehensive testing patterns and best practices for Soroban contracts
+- **[Regression Testing Guide](contract/REGRESSION_TESTING.md)** - How contract regression testing is enforced in CI
+- **[Regression Prevention Checklist](contract/REGRESSION_CHECKLIST.md)** - Developer checklist for PR submission
+- **[Contract Branch Protection](contract/docs/BRANCH_PROTECTION.md)** - CI status checks required before merge
+- **[Contract Interfaces](contract/docs/interfaces/)** - Method documentation for each contract
 
 ### Platform Governance & Operations
 - **[Contract Upgrade Governance](docs/CONTRACT_UPGRADE_GOVERNANCE.md)** - Process for upgrading smart contracts safely
