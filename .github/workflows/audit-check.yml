@@ -25,6 +25,9 @@ jobs:
         with:
           node-version: "20"
 
+      - name: 🦀 Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: 📦 Check backend audits
         id: backend-audit
         working-directory: ./backend
@@ -93,6 +96,46 @@ jobs:
             exit 1
           fi
 
+      - name: � Check Cargo audit (contract)
+        id: contract-audit
+        run: |
+          if [ -d "./contract" ] && [ -f "./contract/Cargo.toml" ]; then
+            echo "Installing cargo-audit..."
+            cargo install cargo-audit --quiet 2>&1 | grep -v "already installed" || true
+            
+            cd ./contract
+            AUDIT_OUTPUT=$(cargo audit --json 2>/dev/null || echo '{"vulnerabilities":[]}')
+            CRITICAL=$(echo "$AUDIT_OUTPUT" | jq '[.vulnerabilities[] | select(.severity=="critical")] | length' 2>/dev/null || echo "0")
+            HIGH=$(echo "$AUDIT_OUTPUT" | jq '[.vulnerabilities[] | select(.severity=="high")] | length' 2>/dev/null || echo "0")
+            TOTAL=$(echo "$AUDIT_OUTPUT" | jq '.vulnerabilities | length' 2>/dev/null || echo "0")
+            
+            echo "contract_critical=$CRITICAL" >> $GITHUB_OUTPUT
+            echo "contract_high=$HIGH" >> $GITHUB_OUTPUT
+            echo "contract_total=$TOTAL" >> $GITHUB_OUTPUT
+            
+            echo "### 🔐 Contract (Cargo) Audit Results" >> $GITHUB_STEP_SUMMARY
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Critical | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+            echo "| Total | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if (( CRITICAL > 0 )); then
+              echo "❌ **CRITICAL vulnerabilities detected**" >> $GITHUB_STEP_SUMMARY
+              echo "::error::Critical Cargo vulnerabilities: $CRITICAL"
+              exit 1
+            fi
+            if (( HIGH > 0 )); then
+              echo "❌ **HIGH vulnerabilities detected**" >> $GITHUB_STEP_SUMMARY
+              echo "::warning::High Cargo vulnerabilities: $HIGH"
+            fi
+          else
+            echo "contract_critical=0" >> $GITHUB_OUTPUT
+            echo "contract_high=0" >> $GITHUB_OUTPUT
+            echo "contract_total=0" >> $GITHUB_OUTPUT
+          fi
+
       - name: 💬 Comment on PR with audit summary
         if: github.event_name == 'pull_request' && always()
         uses: actions/github-script@v7
@@ -103,7 +146,9 @@ jobs:
             const backendHigh = '${{ steps.backend-audit.outputs.backend_high }}' || '0';
             const frontendCritical = '${{ steps.frontend-audit.outputs.frontend_critical }}' || '0';
             const frontendHigh = '${{ steps.frontend-audit.outputs.frontend_high }}' || '0';
-            const comment = '## 🔐 Security Audit Summary\n\n**Backend:**\n- 🔴 Critical: ' + backendCritical + '\n- 🟠 High: ' + backendHigh + '\n\n**Frontend:**\n- 🔴 Critical: ' + frontendCritical + '\n- 🟠 High: ' + frontendHigh + '\n\nRun locally with: `./scripts/check-audits.sh`';
+            const contractCritical = '${{ steps.contract-audit.outputs.contract_critical }}' || '0';
+            const contractHigh = '${{ steps.contract-audit.outputs.contract_high }}' || '0';
+            const comment = '## 🔐 Security Audit Summary\n\n**Backend (npm):**\n- 🔴 Critical: ' + backendCritical + '\n- 🟠 High: ' + backendHigh + '\n\n**Frontend (npm):**\n- 🔴 Critical: ' + frontendCritical + '\n- 🟠 High: ' + frontendHigh + '\n\n**Contract (Cargo):**\n- 🔴 Critical: ' + contractCritical + '\n- 🟠 High: ' + contractHigh + '\n\nRun locally with: `./scripts/check-audits.sh`';
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
