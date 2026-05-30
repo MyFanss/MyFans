@@ -915,3 +915,7 @@ mod test {
 #[cfg(test)]
 #[path = "tests/unauthorized_tests.rs"]
 mod unauthorized_tests;
+
+#[cfg(test)]
+#[path = "tests/init_admin_tests.rs"]
+mod init_admin_tests;
