@@ -5,6 +5,14 @@ use soroban_sdk::{
 
 const MAX_PAGE_LIMIT: u32 = 100;
 
+/// Storage keys for content likes contract
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKey {
+    /// Admin address
+    Admin,
+}
+
 /// Per-contract error codes for the **content-likes** contract.
 ///
 /// These discriminants are stable and form part of the public client API.
@@ -25,6 +33,22 @@ pub struct ContentLikes;
 
 #[contractimpl]
 impl ContentLikes {
+    /// Initialize the contract with admin address
+    pub fn initialize(env: Env, admin: Address) {
+        admin.require_auth();
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic_with_error!(&env, "already initialized");
+        }
+        env.storage().instance().set(&DataKey::Admin, &admin);
+    }
+
+    /// Get the configured admin address
+    pub fn admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("contract not initialized")
+    }
     /// Like a content item (idempotent)
     ///
     /// # Arguments

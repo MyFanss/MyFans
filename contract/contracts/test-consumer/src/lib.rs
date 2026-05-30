@@ -404,4 +404,142 @@ mod test {
             );
         }
     }
+
+    // ── content-access integration (Issue #XXXX) ────────────────────────────────
+
+    mod content_access_integration {
+        use content_access::{ContentAccess, ContentAccessClient};
+        use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol};
+
+        // Mock token contract for testing
+        #[contract]
+        pub struct MockToken;
+
+        #[contractimpl]
+        impl MockToken {
+            pub fn balance(_env: Env, _id: Address) -> i128 {
+                0
+            }
+
+            pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {
+                // Mock implementation - just succeed
+            }
+        }
+
+        fn deploy_token(env: &Env) -> (Address) {
+            let admin = Address::generate(env);
+            let id = env.register_contract(None, MockToken);
+            id
+        }
+
+        fn deploy_content_access<'a>(
+            env: &'a Env,
+            admin: &Address,
+            token_id: &Address,
+        ) -> ContentAccessClient<'a> {
+            let id = env.register_contract(None, ContentAccess);
+            let client = ContentAccessClient::new(env, &id);
+            client.initialize(admin, token_id);
+            client
+        }
+
+        #[test]
+        fn content_access_basic_flow() {
+            let env = Env::default();
+            env.mock_all_auths();
+            env.ledger().with_mut(|li| {
+                li.sequence_number = 1000;
+                li.min_persistent_entry_ttl = 10_000_000;
+                li.min_temp_entry_ttl = 10_000_000;
+            });
+
+            let token_address = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let content_access = deploy_content_access(&env, &admin, &token_address);
+
+            let buyer = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let content_id = 1u32;
+
+            // Initially no access
+            assert!(!content_access.has_access(&buyer, &creator, content_id));
+
+            // Set price for content
+            content_access.set_content_price(&creator, &content_id, &100);
+
+            // Verify price is set
+            assert_eq!(content_access.get_content_price(&creator, &content_id), Some(100));
+
+            // Buyer unlocks content
+            content_access.unlock_content(&buyer, &creator, content_id, &2000); // expiry far in future
+
+            // Verify access is granted
+            assert!(content_access.has_access(&buyer, &creator, content_id));
+
+            // Verify access via verify_access (should not panic)
+            content_access.verify_access(&buyer, &creator, content_id);
+
+            // Different buyer should not have access
+            let other_buyer = Address::generate(&env);
+            assert!(!content_access.has_access(&other_buyer, &creator, content_id));
+            let result = content_access.try_verify_access(&other_buyer, &creator, content_id);
+            assert_eq!(
+                result,
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    content_access::Error::NotBuyer as u32,
+                )))
+            );
+
+            // Test admin functions
+            let new_admin = Address::generate(&env);
+            content_access.set_admin(&new_admin);
+            assert_eq!(content_access.admin(), new_admin);
+        }
+
+        #[test]
+        fn content_access_expiry_and_repurchase() {
+            let env = Env::default();
+            env.mock_all_auths();
+            env.ledger().with_mut(|li| {
+                li.sequence_number = 1000;
+                li.min_persistent_entry_ttl = 10_000_000;
+                li.min_temp_entry_ttl = 10_000_000;
+            });
+
+            let token_address = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let content_access = deploy_content_access(&env, &admin, &token_address);
+
+            let buyer = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let content_id = 1u32;
+
+            content_access.set_content_price(&creator, &content_id, &50);
+
+            // Purchase with near expiry
+            content_access.unlock_content(&buyer, &creator, content_id, &1005); // expires at ledger 1005
+            assert!(content_access.has_access(&buyer, &creator, content_id));
+
+            // Advance to just before expiry
+            env.ledger().with_mut(|li| li.sequence_number = 1004);
+            assert!(content_access.has_access(&buyer, &creator, content_id));
+
+            // Advance to expiry - should lose access
+            env.ledger().with_mut(|li| li.sequence_number = 1006);
+            assert!(!content_access.has_access(&buyer, &creator, content_id));
+
+            // Verify access should fail with PurchaseExpired
+            let result = content_access.try_verify_access(&buyer, &creator, content_id);
+            assert_eq!(
+                result,
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    content_access::Error::PurchaseExpired as u32,
+                )))
+            );
+
+            // Repurchase with new expiry
+            content_access.unlock_content(&buyer, &creator, content_id, &2000);
+            assert!(content_access.has_access(&buyer, &creator, content_id));
+        }
+    }
 }
