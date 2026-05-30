@@ -115,4 +115,72 @@ describe('LoggerService', () => {
     service.log({ foo: 'bar' });
     expect(mockWinston.info).toHaveBeenCalledWith('{"foo":"bar"}', expect.any(Object));
   });
+
+  it('redacts sensitive fields in object messages', () => {
+    service.log({ password: 'secret123', username: 'alice' }, 'TestCtx');
+    expect(mockWinston.info).toHaveBeenCalledWith(
+      expect.stringContaining('[REDACTED]'),
+      expect.objectContaining({ context: 'TestCtx' }),
+    );
+    // Verify secret is not in the logged message
+    const [loggedMessage] = mockWinston.info.mock.calls[0];
+    expect(loggedMessage).not.toContain('secret123');
+    expect(loggedMessage).toContain('alice');
+  });
+
+  it('redacts sensitive fields in error messages with objects', () => {
+    service.error({ authorization: 'Bearer token', action: 'login' }, undefined, 'TestCtx');
+    const [loggedMessage] = mockWinston.error.mock.calls[0];
+    expect(loggedMessage).toContain('[REDACTED]');
+    expect(loggedMessage).not.toContain('Bearer token');
+    expect(loggedMessage).toContain('login');
+  });
+
+  it('redacts sensitive fields in warn messages', () => {
+    service.warn({ api_key: 'key-123', status: 'warning' }, 'TestCtx');
+    const [loggedMessage] = mockWinston.warn.mock.calls[0];
+    expect(loggedMessage).toContain('[REDACTED]');
+    expect(loggedMessage).not.toContain('key-123');
+  });
+
+  it('redacts sensitive fields in debug messages', () => {
+    service.debug({ email: 'user@example.com', userId: '123' }, 'TestCtx');
+    const [loggedMessage] = mockWinston.debug.mock.calls[0];
+    expect(loggedMessage).toContain('[REDACTED]');
+    expect(loggedMessage).not.toContain('user@example.com');
+  });
+
+  it('redacts nested sensitive data in objects', () => {
+    service.log(
+      { user: { email: 'secret@example.com', name: 'Bob', wallet_address: 'GAB123' } },
+      'TestCtx',
+    );
+    const [loggedMessage] = mockWinston.info.mock.calls[0];
+    expect(loggedMessage).toContain('[REDACTED]');
+    expect(loggedMessage).not.toContain('secret@example.com');
+    expect(loggedMessage).not.toContain('GAB123');
+    expect(loggedMessage).toContain('Bob');
+  });
+
+  it('does not redact string messages (trusted by caller)', () => {
+    const message = 'User logged in successfully';
+    service.log(message, 'TestCtx');
+    expect(mockWinston.info).toHaveBeenCalledWith(message, expect.any(Object));
+  });
+
+  it('handles arrays of objects with sensitive fields', () => {
+    service.log(
+      [
+        { password: 'p1', name: 'a' },
+        { password: 'p2', name: 'b' },
+      ],
+      'TestCtx',
+    );
+    const [loggedMessage] = mockWinston.info.mock.calls[0];
+    expect(loggedMessage).toContain('[REDACTED]');
+    expect(loggedMessage).not.toContain('p1');
+    expect(loggedMessage).not.toContain('p2');
+    expect(loggedMessage).toContain('a');
+    expect(loggedMessage).toContain('b');
+  });
 });

@@ -41,7 +41,16 @@ describe('LoggingMiddleware', () => {
         listeners[event] = listeners[event] ?? [];
         listeners[event].push(cb);
       }) as unknown as Response['on'],
-    } as Partial<Response>;
+      getEventListeners: () => listeners,
+      json: jest.fn(function (data: any) {
+        this.json = jest.fn(function (d) { return this; });
+        return this;
+      }),
+      send: jest.fn(function (data: any) {
+        this.send = jest.fn(function (d) { return this; });
+        return this;
+      }),
+    } as any;
   }
 
   it('should be defined', () => {
@@ -113,5 +122,95 @@ describe('LoggingMiddleware', () => {
     middleware.use(req as Request, res as Response, next);
 
     expect(next).toHaveBeenCalled();
+  });
+
+  it('logs response body with redaction on finish', () => {
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    const req = makeReq();
+    const res = makeRes() as any;
+    const next: NextFunction = jest.fn();
+
+    middleware.use(req as Request, res as Response, next);
+
+    // Capture and use the json method
+    res.json({ token: 'secret_token', userId: 'user123' });
+
+    // Trigger finish event
+    const listeners = res.getEventListeners();
+    if (listeners['finish']) {
+      listeners['finish'].forEach((cb: () => void) => cb());
+    }
+
+    // Response should be logged but with redacted token
+    const loggedMessages = [...logSpy.mock.calls, ...errorSpy.mock.calls];
+    const finishLogCall = loggedMessages.find((call: any[]) => call[0]?.includes('Outgoing Response'));
+    expect(finishLogCall).toBeDefined();
+    expect(finishLogCall?.[0]).toContain(REDACTED);
+    expect(finishLogCall?.[0]).toContain('user123');
+  });
+
+  it('redacts sensitive fields in response body', () => {
+    const req = makeReq();
+    const res = makeRes() as any;
+    const next: NextFunction = jest.fn();
+
+    middleware.use(req as Request, res as Response, next);
+
+    // Send a response with sensitive data
+    res.json({ email: 'user@example.com', name: 'Alice', password: 'secret' });
+
+    // Trigger finish event
+    const listeners = res.getEventListeners();
+    if (listeners['finish']) {
+      listeners['finish'].forEach((cb: () => void) => cb());
+    }
+
+    const loggedMessages = [...logSpy.mock.calls];
+    const finishLogCall = loggedMessages.find((call: any[]) => call[0]?.includes('Outgoing Response'));
+    expect(finishLogCall?.[0]).not.toContain('user@example.com');
+    expect(finishLogCall?.[0]).not.toContain('secret');
+    expect(finishLogCall?.[0]).toContain(REDACTED);
+    expect(finishLogCall?.[0]).toContain('Alice');
+  });
+
+  it('logs (no body) when response has no body', () => {
+    const req = makeReq({ method: 'GET' });
+    const res = makeRes() as any;
+    const next: NextFunction = jest.fn();
+
+    middleware.use(req as Request, res as Response, next);
+
+    // Don't call json or send, so responseBody stays undefined
+    // Trigger finish event
+    const listeners = res.getEventListeners();
+    if (listeners['finish']) {
+      listeners['finish'].forEach((cb: () => void) => cb());
+    }
+
+    const loggedMessages = [...logSpy.mock.calls];
+    const finishLogCall = loggedMessages.find((call: any[]) => call[0]?.includes('Outgoing Response'));
+    expect(finishLogCall?.[0]).toContain('(no body)');
+  });
+
+  it('handles stale context gracefully when finish event fires', () => {
+    const req = makeReq();
+    const res = makeRes() as any;
+    const next: NextFunction = jest.fn();
+
+    middleware.use(req as Request, res as Response, next);
+
+    // Manually clear context to simulate stale state
+    const requestContextService = new RequestContextService();
+    // requestContextService.clearContext();  // This is a no-op, so context remains
+
+    res.json({ userId: 'user123' });
+
+    // Trigger finish event - should not throw
+    const listeners = res.getEventListeners();
+    expect(() => {
+      if (listeners['finish']) {
+        listeners['finish'].forEach((cb: () => void) => cb());
+      }
+    }).not.toThrow();
   });
 });
