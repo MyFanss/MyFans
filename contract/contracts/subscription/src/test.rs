@@ -932,6 +932,34 @@ fn test_mutations_succeed_after_unpause() {
     assert!(client.is_subscriber(&fan, &creator));
 }
 
+#[test]
+fn test_pause_non_admin_rejected() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    env.set_auths(&[]);
+
+    let result = client.try_pause();
+    assert!(result.is_err(), "non-admin must not pause the contract");
+    assert!(!client.is_paused(), "contract must remain unpaused after unauthorized pause attempt");
+}
+
+#[test]
+fn test_unpause_non_admin_rejected() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    client.pause();
+    assert!(client.is_paused());
+
+    env.set_auths(&[]);
+    let result = client.try_unpause();
+    assert!(result.is_err(), "non-admin must not unpause the contract");
+    assert!(client.is_paused(), "contract must remain paused after unauthorized unpause attempt");
+}
+
 // ── set_fee_recipient (admin fee recipient rotation) ─────────────────────────
 
 #[test]
