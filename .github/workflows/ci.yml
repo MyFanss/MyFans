@@ -1,3 +1,15 @@
+# Jobs run in parallel by default (no `needs:` between backend/frontend/contract).
+# Only db-backup-drill and wasm-size have explicit sequencing requirements.
+#
+# Parallelism layout:
+#   backend  ──────────────────────────────────────────────────────┐
+#   backend-migrations ──────────────────────────────────────────┐ │
+#   frontend ──────────────────────────────────────────────────┐ │ │
+#   contract ──────────────────────────────────────────────┐   │ │ │
+#                                                           │   │ │ │
+#   wasm-size (needs: contract) ──────────────────────────►│   │ │ │
+#   db-backup-drill (needs: backend-migrations) ──────────►│   │ │ │
+#   ci-gate (needs: all) ─────────────────────────────────►└───┘─┘─┘
 name: CI
 
 on:
@@ -394,3 +406,24 @@ jobs:
           done < <(find "$WASM_DIR" -maxdepth 1 -name '*.wasm' -print0 | sort -z)
           TOTAL_KIB=$(echo "scale=1; $TOTAL / 1024" | bc)
           echo "| **TOTAL** | **$TOTAL** | **$TOTAL_KIB** |" >> $GITHUB_STEP_SUMMARY
+
+  # Single required status check for branch protection.
+  # All parallel jobs must pass before a PR can merge.
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - backend
+      - backend-migrations
+      - frontend
+      - contract
+      - wasm-size
+      - db-backup-drill
+    steps:
+      - name: Check all jobs passed
+        run: |
+          results='${{ toJSON(needs) }}'
+          echo "$results" | grep -q '"result": "failure"' && exit 1
+          echo "$results" | grep -q '"result": "cancelled"' && exit 1
+          echo "All parallel jobs passed."
