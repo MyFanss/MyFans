@@ -51,6 +51,7 @@ jobs:
             content_likes
             creator_registry
             earnings
+            treasury
           )
           MISSING=0
           for pkg in "${EXPECTED[@]}"; do
