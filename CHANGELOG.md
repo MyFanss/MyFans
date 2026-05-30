@@ -145,6 +145,7 @@
 * add Soroban RPC health check endpoints ([b5543e2](https://github.com/MyFanss/MyFans/commit/b5543e25e660c934125de10fc3acf020515d710c))
 * add startup probes for DB and RPC ([dc66ea1](https://github.com/MyFanss/MyFans/commit/dc66ea1e36660f0301fcbdc822faa9288a19bcc4))
 * Add Stellar SDK integration and E2E tests ([7c1d86d](https://github.com/MyFanss/MyFans/commit/7c1d86dbbcf902e40bd58914ef1548eb71fe551f))
+* add structured treasury error codes and tests ([#905](https://github.com/MyFanss/MyFans/issues/905)) ([2722d10](https://github.com/MyFanss/MyFans/commit/2722d106bd63761ef6174c4b481265db1e157ec7))
 * add subscribe confirmation UI with wallet signing and tx polling ([df0126d](https://github.com/MyFanss/MyFans/commit/df0126d75df4045d76775ed084b583745506e145))
 * add subscription fee handling ([#62](https://github.com/MyFanss/MyFans/issues/62)) ([9c1b2ee](https://github.com/MyFanss/MyFans/commit/9c1b2ee2cd9c67505e2a46a00f1ea7a21a1aa77e))
 * add subscription history export spec requirements ([b6a0e43](https://github.com/MyFanss/MyFans/commit/b6a0e437c60ea761415b9a8937a62d17f5e3fc85))
