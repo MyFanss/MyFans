@@ -1,0 +1,11 @@
+# Audit Exceptions - Contract
+
+# Add documented exceptions below with format:
+# RUSTSEC-YYYY-ZZZZ: Reason for exception (deadline if applicable)
+#
+# Example:
+# RUSTSEC-2024-0001: False positive, not applicable to our use case
+# RUSTSEC-2024-0002: Waiting for upstream fix, ETA 2024-06-01
+
+# Currently no exceptions - all high/critical vulnerabilities must be fixed before merge
+

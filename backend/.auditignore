@@ -1,0 +1,11 @@
+# Audit Exceptions - Backend
+
+# Add documented exceptions below with format:
+# NPM-ID: Reason for exception (deadline if applicable)
+#
+# Example:
+# NPM-1234: False positive, not applicable to our use case
+# NPM-5678: Waiting for upstream fix, ETA 2024-06-01
+
+# Currently no exceptions - all high/critical vulnerabilities must be fixed before merge
+

@@ -24,9 +24,18 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: backend/package-lock.json
-      - run: npm ci
+
+      - name: Check package-lock is up to date
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          git diff --exit-code package-lock.json || {
+            echo "::error::package-lock.json is out of sync with package.json. Run 'npm install' locally and commit the updated lockfile."
+            exit 1
+          }
         working-directory: backend
-      - run: npm run lint
+
+      - name: Install dependencies
+        run: npm ci
         working-directory: backend
 
   test:
@@ -89,4 +98,30 @@ jobs:
       - run: npm ci
         working-directory: backend
       - run: npm run build
+        working-directory: backend
+
+      - name: 🔐 Run npm audit
+        id: npm-audit
+        continue-on-error: true
+        run: |
+          AUDIT_JSON=$(npm audit --json 2>/dev/null || echo '{"metadata":{"vulnerabilities":{"critical":0,"high":0,"moderate":0}}}')
+          CRITICAL=$(echo "$AUDIT_JSON" | jq '.metadata.vulnerabilities.critical // 0')
+          HIGH=$(echo "$AUDIT_JSON" | jq '.metadata.vulnerabilities.high // 0')
+          MODERATE=$(echo "$AUDIT_JSON" | jq '.metadata.vulnerabilities.moderate // 0')
+          
+          echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+          echo "high=$HIGH" >> $GITHUB_OUTPUT
+          echo "moderate=$MODERATE" >> $GITHUB_OUTPUT
+          
+          echo "### 📦 Backend npm Audit" >> $GITHUB_STEP_SUMMARY
+          echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Critical | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+          echo "| Moderate | $MODERATE |" >> $GITHUB_STEP_SUMMARY
+          
+          if (( CRITICAL > 0 || HIGH > 0 )); then
+            echo "::error::High/Critical vulnerabilities detected - review and fix before merging"
+            exit 1
+          fi
         working-directory: backend

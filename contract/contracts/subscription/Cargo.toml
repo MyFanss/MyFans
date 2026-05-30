@@ -35,3 +35,4 @@ content_access = { package = "content-access", path = "../content-access" }
 creator_registry = { package = "creator-registry", path = "../creator-registry" }
 earnings = { package = "earnings", path = "../earnings" }
 myfans_lib = { package = "myfans-lib", path = "../myfans-lib", features = ["testutils"] }
+proptest = { workspace = true }
