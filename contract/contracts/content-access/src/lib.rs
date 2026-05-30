@@ -799,3 +799,7 @@ mod test {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "tests/unauthorized_tests.rs"]
+mod unauthorized_tests;
