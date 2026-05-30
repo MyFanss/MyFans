@@ -1,43 +1,13 @@
 #![no_std]
+pub mod errors;
 
-use soroban_sdk::{
-    contract, contracterror, contractimpl, panic_with_error, token, Address, Env, Symbol,
-};
+pub use errors::TreasuryError as Error;
+use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, Env, Symbol};
 
 const ADMIN: &str = "ADMIN";
 const TOKEN: &str = "TOKEN";
 const PAUSED: &str = "PAUSED";
 const MIN_BALANCE: &str = "MIN_BALANCE";
-
-/// Per-contract error codes for the **treasury** contract.
-///
-/// These discriminants are stable and form part of the public client API.
-/// Do **not** renumber existing variants; add new ones at the end.
-///
-/// | Code | Variant |
-/// |------|---------|
-/// | 1 | `NegativeMinBalance` |
-/// | 2 | `Paused` |
-/// | 3 | `InsufficientBalance` |
-/// | 4 | `MinBalanceViolation` |
-/// | 5 | `NotInitialized` |
-/// | 6 | `InvalidAmount` |
-#[contracterror]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Error {
-    /// Code 1 – min_balance must be ≥ 0.
-    NegativeMinBalance = 1,
-    /// Code 2 – contract is paused; deposits and withdrawals are rejected.
-    Paused = 2,
-    /// Code 3 – contract balance is less than the requested withdrawal amount.
-    InsufficientBalance = 3,
-    /// Code 4 – withdrawal would leave the balance below the configured minimum.
-    MinBalanceViolation = 4,
-    /// Code 5 – contract was never initialized.
-    NotInitialized = 5,
-    /// Code 6 – deposit or withdrawal amount must be strictly positive.
-    InvalidAmount = 6,
-}
 
 #[contract]
 pub struct Treasury;
@@ -53,7 +23,7 @@ impl Treasury {
         admin.require_auth();
 
         if env.storage().instance().has(&ADMIN) {
-            panic_with_error!(&env, Error::NotInitialized);
+            panic_with_error!(&env, Error::AlreadyInitialized);
         }
 
         env.storage().instance().set(&ADMIN, &admin);
@@ -73,7 +43,7 @@ impl Treasury {
     /// both panic with [`Error::Paused`].
     /// Requires authorization from the admin.
     pub fn set_paused(env: Env, paused: bool) {
-        let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        let admin = Self::get_admin(&env);
         admin.require_auth();
         env.storage().instance().set(&PAUSED, &paused);
 
@@ -86,7 +56,7 @@ impl Treasury {
     /// `amount` must be ≥ 0; negative values panic with [`Error::NegativeMinBalance`].
     /// Requires authorization from the admin.
     pub fn set_min_balance(env: Env, amount: i128) {
-        let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        let admin = Self::get_admin(&env);
         admin.require_auth();
         if amount < 0 {
             panic_with_error!(&env, Error::NegativeMinBalance);
@@ -200,3 +170,7 @@ impl Treasury {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+#[path = "tests/error_tests.rs"]
+mod error_tests;
