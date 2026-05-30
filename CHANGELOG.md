@@ -1,4 +1,4 @@
-#  (2026-05-28)
+#  (2026-05-30)
 
 
 ### Bug Fixes
@@ -33,11 +33,14 @@
 * **backend:** restore UserProfileDto and PaginatedUsersDto exports (closes [#588](https://github.com/MyFanss/MyFans/issues/588)) ([9f1b4c8](https://github.com/MyFanss/MyFans/commit/9f1b4c800f821be631362a90d752844cbe63ad1c))
 * **backend:** Swagger pagination for users list uses concrete response DTO ([31502fd](https://github.com/MyFanss/MyFans/commit/31502fd67a268b6c4f54062cb9f1326092bd25cf))
 * **backend:** use SDK discriminated unions for simulate responses in chain reader ([69f7268](https://github.com/MyFanss/MyFans/commit/69f7268a10bd5a57742cb703b14c060107e657d2))
+* **ci:** add wasm build verification step for content-likes in CI deploy script ([#928](https://github.com/MyFanss/MyFans/issues/928)) ([936add6](https://github.com/MyFanss/MyFans/commit/936add66cb0accdb7c763db9567d898251ade091))
 * **ci:** fallback to npm install when package-lock.json is missing ([ffd2546](https://github.com/MyFanss/MyFans/commit/ffd2546ab52b87499680b3d821a59e42a08ee5c8))
 * **ci:** resolve backend build/test regressions on subscription service ([7694f21](https://github.com/MyFanss/MyFans/commit/7694f217534a2e487c11dba3855c0c957bc1171a))
 * **ci:** switch frontend to npm ci and sync backend lockfile overrides ([116eb10](https://github.com/MyFanss/MyFans/commit/116eb1073a2101c5368d492bd4ed8a0f97ab1953))
 * clean up corrupted dashboard files ([42f3b4f](https://github.com/MyFanss/MyFans/commit/42f3b4fe02535a1cacec39c32be401705249b5b3))
 * **content-access:** add expired/wrong-buyer/wrong-content_id unlock tests (ISSUES.md [#4](https://github.com/MyFanss/MyFans/issues/4)) ([359a2d1](https://github.com/MyFanss/MyFans/commit/359a2d19100d8fd8247c728d76b455bcd9b6b97b))
+* **content-likes:** add integration test via test-consumer ([#927](https://github.com/MyFanss/MyFans/issues/927)) ([d9e286e](https://github.com/MyFanss/MyFans/commit/d9e286eef6f01106f15784b0d6634a7478428768))
+* **content-likes:** validate and fix error codes and panic messages ([#925](https://github.com/MyFanss/MyFans/issues/925)) ([abfddb9](https://github.com/MyFanss/MyFans/commit/abfddb9ece85df8d8b99c3445fcdcfd69da1e664))
 * **contract:** add registration_ledger helper for storage key collision audit (closes [#619](https://github.com/MyFanss/MyFans/issues/619)) ([bc4c8b5](https://github.com/MyFanss/MyFans/commit/bc4c8b5d17ac2bcfb7a914cc54241d361b4d391a))
 * **contract:** standardize transfer event schema for indexer compatibility ([#278](https://github.com/MyFanss/MyFans/issues/278)) ([28b36c3](https://github.com/MyFanss/MyFans/commit/28b36c3d45971dea3ce9a67c3cb69545ac080d90))
 * **contract:** virtual workspace root for release profiles ([2f022ec](https://github.com/MyFanss/MyFans/commit/2f022ecd0d8bc1073f06589413ced69a334ad938))
