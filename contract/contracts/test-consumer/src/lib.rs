@@ -25,6 +25,9 @@ impl TestConsumer {
 }
 
 #[cfg(test)]
+mod treasury_integration_test;
+
+#[cfg(test)]
 mod test {
     use super::*;
     use soroban_sdk::Env;
