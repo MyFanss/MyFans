@@ -27,6 +27,11 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Cache Cargo registry and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract
+
       - name: Check formatting
         run: cargo fmt --all --check --manifest-path Cargo.toml
         working-directory: contract
