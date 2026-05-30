@@ -253,14 +253,32 @@ mod test {
         /// published in `myfans_lib::error_codes::subscription`.
         #[test]
         fn subscription_error_codes_match_stable_constants() {
-            assert_eq!(SubError::AlreadyInitialized as u32, sub_err::ALREADY_INITIALIZED);
+            assert_eq!(
+                SubError::AlreadyInitialized as u32,
+                sub_err::ALREADY_INITIALIZED
+            );
             assert_eq!(SubError::Paused as u32, sub_err::PAUSED);
-            assert_eq!(SubError::SubscriptionNotFound as u32, sub_err::SUBSCRIPTION_NOT_FOUND);
-            assert_eq!(SubError::SubscriptionExpired as u32, sub_err::SUBSCRIPTION_EXPIRED);
-            assert_eq!(SubError::AdminNotInitialized as u32, sub_err::ADMIN_NOT_INITIALIZED);
-            assert_eq!(SubError::InvalidFeeRecipient as u32, sub_err::INVALID_FEE_RECIPIENT);
+            assert_eq!(
+                SubError::SubscriptionNotFound as u32,
+                sub_err::SUBSCRIPTION_NOT_FOUND
+            );
+            assert_eq!(
+                SubError::SubscriptionExpired as u32,
+                sub_err::SUBSCRIPTION_EXPIRED
+            );
+            assert_eq!(
+                SubError::AdminNotInitialized as u32,
+                sub_err::ADMIN_NOT_INITIALIZED
+            );
+            assert_eq!(
+                SubError::InvalidFeeRecipient as u32,
+                sub_err::INVALID_FEE_RECIPIENT
+            );
             assert_eq!(SubError::InvalidFeeBps as u32, sub_err::INVALID_FEE_BPS);
-            assert_eq!(SubError::InvalidTokenAddress as u32, sub_err::INVALID_TOKEN_ADDRESS);
+            assert_eq!(
+                SubError::InvalidTokenAddress as u32,
+                sub_err::INVALID_TOKEN_ADDRESS
+            );
             assert_eq!(SubError::InvalidPrice as u32, sub_err::INVALID_PRICE);
             assert_eq!(SubError::PlanNotFound as u32, sub_err::PLAN_NOT_FOUND);
         }
@@ -292,7 +310,10 @@ mod test {
             assert_eq!(token.balance(&fan), 4_000i128);
             assert_eq!(token.balance(&creator), 950i128);
             assert_eq!(token.balance(&fee_recipient), 50i128);
-            assert!(sub.is_subscriber(&fan, &creator), "fan must be active subscriber");
+            assert!(
+                sub.is_subscriber(&fan, &creator),
+                "fan must be active subscriber"
+            );
         }
 
         /// `subscribe` with a non-existent plan returns `Error::PlanNotFound` (code 10).
@@ -313,7 +334,9 @@ mod test {
             let result = sub.try_subscribe(&fan, &9999u32, &token.address);
             assert_eq!(
                 result,
-                Err(Ok(SorobanError::from_contract_error(sub_err::PLAN_NOT_FOUND))),
+                Err(Ok(SorobanError::from_contract_error(
+                    sub_err::PLAN_NOT_FOUND
+                ))),
                 "subscribing to non-existent plan must return PlanNotFound (code 10)"
             );
         }
@@ -370,12 +393,153 @@ mod test {
             assert!(sub.is_subscriber(&fan, &creator));
 
             sub.cancel(&fan, &creator, &0u32);
-            assert!(!sub.is_subscriber(&fan, &creator), "cancelled sub must be inactive");
+            assert!(
+                !sub.is_subscriber(&fan, &creator),
+                "cancelled sub must be inactive"
+            );
             assert_eq!(
                 sub.get_expiry_unix(&fan, &creator),
                 (0u64, 0u64),
                 "expiry must be zeroed after cancel"
             );
+        }
+    }
+
+    // ── content-access integration (Issue #XXXX) ────────────────────────────────
+
+    mod content_access_integration {
+        use content_access::{ContentAccess, ContentAccessClient};
+        use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol};
+
+        // Mock token contract for testing
+        #[contract]
+        pub struct MockToken;
+
+        #[contractimpl]
+        impl MockToken {
+            pub fn balance(_env: Env, _id: Address) -> i128 {
+                0
+            }
+
+            pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {
+                // Mock implementation - just succeed
+            }
+        }
+
+        fn deploy_token(env: &Env) -> (Address) {
+            let admin = Address::generate(env);
+            let id = env.register_contract(None, MockToken);
+            id
+        }
+
+        fn deploy_content_access<'a>(
+            env: &'a Env,
+            admin: &Address,
+            token_id: &Address,
+        ) -> ContentAccessClient<'a> {
+            let id = env.register_contract(None, ContentAccess);
+            let client = ContentAccessClient::new(env, &id);
+            client.initialize(admin, token_id);
+            client
+        }
+
+        #[test]
+        fn content_access_basic_flow() {
+            let env = Env::default();
+            env.mock_all_auths();
+            env.ledger().with_mut(|li| {
+                li.sequence_number = 1000;
+                li.min_persistent_entry_ttl = 10_000_000;
+                li.min_temp_entry_ttl = 10_000_000;
+            });
+
+            let token_address = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let content_access = deploy_content_access(&env, &admin, &token_address);
+
+            let buyer = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let content_id = 1u32;
+
+            // Initially no access
+            assert!(!content_access.has_access(&buyer, &creator, content_id));
+
+            // Set price for content
+            content_access.set_content_price(&creator, &content_id, &100);
+
+            // Verify price is set
+            assert_eq!(content_access.get_content_price(&creator, &content_id), Some(100));
+
+            // Buyer unlocks content
+            content_access.unlock_content(&buyer, &creator, content_id, &2000); // expiry far in future
+
+            // Verify access is granted
+            assert!(content_access.has_access(&buyer, &creator, content_id));
+
+            // Verify access via verify_access (should not panic)
+            content_access.verify_access(&buyer, &creator, content_id);
+
+            // Different buyer should not have access
+            let other_buyer = Address::generate(&env);
+            assert!(!content_access.has_access(&other_buyer, &creator, content_id));
+            let result = content_access.try_verify_access(&other_buyer, &creator, content_id);
+            assert_eq!(
+                result,
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    content_access::Error::NotBuyer as u32,
+                )))
+            );
+
+            // Test admin functions
+            let new_admin = Address::generate(&env);
+            content_access.set_admin(&new_admin);
+            assert_eq!(content_access.admin(), new_admin);
+        }
+
+        #[test]
+        fn content_access_expiry_and_repurchase() {
+            let env = Env::default();
+            env.mock_all_auths();
+            env.ledger().with_mut(|li| {
+                li.sequence_number = 1000;
+                li.min_persistent_entry_ttl = 10_000_000;
+                li.min_temp_entry_ttl = 10_000_000;
+            });
+
+            let token_address = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let content_access = deploy_content_access(&env, &admin, &token_address);
+
+            let buyer = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let content_id = 1u32;
+
+            content_access.set_content_price(&creator, &content_id, &50);
+
+            // Purchase with near expiry
+            content_access.unlock_content(&buyer, &creator, content_id, &1005); // expires at ledger 1005
+            assert!(content_access.has_access(&buyer, &creator, content_id));
+
+            // Advance to just before expiry
+            env.ledger().with_mut(|li| li.sequence_number = 1004);
+            assert!(content_access.has_access(&buyer, &creator, content_id));
+
+            // Advance to expiry - should lose access
+            env.ledger().with_mut(|li| li.sequence_number = 1006);
+            assert!(!content_access.has_access(&buyer, &creator, content_id));
+
+            // Verify access should fail with PurchaseExpired
+            let result = content_access.try_verify_access(&buyer, &creator, content_id);
+            assert_eq!(
+                result,
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    content_access::Error::PurchaseExpired as u32,
+                )))
+            );
+
+            // Repurchase with new expiry
+            content_access.unlock_content(&buyer, &creator, content_id, &2000);
+            assert!(content_access.has_access(&buyer, &creator, content_id));
         }
     }
 }

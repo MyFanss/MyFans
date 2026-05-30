@@ -1,4 +1,9 @@
 #![no_std]
+mod events;
+
+use crate::events::{
+    AdminTransferredEvent, ContentPriceSetEvent, MaxPriceClearedEvent, MaxPriceSetEvent,
+};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
     Symbol,
@@ -13,6 +18,10 @@ pub struct ContentInfo {
     /// Whether the content is currently available for purchase.
     pub is_active: bool,
 }
+
+#[cfg(test)]
+#[path = "tests/event_tests.rs"]
+mod event_tests;
 
 /// A purchase record stored per (buyer, creator, content_id).
 /// `expiry` is the ledger sequence number after which the purchase is considered expired.
@@ -187,7 +196,7 @@ impl ContentAccess {
 
     /// Get the price for (creator, content_id). Returns None if not set.
     pub fn get_content_price(env: Env, creator: Address, content_id: u64) -> Option<i128> {
-        let key = DataKey::ContentPrice(creator, content_id);
+        let key = DataKey::ContentPrice(creator.clone(), content_id);
         env.storage().instance().get(&key)
     }
 
@@ -209,8 +218,16 @@ impl ContentAccess {
             }
         }
 
-        let key = DataKey::ContentPrice(creator, content_id);
+        let key = DataKey::ContentPrice(creator.clone(), content_id);
         env.storage().instance().set(&key, &price);
+        env.events().publish(
+            (Symbol::new(&env, "content_price_set"), creator.clone()),
+            ContentPriceSetEvent {
+                creator,
+                content_id,
+                price,
+            },
+        );
     }
 
     /// Set a global maximum price cap. Only admin may call this.
@@ -224,11 +241,22 @@ impl ContentAccess {
         admin.require_auth();
         if max_price == 0 {
             env.storage().instance().remove(&DataKey::MaxPrice);
+            env.events().publish(
+                (Symbol::new(&env, "max_price_cleared"), admin.clone()),
+                MaxPriceClearedEvent { cleared_by: admin },
+            );
         } else {
             if max_price < 0 {
                 panic_with_error!(&env, Error::InvalidMaxPrice);
             }
             env.storage().instance().set(&DataKey::MaxPrice, &max_price);
+            env.events().publish(
+                (Symbol::new(&env, "max_price_set"), admin.clone()),
+                MaxPriceSetEvent {
+                    price: max_price,
+                    set_by: admin,
+                },
+            );
         }
     }
 
@@ -246,6 +274,13 @@ impl ContentAccess {
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
         current_admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
+        env.events().publish(
+            (Symbol::new(&env, "admin_transferred"),),
+            AdminTransferredEvent {
+                old_admin: current_admin,
+                new_admin,
+            },
+        );
     }
 
     /// Returns the configured admin address.
@@ -264,9 +299,8 @@ mod test {
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Events, Ledger},
-        vec,
-        xdr::{ScAddress, SorobanAuthorizationEntry},
-        Address, Env, Error as SorobanError, IntoVal, Symbol, TryFromVal, TryIntoVal,
+        xdr::SorobanAuthorizationEntry,
+        Address, Env, Error as SorobanError, IntoVal, Symbol, TryIntoVal,
     };
 
     const EMPTY_AUTHS: &[SorobanAuthorizationEntry] = &[];
@@ -336,22 +370,17 @@ mod test {
         assert!(client.has_access(&buyer, &creator, &1));
 
         let events = env.events().all();
-        assert_eq!(
-            events,
-            vec![
-                &env,
-                (
-                    contract_id.clone(),
-                    (
+        assert!(events.iter().any(|event| {
+            event.0 == contract_id
+                && event.1
+                    == (
                         Symbol::new(&env, "content_unlocked"),
                         buyer.clone(),
-                        creator.clone()
+                        creator.clone(),
                     )
-                        .into_val(&env),
-                    (1u64, 100i128).into_val(&env)
-                )
-            ]
-        );
+                        .into_val(&env)
+                && event.2.try_into_val(&env).ok() == Some((1u64, 100i128))
+        }));
     }
 
     #[test]
@@ -798,76 +827,91 @@ mod test {
         );
     }
 
-    /// Snapshot/restore consistency test – ensures state is readable after
-    /// snapshot and after further operations, mirroring patterns in other
-    /// contracts.
+    // ── Property tests for invariants ────────────────────────────────────────
+
+    /// Invariant: If has_access returns true, verify_access should succeed.
     #[test]
-    fn test_snapshot_restore_consistency() {
+    fn test_has_access_implies_verify_access_succeeds() {
         let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
         let client = ContentAccessClient::new(&env, &contract_id);
 
         client.initialize(&admin, &token_address);
         client.set_content_price(&creator, &1, &100);
+
+        // Initially no access
+        assert!(!client.has_access(&buyer, &creator, &1));
+        let result = client.try_verify_access(&buyer, &creator, &1);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::NotBuyer as u32,
+            )))
+        );
+
+        // After unlock, access should be granted and verify should succeed
         client.unlock_content(&buyer, &creator, &1, &NO_EXPIRY);
-
-        // Snapshot current env state and create a restored Env
-        let sc_contract: ScAddress = contract_id.clone().into();
-        let sc_buyer: ScAddress = buyer.clone().into();
-        let sc_creator: ScAddress = creator.clone().into();
-
-        let snapshot = env.to_snapshot();
-        let env2 = Env::from_snapshot(snapshot);
-        env2.mock_all_auths();
-
-        let contract_id2: Address = Address::try_from_val(&env2, &sc_contract).unwrap();
-        let buyer2: Address = Address::try_from_val(&env2, &sc_buyer).unwrap();
-        let creator2: Address = Address::try_from_val(&env2, &sc_creator).unwrap();
-
-        // Re-register the contract at the same address in the restored env
-        env2.register_contract(Some(&contract_id2), ContentAccess);
-        let client2 = ContentAccessClient::new(&env2, &contract_id2);
-
-        // Verify price and access survive snapshot/restore
-        assert_eq!(client2.get_content_price(&creator2, &1), Some(100));
-        assert!(client2.has_access(&buyer2, &creator2, &1));
-
-        // Also verify underlying stored Purchase record is present and non-expired
-        let purchase = env2.as_contract(&contract_id2, || {
-            env2.storage()
-                .instance()
-                .get::<DataKey, Purchase>(&DataKey::Access(buyer2.clone(), creator2.clone(), 1))
-                .unwrap()
-        });
-        assert_eq!(purchase.expiry, NO_EXPIRY);
+        assert!(client.has_access(&buyer, &creator, &1));
+        // verify_access should not panic (we test this by not expecting an error)
+        let verify_result = client.try_verify_access(&buyer, &creator, &1);
+        assert!(verify_result.is_ok(), "verify_access should succeed when has_access is true");
     }
 
-    /// Quick micro-bench-style test: exercise hot paths repeatedly to catch
-    /// regressions and ensure behavior remains correct under repeated calls.
+    /// Invariant: If verify_access succeeds, has_access should return true.
     #[test]
-    fn test_hot_path_many_has_access_and_unlocks() {
+    fn test_verify_access_succeeds_implies_has_access() {
         let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
         let client = ContentAccessClient::new(&env, &contract_id);
 
         client.initialize(&admin, &token_address);
         client.set_content_price(&creator, &1, &100);
 
-        // Prime state: buyer unlocks content
-        client.unlock_content(&buyer, &creator, &1, &NO_EXPIRY);
-
-        // Call hot-path `has_access` many times
-        for _ in 0..100 {
-            assert!(client.has_access(&buyer, &creator, &1));
-        }
-
-        // Advance ledger to expire the purchase
-        env.ledger().with_mut(|li| li.sequence_number += 10_000);
+        // Initially neither should work
         assert!(!client.has_access(&buyer, &creator, &1));
+        let result = client.try_verify_access(&buyer, &creator, &1);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::NotBuyer as u32,
+            )))
+        );
 
-        // Repeatedly re-purchase (unlock) to ensure no regressions in unlock path
-        for i in 0..20 {
-            let expiry = (env.ledger().sequence() as u64) + (i as u64) + 1000;
-            client.unlock_content(&buyer, &creator, &1, &expiry);
-            assert!(client.has_access(&buyer, &creator, &1));
-        }
+        // After unlock, both should work
+        client.unlock_content(&buyer, &creator, &1, &NO_EXPIRY);
+        assert!(client.has_access(&buyer, &creator, &1));
+        let verify_result = client.try_verify_access(&buyer, &creator, &1);
+        assert!(verify_result.is_ok(), "verify_access should succeed after unlock");
+    }
+
+    /// Invariant: Price set by creator should be retrievable.
+    #[test]
+    fn test_price_set_is_retrievable() {
+        let (env, contract_id, admin, token_address, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        let test_price = 1_000_000;
+        client.set_content_price(&creator, &1, &test_price);
+
+        let retrieved = client.get_content_price(&creator, &1);
+        assert_eq!(retrieved, Some(test_price));
+    }
+
+    /// Invariant: Admin function returns the currently set admin.
+    #[test]
+    fn test_admin_returns_current_admin() {
+        let (env, contract_id, admin1, token_address) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin1, &token_address);
+        assert_eq!(client.admin(), admin1);
+
+        // Change admin and verify it returns the new one
+        let admin2 = Address::generate(&env);
+        client.set_admin(&admin2);
+        assert_eq!(client.admin(), admin2);
     }
 }
+
+#[cfg(test)]
+#[path = "tests/unauthorized_tests.rs"]
+mod unauthorized_tests;

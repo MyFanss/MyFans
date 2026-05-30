@@ -22,7 +22,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-          components: rustfmt, clippy
+          components: rustfmt, clippy, llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Check formatting
         run: cargo fmt --all --check --manifest-path Cargo.toml
@@ -32,8 +35,23 @@ jobs:
         run: cargo clippy --all-targets --all-features --manifest-path Cargo.toml -- -D warnings
         working-directory: contract
 
-      - name: Run tests
-        run: cargo test --all-features --manifest-path Cargo.toml
+      - name: Run tests with coverage
+        run: cargo llvm-cov --all-features --manifest-path Cargo.toml --lcov --output-path lcov.info
+        working-directory: contract
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-coverage-lcov
+          path: contract/lcov.info
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Write coverage summary
+        run: |
+          echo "## Contract Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cargo llvm-cov report --manifest-path Cargo.toml --summary-only 2>&1 | tail -5 >> $GITHUB_STEP_SUMMARY
         working-directory: contract
 
       - name: Build wasm target
@@ -43,12 +61,15 @@ jobs:
       - name: Verify wasm artifacts
         run: |
           WASM_DIR="target/wasm32-unknown-unknown/release"
+          # Verify all contract wasm artifacts are built and non-empty
           EXPECTED=(
             subscription
             myfans_token
             content_access
+            content_likes
             creator_registry
             earnings
+            treasury
           )
           MISSING=0
           for pkg in "${EXPECTED[@]}"; do

@@ -542,13 +542,7 @@ fn test_paused_state_preserved_after_snapshot_restore() {
 fn test_extend_subscription_after_snapshot_restore() {
     let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
-    client.init(
-        &admin,
-        &0,
-        &fee_recipient,
-        &token.address,
-        &DUMMY_PRICE,
-    );
+    client.init(&admin, &0, &fee_recipient, &token.address, &DUMMY_PRICE);
 
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);

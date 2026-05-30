@@ -219,7 +219,11 @@ fn test_create_subscription_direct_via_test_env() {
     // 5% fee on 1000 → fee = 50, creator gets 950
     assert_eq!(token.balance(&f.fan), 4_000i128, "fan paid 1000");
     assert_eq!(token.balance(&f.creator), 950i128, "creator gets 950");
-    assert_eq!(token.balance(&f.fee_recipient), 50i128, "fee_recipient gets 50");
+    assert_eq!(
+        token.balance(&f.fee_recipient),
+        50i128,
+        "fee_recipient gets 50"
+    );
 
     assert!(
         sub.is_subscriber(&f.fan, &f.creator),
@@ -299,13 +303,19 @@ fn test_pause_blocks_writes_but_not_views_in_integration() {
     // isn't relevant since sub2 isn't paused — so use sub (the paused one)
     let _ = result; // sub2 is unpaused; test sub directly
     let result_sub = sub.try_create_subscription(&f.fan, &f.creator, &17_280u32);
-    assert!(result_sub.is_err(), "create_subscription must fail when paused");
+    assert!(
+        result_sub.is_err(),
+        "create_subscription must fail when paused"
+    );
 
     sub.unpause();
     let plan_id2 = sub.create_plan(&f.creator, &token.address, &1000i128, &1u32);
     token.mint(&f.fan, &5_000i128);
     sub.subscribe(&f.fan, &plan_id2, &token.address);
-    assert!(sub.is_subscriber(&f.fan, &f.creator), "works again after unpause");
+    assert!(
+        sub.is_subscriber(&f.fan, &f.creator),
+        "works again after unpause"
+    );
 }
 
 /// `get_expiry_unix` reflects the correct unix timestamp in an integration context.

@@ -3,6 +3,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ContentService } from './content.service';
 import { ContentMetadata, ContentType } from './entities/content.entity';
+import { IpfsService } from './ipfs.service';
+
+const mockIpfsService = {
+  uploadMetadata: jest.fn().mockResolvedValue({ cid: 'QmMock', url: 'https://gateway/QmMock' }),
+};
 
 const mockRepo = () => ({
   create: jest.fn(),
@@ -37,6 +42,7 @@ describe('ContentService', () => {
       providers: [
         ContentService,
         { provide: getRepositoryToken(ContentMetadata), useFactory: mockRepo },
+        { provide: IpfsService, useValue: mockIpfsService },
       ],
     }).compile();
 
@@ -47,7 +53,7 @@ describe('ContentService', () => {
   afterEach(() => jest.clearAllMocks());
 
   describe('create', () => {
-    it('creates and saves content with creator_id', async () => {
+    it('creates and saves content with provided ipfs_cid (no upload)', async () => {
       const dto = { title: 'My Content', ipfs_cid: 'QmAbc' };
       const entity = makeContent();
       repo.create.mockReturnValue(entity);
@@ -55,9 +61,21 @@ describe('ContentService', () => {
 
       const result = await service.create('creator-1', dto as any);
 
-      expect(repo.create).toHaveBeenCalledWith({ ...dto, creator_id: 'creator-1' });
+      expect(mockIpfsService.uploadMetadata).not.toHaveBeenCalled();
       expect(repo.save).toHaveBeenCalledWith(entity);
       expect(result).toBe(entity);
+    });
+
+    it('auto-pins metadata when ipfs_cid is omitted', async () => {
+      const dto = { title: 'My Content' };
+      const entity = makeContent({ ipfs_cid: 'QmMock', ipfs_url: 'https://gateway/QmMock' });
+      repo.create.mockReturnValue(entity);
+      repo.save.mockResolvedValue(entity);
+
+      const result = await service.create('creator-1', dto as any);
+
+      expect(mockIpfsService.uploadMetadata).toHaveBeenCalled();
+      expect(result.ipfs_cid).toBe('QmMock');
     });
   });
 
