@@ -1,0 +1,74 @@
+name: E2E – Smoke Tests (PR)
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Smoke Tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # Point frontend Soroban calls at the mock RPC
+      NEXT_PUBLIC_SOROBAN_RPC_URL: http://127.0.0.1:8000
+      NEXT_PUBLIC_STELLAR_NETWORK: testnet
+      # Stub contract IDs (values don't matter for smoke tests)
+      NEXT_PUBLIC_MYFANS_TOKEN_CONTRACT_ID: CC3KRIRFHMF5U2HEQBDDOL5OZUZ3SOJJIJE7EHFP3C6SJLONGJE4WNFF
+      NEXT_PUBLIC_CREATOR_REGISTRY_CONTRACT_ID: CDV2DF2BV3R7UM4LPETP77DAERE4DYX3FLC7HRVJV3KVHON7ZGLFLQ4U
+      NEXT_PUBLIC_SUBSCRIPTION_CONTRACT_ID: CC3KRIRFHMF5U2HEQBDDOL5OZUZ3SOJJIJE7EHFP3C6SJLONGJE4WNFF
+      NEXT_PUBLIC_CONTENT_ACCESS_CONTRACT_ID: CDV2DF2BV3R7UM4LPETP77DAERE4DYX3FLC7HRVJV3KVHON7ZGLFLQ4U
+      NEXT_PUBLIC_EARNINGS_CONTRACT_ID: CC3KRIRFHMF5U2HEQBDDOL5OZUZ3SOJJIJE7EHFP3C6SJLONGJE4WNFF
+      MOCK_RPC_PORT: 8000
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --legacy-peer-deps
+        working-directory: frontend
+
+      - name: Install Playwright browsers (Chromium only)
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      - name: Install backend dependencies (for mock RPC script)
+        run: npm ci
+        working-directory: backend
+
+      - name: Start mock Stellar RPC server
+        run: |
+          node backend/scripts/mock-stellar-rpc.js &
+          echo "MOCK_RPC_PID=$!" >> "$GITHUB_ENV"
+          timeout 15 bash -c 'until curl -sf -X POST http://127.0.0.1:8000 \
+            -H "Content-Type: application/json" \
+            -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getHealth\",\"params\":{}}" \
+            | grep -q healthy; do sleep 1; done'
+          echo "Mock Stellar RPC ready"
+
+      - name: Run smoke tests
+        run: npx playwright test e2e/smoke.spec.ts --reporter=github
+        working-directory: frontend
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-smoke-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+      - name: Stop mock Stellar RPC server
+        if: always()
+        run: |
+          if [ -n "$MOCK_RPC_PID" ]; then
+            kill "$MOCK_RPC_PID" 2>/dev/null || true
+          fi
