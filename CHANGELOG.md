@@ -183,6 +183,7 @@
 * bootstrap runtime contract config ([676e56a](https://github.com/MyFanss/MyFans/commit/676e56a2c195ca3371754479de6406555595dcfb))
 * build a deprecation middleware ([e521b07](https://github.com/MyFanss/MyFans/commit/e521b07a9bd0138c217e1d2c965fb9815234a143))
 * **cards:** create reusable card UI component library ([0d06284](https://github.com/MyFanss/MyFans/commit/0d06284fd1671f9acc2caca92a98dde1b1fb992c))
+* ci run contract tests ([44bb30f](https://github.com/MyFanss/MyFans/commit/44bb30f72f35a379bc2b4ba52203be5969e4d63b))
 * commit anything ([c5a3675](https://github.com/MyFanss/MyFans/commit/c5a3675e16a9eeffffd13596a32393edefd37fbb))
 * complete contract interface docs generation [#301](https://github.com/MyFanss/MyFans/issues/301) ([7a7c292](https://github.com/MyFanss/MyFans/commit/7a7c292e41f9415561162d9eefe46f2abca618b8))
 * **content-likes:** add pagination or cap for likes by user ([#849](https://github.com/MyFanss/MyFans/issues/849)) ([ef593f2](https://github.com/MyFanss/MyFans/commit/ef593f2172f0bb34851f2fc639ee6481e5fd03dd))
