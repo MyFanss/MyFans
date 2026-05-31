@@ -312,6 +312,7 @@
 * **scripts:** add --dry-run flag to deploy script ([bb5fbbc](https://github.com/MyFanss/MyFans/commit/bb5fbbc8a83aaa8ac17a8ba25b050ee0e2630b83)), closes [#306](https://github.com/MyFanss/MyFans/issues/306)
 * security audit in ci ([55f0a4f](https://github.com/MyFanss/MyFans/commit/55f0a4fcefa6b227f7d7ce6426b2f4b47e0f0e6d))
 * **security:** CSRF double-submit cookie strategy for BFF ([23c5fdb](https://github.com/MyFanss/MyFans/commit/23c5fdbf0955e117e12c6b5bc74eb3aa48139428))
+* **security:** integrate helmet as baseline security headers layer ([044e5e2](https://github.com/MyFanss/MyFans/commit/044e5e24f07cad9ee5f6d14ed1dfec392da4d210))
 * skeleton loading states for major pages ([49203d1](https://github.com/MyFanss/MyFans/commit/49203d13b66710d72eaa24c519b44a0beab67904))
 * skeleton loading states for major pages ([b221ebd](https://github.com/MyFanss/MyFans/commit/b221ebd0f6c1036270055be551659c4c49ccd0b6))
 * **social-link:** add URL and domain validation with unit tests ([2f9e43f](https://github.com/MyFanss/MyFans/commit/2f9e43f7312038c574a1186ea0f0ea90d5ac138f))
@@ -341,9 +342,9 @@
 
 ### Performance Improvements
 
-* Optimize creator profile page performance ([d8ba3ca](https://github.com/martinzhames/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/martinzhames/MyFans/issues/415)
+* Optimize creator profile page performance ([d8ba3ca](https://github.com/MyFanss/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/MyFanss/MyFans/issues/415)
 
 
 ### Reverts
 
-* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/martinzhames/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
+* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/MyFanss/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
