@@ -1183,7 +1183,10 @@ fn test_pause_non_admin_rejected() {
 
     let result = client.try_pause();
     assert!(result.is_err(), "non-admin must not pause the contract");
-    assert!(!client.is_paused(), "contract must remain unpaused after unauthorized pause attempt");
+    assert!(
+        !client.is_paused(),
+        "contract must remain unpaused after unauthorized pause attempt"
+    );
 }
 
 #[test]
@@ -1198,7 +1201,10 @@ fn test_unpause_non_admin_rejected() {
     env.set_auths(&[]);
     let result = client.try_unpause();
     assert!(result.is_err(), "non-admin must not unpause the contract");
-    assert!(client.is_paused(), "contract must remain paused after unauthorized unpause attempt");
+    assert!(
+        client.is_paused(),
+        "contract must remain paused after unauthorized unpause attempt"
+    );
 }
 
 // ── set_fee_recipient (admin fee recipient rotation) ─────────────────────────

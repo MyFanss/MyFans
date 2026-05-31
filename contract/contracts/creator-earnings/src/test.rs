@@ -240,3 +240,86 @@ fn withdraw_failed_emits_no_event() {
     assert_eq!(client.balance(&creator), 500);
     assert!(env.events().all().len() >= events_before);
 }
+
+// -------- Unauthorized caller revert tests for issue #941 --------
+
+#[test]
+fn test_unauthorized_add_authorized_reverts() {
+    let env = Env::default();
+    let (_admin, _creator, _depositor, client, _, _) = setup(&env);
+
+    let new_depositor = Address::generate(&env);
+
+    // Remove all mocked auth – admin's auth is no longer present
+    let empty: &[SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+
+    let result = client.try_add_authorized(&new_depositor);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_double_initialize_reverts() {
+    let env = Env::default();
+    let (admin, _creator, _depositor, client, token_client, _) = setup(&env);
+
+    // A second initialize call must revert with AlreadyInitialized (guard fires before auth)
+    let result = client.try_initialize(&admin, &token_client.address.clone());
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::AlreadyInitialized as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_non_creator_cannot_withdraw_other_creators_funds() {
+    let env = Env::default();
+    let (_admin, creator, depositor, client, _, _) = setup(&env);
+
+    let impersonator = Address::generate(&env);
+
+    client.deposit(&depositor, &creator, &500);
+    assert_eq!(client.balance(&creator), 500);
+
+    // Remove all auth – impersonator has no authorization
+    let empty: &[SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+
+    let result = client.try_withdraw(&impersonator, &100);
+    assert!(result.is_err());
+
+    // Creator's internal balance is unchanged
+    assert_eq!(client.balance(&creator), 500);
+}
+
+#[test]
+fn test_deposit_zero_amount_reverts() {
+    let env = Env::default();
+    let (_admin, creator, depositor, client, _, _) = setup(&env);
+
+    let result = client.try_deposit(&depositor, &creator, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidAmount as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_withdraw_zero_amount_reverts() {
+    let env = Env::default();
+    let (_admin, creator, depositor, client, _, _) = setup(&env);
+
+    client.deposit(&depositor, &creator, &200);
+
+    let result = client.try_withdraw(&creator, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidAmount as u32,
+        )))
+    );
+}
