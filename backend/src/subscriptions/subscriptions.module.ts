@@ -17,6 +17,7 @@ import { SpendingCapService } from './services/spending-cap.service';
 import { SUBSCRIPTION_EVENT_PUBLISHER } from './events';
 import { FanBearerGuard } from './guards/fan-bearer.guard';
 import { GatedContentGuard } from './gated-content.guard';
+import { FeatureFlagGuard } from '../feature-flags/feature-flag.guard';
 import { SubscriptionCacheService } from './subscription-cache.service';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
 import { SubscriptionsController } from './subscriptions.controller';
@@ -47,6 +48,7 @@ import { LedgerClockService } from './ledger-clock.service';
     SubscriptionCacheService,
     GatedContentGuard,
     FanBearerGuard,
+    FeatureFlagGuard,
     SubscriptionLifecycleIndexerService,
     {
       provide: SUBSCRIPTION_EVENT_PUBLISHER,

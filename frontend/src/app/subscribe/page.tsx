@@ -7,6 +7,7 @@ import { CreatorCard } from '@/components/cards';
 import { CardSkeletonGrid, EmptyState } from '@/components/ui/states';
 import { useToast } from '@/contexts/ToastContext';
 import { FeatureGate } from '@/components/FeatureGate';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { FeatureFlag } from '@/lib/feature-flags';
 import { getWalletSession, setSubscriptionStatusForCreator } from '@/lib/client-session';
 
@@ -57,6 +58,8 @@ export default function SubscribePage() {
     const session = getWalletSession();
     setConnectedAddress(session?.address ?? null);
   }, []);
+  const isNewSubscriptionFlowEnabled = useFeatureFlag(FeatureFlag.NEW_SUBSCRIPTION_FLOW);
+
   const filteredCreators = useMemo(
     () => CREATOR_DATA.filter((c) =>
       c.name.toLowerCase().includes(query.toLowerCase()) ||
@@ -65,6 +68,14 @@ export default function SubscribePage() {
     [query]
   );
   const handleSubscribe = async (creator: Creator) => {
+    if (!isNewSubscriptionFlowEnabled) {
+      showError('SUBSCRIPTION_FLOW_DISABLED', {
+        message: 'New subscription checkout is disabled.',
+        description: 'This flow is controlled by a feature flag and is not currently available.',
+      });
+      return;
+    }
+
     if (!connectedAddress) {
       showError('WALLET_CONNECTION_REQUIRED', {
         message: 'Connect your wallet first',
@@ -92,6 +103,15 @@ export default function SubscribePage() {
       </header>
 
       <div className="mx-auto max-w-5xl space-y-6">
+        {!isNewSubscriptionFlowEnabled && (
+          <section className="rounded-xl border border-orange-200 bg-orange-50 p-5 text-orange-900">
+            <h2 className="text-lg font-semibold">Subscription flow unavailable</h2>
+            <p className="mt-1 text-sm">
+              The new subscription checkout flow is currently disabled by feature flag. Please try again later.
+            </p>
+          </section>
+        )}
+
         <section className="rounded-xl border border-slate-200 bg-white p-5">
           <h2 className="text-lg font-semibold text-slate-900">Find a Creator</h2>
           <p className="mt-1 text-sm text-slate-600">Browse current creators and start supporting your favorites.</p>
@@ -128,11 +148,19 @@ export default function SubscribePage() {
                   actionButton={
                     <button
                       className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:bg-emerald-300"
-                      disabled={isSubscribing === creator.id || !connectedAddress}
+                      disabled={
+                        isSubscribing === creator.id ||
+                        !connectedAddress ||
+                        !isNewSubscriptionFlowEnabled
+                      }
                       onClick={() => handleSubscribe(creator)}
                       type="button"
                     >
-                      {isSubscribing === creator.id ? 'Subscribing...' : 'Subscribe'}
+                      {isSubscribing === creator.id
+                        ? 'Subscribing...'
+                        : isNewSubscriptionFlowEnabled
+                        ? 'Subscribe'
+                        : 'Subscription disabled'}
                     </button>
                   }
                   bio={creator.bio}
