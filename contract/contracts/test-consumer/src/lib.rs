@@ -217,10 +217,7 @@ mod test {
     mod creator_deposits_integration {
         use creator_deposits::{CreatorDeposits, CreatorDepositsClient, Error as DepositError};
         use myfans_token::{MyFansToken, MyFansTokenClient};
-        use soroban_sdk::{
-            testutils::Address as _,
-            Address, Env, String,
-        };
+        use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
         fn deploy_token(env: &Env) -> (MyFansTokenClient<'_>, Address) {
             let admin = Address::generate(env);
@@ -640,7 +637,10 @@ mod test {
             content_access.set_content_price(&creator, &content_id, &100);
 
             // Verify price is set
-            assert_eq!(content_access.get_content_price(&creator, &content_id), Some(100));
+            assert_eq!(
+                content_access.get_content_price(&creator, &content_id),
+                Some(100)
+            );
 
             // Buyer unlocks content
             content_access.unlock_content(&buyer, &creator, content_id, &2000); // expiry far in future
@@ -739,12 +739,22 @@ mod test {
             let addr = env
                 .register_stellar_asset_contract_v2(admin.clone())
                 .address();
-            (addr.clone(), TokenClient::new(env, &addr), StellarAssetClient::new(env, &addr))
+            (
+                addr.clone(),
+                TokenClient::new(env, &addr),
+                StellarAssetClient::new(env, &addr),
+            )
         }
 
         fn setup(
             env: &Env,
-        ) -> (TreasuryClient<'_>, Address, Address, TokenClient<'_>, Address) {
+        ) -> (
+            TreasuryClient<'_>,
+            Address,
+            Address,
+            TokenClient<'_>,
+            Address,
+        ) {
             env.mock_all_auths();
             let admin = Address::generate(env);
             let depositor = Address::generate(env);

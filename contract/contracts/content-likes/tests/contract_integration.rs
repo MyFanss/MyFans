@@ -63,7 +63,10 @@ fn test_error_unlike_without_like() {
 
     // Try to unlike without ever liking — should fail with NotLiked error (code 1)
     let result = client.try_unlike(&user, &content_id);
-    assert!(result.is_err(), "Expected unlike without prior like to fail with NotLiked error");
+    assert!(
+        result.is_err(),
+        "Expected unlike without prior like to fail with NotLiked error"
+    );
 }
 
 /// Test multiple users liking the same content.

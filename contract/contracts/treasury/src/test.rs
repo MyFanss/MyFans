@@ -856,15 +856,13 @@ fn test_initialize_emits_event() {
 
     let events = env.events().all();
     let init_event = events.iter().find(|e| {
-        e.1.first().is_some_and(|t| {
-            t.try_into_val(&env).ok() == Some(Symbol::new(&env, "initialized"))
-        })
+        e.1.first()
+            .is_some_and(|t| t.try_into_val(&env).ok() == Some(Symbol::new(&env, "initialized")))
     });
     assert!(init_event.is_some(), "initialized event must be emitted");
 
     let event = init_event.unwrap();
-    let (emitted_admin, emitted_token): (Address, Address) =
-        event.2.try_into_val(&env).unwrap();
+    let (emitted_admin, emitted_token): (Address, Address) = event.2.try_into_val(&env).unwrap();
     assert_eq!(emitted_admin, admin);
     assert_eq!(emitted_token, token_address);
 }
@@ -885,9 +883,8 @@ fn test_set_paused_emits_event() {
 
     let events = env.events().all();
     let paused_event = events.iter().find(|e| {
-        e.1.first().is_some_and(|t| {
-            t.try_into_val(&env).ok() == Some(Symbol::new(&env, "paused_set"))
-        })
+        e.1.first()
+            .is_some_and(|t| t.try_into_val(&env).ok() == Some(Symbol::new(&env, "paused_set")))
     });
     assert!(paused_event.is_some(), "paused_set event must be emitted");
 
