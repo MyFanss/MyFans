@@ -13,9 +13,7 @@
 
 use crate::{ContentAccess, ContentAccessClient, Error};
 use soroban_sdk::{
-    testutils::Address as _,
-    xdr::SorobanAuthorizationEntry,
-    Address, Env, Error as SorobanError,
+    testutils::Address as _, xdr::SorobanAuthorizationEntry, Address, Env, Error as SorobanError,
 };
 
 const EMPTY_AUTHS: &[SorobanAuthorizationEntry] = &[];
@@ -62,7 +60,11 @@ fn initialize_stores_admin() {
 
     client.initialize(&admin, &token_id);
 
-    assert_eq!(client.admin(), admin, "admin() must return the initialized admin");
+    assert_eq!(
+        client.admin(),
+        admin,
+        "admin() must return the initialized admin"
+    );
 }
 
 /// initialize stores the token address; set_content_price succeeds after init.
@@ -136,7 +138,10 @@ fn admin_view_panics_when_uninitialized() {
     let client = ContentAccessClient::new(&env, &contract_id);
 
     let result = client.try_admin();
-    assert!(result.is_err(), "admin() must fail on uninitialized contract");
+    assert!(
+        result.is_err(),
+        "admin() must fail on uninitialized contract"
+    );
 }
 
 // ── set_admin ─────────────────────────────────────────────────────────────────
@@ -152,7 +157,8 @@ fn set_admin_transfers_admin_role() {
     client.set_admin(&new_admin);
 
     assert_eq!(
-        client.admin(), new_admin,
+        client.admin(),
+        new_admin,
         "admin() must return new admin after set_admin"
     );
 }
@@ -246,7 +252,11 @@ fn set_max_price_zero_clears_cap() {
     assert_eq!(client.get_max_price(), Some(500_000));
 
     client.set_max_price(&0);
-    assert_eq!(client.get_max_price(), None, "cap must be removed after set_max_price(0)");
+    assert_eq!(
+        client.get_max_price(),
+        None,
+        "cap must be removed after set_max_price(0)"
+    );
 }
 
 /// Non-admin cannot call set_max_price.
@@ -264,7 +274,10 @@ fn set_max_price_rejected_for_non_admin() {
 
     env.set_auths(EMPTY_AUTHS);
     let result = client.try_set_max_price(&500_000);
-    assert!(result.is_err(), "set_max_price must fail without admin auth");
+    assert!(
+        result.is_err(),
+        "set_max_price must fail without admin auth"
+    );
 }
 
 /// Prices above max_price are rejected when cap is configured.
