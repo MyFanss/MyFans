@@ -220,6 +220,8 @@
 * **creators:** add search by display name or handle ([#856](https://github.com/MyFanss/MyFans/issues/856)) ([a35feeb](https://github.com/MyFanss/MyFans/commit/a35feeb6c282199408f1c6d776ff27f1413fc865))
 * **dashboard:** improve mobile and tablet responsiveness for creator dashboard ([1480ca0](https://github.com/MyFanss/MyFans/commit/1480ca03f72d12a3cc2e12aea088c2cff9cc3f22))
 * **db:** add baseline migrations for core entities ([f67d31f](https://github.com/MyFanss/MyFans/commit/f67d31f4655503130a4006c302d2944361b70d85))
+* **devex:** add seed script for demo creators ([c203f6a](https://github.com/MyFanss/MyFans/commit/c203f6aedd9425fb6d5aef0b94b408d074b9bbc8))
+* **devex:** enhance docker-compose for local stack ([e836d96](https://github.com/MyFanss/MyFans/commit/e836d96fd3ea24836e1a6454762e1d51a34a299f))
 * **docs,ci:** implement platform governance and QA tooling ([39de36f](https://github.com/MyFanss/MyFans/commit/39de36fbd5a73fb1191b9d3dab0834ac6108dd40)), closes [#746](https://github.com/MyFanss/MyFans/issues/746) [#747](https://github.com/MyFanss/MyFans/issues/747) [#749](https://github.com/MyFanss/MyFans/issues/749) [#748](https://github.com/MyFanss/MyFans/issues/748) [#746](https://github.com/MyFanss/MyFans/issues/746) [#747](https://github.com/MyFanss/MyFans/issues/747) [#748](https://github.com/MyFanss/MyFans/issues/748) [#749](https://github.com/MyFanss/MyFans/issues/749)
 * **earnings:** add unauthorized record tests ([#319](https://github.com/MyFanss/MyFans/issues/319)) ([9c1cdbb](https://github.com/MyFanss/MyFans/commit/9c1cdbb998301a23d346798aae6556b4cd1d5fc1))
 * emit renewal-failure event/webhook on subscription renewal fail ([#211](https://github.com/MyFanss/MyFans/issues/211)) ([e7cf660](https://github.com/MyFanss/MyFans/commit/e7cf660e554569f5fc60c3c239c30e6cbfbcf9f9))
@@ -284,6 +286,7 @@
 * initialization and cli ([ba1ebb1](https://github.com/MyFanss/MyFans/commit/ba1ebb19a5400601704666ab3fe5699aa46eefae))
 * initialize Soroban contracts workspace with stub token contract ([ea95e06](https://github.com/MyFanss/MyFans/commit/ea95e06e48c5903401ed406bcccef195bc452469))
 * integrate TransactionProgress component into CheckoutFlow and add tests ([f0e468f](https://github.com/MyFanss/MyFans/commit/f0e468ffc36370ac6c43a367192790232dbce285))
+* **integration:** sync subscription state from chain ([42c50d6](https://github.com/MyFanss/MyFans/commit/42c50d62712979c4876d603fec65312fd2471cdd))
 * introduce internal domain events for module decoupling ([10a9d24](https://github.com/MyFanss/MyFans/commit/10a9d2413f2b459ee4d5fa8f9b9797b8e6fcb27a))
 * **logging:** redact PII and secrets from logs ([0125540](https://github.com/MyFanss/MyFans/commit/0125540a22d51ed138943a8356e5eecfbc957a00)), closes [#717](https://github.com/MyFanss/MyFans/issues/717)
 * make creator dashboard mobile responsive ([858fc4d](https://github.com/MyFanss/MyFans/commit/858fc4db3416c5227a0756713181bb0ead472474))
@@ -291,6 +294,7 @@
 * **moderation:** add content moderation flags model and admin endpoints ([#353](https://github.com/MyFanss/MyFans/issues/353)) ([227a0ec](https://github.com/MyFanss/MyFans/commit/227a0ec3686f6e3c9a6c747323b79acc6bda0275))
 * **myfans-token:** add property tests for allowance, approve, clear_allowance, set_admin, total_supply invariants ([#889](https://github.com/MyFanss/MyFans/issues/889)) ([1316e4b](https://github.com/MyFanss/MyFans/commit/1316e4b48d61fea106b75b16f48d5a3670ffeae1))
 * normalize subscription expiry ledger calculations ([#288](https://github.com/MyFanss/MyFans/issues/288)) ([31ccf63](https://github.com/MyFanss/MyFans/commit/31ccf63483e9d83269a1d4baa998a54704210375))
+* **observability:** add health check aggregation endpoint ([5003be2](https://github.com/MyFanss/MyFans/commit/5003be2087b17700b053f987a5bf5618bb1cfe14))
 * **observability:** define and enforce structured log fields standard ([739961b](https://github.com/MyFanss/MyFans/commit/739961b2575fce917a2ea64ae4630fd4d0f2fc7b))
 * **onboarding:** add creator onboarding progress indicator ([#864](https://github.com/MyFanss/MyFans/issues/864)) ([72234ea](https://github.com/MyFanss/MyFans/commit/72234ea413e1cf27466581019dbf3526e7b3e2d8))
 * **onboarding:** creator onboarding progress UI — stale state handling + tests ([3ca82f8](https://github.com/MyFanss/MyFans/commit/3ca82f84f0fd8ecf3f3068333845374574adb6f7))
@@ -342,9 +346,9 @@
 
 ### Performance Improvements
 
-* Optimize creator profile page performance ([d8ba3ca](https://github.com/josunday002/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/josunday002/MyFans/issues/415)
+* Optimize creator profile page performance ([d8ba3ca](https://github.com/MyFanss/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/MyFanss/MyFans/issues/415)
 
 
 ### Reverts
 
-* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/josunday002/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
+* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/MyFanss/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
