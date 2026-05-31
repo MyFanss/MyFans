@@ -294,6 +294,7 @@
 * **logging:** redact PII and secrets from logs ([0125540](https://github.com/MyFanss/MyFans/commit/0125540a22d51ed138943a8356e5eecfbc957a00)), closes [#717](https://github.com/MyFanss/MyFans/issues/717)
 * make creator dashboard mobile responsive ([858fc4d](https://github.com/MyFanss/MyFans/commit/858fc4db3416c5227a0756713181bb0ead472474))
 * make IMyFans trait public and add subscribe and get_subscription_details methods ([aecd378](https://github.com/MyFanss/MyFans/commit/aecd3788c6dfdc7a483e97fabffc590fc107fed9))
+* metrics and alerting ([1f51207](https://github.com/MyFanss/MyFans/commit/1f5120755388c253d3861617a743a931dafa222d))
 * **moderation:** add content moderation flags model and admin endpoints ([#353](https://github.com/MyFanss/MyFans/issues/353)) ([227a0ec](https://github.com/MyFanss/MyFans/commit/227a0ec3686f6e3c9a6c747323b79acc6bda0275))
 * **myfans-token:** add property tests for allowance, approve, clear_allowance, set_admin, total_supply invariants ([#889](https://github.com/MyFanss/MyFans/issues/889)) ([1316e4b](https://github.com/MyFanss/MyFans/commit/1316e4b48d61fea106b75b16f48d5a3670ffeae1))
 * normalize subscription expiry ledger calculations ([#288](https://github.com/MyFanss/MyFans/issues/288)) ([31ccf63](https://github.com/MyFanss/MyFans/commit/31ccf63483e9d83269a1d4baa998a54704210375))
