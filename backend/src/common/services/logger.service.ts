@@ -3,6 +3,7 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { Logger as WinstonLogger } from 'winston';
 import { RequestContextService } from './request-context.service';
 import { redact } from '../utils/redact';
+import { LOG_FIELDS } from '../logger/log-fields';
 
 @Injectable()
 export class LoggerService implements NestLoggerService {
@@ -12,7 +13,10 @@ export class LoggerService implements NestLoggerService {
   ) {}
 
   private meta(context?: string): Record<string, unknown> {
-    return { context: context ?? 'Application', ...this.requestContextService.getLogContext() };
+    return {
+      [LOG_FIELDS.CONTEXT]: context ?? 'Application',
+      ...this.requestContextService.getLogContext(),
+    };
   }
 
   log(message: any, context?: string) {
@@ -20,7 +24,10 @@ export class LoggerService implements NestLoggerService {
   }
 
   error(message: any, trace?: string, context?: string) {
-    this.logger.error(typeof message === 'string' ? message : JSON.stringify(message), { ...this.meta(context), ...(trace ? { trace } : {}) });
+    this.logger.error(
+      typeof message === 'string' ? message : JSON.stringify(message),
+      { ...this.meta(context), ...(trace ? { [LOG_FIELDS.TRACE]: trace } : {}) },
+    );
   }
 
   warn(message: any, context?: string) {
@@ -35,7 +42,10 @@ export class LoggerService implements NestLoggerService {
     this.logger.verbose(typeof message === 'string' ? message : JSON.stringify(message), this.meta(context));
   }
 
-  // Method for structured logging
+  /**
+   * Emit a structured log entry using the canonical LOG_FIELDS standard.
+   * `data` is automatically redacted before logging.
+   */
   logStructured(
     level: 'info' | 'warn' | 'error' | 'debug',
     message: string,
@@ -45,7 +55,7 @@ export class LoggerService implements NestLoggerService {
     const redactedData = data !== undefined ? redact(data) : undefined;
     this.logger.log(level, message, {
       ...this.meta(context),
-      ...(redactedData !== undefined && { data: redactedData }),
+      ...(redactedData !== undefined && { [LOG_FIELDS.DATA]: redactedData }),
     });
   }
 }

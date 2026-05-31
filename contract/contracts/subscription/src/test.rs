@@ -116,6 +116,55 @@ fn test_init_rejects_non_positive_price() {
 }
 
 #[test]
+fn test_init_succeeds_sets_admin_and_configuration() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let fee_bps = 750u32;
+    let price = 2500i128;
+
+    client.init(&admin, &fee_bps, &fee_recipient, &token.address, &price);
+
+    assert_eq!(client.admin(), admin);
+    assert_eq!(client.is_paused(), false);
+    let stored_fee_bps: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::FeeBps)
+            .unwrap()
+    });
+    assert_eq!(stored_fee_bps, fee_bps);
+    let stored_fee_recipient: Address = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::FeeRecipient)
+            .unwrap()
+    });
+    assert_eq!(stored_fee_recipient, fee_recipient);
+    let stored_price: i128 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, i128>(&DataKey::Price)
+            .unwrap()
+    });
+    assert_eq!(stored_price, price);
+}
+
+#[test]
+fn test_init_rejects_duplicate_initialization() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    let result = client.try_init(&admin, &500, &fee_recipient, &token.address, &1000);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::AlreadyInitialized as u32,
+        )))
+    );
+}
+
+#[test]
 #[should_panic]
 fn test_subscribe_insufficient_balance_reverts() {
     let (env, client, admin, token, token_admin) = setup_test();
@@ -1122,6 +1171,34 @@ fn test_mutations_succeed_after_unpause() {
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
     client.subscribe(&fan, &plan_id, &token.address);
     assert!(client.is_subscriber(&fan, &creator));
+}
+
+#[test]
+fn test_pause_non_admin_rejected() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    env.set_auths(&[]);
+
+    let result = client.try_pause();
+    assert!(result.is_err(), "non-admin must not pause the contract");
+    assert!(!client.is_paused(), "contract must remain unpaused after unauthorized pause attempt");
+}
+
+#[test]
+fn test_unpause_non_admin_rejected() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    client.pause();
+    assert!(client.is_paused());
+
+    env.set_auths(&[]);
+    let result = client.try_unpause();
+    assert!(result.is_err(), "non-admin must not unpause the contract");
+    assert!(client.is_paused(), "contract must remain paused after unauthorized unpause attempt");
 }
 
 // ── set_fee_recipient (admin fee recipient rotation) ─────────────────────────
