@@ -117,6 +117,23 @@ jobs:
           fi
         working-directory: contract
 
+      - name: 📦 Verify creator-deposits wasm build
+        id: creator-deposits-build
+        run: |
+          # Verify creator-deposits wasm artifact was successfully produced
+          WASM_PATH="target/wasm32-unknown-unknown/release/creator_deposits.wasm"
+          if [[ -f "$WASM_PATH" ]]; then
+            WASM_SIZE=$(du -sh "$WASM_PATH" | cut -f1)
+            echo "✅ creator-deposits.wasm successfully built ($WASM_SIZE)"
+            echo "### ✅ Creator-Deposits WASM Build" >> $GITHUB_STEP_SUMMARY
+            echo "Artifact: creator_deposits.wasm ($WASM_SIZE)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ creator-deposits.wasm not found at $WASM_PATH"
+            echo "::error::creator-deposits.wasm build verification failed — artifact not found"
+            exit 1
+          fi
+        working-directory: contract
+
       - name: 📏 Generate Wasm size report
         run: |
           REPORT="wasm-size-report.txt"

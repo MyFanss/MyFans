@@ -302,6 +302,30 @@ mod props {
                 Err(Ok(Error::InvalidAmount))
             );
         }
+
+        /// Clearing an allowance must preserve balances and zero out the allowance.
+        #[test]
+        fn prop_clear_allowance_preserves_balances(
+            approve_amount in 0i128..=1_000_000i128,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let owner = Address::generate(&env);
+            let spender = Address::generate(&env);
+            let receiver = Address::generate(&env);
+
+            client.mint(&owner, &approve_amount);
+            let expiry = env.ledger().sequence() + 100;
+            client.approve(&owner, &spender, &approve_amount, &expiry);
+            client.clear_allowance(&owner, &spender);
+
+            prop_assert_eq!(client.allowance(&owner, &spender), 0);
+            prop_assert_eq!(client.balance(&owner), approve_amount);
+            prop_assert_eq!(client.balance(&receiver), 0);
+            prop_assert_eq!(client.total_supply(), approve_amount);
+        }
     }
 
     // ── approve / allowance invariants ───────────────────────────────────────

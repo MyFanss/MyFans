@@ -212,6 +212,178 @@ mod test {
         }
     }
 
+    // ── creator-deposits integration (Issue #937) ──────────────────────────────
+
+    mod creator_deposits_integration {
+        use creator_deposits::{CreatorDeposits, CreatorDepositsClient, Error as DepositError};
+        use myfans_token::{MyFansToken, MyFansTokenClient};
+        use soroban_sdk::{
+            testutils::Address as _,
+            Address, Env, String,
+        };
+
+        fn deploy_token(env: &Env) -> (MyFansTokenClient<'_>, Address) {
+            let admin = Address::generate(env);
+            let id = env.register_contract(None, MyFansToken);
+            let client = MyFansTokenClient::new(env, &id);
+            client.initialize(
+                &admin,
+                &String::from_str(env, "MyFans Token"),
+                &String::from_str(env, "MFAN"),
+                &7,
+                &0,
+            );
+            (client, admin)
+        }
+
+        fn deploy_creator_deposits<'a>(
+            env: &'a Env,
+            admin: &Address,
+            treasury: &Address,
+        ) -> CreatorDepositsClient<'a> {
+            let id = env.register_contract(None, CreatorDeposits);
+            let client = CreatorDepositsClient::new(env, &id);
+            client.init(admin, &500u32, treasury); // 5% fee
+            client
+        }
+
+        /// End-to-end: deploy contract → deposit → get_balance work correctly.
+        #[test]
+        fn creator_deposits_deposit_and_get_balance() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (token, _) = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let treasury = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let deposits = deploy_creator_deposits(&env, &admin, &treasury);
+
+            // Mint tokens to creator so they can deposit
+            token.mint(&creator, &10_000i128);
+
+            // Deposit: 1000 tokens with 5% fee → 950 net recorded in contract
+            deposits.deposit(&creator, &token.address, &1000i128);
+            assert_eq!(
+                deposits.get_balance(&creator),
+                950i128,
+                "balance after deposit should be net amount (1000 - 5% fee)"
+            );
+
+            // Get balance: verify it matches expected
+            assert_eq!(
+                deposits.get_balance(&creator),
+                950i128,
+                "get_balance should return tracked balance"
+            );
+        }
+
+        /// Attempting to withdraw more than balance returns InsufficientBalance error.
+        #[test]
+        fn creator_deposits_withdraw_insufficient_balance_error() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (token, _) = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let treasury = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let deposits = deploy_creator_deposits(&env, &admin, &treasury);
+
+            token.mint(&creator, &1000i128);
+            deposits.deposit(&creator, &token.address, &1000i128);
+
+            // Try to withdraw more than balance (950 available, request 1000)
+            let result = deposits.try_withdraw(&creator, &token.address, &1000i128);
+            assert_eq!(
+                result,
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    DepositError::InsufficientBalance as u32,
+                ))),
+                "withdraw exceeding balance must return InsufficientBalance"
+            );
+
+            // Balance should be unchanged
+            assert_eq!(deposits.get_balance(&creator), 950i128);
+        }
+
+        /// Calling set_platform_fee with invalid bps (>= 10000) returns InvalidFeeBps error.
+        #[test]
+        fn creator_deposits_invalid_fee_bps() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (_, _) = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let treasury = Address::generate(&env);
+            let deposits = deploy_creator_deposits(&env, &admin, &treasury);
+
+            // Try to set fee to 10000 (100%) which is invalid
+            let result = deposits.try_set_platform_fee(&10000u32);
+            assert_eq!(
+                result,
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    DepositError::InvalidFeeBps as u32,
+                ))),
+                "fee bps >= 10000 must return InvalidFeeBps"
+            );
+        }
+
+        /// Multiple deposits from same creator accumulate correctly.
+        #[test]
+        fn creator_deposits_multiple_deposits_accumulate() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (token, _) = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let treasury = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let deposits = deploy_creator_deposits(&env, &admin, &treasury);
+
+            token.mint(&creator, &10_000i128);
+
+            // First deposit: 1000 → 950 net
+            deposits.deposit(&creator, &token.address, &1000i128);
+            assert_eq!(deposits.get_balance(&creator), 950i128);
+
+            // Second deposit: 2000 → 1900 net
+            deposits.deposit(&creator, &token.address, &2000i128);
+            assert_eq!(
+                deposits.get_balance(&creator),
+                2850i128,
+                "second deposit should add to balance (950 + 1900)"
+            );
+        }
+
+        /// Withdraw with zero fee (fee_bps = 0) transfers full amount.
+        #[test]
+        fn creator_deposits_zero_fee() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (token, _) = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let treasury = Address::generate(&env);
+            let creator = Address::generate(&env);
+
+            // Deploy with 0% fee
+            let id = env.register_contract(None, CreatorDeposits);
+            let deposits = CreatorDepositsClient::new(&env, &id);
+            deposits.init(&admin, &0u32, &treasury);
+
+            token.mint(&creator, &1000i128);
+            deposits.deposit(&creator, &token.address, &1000i128);
+
+            // With 0% fee, balance should be full amount
+            assert_eq!(
+                deposits.get_balance(&creator),
+                1000i128,
+                "with 0% fee, balance should equal deposit amount"
+            );
+        }
+    }
+
     // ── subscription integration (Issue #897) ────────────────────────────────
 
     mod subscription_integration {
@@ -402,6 +574,144 @@ mod test {
                 (0u64, 0u64),
                 "expiry must be zeroed after cancel"
             );
+        }
+    }
+
+    // ── content-access integration (Issue #XXXX) ────────────────────────────────
+
+    mod content_access_integration {
+        use content_access::{ContentAccess, ContentAccessClient};
+        use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol};
+
+        // Mock token contract for testing
+        #[contract]
+        pub struct MockToken;
+
+        #[contractimpl]
+        impl MockToken {
+            pub fn balance(_env: Env, _id: Address) -> i128 {
+                0
+            }
+
+            pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {
+                // Mock implementation - just succeed
+            }
+        }
+
+        fn deploy_token(env: &Env) -> (Address) {
+            let admin = Address::generate(env);
+            let id = env.register_contract(None, MockToken);
+            id
+        }
+
+        fn deploy_content_access<'a>(
+            env: &'a Env,
+            admin: &Address,
+            token_id: &Address,
+        ) -> ContentAccessClient<'a> {
+            let id = env.register_contract(None, ContentAccess);
+            let client = ContentAccessClient::new(env, &id);
+            client.initialize(admin, token_id);
+            client
+        }
+
+        #[test]
+        fn content_access_basic_flow() {
+            let env = Env::default();
+            env.mock_all_auths();
+            env.ledger().with_mut(|li| {
+                li.sequence_number = 1000;
+                li.min_persistent_entry_ttl = 10_000_000;
+                li.min_temp_entry_ttl = 10_000_000;
+            });
+
+            let token_address = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let content_access = deploy_content_access(&env, &admin, &token_address);
+
+            let buyer = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let content_id = 1u32;
+
+            // Initially no access
+            assert!(!content_access.has_access(&buyer, &creator, content_id));
+
+            // Set price for content
+            content_access.set_content_price(&creator, &content_id, &100);
+
+            // Verify price is set
+            assert_eq!(content_access.get_content_price(&creator, &content_id), Some(100));
+
+            // Buyer unlocks content
+            content_access.unlock_content(&buyer, &creator, content_id, &2000); // expiry far in future
+
+            // Verify access is granted
+            assert!(content_access.has_access(&buyer, &creator, content_id));
+
+            // Verify access via verify_access (should not panic)
+            content_access.verify_access(&buyer, &creator, content_id);
+
+            // Different buyer should not have access
+            let other_buyer = Address::generate(&env);
+            assert!(!content_access.has_access(&other_buyer, &creator, content_id));
+            let result = content_access.try_verify_access(&other_buyer, &creator, content_id);
+            assert_eq!(
+                result,
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    content_access::Error::NotBuyer as u32,
+                )))
+            );
+
+            // Test admin functions
+            let new_admin = Address::generate(&env);
+            content_access.set_admin(&new_admin);
+            assert_eq!(content_access.admin(), new_admin);
+        }
+
+        #[test]
+        fn content_access_expiry_and_repurchase() {
+            let env = Env::default();
+            env.mock_all_auths();
+            env.ledger().with_mut(|li| {
+                li.sequence_number = 1000;
+                li.min_persistent_entry_ttl = 10_000_000;
+                li.min_temp_entry_ttl = 10_000_000;
+            });
+
+            let token_address = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let content_access = deploy_content_access(&env, &admin, &token_address);
+
+            let buyer = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let content_id = 1u32;
+
+            content_access.set_content_price(&creator, &content_id, &50);
+
+            // Purchase with near expiry
+            content_access.unlock_content(&buyer, &creator, content_id, &1005); // expires at ledger 1005
+            assert!(content_access.has_access(&buyer, &creator, content_id));
+
+            // Advance to just before expiry
+            env.ledger().with_mut(|li| li.sequence_number = 1004);
+            assert!(content_access.has_access(&buyer, &creator, content_id));
+
+            // Advance to expiry - should lose access
+            env.ledger().with_mut(|li| li.sequence_number = 1006);
+            assert!(!content_access.has_access(&buyer, &creator, content_id));
+
+            // Verify access should fail with PurchaseExpired
+            let result = content_access.try_verify_access(&buyer, &creator, content_id);
+            assert_eq!(
+                result,
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    content_access::Error::PurchaseExpired as u32,
+                )))
+            );
+
+            // Repurchase with new expiry
+            content_access.unlock_content(&buyer, &creator, content_id, &2000);
+            assert!(content_access.has_access(&buyer, &creator, content_id));
         }
     }
 }

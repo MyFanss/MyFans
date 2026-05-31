@@ -22,6 +22,9 @@ pub enum DataKey {
 /// |------|---------|
 /// | 1 | `InvalidFeeBps` |
 /// | 2 | `InsufficientBalance` |
+/// | 3 | `AdminNotInitialized` |
+/// | 4 | `PlatformFeeNotInitialized` |
+/// | 5 | `PlatformTreasuryNotInitialized` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -29,6 +32,12 @@ pub enum Error {
     InvalidFeeBps = 1,
     /// Code 2 – creator balance is less than the requested withdrawal amount.
     InsufficientBalance = 2,
+    /// Code 3 – admin key not present; contract was never initialized.
+    AdminNotInitialized = 3,
+    /// Code 4 – platform fee not set; contract init was incomplete.
+    PlatformFeeNotInitialized = 4,
+    /// Code 5 – platform treasury not set; contract init was incomplete.
+    PlatformTreasuryNotInitialized = 5,
 }
 
 #[contract]
@@ -52,26 +61,35 @@ impl CreatorDeposits {
     pub fn deposit(env: Env, creator: Address, token: Address, amount: i128) {
         creator.require_auth();
 
+        // Optimization: Read both config values once and cache in local variables
+        // to avoid redundant storage reads during a single transaction.
         let fee_bps: u32 = env
             .storage()
             .instance()
             .get(&DataKey::PlatformFeeBps)
-            .unwrap();
+            .unwrap_or_else(|| {
+                panic_with_error!(&env, Error::PlatformFeeNotInitialized);
+            });
         let treasury: Address = env
             .storage()
             .instance()
             .get(&DataKey::PlatformTreasury)
-            .unwrap();
+            .unwrap_or_else(|| {
+                panic_with_error!(&env, Error::PlatformTreasuryNotInitialized);
+            });
 
         let fee = (amount * fee_bps as i128) / 10000;
         let net = amount - fee;
 
         let token_client = token::Client::new(&env, &token);
 
+        // Optimization: Only transfer fee if nonzero, avoiding unnecessary transfer calls.
         if fee > 0 {
             token_client.transfer(&creator, &treasury, &fee);
         }
 
+        // Optimization: Read balance once and update in single write;
+        // use unwrap_or(0) to avoid panicking on first deposit.
         let balance_key = DataKey::CreatorBalance(creator.clone());
         let current: i128 = env.storage().instance().get(&balance_key).unwrap_or(0);
         env.storage().instance().set(&balance_key, &(current + net));
@@ -89,6 +107,8 @@ impl CreatorDeposits {
     pub fn withdraw(env: Env, creator: Address, token: Address, amount: i128) {
         creator.require_auth();
 
+        // Optimization: Read balance once, validate, and update in single write;
+        // use unwrap_or(0) to handle accounts with no prior deposits.
         let balance_key = DataKey::CreatorBalance(creator.clone());
         let current: i128 = env.storage().instance().get(&balance_key).unwrap_or(0);
 
@@ -96,6 +116,7 @@ impl CreatorDeposits {
             panic_with_error!(&env, Error::InsufficientBalance);
         }
 
+        // Optimization: Only update storage if withdrawal succeeds validation.
         env.storage()
             .instance()
             .set(&balance_key, &(current - amount));
@@ -114,7 +135,13 @@ impl CreatorDeposits {
     }
 
     pub fn set_platform_fee(env: Env, bps: u32) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| {
+                panic_with_error!(&env, Error::AdminNotInitialized);
+            });
         admin.require_auth();
         if bps >= 10000 {
             panic_with_error!(&env, Error::InvalidFeeBps);
@@ -406,5 +433,34 @@ mod test {
         assert!(result.is_err(), "expected unauthorized withdraw to revert");
 
         assert_eq!(client.get_balance(&creator), starting_balance);
+    }
+
+    #[test]
+    fn test_admin_not_initialized_error() {
+        let (env, _, _, _, _) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        let result = client.try_set_platform_fee(&500);
+        assert_eq!(
+            result,
+            Err(Ok(soroban_sdk::Error::from_contract_error(
+                Error::AdminNotInitialized as u32,
+            )))
+        );
+    }
+
+    #[test]
+    fn test_deposit_without_init_returns_error() {
+        let (env, _, _, creator, token) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        // Don't call init, deposit should fail
+        let result = client.try_deposit(&creator, &token, &1000);
+        // Should fail with either PlatformFeeNotInitialized or PlatformTreasuryNotInitialized
+        assert!(result.is_err(), "deposit without init should return error");
     }
 }

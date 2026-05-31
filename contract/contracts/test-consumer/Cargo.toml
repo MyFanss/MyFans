@@ -17,13 +17,13 @@ myfans-lib = { path = "../myfans-lib" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-subscription    = { path = "../subscription" }
-content-access  = { path = "../content-access" }
-content-likes   = { path = "../content-likes" }
-creator-registry = { path = "../creator-registry" }
-treasury        = { path = "../treasury" }
-earnings        = { path = "../earnings" }
-creator-earnings = { path = "../creator-earnings" }
-creator-deposits = { path = "../creator-deposits" }
-myfans-contract = { path = "../myfans-contract" }
-myfans-token    = { path = "../myfans-token" }
+subscription = { package = "subscription", path = "../subscription" }
+content_access = { package = "content-access", path = "../content-access" }
+content_likes = { package = "content-likes", path = "../content-likes" }
+creator_registry = { package = "creator-registry", path = "../creator-registry" }
+treasury = { package = "treasury", path = "../treasury" }
+earnings = { package = "earnings", path = "../earnings" }
+creator_earnings = { package = "creator-earnings", path = "../creator-earnings" }
+creator_deposits = { package = "creator-deposits", path = "../creator-deposits" }
+myfans_contract = { package = "myfans-contract", path = "../myfans-contract" }
+myfans_token = { package = "myfans-token", path = "../myfans-token" }
