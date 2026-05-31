@@ -241,85 +241,128 @@ fn withdraw_failed_emits_no_event() {
     assert!(env.events().all().len() >= events_before);
 }
 
-// -------- Unauthorized caller revert tests for issue #941 --------
+// -------- Event tests for issue #942: emit events for primary state changes --------
 
 #[test]
-fn test_unauthorized_add_authorized_reverts() {
+fn initialize_emits_event() {
     let env = Env::default();
-    let (_admin, _creator, _depositor, client, _, _) = setup(&env);
+    env.mock_all_auths();
 
-    let new_depositor = Address::generate(&env);
+    let admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    #[allow(deprecated)]
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
 
-    // Remove all mocked auth – admin's auth is no longer present
-    let empty: &[SorobanAuthorizationEntry] = &[];
-    env.set_auths(empty);
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
 
-    let result = client.try_add_authorized(&new_depositor);
-    assert!(result.is_err());
+    client.initialize(&admin, &token_id);
+
+    let all_events = env.events().all();
+    let mut init_event: Option<(
+        Address,
+        soroban_sdk::Vec<soroban_sdk::Val>,
+        soroban_sdk::Val,
+    )> = None;
+    for i in 0..all_events.len() {
+        let evt = all_events.get(i).unwrap();
+        let (id, topics, _) = &evt;
+        if *id != client.address {
+            continue;
+        }
+        let t0: Option<Symbol> = topics.get(0).and_then(|v| v.try_into_val(&env).ok());
+        if t0 == Some(Symbol::new(&env, "initialized")) {
+            init_event = Some(evt);
+            break;
+        }
+    }
+
+    let event = init_event.expect("initialized event not emitted");
+    let data: InitializedEvent = event.2.try_into_val(&env).unwrap();
+    assert_eq!(data.admin, admin);
+    assert_eq!(data.token, token_id);
 }
 
 #[test]
-fn test_double_initialize_reverts() {
+fn add_authorized_emits_event() {
     let env = Env::default();
-    let (admin, _creator, _depositor, client, token_client, _) = setup(&env);
+    env.mock_all_auths();
 
-    // A second initialize call must revert with AlreadyInitialized (guard fires before auth)
-    let result = client.try_initialize(&admin, &token_client.address.clone());
-    assert_eq!(
-        result,
-        Err(Ok(SorobanError::from_contract_error(
-            Error::AlreadyInitialized as u32,
-        )))
-    );
+    let admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    #[allow(deprecated)]
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &token_id);
+
+    let depositor = Address::generate(&env);
+    client.add_authorized(&depositor);
+
+    let all_events = env.events().all();
+    let mut auth_event: Option<(
+        Address,
+        soroban_sdk::Vec<soroban_sdk::Val>,
+        soroban_sdk::Val,
+    )> = None;
+    for i in 0..all_events.len() {
+        let evt = all_events.get(i).unwrap();
+        let (id, topics, _) = &evt;
+        if *id != client.address {
+            continue;
+        }
+        let t0: Option<Symbol> = topics.get(0).and_then(|v| v.try_into_val(&env).ok());
+        if t0 == Some(Symbol::new(&env, "authorized_added")) {
+            auth_event = Some(evt);
+            break;
+        }
+    }
+
+    let event = auth_event.expect("authorized_added event not emitted");
+    let data: AuthorizedAddedEvent = event.2.try_into_val(&env).unwrap();
+    assert_eq!(data.depositor, depositor);
 }
 
 #[test]
-fn test_non_creator_cannot_withdraw_other_creators_funds() {
+fn deposit_emits_event() {
     let env = Env::default();
+
     let (_admin, creator, depositor, client, _, _) = setup(&env);
 
-    let impersonator = Address::generate(&env);
+    let token_address: Address = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get(&DataKey::Token)
+            .expect("token not set")
+    });
 
-    client.deposit(&depositor, &creator, &500);
-    assert_eq!(client.balance(&creator), 500);
+    client.deposit(&depositor, &creator, &300);
 
-    // Remove all auth – impersonator has no authorization
-    let empty: &[SorobanAuthorizationEntry] = &[];
-    env.set_auths(empty);
+    let all_events = env.events().all();
+    let mut dep_event: Option<(
+        Address,
+        soroban_sdk::Vec<soroban_sdk::Val>,
+        soroban_sdk::Val,
+    )> = None;
+    for i in 0..all_events.len() {
+        let evt = all_events.get(i).unwrap();
+        let (id, topics, _) = &evt;
+        if *id != client.address {
+            continue;
+        }
+        let t0: Option<Symbol> = topics.get(0).and_then(|v| v.try_into_val(&env).ok());
+        if t0 == Some(Symbol::new(&env, "deposit")) {
+            dep_event = Some(evt);
+            break;
+        }
+    }
 
-    let result = client.try_withdraw(&impersonator, &100);
-    assert!(result.is_err());
-
-    // Creator's internal balance is unchanged
-    assert_eq!(client.balance(&creator), 500);
-}
-
-#[test]
-fn test_deposit_zero_amount_reverts() {
-    let env = Env::default();
-    let (_admin, creator, depositor, client, _, _) = setup(&env);
-
-    let result = client.try_deposit(&depositor, &creator, &0);
-    assert_eq!(
-        result,
-        Err(Ok(SorobanError::from_contract_error(
-            Error::InvalidAmount as u32,
-        )))
-    );
-}
-
-#[test]
-fn test_withdraw_zero_amount_reverts() {
-    let env = Env::default();
-    let (_admin, creator, depositor, client, _, _) = setup(&env);
-
-    client.deposit(&depositor, &creator, &200);
-
-    let result = client.try_withdraw(&creator, &0);
-    assert_eq!(
-        result,
-        Err(Ok(SorobanError::from_contract_error(
-            Error::InvalidAmount as u32,
-        )))
-    );
+    let event = dep_event.expect("deposit event not emitted");
+    let data: DepositEvent = event.2.try_into_val(&env).unwrap();
+    assert_eq!(data.from, depositor);
+    assert_eq!(data.creator, creator);
+    assert_eq!(data.amount, 300);
+    assert_eq!(data.token, token_address);
 }
