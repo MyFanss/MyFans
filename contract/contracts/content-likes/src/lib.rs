@@ -266,7 +266,7 @@ impl ContentLikes {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Error as SorobanError};
+    use soroban_sdk::{testutils::Address as _, testutils::Events, Error as SorobanError};
 
     #[test]
     fn test_like_and_unlike() {
@@ -569,7 +569,7 @@ mod test {
 
         // Check the last event has the correct structure
         let last_event = events.last().unwrap();
-        assert_eq!(last_event.0.len(), 2, "Expected 2 topics");
+        assert_eq!(last_event.1.len(), 2, "Expected 2 topics");
     }
 
     #[test]
@@ -672,7 +672,7 @@ mod test {
         let client = ContentLikesClient::new(&env, &contract_id);
 
         let user1 = Address::generate(&env);
-        let user2 = Address::generate(&env);
+        let _user2 = Address::generate(&env);
         let content_id = 42u32;
 
         // user1 tries to like as user2 (wrong signer)
@@ -693,7 +693,7 @@ mod test {
         let client = ContentLikesClient::new(&env, &contract_id);
 
         let user1 = Address::generate(&env);
-        let user2 = Address::generate(&env);
+        let _user2 = Address::generate(&env);
         let content_id = 42u32;
 
         // user1 likes content
@@ -708,3 +708,6 @@ mod test {
         );
     }
 }
+
+#[cfg(test)]
+mod property_tests;
