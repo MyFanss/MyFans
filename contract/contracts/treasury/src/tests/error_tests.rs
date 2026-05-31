@@ -17,7 +17,15 @@ fn create_token_contract<'a>(
     (contract_address, token_client, admin_client)
 }
 
-fn setup(env: &Env) -> (TreasuryClient<'_>, Address, Address, Address, TokenClient<'_>) {
+fn setup(
+    env: &Env,
+) -> (
+    TreasuryClient<'_>,
+    Address,
+    Address,
+    Address,
+    TokenClient<'_>,
+) {
     env.mock_all_auths();
 
     let admin = Address::generate(env);

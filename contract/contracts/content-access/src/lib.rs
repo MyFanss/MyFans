@@ -127,7 +127,10 @@ impl ContentAccess {
 
         // Check if already unlocked (idempotent) – but re-check expiry.
         let access_key = DataKey::Access(buyer.clone(), creator.clone(), content_id);
-        if let Some(existing) = env.storage().instance().get::<DataKey, Purchase>(&access_key)
+        if let Some(existing) = env
+            .storage()
+            .instance()
+            .get::<DataKey, Purchase>(&access_key)
         {
             // If the existing purchase is still valid, treat as no-op.
             if existing.expiry > current_seq {
@@ -166,7 +169,11 @@ impl ContentAccess {
     /// Check if buyer has valid (non-expired) access to content.
     pub fn has_access(env: Env, buyer: Address, creator: Address, content_id: u64) -> bool {
         let access_key = DataKey::Access(buyer, creator, content_id);
-        if let Some(purchase) = env.storage().instance().get::<DataKey, Purchase>(&access_key) {
+        if let Some(purchase) = env
+            .storage()
+            .instance()
+            .get::<DataKey, Purchase>(&access_key)
+        {
             let current_seq: u64 = env.ledger().sequence() as u64;
             purchase.expiry > current_seq
         } else {
@@ -853,7 +860,10 @@ mod test {
         assert!(client.has_access(&buyer, &creator, &1));
         // verify_access should not panic (we test this by not expecting an error)
         let verify_result = client.try_verify_access(&buyer, &creator, &1);
-        assert!(verify_result.is_ok(), "verify_access should succeed when has_access is true");
+        assert!(
+            verify_result.is_ok(),
+            "verify_access should succeed when has_access is true"
+        );
     }
 
     /// Invariant: If verify_access succeeds, has_access should return true.
@@ -879,7 +889,10 @@ mod test {
         client.unlock_content(&buyer, &creator, &1, &NO_EXPIRY);
         assert!(client.has_access(&buyer, &creator, &1));
         let verify_result = client.try_verify_access(&buyer, &creator, &1);
-        assert!(verify_result.is_ok(), "verify_access should succeed after unlock");
+        assert!(
+            verify_result.is_ok(),
+            "verify_access should succeed after unlock"
+        );
     }
 
     /// Invariant: Price set by creator should be retrievable.

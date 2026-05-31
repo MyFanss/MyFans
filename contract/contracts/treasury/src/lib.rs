@@ -31,10 +31,8 @@ impl Treasury {
         env.storage().instance().set(&PAUSED, &false);
         env.storage().instance().set(&MIN_BALANCE, &0i128);
 
-        env.events().publish(
-            (Symbol::new(&env, "initialized"),),
-            (admin, token_address),
-        );
+        env.events()
+            .publish((Symbol::new(&env, "initialized"),), (admin, token_address));
     }
 
     /// Pause (`true`) or unpause (`false`) the contract.

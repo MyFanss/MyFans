@@ -240,3 +240,85 @@ fn withdraw_failed_emits_no_event() {
     assert_eq!(client.balance(&creator), 500);
     assert!(env.events().all().len() >= events_before);
 }
+
+// -------- Snapshot / restore consistency tests for issue #944 --------
+
+/// Verify that depositing, withdrawing, then re-depositing the same amount
+/// restores the internal balance to the intermediate snapshot.
+#[test]
+fn test_snapshot_restore_consistency() {
+    let env = Env::default();
+    let (_admin, creator, depositor, client, _, token_admin_client) = setup(&env);
+
+    // Initial snapshot: balance is zero
+    assert_eq!(client.balance(&creator), 0);
+
+    // Deposit to a known state
+    client.deposit(&depositor, &creator, &400);
+    let mid_snapshot = client.balance(&creator);
+    assert_eq!(mid_snapshot, 400);
+
+    // Partial withdrawal moves balance below snapshot
+    client.withdraw(&creator, &150);
+    assert_eq!(client.balance(&creator), 250);
+
+    // Re-mint so depositor can fund the restore deposit
+    token_admin_client.mint(&depositor, &150);
+
+    // Re-deposit the withdrawn amount to restore to mid-snapshot
+    client.deposit(&depositor, &creator, &150);
+    assert_eq!(client.balance(&creator), mid_snapshot);
+}
+
+/// Verify that sequential deposits accumulate correctly and a full withdrawal
+/// returns the balance to zero.
+#[test]
+fn test_sequential_deposits_accumulate_consistently() {
+    let env = Env::default();
+    let (_admin, creator, depositor, client, _, token_admin_client) = setup(&env);
+
+    client.deposit(&depositor, &creator, &100);
+    assert_eq!(client.balance(&creator), 100);
+
+    token_admin_client.mint(&depositor, &200);
+    client.deposit(&depositor, &creator, &200);
+    assert_eq!(client.balance(&creator), 300);
+
+    token_admin_client.mint(&depositor, &300);
+    client.deposit(&depositor, &creator, &300);
+    assert_eq!(client.balance(&creator), 600);
+
+    // Full withdrawal restores balance to zero
+    client.withdraw(&creator, &600);
+    assert_eq!(client.balance(&creator), 0);
+}
+
+/// Verify that balances across multiple creators remain independent; a deposit
+/// or withdrawal for one creator does not affect the snapshot of another.
+#[test]
+fn test_multi_creator_balances_independent() {
+    let env = Env::default();
+    let (_admin, _creator, depositor, client, _, _) = setup(&env);
+
+    let creator_a = Address::generate(&env);
+    let creator_b = Address::generate(&env);
+
+    // Snapshot: both creators start at 0
+    assert_eq!(client.balance(&creator_a), 0);
+    assert_eq!(client.balance(&creator_b), 0);
+
+    // Deposit to creator_a only (depositor has 1_000 from setup)
+    client.deposit(&depositor, &creator_a, &300);
+    assert_eq!(client.balance(&creator_a), 300);
+    assert_eq!(client.balance(&creator_b), 0);
+
+    // Deposit to creator_b
+    client.deposit(&depositor, &creator_b, &200);
+    assert_eq!(client.balance(&creator_a), 300);
+    assert_eq!(client.balance(&creator_b), 200);
+
+    // Withdrawal from creator_a must not affect creator_b
+    client.withdraw(&creator_a, &100);
+    assert_eq!(client.balance(&creator_a), 200);
+    assert_eq!(client.balance(&creator_b), 200);
+}

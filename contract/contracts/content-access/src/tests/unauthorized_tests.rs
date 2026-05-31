@@ -30,7 +30,13 @@ fn setup(env: &Env) -> (ContentAccessClient<'_>, Address, Address) {
     (client, admin, token_address)
 }
 
-fn mock_rogue_auth(env: &Env, rogue: &Address, contract: &Address, fn_name: &'static str, args: soroban_sdk::Vec<Val>) {
+fn mock_rogue_auth(
+    env: &Env,
+    rogue: &Address,
+    contract: &Address,
+    fn_name: &'static str,
+    args: soroban_sdk::Vec<Val>,
+) {
     env.mock_auths(&[MockAuth {
         address: rogue,
         invoke: &MockAuthInvoke {
@@ -163,7 +169,9 @@ fn initialize_reverts_if_already_initialized() {
     let second_admin = Address::generate(&env);
 
     env.mock_all_auths();
-    assert!(client.try_initialize(&second_admin, &token_address).is_err());
+    assert!(client
+        .try_initialize(&second_admin, &token_address)
+        .is_err());
 }
 
 #[test]

@@ -1,6 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, panic_with_error, Address, Env, Map, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env, Map,
+    Symbol, Vec,
 };
 
 mod events;
@@ -24,11 +25,14 @@ pub enum DataKey {
 /// | Code | Variant |
 /// |------|---------|
 /// | 1 | `NotLiked` |
+/// | 2 | `AlreadyInitialized` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
     /// Code 1 – user has not liked this content; `unlike` was called without a prior `like`.
     NotLiked = 1,
+    /// Code 2 – contract was already initialized.
+    AlreadyInitialized = 2,
 }
 
 #[contract]
@@ -40,7 +44,7 @@ impl ContentLikes {
     pub fn initialize(env: Env, admin: Address) {
         admin.require_auth();
         if env.storage().instance().has(&DataKey::Admin) {
-            panic_with_error!(&env, "already initialized");
+            panic_with_error!(&env, Error::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
     }
@@ -584,7 +588,10 @@ mod test {
 
         // Verify events were published
         let events = env.events().all();
-        assert!(events.len() >= 2, "Expected at least 2 events (like and unlike)");
+        assert!(
+            events.len() >= 2,
+            "Expected at least 2 events (like and unlike)"
+        );
     }
 
     #[test]
