@@ -174,3 +174,6 @@ mod test;
 #[cfg(test)]
 #[path = "tests/error_tests.rs"]
 mod error_tests;
+
+#[cfg(test)]
+mod gas_benchmarks;
