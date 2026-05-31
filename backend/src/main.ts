@@ -2,6 +2,7 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { Request, Response, NextFunction } from 'express';
 import * as cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { StartupProbeService } from './health/startup-probe.service';
 import { getDataSourceToken } from '@nestjs/typeorm';
@@ -20,7 +21,29 @@ async function bootstrap() {
     cors: corsOptions,
   });
 
-  // Apply security headers middleware
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  // Helmet provides a baseline set of security headers (dnsPrefetchControl,
+  // frameguard, hidePoweredBy, hsts, ieNoOpen, noSniff, originAgentCluster,
+  // permittedCrossDomainPolicies, referrerPolicy, xssFilter).
+  // CSP and COEP/COOP/CORP are handled by SecurityHeadersMiddleware below so
+  // that they can be environment-aware (dev vs. production CSP, etc.).
+  app.use(
+    helmet({
+      // Disable headers that SecurityHeadersMiddleware manages with finer control
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+      crossOriginOpenerPolicy: false,
+      crossOriginResourcePolicy: false,
+      // HSTS: only meaningful over TLS; SecurityHeadersMiddleware also sets it
+      // in production, so let helmet handle it here as a belt-and-suspenders layer.
+      hsts: isProduction
+        ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+        : false,
+    }),
+  );
+
+  // Apply project-specific security headers (CSP, COEP, COOP, CORP, etc.)
   const securityHeadersMiddleware = new SecurityHeadersMiddleware();
   app.use((req: Request, res: Response, next: NextFunction) =>
     securityHeadersMiddleware.use(req, res, next),
@@ -34,17 +57,6 @@ async function bootstrap() {
   });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    res.setHeader(
-      'Strict-Transport-Security',
-      'max-age=31536000; includeSubDomains',
-    );
-    next();
-  });
 
   const probeService = app.get(StartupProbeService);
 
