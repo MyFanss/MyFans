@@ -1,5 +1,6 @@
 import { rpc, nativeToScVal, scValToNative, xdr, Address } from '@stellar/stellar-sdk';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { RpcMetricsService } from './rpc-metrics.service';
 
 export type HealthStatusType = 'up' | 'down' | 'degraded';
 
@@ -40,7 +41,7 @@ export class SorobanRpcService {
   private readonly timeout: number;
   private readonly retryConfig: RetryConfig;
 
-  constructor() {
+  constructor(@Optional() private readonly rpcMetrics?: RpcMetricsService) {
     this.rpcUrl =
       process.env.SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org';
     this.timeout = parseInt(process.env.SOROBAN_RPC_TIMEOUT || '5000', 10);
@@ -89,6 +90,21 @@ export class SorobanRpcService {
     ]);
   }
 
+  private async recordRpcCall<T>(method: string, call: () => Promise<T>): Promise<T> {
+    const startedAt = Date.now();
+
+    try {
+      const result = await this.withTimeout(call());
+      const latencyMs = Date.now() - startedAt;
+      this.rpcMetrics?.record(method, true, latencyMs);
+      return result;
+    } catch (err) {
+      const latencyMs = Date.now() - startedAt;
+      this.rpcMetrics?.record(method, false, latencyMs);
+      throw err;
+    }
+  }
+
   /**
    * Verifies connectivity to the Soroban RPC node by calling getHealth().
    * Retries up to retryConfig.retries times with exponential back-off.
@@ -124,7 +140,9 @@ export class SorobanRpcService {
     for (let attempt = 1; attempt <= this.retryConfig.retries; attempt++) {
       const startTime = Date.now();
       try {
-        const health = await this.withTimeout(this.server.getHealth());
+const health = await this.recordRpcCall('getHealth', () =>
+        this.server!.getHealth(),
+      );
         const responseTime = Date.now() - startTime;
         responseTimes.push(responseTime);
         successCount++;
@@ -274,7 +292,9 @@ export class SorobanRpcService {
     for (let attempt = 1; attempt <= this.retryConfig.retries; attempt++) {
       const startTime = Date.now();
       try {
-        await this.withTimeout(this.readContractUInt32(contractId, 0));
+        await this.recordRpcCall('getLedgerEntries', () =>
+          this.readContractUInt32(contractId, 0),
+        );
         const responseTime = Date.now() - startTime;
         responseTimes.push(responseTime);
         successCount++;
@@ -394,7 +414,9 @@ export class SorobanRpcService {
           durability: xdr.ContractDataDurability.persistent(),
         }),
       );
-      const response = await this.server.getLedgerEntries(ledgerKey);
+      const response = await this.recordRpcCall('getLedgerEntries', () =>
+        this.server!.getLedgerEntries(ledgerKey),
+      );
       if (!response.entries?.length) return null;
       const contractData = response.entries[0].val.contractData();
       return scValToNative(contractData.val()) as number;
@@ -412,7 +434,9 @@ export class SorobanRpcService {
       throw new Error('SorobanRpcService: server not initialized');
     }
     try {
-      const health = await this.server.getHealth();
+      const health = await this.recordRpcCall('getHealth', () =>
+        this.server!.getHealth(),
+      );
       const seq = (
         health as rpc.Api.GetHealthResponse & { ledger?: number }
       ).ledger;
@@ -446,12 +470,14 @@ export class SorobanRpcService {
     }
     const { startLedger, limit = 200, paginationToken } = opts;
     try {
-      const response = await this.server.getEvents({
-        startLedger,
-        filters: [],
-        limit,
-        ...(paginationToken ? { cursor: paginationToken } : {}),
-      });
+      const response = await this.recordRpcCall('getEvents', () =>
+        this.server!.getEvents({
+          startLedger,
+          filters: [],
+          limit,
+          ...(paginationToken ? { cursor: paginationToken } : {}),
+        }),
+      );
       return {
         events: response.events ?? [],
         startLedger: response.latestLedger,
