@@ -1,4 +1,4 @@
-#  (2026-05-30)
+#  (2026-05-31)
 
 
 ### Bug Fixes
@@ -34,6 +34,7 @@
 * **backend:** Swagger pagination for users list uses concrete response DTO ([31502fd](https://github.com/MyFanss/MyFans/commit/31502fd67a268b6c4f54062cb9f1326092bd25cf))
 * **backend:** use SDK discriminated unions for simulate responses in chain reader ([69f7268](https://github.com/MyFanss/MyFans/commit/69f7268a10bd5a57742cb703b14c060107e657d2))
 * **ci:** add wasm build verification step for content-likes in CI deploy script ([#928](https://github.com/MyFanss/MyFans/issues/928)) ([936add6](https://github.com/MyFanss/MyFans/commit/936add66cb0accdb7c763db9567d898251ade091))
+* **ci:** add wasm build verification step for creator-deposits ([#938](https://github.com/MyFanss/MyFans/issues/938)) ([c745891](https://github.com/MyFanss/MyFans/commit/c7458914e08403ef7a316cd67b1cbecce2b71f1e))
 * **ci:** fallback to npm install when package-lock.json is missing ([ffd2546](https://github.com/MyFanss/MyFans/commit/ffd2546ab52b87499680b3d821a59e42a08ee5c8))
 * **ci:** resolve backend build/test regressions on subscription service ([7694f21](https://github.com/MyFanss/MyFans/commit/7694f217534a2e487c11dba3855c0c957bc1171a))
 * **ci:** switch frontend to npm ci and sync backend lockfile overrides ([116eb10](https://github.com/MyFanss/MyFans/commit/116eb1073a2101c5368d492bd4ed8a0f97ab1953))
@@ -46,6 +47,9 @@
 * **contract:** virtual workspace root for release profiles ([2f022ec](https://github.com/MyFanss/MyFans/commit/2f022ecd0d8bc1073f06589413ced69a334ad938))
 * Correct Stellar SDK imports and add missing error codes ([2ca0e98](https://github.com/MyFanss/MyFans/commit/2ca0e98ac8f1c21351ab6421117965a1367ad126))
 * Correct Stellar SDK imports for backend build ([4ee849e](https://github.com/MyFanss/MyFans/commit/4ee849eec6da235f3ae5427f511e858cf9a621d4))
+* **creator-deposits:** add gas optimization comments for hot paths ([#936](https://github.com/MyFanss/MyFans/issues/936)) ([69e8e30](https://github.com/MyFanss/MyFans/commit/69e8e3012d1b18c2f385c6d65e490088d2cf1e53))
+* **creator-deposits:** add integration test via test-consumer ([#937](https://github.com/MyFanss/MyFans/issues/937)) ([9b657c7](https://github.com/MyFanss/MyFans/commit/9b657c72668b0fcd1ea72a5c284db30a6bab7a3a))
+* **creator-deposits:** validate error codes and replace unwrap with typed errors ([#935](https://github.com/MyFanss/MyFans/issues/935)) ([da99f23](https://github.com/MyFanss/MyFans/commit/da99f238d04f7510adfa3b522ac538450444bf75))
 * **dashboard:** creator dashboard mobile audit ([#629](https://github.com/MyFanss/MyFans/issues/629)) ([a521531](https://github.com/MyFanss/MyFans/commit/a521531481f42944c1e34f9550a6ecdede1b6fb9))
 * failed workflows in backend ([6099ba1](https://github.com/MyFanss/MyFans/commit/6099ba18114809460b6cdbdcf4fd6e16425e87e4))
 * failed workflows in backend and contracts ([0ffb81c](https://github.com/MyFanss/MyFans/commit/0ffb81c2ccf3c6beaf0ff9472e2b3bfe13d20a4e))
