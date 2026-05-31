@@ -17,11 +17,15 @@ import { SorobanRpcService } from './soroban-rpc.service';
  * Build a SorobanRpcService whose internal `rpc.Server` is replaced with a
  * lightweight mock so no real network calls are made.
  */
-function makeService(serverOverrides: Record<string, jest.Mock> = {}): SorobanRpcService {
-  const svc = new SorobanRpcService();
+function makeService(
+  serverOverrides: Record<string, jest.Mock> = {},
+  rpcMetrics?: { record: jest.Mock },
+): SorobanRpcService {
+  const svc = new SorobanRpcService(rpcMetrics as any);
   (svc as any).server = {
     getHealth: jest.fn().mockResolvedValue({ status: 'healthy', ledger: 1000 }),
     getLedgerEntries: jest.fn().mockResolvedValue({ entries: [] }),
+    getEvents: jest.fn().mockResolvedValue({ events: [], latestLedger: 1000 }),
     ...serverOverrides,
   };
   // Speed up retries in tests
