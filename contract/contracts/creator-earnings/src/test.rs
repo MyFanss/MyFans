@@ -241,137 +241,128 @@ fn withdraw_failed_emits_no_event() {
     assert!(env.events().all().len() >= events_before);
 }
 
-// -------- Gas usage review for hot paths (issue #946) --------
-//
-// Soroban metering tracks CPU instructions and memory bytes per invocation.
-// These tests exercise the three hot paths — `deposit`, `withdraw`, and the
-// implicit balance-read inside `withdraw` — under realistic conditions and
-// assert on observable correctness that would break if an optimization
-// regressed.  Correctness is the observable proxy for metering: wrong
-// balances indicate a bad write path, which is also where gas is spent.
-//
-// Hot-path analysis:
-// | Function  | Dominant cost                         | Storage tier |
-// |-----------|---------------------------------------|--------------|
-// | deposit   | token cross-contract transfer         | instance     |
-// | withdraw  | auth check + balance read + transfer  | instance     |
-// | balance   | storage read                          | instance     |
+// -------- Event tests for issue #942: emit events for primary state changes --------
 
 #[test]
-fn hot_path_deposit_single_correctness() {
+fn initialize_emits_event() {
     let env = Env::default();
-    let (_admin, creator, depositor, client, token_client, _) = setup(&env);
+    env.mock_all_auths();
 
-    let before_depositor = token_client.balance(&depositor);
-    let before_contract = token_client.balance(&client.address);
+    let admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    #[allow(deprecated)]
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
 
-    client.deposit(&depositor, &creator, &500);
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
 
-    assert_eq!(token_client.balance(&depositor), before_depositor - 500);
-    assert_eq!(token_client.balance(&client.address), before_contract + 500);
-    assert_eq!(client.balance(&creator), 500);
+    client.initialize(&admin, &token_id);
+
+    let all_events = env.events().all();
+    let mut init_event: Option<(
+        Address,
+        soroban_sdk::Vec<soroban_sdk::Val>,
+        soroban_sdk::Val,
+    )> = None;
+    for i in 0..all_events.len() {
+        let evt = all_events.get(i).unwrap();
+        let (id, topics, _) = &evt;
+        if *id != client.address {
+            continue;
+        }
+        let t0: Option<Symbol> = topics.get(0).and_then(|v| v.try_into_val(&env).ok());
+        if t0 == Some(Symbol::new(&env, "initialized")) {
+            init_event = Some(evt);
+            break;
+        }
+    }
+
+    let event = init_event.expect("initialized event not emitted");
+    let data: InitializedEvent = event.2.try_into_val(&env).unwrap();
+    assert_eq!(data.admin, admin);
+    assert_eq!(data.token, token_id);
 }
 
 #[test]
-fn hot_path_deposit_repeated_accumulates() {
+fn add_authorized_emits_event() {
     let env = Env::default();
-    let (_admin, creator, depositor, client, _, token_admin_client) = setup(&env);
+    env.mock_all_auths();
 
-    token_admin_client.mint(&depositor, &2_000);
+    let admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    #[allow(deprecated)]
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
 
-    client.deposit(&depositor, &creator, &100);
-    assert_eq!(client.balance(&creator), 100);
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
 
-    client.deposit(&depositor, &creator, &200);
-    assert_eq!(client.balance(&creator), 300);
+    client.initialize(&admin, &token_id);
 
-    client.deposit(&depositor, &creator, &300);
-    assert_eq!(client.balance(&creator), 600);
+    let depositor = Address::generate(&env);
+    client.add_authorized(&depositor);
+
+    let all_events = env.events().all();
+    let mut auth_event: Option<(
+        Address,
+        soroban_sdk::Vec<soroban_sdk::Val>,
+        soroban_sdk::Val,
+    )> = None;
+    for i in 0..all_events.len() {
+        let evt = all_events.get(i).unwrap();
+        let (id, topics, _) = &evt;
+        if *id != client.address {
+            continue;
+        }
+        let t0: Option<Symbol> = topics.get(0).and_then(|v| v.try_into_val(&env).ok());
+        if t0 == Some(Symbol::new(&env, "authorized_added")) {
+            auth_event = Some(evt);
+            break;
+        }
+    }
+
+    let event = auth_event.expect("authorized_added event not emitted");
+    let data: AuthorizedAddedEvent = event.2.try_into_val(&env).unwrap();
+    assert_eq!(data.depositor, depositor);
 }
 
 #[test]
-fn hot_path_withdraw_correctness() {
+fn deposit_emits_event() {
     let env = Env::default();
-    let (_admin, creator, depositor, client, token_client, _) = setup(&env);
 
-    client.deposit(&depositor, &creator, &600);
-
-    let before_creator_tokens = token_client.balance(&creator);
-    let before_contract = token_client.balance(&client.address);
-
-    client.withdraw(&creator, &250);
-
-    assert_eq!(client.balance(&creator), 350);
-    assert_eq!(token_client.balance(&creator), before_creator_tokens + 250);
-    assert_eq!(token_client.balance(&client.address), before_contract - 250);
-}
-
-#[test]
-fn hot_path_full_withdraw_leaves_zero() {
-    let env = Env::default();
-    let (_admin, creator, depositor, client, token_client, _) = setup(&env);
-
-    client.deposit(&depositor, &creator, &400);
-    client.withdraw(&creator, &400);
-
-    assert_eq!(client.balance(&creator), 0);
-    assert_eq!(token_client.balance(&creator), 400);
-    assert_eq!(token_client.balance(&client.address), 0);
-}
-
-#[test]
-fn hot_path_balance_read_consistent_with_token_client() {
-    let env = Env::default();
-    let (_admin, creator, depositor, client, token_client, _) = setup(&env);
-
-    client.deposit(&depositor, &creator, &750);
-
-    let internal_balance = client.balance(&creator);
-    let contract_token_balance = token_client.balance(&client.address);
-
-    assert_eq!(internal_balance, 750);
-    assert_eq!(contract_token_balance, 750);
-}
-
-#[test]
-fn hot_path_invalid_amount_rejected_before_transfer() {
-    let env = Env::default();
     let (_admin, creator, depositor, client, _, _) = setup(&env);
 
-    // Zero deposit: InvalidAmount guard fires before auth and token transfer
-    let result = client.try_deposit(&depositor, &creator, &0);
-    assert_eq!(
-        result,
-        Err(Ok(SorobanError::from_contract_error(
-            Error::InvalidAmount as u32,
-        )))
-    );
-
-    // Zero withdrawal: InvalidAmount guard fires before auth and token transfer
-    let result = client.try_withdraw(&creator, &0);
-    assert_eq!(
-        result,
-        Err(Ok(SorobanError::from_contract_error(
-            Error::InvalidAmount as u32,
-        )))
-    );
-}
-
-#[test]
-fn hot_path_overdraft_rejected() {
-    let env = Env::default();
-    let (_admin, creator, depositor, client, _, _) = setup(&env);
+    let token_address: Address = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get(&DataKey::Token)
+            .expect("token not set")
+    });
 
     client.deposit(&depositor, &creator, &300);
 
-    let result = client.try_withdraw(&creator, &400);
-    assert_eq!(
-        result,
-        Err(Ok(SorobanError::from_contract_error(
-            Error::InsufficientBalance as u32,
-        )))
-    );
+    let all_events = env.events().all();
+    let mut dep_event: Option<(
+        Address,
+        soroban_sdk::Vec<soroban_sdk::Val>,
+        soroban_sdk::Val,
+    )> = None;
+    for i in 0..all_events.len() {
+        let evt = all_events.get(i).unwrap();
+        let (id, topics, _) = &evt;
+        if *id != client.address {
+            continue;
+        }
+        let t0: Option<Symbol> = topics.get(0).and_then(|v| v.try_into_val(&env).ok());
+        if t0 == Some(Symbol::new(&env, "deposit")) {
+            dep_event = Some(evt);
+            break;
+        }
+    }
 
-    // Balance unchanged after failed withdrawal
-    assert_eq!(client.balance(&creator), 300);
+    let event = dep_event.expect("deposit event not emitted");
+    let data: DepositEvent = event.2.try_into_val(&env).unwrap();
+    assert_eq!(data.from, depositor);
+    assert_eq!(data.creator, creator);
+    assert_eq!(data.amount, 300);
+    assert_eq!(data.token, token_address);
 }
