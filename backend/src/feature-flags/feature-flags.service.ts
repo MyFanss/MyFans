@@ -18,11 +18,7 @@ const FEATURE_FLAG_ENV_KEYS = {
 } as const;
 
 export type FeatureFlagName = keyof typeof FEATURE_FLAG_ENV_KEYS;
-export type FrontendFeatureFlagName =
-  | 'bookmarks'
-  | 'earnings_withdrawals'
-  | 'earnings_fee_transparency';
-export type FeatureFlagsSnapshot = Record<FrontendFeatureFlagName, boolean>;
+export type FeatureFlagsSnapshot = Record<FeatureFlagName, boolean>;
 
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
   if (!value) {
@@ -62,13 +58,6 @@ export class FeatureFlagsService {
     return this.isEnabled('cryptoPayments');
   }
 
-  getAllFlags(): { flags: FeatureFlagsSnapshot } {
-    return {
-      flags: {
-        bookmarks: this.isEnabled('bookmarks'),
-        earnings_withdrawals: this.isEnabled('earnings_withdrawals'),
-        earnings_fee_transparency: this.isEnabled('earnings_fee_transparency'),
-      },
   isReferralCodesEnabled(): boolean {
     return process.env.FEATURE_REFERRAL_CODES === 'true';
   }
@@ -77,8 +66,11 @@ export class FeatureFlagsService {
     return process.env.FEATURE_SOROBAN_POLLER !== 'false';
   }
 
-  getAllFlags() {
+  getAllFlags(): FeatureFlagsSnapshot {
     return {
+      bookmarks: this.isEnabled('bookmarks'),
+      earnings_withdrawals: this.isEnabled('earnings_withdrawals'),
+      earnings_fee_transparency: this.isEnabled('earnings_fee_transparency'),
       newSubscriptionFlow: this.isNewSubscriptionFlowEnabled(),
       cryptoPayments: this.isCryptoPaymentsEnabled(),
       referralCodes: this.isReferralCodesEnabled(),

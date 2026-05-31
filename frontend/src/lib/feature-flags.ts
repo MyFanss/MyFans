@@ -3,6 +3,8 @@ export const FeatureFlag = {
   EARNINGS_WITHDRAWALS: 'earnings_withdrawals',
   EARNINGS_FEE_TRANSPARENCY: 'earnings_fee_transparency',
   REFERRAL_CODES: 'referral_codes',
+  NEW_SUBSCRIPTION_FLOW: 'newSubscriptionFlow',
+  CRYPTO_PAYMENTS: 'cryptoPayments',
 } as const;
 
 export type FeatureFlag = (typeof FeatureFlag)[keyof typeof FeatureFlag];
@@ -38,6 +40,14 @@ export const featureFlagDefinitions: Record<FeatureFlag, FeatureFlagDefinition> 
     description: 'Enables referral / invite code input during checkout and share panel in settings.',
     envKey: 'NEXT_PUBLIC_FLAG_REFERRAL_CODES',
   },
+  [FeatureFlag.NEW_SUBSCRIPTION_FLOW]: {
+    description: 'Enables the new subscription checkout flow in the application.',
+    envKey: 'NEXT_PUBLIC_FEATURE_NEW_SUBSCRIPTION_FLOW',
+  },
+  [FeatureFlag.CRYPTO_PAYMENTS]: {
+    description: 'Enables crypto payment options in the checkout flow.',
+    envKey: 'NEXT_PUBLIC_FEATURE_CRYPTO_PAYMENTS',
+  },
 };
 
 export const defaultFeatureFlags: FeatureFlagSnapshot = Object.freeze({
@@ -45,6 +55,8 @@ export const defaultFeatureFlags: FeatureFlagSnapshot = Object.freeze({
   [FeatureFlag.EARNINGS_WITHDRAWALS]: false,
   [FeatureFlag.EARNINGS_FEE_TRANSPARENCY]: false,
   [FeatureFlag.REFERRAL_CODES]: false,
+  [FeatureFlag.NEW_SUBSCRIPTION_FLOW]: false,
+  [FeatureFlag.CRYPTO_PAYMENTS]: false,
 });
 
 let cachedRemoteFlags: FeatureFlagOverrides = {};
