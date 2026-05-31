@@ -611,4 +611,93 @@ mod test {
             "Idempotent like should not emit additional events"
         );
     }
+
+    #[test]
+    fn test_like_unauthorized_caller_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        let content_id = 42u32;
+
+        // Strip all auth to simulate unauthorized caller
+        env.set_auths(&[]);
+
+        // Try to like without authorization
+        let result = client.try_like(&user, &content_id);
+        assert!(
+            result.is_err(),
+            "like() must reject unauthorized caller (no auth)"
+        );
+    }
+
+    #[test]
+    fn test_unlike_unauthorized_caller_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        let content_id = 42u32;
+
+        // First, like with proper auth
+        client.like(&user, &content_id);
+
+        // Strip all auth to simulate unauthorized caller
+        env.set_auths(&[]);
+
+        // Try to unlike without authorization
+        let result = client.try_unlike(&user, &content_id);
+        assert!(
+            result.is_err(),
+            "unlike() must reject unauthorized caller (no auth)"
+        );
+    }
+
+    #[test]
+    fn test_like_wrong_user_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user1 = Address::generate(&env);
+        let user2 = Address::generate(&env);
+        let content_id = 42u32;
+
+        // user1 tries to like as user2 (wrong signer)
+        // This should fail because user.require_auth() checks that the caller is user
+        env.set_auths(&[]);
+        let result = client.try_like(&user1, &content_id);
+        assert!(
+            result.is_err(),
+            "like() must reject when caller is not the user parameter"
+        );
+    }
+
+    #[test]
+    fn test_unlike_wrong_user_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user1 = Address::generate(&env);
+        let user2 = Address::generate(&env);
+        let content_id = 42u32;
+
+        // user1 likes content
+        client.like(&user1, &content_id);
+
+        // user2 tries to unlike as user1 (wrong signer)
+        env.set_auths(&[]);
+        let result = client.try_unlike(&user1, &content_id);
+        assert!(
+            result.is_err(),
+            "unlike() must reject when caller is not the user parameter"
+        );
+    }
 }
