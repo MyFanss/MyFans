@@ -95,6 +95,7 @@
 * test errors ([d48694f](https://github.com/MyFanss/MyFans/commit/d48694f2a32b5021c29fdd817add9a17a6331df0))
 * **test:** add CreatorDashboardService mock to creators controller spec ([70db6a7](https://github.com/MyFanss/MyFans/commit/70db6a7694ad813fcd10fd0041ee62cbe7134e0c))
 * **tests:** resolve all failing test suite dependency errors ([e7bb906](https://github.com/MyFanss/MyFans/commit/e7bb90679d7a49bd2c701b2dae89ccb58b1225ea))
+* **treasury:** add gas benchmark tests and hot path optimization notes ([#906](https://github.com/MyFanss/MyFans/issues/906)) ([dcd7e4a](https://github.com/MyFanss/MyFans/commit/dcd7e4a654ffc35baafe6482b9d4dc41b93c634b))
 * update backend Nest deps for CI audit ([fd2a1fa](https://github.com/MyFanss/MyFans/commit/fd2a1fa57f9cc2f841a25355a0b817ed83ec6db7))
 * update package-lock.json to sync with package.json ([458210f](https://github.com/MyFanss/MyFans/commit/458210fbb10be290a36d2b6ce880614735182be3))
 * use rpc.Server and import rpc.Api helpers where UInt32Val is used ([#581](https://github.com/MyFanss/MyFans/issues/581)) ([a96b86e](https://github.com/MyFanss/MyFans/commit/a96b86e262b3e05ead6de3f4f796b5d40f059a92))
