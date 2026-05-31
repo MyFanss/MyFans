@@ -721,6 +721,55 @@ fn test_non_admin_cannot_set_admin() {
 }
 
 #[test]
+#[should_panic]
+fn test_initialize_only_once_panics() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0,
+    );
+
+    // Second initialization must panic to avoid accidental overwrite
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0,
+    );
+}
+
+#[test]
+#[should_panic]
+fn test_set_admin_unauthorized_panics() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0,
+    );
+
+    // Clear mocked auths so admin.require_auth() inside set_admin fails
+    env.mock_auths(&[]);
+
+    client.set_admin(&new_admin);
+}
+
+#[test]
 fn test_multiple_initializations_with_different_envs() {
     // Test that each test gets isolated env
     let env1 = Env::default();

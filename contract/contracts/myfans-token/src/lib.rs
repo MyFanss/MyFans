@@ -104,6 +104,17 @@ impl MyFansToken {
         decimals: u32,
         initial_supply: i128,
     ) {
+        // Prevent accidental re-initialization which could overwrite admin
+        // and metadata. Initialization is a one-time operation.
+        if env.storage().instance().get::<Address>(&DataKey::Admin).is_some() {
+            panic!("contract already initialized");
+        }
+
+        // Validate inputs
+        if initial_supply < 0 {
+            panic!("initial_supply must be non-negative");
+        }
+
         // Store admin in persistent storage
         env.storage().instance().set(&DataKey::Admin, &admin);
 
