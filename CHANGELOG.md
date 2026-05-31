@@ -194,6 +194,7 @@
 * ci run contract tests ([44bb30f](https://github.com/MyFanss/MyFans/commit/44bb30f72f35a379bc2b4ba52203be5969e4d63b))
 * commit anything ([c5a3675](https://github.com/MyFanss/MyFans/commit/c5a3675e16a9eeffffd13596a32393edefd37fbb))
 * complete contract interface docs generation [#301](https://github.com/MyFanss/MyFans/issues/301) ([7a7c292](https://github.com/MyFanss/MyFans/commit/7a7c292e41f9415561162d9eefe46f2abca618b8))
+* **content-likes:** add invariant property tests ([ec35f84](https://github.com/MyFanss/MyFans/commit/ec35f84bf72ccf118557d7a05d9ee94f4876abeb))
 * **content-likes:** add pagination or cap for likes by user ([#849](https://github.com/MyFanss/MyFans/issues/849)) ([ef593f2](https://github.com/MyFanss/MyFans/commit/ef593f2172f0bb34851f2fc639ee6481e5fd03dd))
 * **content:** add content metadata CRUD API ([#333](https://github.com/MyFanss/MyFans/issues/333)) ([0d053df](https://github.com/MyFanss/MyFans/commit/0d053df53c7a1bd84903d6eb018775a9254b4e0c))
 * **contract:** add admin token metadata update (set_metadata) ([5df26ab](https://github.com/MyFanss/MyFans/commit/5df26ab664c3458a8b768c056485df6f145f1542)), closes [#280](https://github.com/MyFanss/MyFans/issues/280)
