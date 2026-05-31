@@ -231,6 +231,7 @@
 * emit withdraw event with creator, amount, and token ([77b0eb0](https://github.com/MyFanss/MyFans/commit/77b0eb07f91a59b37d9b681db30ecb16f5aacffe))
 * enforce transfer validation and strengthen subscription/earnings initialization guards ([9228790](https://github.com/MyFanss/MyFans/commit/92287901400d40a2a28ed1a2f46dba06536f6342))
 * enhance wallet connection resilience and UX ([ce92df0](https://github.com/MyFanss/MyFans/commit/ce92df09e39b485567cce1572f3964241ba94b85))
+* feature flags for new flows ([0bd8aa3](https://github.com/MyFanss/MyFans/commit/0bd8aa342d977bbf8929112da2da1f177564774b))
 * fix app.module.ts ([65507f1](https://github.com/MyFanss/MyFans/commit/65507f1e5f348adb28218a3e966c091f71342b41))
 * fixed account creation problems closes [#1](https://github.com/MyFanss/MyFans/issues/1) ([7647459](https://github.com/MyFanss/MyFans/commit/7647459d77a6a7ead9b547025851b291eda329fb))
 * fixed account creation problems closes [#1](https://github.com/MyFanss/MyFans/issues/1) ([bdaed72](https://github.com/MyFanss/MyFans/commit/bdaed722bd585e3e860b787889dbb8e05781342e))
