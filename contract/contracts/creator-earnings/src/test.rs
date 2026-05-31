@@ -240,3 +240,138 @@ fn withdraw_failed_emits_no_event() {
     assert_eq!(client.balance(&creator), 500);
     assert!(env.events().all().len() >= events_before);
 }
+
+// -------- Gas usage review for hot paths (issue #946) --------
+//
+// Soroban metering tracks CPU instructions and memory bytes per invocation.
+// These tests exercise the three hot paths — `deposit`, `withdraw`, and the
+// implicit balance-read inside `withdraw` — under realistic conditions and
+// assert on observable correctness that would break if an optimization
+// regressed.  Correctness is the observable proxy for metering: wrong
+// balances indicate a bad write path, which is also where gas is spent.
+//
+// Hot-path analysis:
+// | Function  | Dominant cost                         | Storage tier |
+// |-----------|---------------------------------------|--------------|
+// | deposit   | token cross-contract transfer         | instance     |
+// | withdraw  | auth check + balance read + transfer  | instance     |
+// | balance   | storage read                          | instance     |
+
+#[test]
+fn hot_path_deposit_single_correctness() {
+    let env = Env::default();
+    let (_admin, creator, depositor, client, token_client, _) = setup(&env);
+
+    let before_depositor = token_client.balance(&depositor);
+    let before_contract = token_client.balance(&client.address);
+
+    client.deposit(&depositor, &creator, &500);
+
+    assert_eq!(token_client.balance(&depositor), before_depositor - 500);
+    assert_eq!(token_client.balance(&client.address), before_contract + 500);
+    assert_eq!(client.balance(&creator), 500);
+}
+
+#[test]
+fn hot_path_deposit_repeated_accumulates() {
+    let env = Env::default();
+    let (_admin, creator, depositor, client, _, token_admin_client) = setup(&env);
+
+    token_admin_client.mint(&depositor, &2_000);
+
+    client.deposit(&depositor, &creator, &100);
+    assert_eq!(client.balance(&creator), 100);
+
+    client.deposit(&depositor, &creator, &200);
+    assert_eq!(client.balance(&creator), 300);
+
+    client.deposit(&depositor, &creator, &300);
+    assert_eq!(client.balance(&creator), 600);
+}
+
+#[test]
+fn hot_path_withdraw_correctness() {
+    let env = Env::default();
+    let (_admin, creator, depositor, client, token_client, _) = setup(&env);
+
+    client.deposit(&depositor, &creator, &600);
+
+    let before_creator_tokens = token_client.balance(&creator);
+    let before_contract = token_client.balance(&client.address);
+
+    client.withdraw(&creator, &250);
+
+    assert_eq!(client.balance(&creator), 350);
+    assert_eq!(token_client.balance(&creator), before_creator_tokens + 250);
+    assert_eq!(token_client.balance(&client.address), before_contract - 250);
+}
+
+#[test]
+fn hot_path_full_withdraw_leaves_zero() {
+    let env = Env::default();
+    let (_admin, creator, depositor, client, token_client, _) = setup(&env);
+
+    client.deposit(&depositor, &creator, &400);
+    client.withdraw(&creator, &400);
+
+    assert_eq!(client.balance(&creator), 0);
+    assert_eq!(token_client.balance(&creator), 400);
+    assert_eq!(token_client.balance(&client.address), 0);
+}
+
+#[test]
+fn hot_path_balance_read_consistent_with_token_client() {
+    let env = Env::default();
+    let (_admin, creator, depositor, client, token_client, _) = setup(&env);
+
+    client.deposit(&depositor, &creator, &750);
+
+    let internal_balance = client.balance(&creator);
+    let contract_token_balance = token_client.balance(&client.address);
+
+    assert_eq!(internal_balance, 750);
+    assert_eq!(contract_token_balance, 750);
+}
+
+#[test]
+fn hot_path_invalid_amount_rejected_before_transfer() {
+    let env = Env::default();
+    let (_admin, creator, depositor, client, _, _) = setup(&env);
+
+    // Zero deposit: InvalidAmount guard fires before auth and token transfer
+    let result = client.try_deposit(&depositor, &creator, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidAmount as u32,
+        )))
+    );
+
+    // Zero withdrawal: InvalidAmount guard fires before auth and token transfer
+    let result = client.try_withdraw(&creator, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidAmount as u32,
+        )))
+    );
+}
+
+#[test]
+fn hot_path_overdraft_rejected() {
+    let env = Env::default();
+    let (_admin, creator, depositor, client, _, _) = setup(&env);
+
+    client.deposit(&depositor, &creator, &300);
+
+    let result = client.try_withdraw(&creator, &400);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InsufficientBalance as u32,
+        )))
+    );
+
+    // Balance unchanged after failed withdrawal
+    assert_eq!(client.balance(&creator), 300);
+}

@@ -1,7 +1,5 @@
 use crate::{
-    events::{
-        AdminTransferredEvent, ContentPriceSetEvent, MaxPriceClearedEvent, MaxPriceSetEvent,
-    },
+    events::{AdminTransferredEvent, ContentPriceSetEvent, MaxPriceClearedEvent, MaxPriceSetEvent},
     ContentAccess, ContentAccessClient,
 };
 use soroban_sdk::{
