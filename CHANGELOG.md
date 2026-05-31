@@ -339,6 +339,7 @@
 * **subscriptions:** GET fan–creator subscription state with auth ([2fec38f](https://github.com/MyFanss/MyFans/commit/2fec38f7d73e046ce497399ec412220b12fd8044))
 * **subscriptions:** map query status string to SubscriptionStatus enum ([0661159](https://github.com/MyFanss/MyFans/commit/0661159312d2cc5051c8c91e5b9a8b398c24b314))
 * **subscriptions:** track worst-case simulation resource fees ([bc60859](https://github.com/MyFanss/MyFans/commit/bc60859f713b928c27bae13c1ca43ab3b3319f63))
+* treasury deposit event ([d474a33](https://github.com/MyFanss/MyFans/commit/d474a3395761d872b51735bf3d783ac9246d3c35))
 * Treasury-min-balance guard ([5e0bcf1](https://github.com/MyFanss/MyFans/commit/5e0bcf1a114cf65c4f232375fbdb43e40089f427))
 * **treasury:** add minimum balance or emergency pause protection ([#851](https://github.com/MyFanss/MyFans/issues/851)) ([81cfbfc](https://github.com/MyFanss/MyFans/commit/81cfbfc570c50ca3a047c726cc41cb87ea839de5))
 * unfollow fn done ([9a3fc62](https://github.com/MyFanss/MyFans/commit/9a3fc62283fcf4d73543963aa4166492440ae989))
