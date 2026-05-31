@@ -159,3 +159,87 @@ fn test_unlike_updates_user_list() {
     assert_eq!(page.get(1).unwrap(), 30);
     assert!(!client.has_liked(&user, &20u32));
 }
+
+/// Test that like emits a liked event.
+#[test]
+fn test_like_emits_event() {
+    let f = TestEnv::new();
+    let contract_id = f.env.register_contract(None, ContentLikes);
+    let client = ContentLikesClient::new(&f.env, &contract_id);
+
+    let user = f.fan;
+    let content_id = 42u32;
+
+    // Clear any previous events
+    f.env.events().publish(("test_marker",), ());
+
+    // User likes content
+    client.like(&user, &content_id);
+
+    // Verify event was published
+    let events = f.env.events().all();
+    assert!(
+        events.len() > 0,
+        "Expected at least one event to be published"
+    );
+
+    // The last event should be the liked event
+    let last_event = events.last().unwrap();
+    assert_eq!(last_event.0.len(), 2, "Expected 2 topics in liked event");
+}
+
+/// Test that unlike emits an unliked event.
+#[test]
+fn test_unlike_emits_event() {
+    let f = TestEnv::new();
+    let contract_id = f.env.register_contract(None, ContentLikes);
+    let client = ContentLikesClient::new(&f.env, &contract_id);
+
+    let user = f.fan;
+    let content_id = 42u32;
+
+    // User likes content first
+    client.like(&user, &content_id);
+
+    // Clear events
+    f.env.events().publish(("test_marker",), ());
+
+    // User unlikes content
+    client.unlike(&user, &content_id);
+
+    // Verify event was published
+    let events = f.env.events().all();
+    assert!(
+        events.len() > 0,
+        "Expected at least one event to be published"
+    );
+
+    // The last event should be the unliked event
+    let last_event = events.last().unwrap();
+    assert_eq!(last_event.0.len(), 2, "Expected 2 topics in unliked event");
+}
+
+/// Test that idempotent like does not emit duplicate events.
+#[test]
+fn test_idempotent_like_no_duplicate_events() {
+    let f = TestEnv::new();
+    let contract_id = f.env.register_contract(None, ContentLikes);
+    let client = ContentLikesClient::new(&f.env, &contract_id);
+
+    let user = f.fan;
+    let content_id = 42u32;
+
+    // First like
+    client.like(&user, &content_id);
+    let events_after_first = f.env.events().all().len();
+
+    // Second like (idempotent)
+    client.like(&user, &content_id);
+    let events_after_second = f.env.events().all().len();
+
+    // No new events should be published for idempotent like
+    assert_eq!(
+        events_after_first, events_after_second,
+        "Idempotent like should not emit additional events"
+    );
+}

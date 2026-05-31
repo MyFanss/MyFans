@@ -3,6 +3,9 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, panic_with_error, Address, Env, Map, Symbol, Vec,
 };
 
+mod events;
+use events::{LikedEvent, UnlikedEvent, TOPIC_LIKED, TOPIC_UNLIKED};
+
 const MAX_PAGE_LIMIT: u32 = 100;
 
 /// Storage keys for content likes contract
@@ -103,8 +106,13 @@ impl ContentLikes {
             env.storage().instance().set(&user_likes_key, &list);
 
             // Publish event
-            env.events()
-                .publish((Symbol::new(&env, "liked"), content_id), user);
+            env.events().publish(
+                (Symbol::new(&env, TOPIC_LIKED), content_id),
+                LikedEvent {
+                    user: user.clone(),
+                    content_id,
+                },
+            );
         }
     }
 
@@ -172,8 +180,13 @@ impl ContentLikes {
         env.storage().instance().set(&user_likes_key, &new_list);
 
         // Publish event
-        env.events()
-            .publish((Symbol::new(&env, "unliked"), content_id), user);
+        env.events().publish(
+            (Symbol::new(&env, TOPIC_UNLIKED), content_id),
+            UnlikedEvent {
+                user: user.clone(),
+                content_id,
+            },
+        );
     }
 
     /// Get the total like count for a content item
@@ -531,5 +544,71 @@ mod test {
     fn test_error_code_discriminant() {
         // Verify NotLiked error has the correct discriminant (code 1)
         assert_eq!(Error::NotLiked as u32, 1);
+    }
+
+    #[test]
+    fn test_like_emits_liked_event() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        let content_id = 42u32;
+
+        // Like content
+        client.like(&user, &content_id);
+
+        // Verify event was published
+        let events = env.events().all();
+        assert!(events.len() > 0, "Expected at least one event");
+
+        // Check the last event has the correct structure
+        let last_event = events.last().unwrap();
+        assert_eq!(last_event.0.len(), 2, "Expected 2 topics");
+    }
+
+    #[test]
+    fn test_unlike_emits_unliked_event() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        let content_id = 42u32;
+
+        // Like then unlike
+        client.like(&user, &content_id);
+        client.unlike(&user, &content_id);
+
+        // Verify events were published
+        let events = env.events().all();
+        assert!(events.len() >= 2, "Expected at least 2 events (like and unlike)");
+    }
+
+    #[test]
+    fn test_idempotent_like_no_duplicate_events() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        let content_id = 42u32;
+
+        // First like
+        client.like(&user, &content_id);
+        let events_after_first = env.events().all().len();
+
+        // Second like (idempotent)
+        client.like(&user, &content_id);
+        let events_after_second = env.events().all().len();
+
+        // No new events should be published for idempotent like
+        assert_eq!(
+            events_after_first, events_after_second,
+            "Idempotent like should not emit additional events"
+        );
     }
 }
