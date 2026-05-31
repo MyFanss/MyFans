@@ -12,6 +12,7 @@ import { FanSpendingCapEntity } from './entities/fan-spending-cap.entity';
 import { SubscriptionIndexRepository } from './repositories/subscription-index.repository';
 import { SubscriptionEventPollerService } from './services/subscription-event-poller.service';
 import { SubscriptionReconcilerService } from './subscription-reconciler.service';
+import { SubscriptionChainSyncService } from './services/subscription-chain-sync.service';
 import { SpendingCapService } from './services/spending-cap.service';
 import { SUBSCRIPTION_EVENT_PUBLISHER } from './events';
 import { FanBearerGuard } from './guards/fan-bearer.guard';
@@ -38,6 +39,7 @@ import { LedgerClockService } from './ledger-clock.service';
     SubscriptionIndexRepository,
     SubscriptionEventPollerService,
     SubscriptionReconcilerService,
+    SubscriptionChainSyncService,
     SpendingCapService,
     SubscriptionsService,
     SubscriptionChainReaderService,
@@ -51,6 +53,6 @@ import { LedgerClockService } from './ledger-clock.service';
       useValue: { emit: () => undefined },
     },
   ],
-  exports: [SubscriptionsService, SubscriptionLifecycleIndexerService, SubscriptionIndexRepository],
+  exports: [SubscriptionsService, SubscriptionLifecycleIndexerService, SubscriptionIndexRepository, SubscriptionChainSyncService],
 })
 export class SubscriptionsModule {}

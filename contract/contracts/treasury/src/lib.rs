@@ -176,4 +176,4 @@ mod test;
 mod error_tests;
 
 #[cfg(test)]
-mod property_tests;
+mod gas_benchmarks;
