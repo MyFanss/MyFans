@@ -343,6 +343,7 @@
 * Treasury-min-balance guard ([5e0bcf1](https://github.com/MyFanss/MyFans/commit/5e0bcf1a114cf65c4f232375fbdb43e40089f427))
 * **treasury:** add minimum balance or emergency pause protection ([#851](https://github.com/MyFanss/MyFans/issues/851)) ([81cfbfc](https://github.com/MyFanss/MyFans/commit/81cfbfc570c50ca3a047c726cc41cb87ea839de5))
 * unfollow fn done ([9a3fc62](https://github.com/MyFanss/MyFans/commit/9a3fc62283fcf4d73543963aa4166492440ae989))
+* unit tests ([7f652fd](https://github.com/MyFanss/MyFans/commit/7f652fd6e9b190235910cb96c3ae93cdfd4b2ed7))
 * **wallet:** detect and handle wrong network mismatch ([#863](https://github.com/MyFanss/MyFans/issues/863)) ([e62d074](https://github.com/MyFanss/MyFans/commit/e62d07448d8827f5879c9d9782f3101fe085f075))
 * **wallet:** return actionable errors on network mismatch ([636713c](https://github.com/MyFanss/MyFans/commit/636713ca0c498926b269040d5a542a82c2528d7c))
 * wasm build size ([8ace45b](https://github.com/MyFanss/MyFans/commit/8ace45bb3216bbde6b0af7d575dc3a5a763ab3a7))
