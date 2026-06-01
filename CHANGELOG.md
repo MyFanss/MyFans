@@ -158,6 +158,7 @@
 * add subscription plan update support ([#284](https://github.com/MyFanss/MyFans/issues/284)) ([f29f50a](https://github.com/MyFanss/MyFans/commit/f29f50a00f69378210f5b440b9c7a3a236a4cb3d))
 * add subscription renewal helper ([#285](https://github.com/MyFanss/MyFans/issues/285)) ([1e22612](https://github.com/MyFanss/MyFans/commit/1e22612ad2c19b3fad4640e6d6481cf32668cf4d))
 * add total supply invariants test suite ([#281](https://github.com/MyFanss/MyFans/issues/281)) ([c8cad59](https://github.com/MyFanss/MyFans/commit/c8cad590e625925c53829c8748b3358de432d2e0))
+* add unauthorized caller ([964b505](https://github.com/MyFanss/MyFans/commit/964b5052b5eb1e50cb847ab9349160e40d2b58da))
 * add wallet address column to creators entity ([7cf2083](https://github.com/MyFanss/MyFans/commit/7cf2083fd16dee7a58c0bcef96f0fcb846c0613e))
 * add wallet address tests ([0cbc810](https://github.com/MyFanss/MyFans/commit/0cbc810696ea2d72bf40bf30afdb87d477609b58))
 * added Pagination standard (cursor vs offset) ([cacb5a1](https://github.com/MyFanss/MyFans/commit/cacb5a1237668cef314e6cd982ac4a8d1826bab0))
