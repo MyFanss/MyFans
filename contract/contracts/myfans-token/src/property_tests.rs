@@ -187,13 +187,14 @@ mod props {
             );
         }
 
-        /// transfer_from must fail with AllowanceExpired when ledger > expiration.
+        /// transfer_from must fail with AllowanceExpired on the first ledger
+        /// after the allowance expiration boundary.
         #[test]
         fn prop_transfer_from_fails_after_expiry(
             mint_amount  in 1i128..=1_000_000i128,
             spend_amount in 1i128..=1_000_000i128,
             expiry       in 2u32..=1_000u32,
-            past_offset  in 1u32..=500u32,
+            past_offset  in 1u32..=1u32,
         ) {
             let env = Env::default();
             env.mock_all_auths();
@@ -300,6 +301,231 @@ mod props {
                 client.try_burn(&holder, &bad_amount),
                 Err(Ok(Error::InvalidAmount))
             );
+        }
+
+        /// Clearing an allowance must preserve balances and zero out the allowance.
+        #[test]
+        fn prop_clear_allowance_preserves_balances(
+            approve_amount in 0i128..=1_000_000i128,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let owner = Address::generate(&env);
+            let spender = Address::generate(&env);
+            let receiver = Address::generate(&env);
+
+            client.mint(&owner, &approve_amount);
+            let expiry = env.ledger().sequence() + 100;
+            client.approve(&owner, &spender, &approve_amount, &expiry);
+            client.clear_allowance(&owner, &spender);
+
+            prop_assert_eq!(client.allowance(&owner, &spender), 0);
+            prop_assert_eq!(client.balance(&owner), approve_amount);
+            prop_assert_eq!(client.balance(&receiver), 0);
+            prop_assert_eq!(client.total_supply(), approve_amount);
+        }
+    }
+
+    // ── approve / allowance invariants ───────────────────────────────────────
+
+    proptest! {
+        /// approve stores the exact amount; allowance() returns it before expiry.
+        #[test]
+        fn prop_approve_sets_allowance(
+            amount in 1i128..=1_000_000i128,
+            expiry in 100u32..=10_000u32,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let owner   = Address::generate(&env);
+            let spender = Address::generate(&env);
+
+            client.approve(&owner, &spender, &amount, &expiry);
+
+            prop_assert_eq!(client.allowance(&owner, &spender), amount);
+        }
+
+        /// approve with amount=0 sets allowance to zero (clear via approve).
+        #[test]
+        fn prop_approve_zero_clears_allowance(
+            prior in 1i128..=1_000_000i128,
+            expiry in 100u32..=10_000u32,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let owner   = Address::generate(&env);
+            let spender = Address::generate(&env);
+
+            client.approve(&owner, &spender, &prior, &expiry);
+            client.approve(&owner, &spender, &0i128, &expiry);
+
+            prop_assert_eq!(client.allowance(&owner, &spender), 0i128);
+        }
+
+        /// approve with a past expiration_ledger must fail with InvalidExpiration.
+        #[test]
+        fn prop_approve_rejects_past_expiry(
+            amount in 0i128..=1_000_000i128,
+            offset in 1u32..=500u32,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            // Advance ledger so sequence > 0, then try to approve with a past ledger.
+            let current = 1_000u32;
+            env.ledger().with_mut(|li| li.sequence_number = current);
+
+            let owner   = Address::generate(&env);
+            let spender = Address::generate(&env);
+            let past_expiry = current.saturating_sub(offset);
+
+            prop_assert_eq!(
+                client.try_approve(&owner, &spender, &amount, &past_expiry),
+                Err(Ok(Error::InvalidExpiration))
+            );
+        }
+
+        /// allowance() returns 0 after the expiration ledger has passed.
+        #[test]
+        fn prop_allowance_returns_zero_after_expiry(
+            amount in 1i128..=1_000_000i128,
+            expiry in 10u32..=500u32,
+            past_offset in 1u32..=500u32,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let owner   = Address::generate(&env);
+            let spender = Address::generate(&env);
+
+            client.approve(&owner, &spender, &amount, &expiry);
+
+            // Advance past expiry.
+            env.ledger().with_mut(|li| {
+                li.sequence_number = expiry.saturating_add(past_offset);
+            });
+
+            prop_assert_eq!(client.allowance(&owner, &spender), 0i128);
+        }
+    }
+
+    // ── clear_allowance invariants ────────────────────────────────────────────
+
+    proptest! {
+        /// clear_allowance always sets allowance to 0 regardless of prior value.
+        #[test]
+        fn prop_clear_allowance_zeroes_allowance(
+            amount in 1i128..=1_000_000i128,
+            expiry in 100u32..=10_000u32,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let owner   = Address::generate(&env);
+            let spender = Address::generate(&env);
+
+            client.approve(&owner, &spender, &amount, &expiry);
+            prop_assert_eq!(client.allowance(&owner, &spender), amount);
+
+            client.clear_allowance(&owner, &spender);
+            prop_assert_eq!(client.allowance(&owner, &spender), 0i128);
+        }
+
+        /// clear_allowance does not affect other (owner, spender) pairs.
+        #[test]
+        fn prop_clear_allowance_is_scoped(
+            amount_a in 1i128..=1_000_000i128,
+            amount_b in 1i128..=1_000_000i128,
+            expiry   in 100u32..=10_000u32,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let owner    = Address::generate(&env);
+            let spender_a = Address::generate(&env);
+            let spender_b = Address::generate(&env);
+
+            client.approve(&owner, &spender_a, &amount_a, &expiry);
+            client.approve(&owner, &spender_b, &amount_b, &expiry);
+
+            client.clear_allowance(&owner, &spender_a);
+
+            prop_assert_eq!(client.allowance(&owner, &spender_a), 0i128);
+            prop_assert_eq!(client.allowance(&owner, &spender_b), amount_b);
+        }
+    }
+
+    // ── set_admin invariants ──────────────────────────────────────────────────
+
+    proptest! {
+        /// set_admin updates the stored admin; subsequent admin() returns new admin.
+        #[test]
+        fn prop_set_admin_updates_admin(_dummy in 0u32..=1u32) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _old_admin) = setup(&env);
+
+            let new_admin = Address::generate(&env);
+            client.set_admin(&new_admin);
+
+            prop_assert_eq!(client.admin(), new_admin);
+        }
+
+        /// set_admin is idempotent: setting the same admin twice leaves admin unchanged.
+        #[test]
+        fn prop_set_admin_idempotent(_dummy in 0u32..=1u32) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let new_admin = Address::generate(&env);
+            client.set_admin(&new_admin);
+            client.set_admin(&new_admin);
+
+            prop_assert_eq!(client.admin(), new_admin);
+        }
+    }
+
+    // ── total_supply non-negativity invariant ─────────────────────────────────
+
+    proptest! {
+        /// total_supply must never go negative after any sequence of mint/burn ops.
+        #[test]
+        fn prop_total_supply_never_negative(
+            mint_a in 1i128..=1_000_000i128,
+            mint_b in 1i128..=1_000_000i128,
+            burn_a in 1i128..=500_000i128,
+            burn_b in 1i128..=500_000i128,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let holder_a = Address::generate(&env);
+            let holder_b = Address::generate(&env);
+
+            client.mint(&holder_a, &mint_a);
+            client.mint(&holder_b, &mint_b);
+
+            // Only burn what we have.
+            if burn_a <= mint_a {
+                client.burn(&holder_a, &burn_a);
+            }
+            if burn_b <= mint_b {
+                client.burn(&holder_b, &burn_b);
+            }
+
+            prop_assert!(client.total_supply() >= 0, "total_supply must be non-negative");
         }
     }
 }

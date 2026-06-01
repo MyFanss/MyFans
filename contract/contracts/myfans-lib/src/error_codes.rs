@@ -27,6 +27,8 @@ pub mod subscription {
     pub const INVALID_FEE_BPS: u32 = 7;
     pub const INVALID_TOKEN_ADDRESS: u32 = 8;
     pub const INVALID_PRICE: u32 = 9;
+    /// Plan ID does not exist; never created or out of range.
+    pub const PLAN_NOT_FOUND: u32 = 10;
 }
 
 /// Error codes for the **content-access** contract.

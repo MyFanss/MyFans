@@ -5,6 +5,8 @@ import Image from 'next/image';
 import { Search, Download } from 'lucide-react';
 import Badge from '../ui/Badge';
 import DataTable, { ColumnDef, SortState } from '../ui/DataTable';
+import { useImageLoad } from '@/hooks/useImageLoad';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 type SubscriberStatus = 'Active' | 'Cancelled' | 'Past Due';
 
@@ -45,7 +47,7 @@ const COLUMNS: ColumnDef<Subscriber, SubscriberKey>[] = [
     sortable: true,
     render: (sub) => (
       <div className="flex items-center gap-3">
-        <Image className="w-9 h-9 rounded-full object-cover shrink-0" src={sub.avatar} alt={sub.name} width={36} height={36} />
+        <SubscriberAvatar src={sub.avatar} name={sub.name} />
         <div>
           <div className="font-medium text-gray-900 dark:text-white">{sub.name}</div>
           <div className="text-xs text-gray-500">{sub.email}</div>
@@ -94,6 +96,63 @@ const COLUMNS: ColumnDef<Subscriber, SubscriberKey>[] = [
   },
 ];
 
+/** Avatar with lazy-load skeleton, used in both table and card views */
+function SubscriberAvatar({ src, name }: { src: string; name: string }) {
+  const { isLoaded, onLoad } = useImageLoad();
+  return (
+    <div className="image-skeleton-wrapper relative w-9 h-9 rounded-full shrink-0">
+      <Image
+        className={`lazy-image w-9 h-9 rounded-full object-cover ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+        src={src}
+        alt={name}
+        width={36}
+        height={36}
+        loading="lazy"
+        onLoad={onLoad}
+      />
+      {!isLoaded && <Skeleton className="absolute inset-0" rounded="full" />}
+    </div>
+  );
+}
+
+/** Mobile card view for a single subscriber row */
+function SubscriberCard({ sub }: { sub: Subscriber }) {
+  const variant = sub.status === 'Active' ? 'success' : sub.status === 'Past Due' ? 'error' : 'default';
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
+      <div className="flex items-center gap-3">
+        <SubscriberAvatar src={sub.avatar} name={sub.name} />
+        <div className="min-w-0">
+          <p className="font-medium text-gray-900 dark:text-white truncate">{sub.name}</p>
+          <p className="text-xs text-gray-500 truncate">{sub.email}</p>
+        </div>
+        <div className="ml-auto shrink-0">
+          <Badge variant={variant}>{sub.status}</Badge>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-sm">
+        <div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Plan</p>
+          <p className="font-medium text-gray-900 dark:text-white">{sub.plan}</p>
+          <p className="text-xs text-gray-500">{sub.tier}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Total paid</p>
+          <p className="font-medium text-gray-900 dark:text-white">${sub.totalPaid.toFixed(2)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Joined</p>
+          <p className="text-gray-900 dark:text-white">{sub.joinDate}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Renews</p>
+          <p className="text-gray-900 dark:text-white">{sub.renewDate}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SubscribersTable() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -114,6 +173,26 @@ export default function SubscribersTable() {
 
   // Reset page when filters change
   React.useEffect(() => { setPage(1); }, [search, statusFilter]);
+
+  const PAGE_SIZE = 5;
+
+  // Client-side sort for mobile card view (DataTable handles its own sort)
+  const sorted = useMemo(() => {
+    const key = sort.key;
+    if (!key) return filtered;
+    return [...filtered].sort((a, b) => {
+      const av = a[key as keyof Subscriber];
+      const bv = b[key as keyof Subscriber];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return sort.direction === 'asc' ? cmp : -cmp;
+    });
+  }, [filtered, sort]);
+
+  const totalMobilePages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const pagedMobile = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const handleExportCSV = () => {
     const headers = ['Name', 'Email', 'Plan', 'Tier', 'Join Date', 'Renew Date', 'Status', 'Total Paid'];
@@ -170,10 +249,47 @@ export default function SubscribersTable() {
         onSortChange={setSort}
         page={page}
         onPageChange={setPage}
-        pageSize={5}
+        pageSize={PAGE_SIZE}
         emptyMessage="No subscribers found matching your criteria."
         caption="Subscribers"
+        className="hidden sm:block"
       />
+
+      {/* Mobile card stack — shown only on small screens */}
+      <div className="sm:hidden space-y-3" aria-label="Subscribers">
+        {pagedMobile.length === 0 ? (
+          <p className="text-center text-sm text-gray-500 dark:text-gray-400 py-8">
+            No subscribers found matching your criteria.
+          </p>
+        ) : (
+          pagedMobile.map((sub) => <SubscriberCard key={sub.id} sub={sub} />)
+        )}
+        {totalMobilePages > 1 && (
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              Page {page} of {totalMobilePages}
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                aria-label="Previous page"
+                className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                Prev
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalMobilePages, p + 1))}
+                disabled={page === totalMobilePages}
+                aria-label="Next page"
+                className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

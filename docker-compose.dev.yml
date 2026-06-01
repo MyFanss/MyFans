@@ -1,12 +1,36 @@
 version: '3.8'
 
-# Dev profile override — run with: docker compose --profile dev up
-# Copy .env.dev.example to .env.dev and fill in required values before starting.
+# ─────────────────────────────────────────────────────────────────────────────
+# MyFans — Local Development Stack
+#
+# Quick start:
+#   cp .env.dev.example .env.dev   # fill in JWT_SECRET at minimum
+#   docker compose --profile dev up
+#
+# Useful commands:
+#   docker compose --profile dev up -d          # start in background
+#   docker compose --profile dev logs -f        # tail all logs
+#   docker compose --profile dev down -v        # stop and remove volumes
+#   docker compose --profile dev run --rm seed  # re-run demo seed
+#
+# Services:
+#   postgres  — PostgreSQL 15 (port 5432)
+#   redis     — Redis 7 in-memory cache (port 6379)
+#   backend   — NestJS API with hot-reload (port 3001)
+#   seed      — one-shot demo data seeder (runs after migrations)
+#
+# Health endpoints (once backend is up):
+#   GET http://localhost:3001/v1/health
+#   GET http://localhost:3001/v1/health/detailed
+#   GET http://localhost:3001/v1/health/db
+#   GET http://localhost:3001/v1/health/redis
+# ─────────────────────────────────────────────────────────────────────────────
 
 env_file:
   - .env.dev
 
 services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
     image: postgres:15-alpine
     container_name: myfans-db-dev
@@ -24,7 +48,25 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: myfans-redis-dev
+    profiles: [dev]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Backend (NestJS hot-reload) ─────────────────────────────────────────────
   backend:
     build:
       context: ./backend
@@ -38,27 +80,74 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       DB_NAME: ${DB_NAME:-myfans}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       JWT_SECRET: ${JWT_SECRET}
       PORT: ${PORT:-3001}
       STELLAR_NETWORK: ${STELLAR_NETWORK:-testnet}
       SOROBAN_RPC_URL: ${SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org}
+      SOROBAN_RPC_TIMEOUT: ${SOROBAN_RPC_TIMEOUT:-5000}
       STARTUP_MODE: ${STARTUP_MODE:-degraded}
+      STARTUP_PROBE_DB: "true"
+      STARTUP_PROBE_RPC: "false"
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      FEATURE_SOROBAN_POLLER: ${FEATURE_SOROBAN_POLLER:-false}
     ports:
-      - "3001:3001"
+      - "${PORT:-3001}:${PORT:-3001}"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - ./backend:/app
       - /app/node_modules
     command: npm run start:dev
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${PORT:-3001}/v1/health || exit 1"]
       interval: 15s
       timeout: 5s
-      start_period: 30s
-      retries: 3
+      start_period: 45s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Demo seed (one-shot) ────────────────────────────────────────────────────
+  # Runs migrations then seeds demo creator accounts.
+  # Re-run manually: docker compose --profile dev run --rm seed
+  seed:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: myfans-seed-dev
+    profiles: [dev]
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-myfans}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    # Run migrations first, then seed demo data
+    command: >
+      sh -c "
+        echo '[seed] running migrations...' &&
+        npm run migration:run &&
+        echo '[seed] seeding demo creators...' &&
+        npm run seed:demo &&
+        echo '[seed] done'
+      "
+    restart: "no"
 
 volumes:
   postgres_dev_data:
     name: myfans_postgres_dev_data
+  redis_dev_data:
+    name: myfans_redis_dev_data

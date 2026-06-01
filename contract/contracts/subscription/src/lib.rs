@@ -68,6 +68,7 @@ impl DataKey {
 /// | 7 | `InvalidFeeBps` |
 /// | 8 | `InvalidTokenAddress` |
 /// | 9 | `InvalidPrice` |
+/// | 10 | `PlanNotFound` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -89,6 +90,8 @@ pub enum Error {
     InvalidTokenAddress = 8,
     /// Code 9 – subscription price must be strictly positive.
     InvalidPrice = 9,
+    /// Code 10 – plan ID does not exist; never created or out of range.
+    PlanNotFound = 10,
 }
 
 /// Stellar "null" account (GAAA...WHF) — not a valid fee recipient.
@@ -156,6 +159,10 @@ impl MyfansContract {
             .instance()
             .set(&DataKey::token_address(), &token);
         env.storage().instance().set(&DataKey::Price, &price);
+
+        // topics: (initialized, admin)  data: fee_bps
+        env.events()
+            .publish((Symbol::new(&env, "initialized"), admin), fee_bps);
     }
 
     pub fn create_plan(
@@ -210,20 +217,20 @@ impl MyfansContract {
             .storage()
             .instance()
             .get(&DataKey::Plan(plan_id))
-            .unwrap();
+            .unwrap_or_else(|| panic_with_error!(&env, Error::PlanNotFound));
         let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
-        let fee_recipient: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::FeeRecipient)
-            .unwrap();
-
         let fee = (plan.amount * fee_bps as i128) / 10000;
         let creator_amount = plan.amount - fee;
 
         let token_client = token::Client::new(&env, &plan.asset);
         token_client.transfer(&fan, &plan.creator, &creator_amount);
         if fee > 0 {
+            // Deferred read: only fetch fee_recipient when a fee is actually owed.
+            let fee_recipient: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::FeeRecipient)
+                .unwrap();
             token_client.transfer(&fan, &fee_recipient, &fee);
         }
 
@@ -280,7 +287,9 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false);
-        assert!(!paused, "contract is paused");
+        if paused {
+            panic_with_error!(&env, Error::Paused);
+        }
 
         let sub: Subscription = env
             .storage()
@@ -296,21 +305,21 @@ impl MyfansContract {
             .storage()
             .instance()
             .get(&DataKey::Plan(sub.plan_id))
-            .unwrap();
+            .unwrap_or_else(|| panic_with_error!(&env, Error::PlanNotFound));
 
         let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
-        let fee_recipient: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::FeeRecipient)
-            .unwrap();
-
         let fee = (plan.amount * fee_bps as i128) / 10000;
         let creator_amount = plan.amount - fee;
 
         let token_client = token::Client::new(&env, &token);
         token_client.transfer(&fan, &creator, &creator_amount);
         if fee > 0 {
+            // Deferred read: only fetch fee_recipient when a fee is actually owed.
+            let fee_recipient: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::FeeRecipient)
+                .unwrap();
             token_client.transfer(&fan, &fee_recipient, &fee);
         }
 
@@ -371,7 +380,9 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false);
-        assert!(!paused, "contract is paused");
+        if paused {
+            panic_with_error!(&env, Error::Paused);
+        }
 
         let token: Address = env
             .storage()
@@ -380,18 +391,18 @@ impl MyfansContract {
             .unwrap();
         let price: i128 = env.storage().instance().get(&DataKey::Price).unwrap();
         let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
-        let fee_recipient: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::FeeRecipient)
-            .unwrap();
-
         let fee = (price * fee_bps as i128) / 10000;
         let creator_amount = price - fee;
 
         let token_client = token::Client::new(&env, &token);
         token_client.transfer(&fan, &creator, &creator_amount);
         if fee > 0 {
+            // Deferred read: only fetch fee_recipient when a fee is actually owed.
+            let fee_recipient: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::FeeRecipient)
+                .unwrap();
             token_client.transfer(&fan, &fee_recipient, &fee);
         }
 
@@ -554,6 +565,21 @@ impl MyfansContract {
 
         (expiry_seq, expiry_unix)
     }
+
+    /// Health check: verifies the contract is reachable and the Soroban RPC
+    /// node is connected.
+    ///
+    /// Returns the current ledger sequence number so callers can detect stale
+    /// or disconnected state (a sequence of 0 or one that never advances
+    /// indicates a problem).  This is a pure read — it writes nothing and
+    /// requires no authorization.
+    ///
+    /// HTTP callers should map:
+    ///   * any successful invocation → 200 OK
+    ///   * invocation error / RPC unreachable → 503 Service Unavailable
+    pub fn ping(env: Env) -> u32 {
+        env.ledger().sequence()
+    }
 }
 
 /// Dummy seed data for snapshot/restore tests.
@@ -562,3 +588,6 @@ pub mod dummy_data;
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod property_tests;
