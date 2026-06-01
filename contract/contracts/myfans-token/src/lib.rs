@@ -339,6 +339,14 @@ impl MyFansToken {
             .instance()
             .get(&DataKey::Admin)
             .expect("admin not initialized");
+        // If the invoker is not the stored admin, return a contract-level
+        // `Unauthorized` error instead of letting `require_auth` produce an
+        // auth panic. This makes the guard observable as a contract error
+        // when called by a different caller.
+        if env.invoker() != admin {
+            return Err(Error::Unauthorized);
+        }
+        // Finally require the admin's auth to ensure the call is signed.
         admin.require_auth();
 
         let balance = read_balance(&env, to.clone());
