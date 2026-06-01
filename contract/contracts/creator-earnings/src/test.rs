@@ -366,3 +366,102 @@ fn deposit_emits_event() {
     assert_eq!(data.amount, 300);
     assert_eq!(data.token, token_address);
 }
+
+#[test]
+fn double_initialize_reverts() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    #[allow(deprecated)]
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &token_id);
+
+    let result = client.try_initialize(&admin, &token_id);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::AlreadyInitialized as u32,
+        )))
+    );
+}
+
+#[test]
+fn invalid_amount_deposit_reverts() {
+    let env = Env::default();
+
+    let (_admin, creator, depositor, client, _, _) = setup(&env);
+
+    let result = client.try_deposit(&depositor, &creator, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidAmount as u32,
+        )))
+    );
+
+    let result = client.try_deposit(&depositor, &creator, &-1);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidAmount as u32,
+        )))
+    );
+}
+
+#[test]
+fn invalid_amount_withdraw_reverts() {
+    let env = Env::default();
+
+    let (_admin, creator, depositor, client, _, _) = setup(&env);
+
+    client.deposit(&depositor, &creator, &500);
+
+    let result = client.try_withdraw(&creator, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidAmount as u32,
+        )))
+    );
+
+    let result = client.try_withdraw(&creator, &-1);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidAmount as u32,
+        )))
+    );
+}
+
+#[test]
+fn admin_can_deposit() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    let token_admin = Address::generate(&env);
+    #[allow(deprecated)]
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+    let token_admin_client = StellarAssetClient::new(&env, &token_id);
+
+    // Mint tokens directly to admin
+    token_admin_client.mint(&admin, &1_000);
+
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &token_id);
+
+    // Admin is always an authorized depositor without calling add_authorized
+    client.deposit(&admin, &creator, &400);
+
+    assert_eq!(client.balance(&creator), 400);
+}
