@@ -102,6 +102,7 @@ jobs:
             content_access
             content_likes
             creator_registry
+            creator_earnings
             earnings
             treasury
           )
