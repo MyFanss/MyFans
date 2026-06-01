@@ -464,3 +464,7 @@ mod test {
         assert!(result.is_err(), "deposit without init should return error");
     }
 }
+
+#[cfg(test)]
+#[path = "property_tests.rs"]
+mod property_tests;
