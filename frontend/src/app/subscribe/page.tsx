@@ -1,6 +1,5 @@
 'use client';
-
-import { useEffect, useMemo, useState } from 'react';
+import { useState, useId } from 'react';
 import WalletConnect from '@/components/WalletConnect';
 import { BookmarkButton } from '@/components/BookmarkButton';
 import { CreatorCard } from '@/components/cards';
@@ -20,32 +19,8 @@ interface Creator {
   subscriberCount: number;
 }
 
-const CREATOR_DATA: Creator[] = [
-  {
-    id: 'c1',
-    name: 'Lena Nova',
-    username: 'lena.nova',
-    bio: 'Daily music snippets and behind-the-scenes studio sessions.',
-    subscriptionPrice: 8,
-    subscriberCount: 1840,
-  },
-  {
-    id: 'c2',
-    name: 'Orion Pixel',
-    username: 'orion.pixel',
-    bio: 'Concept art tutorials, raw PSD files, and process walkthroughs.',
-    subscriptionPrice: 12,
-    subscriberCount: 962,
-  },
-  {
-    id: 'c3',
-    name: 'Vera Script',
-    username: 'vera.script',
-    bio: 'Writing prompts, serialized fiction, and monthly Q&A streams.',
-    subscriptionPrice: 6,
-    subscriberCount: 1513,
-  },
-];
+type SubscribeState = 'idle' | 'loading' | 'subscribed' | 'error';
+type UnlockState = 'locked' | 'loading' | 'unlocked' | 'error';
 
 export default function SubscribePage() {
   const [query, setQuery] = useState('');
@@ -83,23 +58,30 @@ export default function SubscribePage() {
       });
       return;
     }
-    setIsSubscribing(creator.id);
+  };
+
+  const handleUnlock = async () => {
+    setUnlockState('loading');
     try {
-      setSubscriptionStatusForCreator(creator.id, 'active');
-      setSubscriptionStatusForCreator(creator.username, 'active');
-      showSuccess(`Subscribed to ${creator.name}`, 'Your access is now active.');
-    } finally {
-      setIsSubscribing(null);
+      await new Promise((r) => setTimeout(r, 500));
+      setUnlockState('unlocked');
+    } catch {
+      setUnlockState('error');
     }
   };
+
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
-      <header className="mb-8 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Subscribe to Creators</h1>
-        <WalletConnect
-          onConnect={(address) => setConnectedAddress(address)}
-          onDisconnect={() => setConnectedAddress(null)}
-        />
+    <div className="min-h-screen p-8">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-blue-600 text-white px-4 py-2 rounded z-50"
+      >
+        Skip to main content
+      </a>
+
+      <header className="flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-bold">Subscribe to Creators</h1>
+        <WalletConnect />
       </header>
 
       <div className="mx-auto max-w-5xl space-y-6">
@@ -116,18 +98,24 @@ export default function SubscribePage() {
           <h2 className="text-lg font-semibold text-slate-900">Find a Creator</h2>
           <p className="mt-1 text-sm text-slate-600">Browse current creators and start supporting your favorites.</p>
 
-          <label htmlFor="creator-search" className="sr-only">
-            Search creators
-          </label>
-          <input
-            id="creator-search"
-            className="mt-4 w-full rounded border border-slate-300 p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name, handle, or content"
-            type="text"
-            value={query}
-          />
+            <button
+              onClick={handleSubscribeClick}
+              disabled={!creator.trim() || subscribeState === 'loading'}
+              aria-busy={subscribeState === 'loading'}
+              className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {subscribeState === 'loading' ? 'Subscribing…' : 'Subscribe'}
+            </button>
 
+            <div id={statusId} role="status" aria-live="polite" className="text-sm">
+              {subscribeState === 'subscribed' && (
+                <p className="text-green-600">✓ Subscribed successfully!</p>
+              )}
+              {subscribeState === 'error' && (
+                <p role="alert" className="text-red-600">{errorMsg}</p>
+              )}
+            </div>
+          </div>
         </section>
 
         <section>
@@ -177,9 +165,34 @@ export default function SubscribePage() {
                 />
               ))}
             </div>
-          )}
-        </section>
-      </div>
+          </section>
+        )}
+      </main>
+
+      {/* Confirm subscribe modal with focus trap */}
+      <Modal
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        title="Confirm Subscription"
+      >
+        <p className="mb-4 text-sm text-gray-600">
+          Subscribe to <span className="font-mono font-medium">{creator}</span>?
+        </p>
+        <div className="flex gap-3 justify-end">
+          <button
+            onClick={() => setIsConfirmOpen(false)}
+            className="px-4 py-2 border rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirmSubscribe}
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+          >
+            Confirm
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
