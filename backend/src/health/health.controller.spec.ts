@@ -300,4 +300,73 @@ describe('HealthController', () => {
             expect(res.status).toHaveBeenCalledWith(200);
         });
     });
+
+    describe('getAggregatedHealth', () => {
+        it('should return 200 when overall status is up', async () => {
+            const mockAggregated = {
+                status: 'up' as const,
+                timestamp: new Date().toISOString(),
+                uptime: 120,
+                version: '0.0.1',
+                subsystems: {
+                    database: { status: 'up' as const, latencyMs: 5 },
+                    redis: { status: 'down' as const, error: 'Redis not configured' },
+                    sorobanRpc: { status: 'up' as const, timestamp: new Date().toISOString() },
+                    sorobanContract: { status: 'up' as const, timestamp: new Date().toISOString() },
+                },
+                summary: { total: 4, up: 3, degraded: 0, down: 1 },
+            };
+            jest.spyOn(service, 'getAggregatedHealth').mockResolvedValue(mockAggregated);
+
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+            await controller.getAggregatedHealth(res);
+
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(res.json).toHaveBeenCalledWith(mockAggregated);
+        });
+
+        it('should return 200 when overall status is degraded', async () => {
+            const mockAggregated = {
+                status: 'degraded' as const,
+                timestamp: new Date().toISOString(),
+                uptime: 60,
+                version: '0.0.1',
+                subsystems: {
+                    database: { status: 'up' as const, latencyMs: 5 },
+                    redis: { status: 'down' as const, error: 'Redis not configured' },
+                    sorobanRpc: { status: 'degraded' as const, timestamp: new Date().toISOString() },
+                    sorobanContract: { status: 'up' as const, timestamp: new Date().toISOString() },
+                },
+                summary: { total: 4, up: 2, degraded: 1, down: 1 },
+            };
+            jest.spyOn(service, 'getAggregatedHealth').mockResolvedValue(mockAggregated);
+
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+            await controller.getAggregatedHealth(res);
+
+            expect(res.status).toHaveBeenCalledWith(200);
+        });
+
+        it('should return 503 when overall status is down', async () => {
+            const mockAggregated = {
+                status: 'down' as const,
+                timestamp: new Date().toISOString(),
+                uptime: 10,
+                version: '0.0.1',
+                subsystems: {
+                    database: { status: 'down' as const, latencyMs: 0, error: 'DB unreachable' },
+                    redis: { status: 'down' as const, error: 'Redis not configured' },
+                    sorobanRpc: { status: 'up' as const, timestamp: new Date().toISOString() },
+                    sorobanContract: { status: 'up' as const, timestamp: new Date().toISOString() },
+                },
+                summary: { total: 4, up: 2, degraded: 0, down: 2 },
+            };
+            jest.spyOn(service, 'getAggregatedHealth').mockResolvedValue(mockAggregated);
+
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+            await controller.getAggregatedHealth(res);
+
+            expect(res.status).toHaveBeenCalledWith(503);
+        });
+    });
 });

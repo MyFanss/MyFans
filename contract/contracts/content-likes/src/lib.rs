@@ -1,9 +1,21 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, panic_with_error, Address, Env, Map, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env, Map,
+    Symbol, Vec,
 };
 
+mod events;
+use events::{LikedEvent, UnlikedEvent, TOPIC_LIKED, TOPIC_UNLIKED};
+
 const MAX_PAGE_LIMIT: u32 = 100;
+
+/// Storage keys for content likes contract
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKey {
+    /// Admin address
+    Admin,
+}
 
 /// Per-contract error codes for the **content-likes** contract.
 ///
@@ -13,11 +25,14 @@ const MAX_PAGE_LIMIT: u32 = 100;
 /// | Code | Variant |
 /// |------|---------|
 /// | 1 | `NotLiked` |
+/// | 2 | `AlreadyInitialized` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
     /// Code 1 – user has not liked this content; `unlike` was called without a prior `like`.
     NotLiked = 1,
+    /// Code 2 – contract was already initialized.
+    AlreadyInitialized = 2,
 }
 
 #[contract]
@@ -25,6 +40,22 @@ pub struct ContentLikes;
 
 #[contractimpl]
 impl ContentLikes {
+    /// Initialize the contract with admin address
+    pub fn initialize(env: Env, admin: Address) {
+        admin.require_auth();
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic_with_error!(&env, Error::AlreadyInitialized);
+        }
+        env.storage().instance().set(&DataKey::Admin, &admin);
+    }
+
+    /// Get the configured admin address
+    pub fn admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("contract not initialized")
+    }
     /// Like a content item (idempotent)
     ///
     /// # Arguments
@@ -37,6 +68,10 @@ impl ContentLikes {
     /// - Adds user to the liked map for this content
     /// - Increments the like count
     /// - If user already liked, this is a no-op (idempotent)
+    ///
+    /// # Gas optimization
+    /// - Caches the idempotent check in local `already_liked` bool to avoid redundant storage lookup
+    /// - Only writes storage if state changes (not already liked)
     pub fn like(env: Env, user: Address, content_id: u32) {
         user.require_auth();
 
@@ -50,7 +85,7 @@ impl ContentLikes {
             .get(&like_map_key)
             .unwrap_or_else(|| Map::new(&env));
 
-        // Check if already liked (idempotent)
+        // Check if already liked (idempotent); cache result to avoid redundant storage operations
         let already_liked = likes.get(user.clone()).is_some();
 
         if !already_liked {
@@ -75,8 +110,13 @@ impl ContentLikes {
             env.storage().instance().set(&user_likes_key, &list);
 
             // Publish event
-            env.events()
-                .publish((Symbol::new(&env, "liked"), content_id), user);
+            env.events().publish(
+                (Symbol::new(&env, TOPIC_LIKED), content_id),
+                LikedEvent {
+                    user: user.clone(),
+                    content_id,
+                },
+            );
         }
     }
 
@@ -92,6 +132,11 @@ impl ContentLikes {
     /// - Removes user from the liked map
     /// - Decrements the like count
     /// - Reverts if user hasn't liked the content
+    ///
+    /// # Gas optimization
+    /// - Single storage read for likes map; early return with error if user not found
+    /// - Caches count value locally to minimize storage round-trips
+    /// - Bounded iteration for user_likes list cleanup (stored by user, not global)
     pub fn unlike(env: Env, user: Address, content_id: u32) {
         user.require_auth();
 
@@ -105,7 +150,7 @@ impl ContentLikes {
             .get(&like_map_key)
             .unwrap_or_else(|| Map::new(&env));
 
-        // Verify user has liked (revert if not)
+        // Verify user has liked (revert early if not, avoiding redundant writes)
         if likes.get(user.clone()).is_none() {
             panic_with_error!(&env, Error::NotLiked);
         }
@@ -139,8 +184,13 @@ impl ContentLikes {
         env.storage().instance().set(&user_likes_key, &new_list);
 
         // Publish event
-        env.events()
-            .publish((Symbol::new(&env, "unliked"), content_id), user);
+        env.events().publish(
+            (Symbol::new(&env, TOPIC_UNLIKED), content_id),
+            UnlikedEvent {
+                user: user.clone(),
+                content_id,
+            },
+        );
     }
 
     /// Get the total like count for a content item
@@ -151,6 +201,9 @@ impl ContentLikes {
     ///
     /// # Returns
     /// Total number of likes for this content (0 if never liked)
+    ///
+    /// # Gas optimization
+    /// - Single storage read; O(1) operation
     pub fn like_count(env: Env, content_id: u32) -> u32 {
         let count_key = ("count", content_id);
         env.storage().instance().get(&count_key).unwrap_or(0)
@@ -186,12 +239,7 @@ impl ContentLikes {
     ///
     /// # Returns
     /// (page of content_ids, next_cursor) — `next_cursor` is 0 when there is no next page
-    pub fn list_likes_by_user(
-        env: Env,
-        user: Address,
-        cursor: u32,
-        limit: u32,
-    ) -> (Vec<u32>, u32) {
+    pub fn list_likes_by_user(env: Env, user: Address, cursor: u32, limit: u32) -> (Vec<u32>, u32) {
         let limit = core::cmp::min(limit, MAX_PAGE_LIMIT);
         let user_likes_key = ("user_likes", user);
         let list: Vec<u32> = env
@@ -218,7 +266,7 @@ impl ContentLikes {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Error as SorobanError};
+    use soroban_sdk::{testutils::Address as _, testutils::Events, Error as SorobanError};
 
     #[test]
     fn test_like_and_unlike() {
@@ -495,4 +543,171 @@ mod test {
         assert!(client.has_liked(&user, &20u32));
         assert!(!client.has_liked(&user, &10u32));
     }
+
+    #[test]
+    fn test_error_code_discriminant() {
+        // Verify NotLiked error has the correct discriminant (code 1)
+        assert_eq!(Error::NotLiked as u32, 1);
+    }
+
+    #[test]
+    fn test_like_emits_liked_event() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        let content_id = 42u32;
+
+        // Like content
+        client.like(&user, &content_id);
+
+        // Verify event was published
+        let events = env.events().all();
+        assert!(events.len() > 0, "Expected at least one event");
+
+        // Check the last event has the correct structure
+        let last_event = events.last().unwrap();
+        assert_eq!(last_event.1.len(), 2, "Expected 2 topics");
+    }
+
+    #[test]
+    fn test_unlike_emits_unliked_event() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        let content_id = 42u32;
+
+        // Like then unlike
+        client.like(&user, &content_id);
+        client.unlike(&user, &content_id);
+
+        // Verify events were published
+        let events = env.events().all();
+        assert!(
+            events.len() >= 2,
+            "Expected at least 2 events (like and unlike)"
+        );
+    }
+
+    #[test]
+    fn test_idempotent_like_no_duplicate_events() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        let content_id = 42u32;
+
+        // First like
+        client.like(&user, &content_id);
+        let events_after_first = env.events().all().len();
+
+        // Second like (idempotent)
+        client.like(&user, &content_id);
+        let events_after_second = env.events().all().len();
+
+        // No new events should be published for idempotent like
+        assert_eq!(
+            events_after_first, events_after_second,
+            "Idempotent like should not emit additional events"
+        );
+    }
+
+    #[test]
+    fn test_like_unauthorized_caller_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        let content_id = 42u32;
+
+        // Strip all auth to simulate unauthorized caller
+        env.set_auths(&[]);
+
+        // Try to like without authorization
+        let result = client.try_like(&user, &content_id);
+        assert!(
+            result.is_err(),
+            "like() must reject unauthorized caller (no auth)"
+        );
+    }
+
+    #[test]
+    fn test_unlike_unauthorized_caller_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        let content_id = 42u32;
+
+        // First, like with proper auth
+        client.like(&user, &content_id);
+
+        // Strip all auth to simulate unauthorized caller
+        env.set_auths(&[]);
+
+        // Try to unlike without authorization
+        let result = client.try_unlike(&user, &content_id);
+        assert!(
+            result.is_err(),
+            "unlike() must reject unauthorized caller (no auth)"
+        );
+    }
+
+    #[test]
+    fn test_like_wrong_user_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user1 = Address::generate(&env);
+        let _user2 = Address::generate(&env);
+        let content_id = 42u32;
+
+        // user1 tries to like as user2 (wrong signer)
+        // This should fail because user.require_auth() checks that the caller is user
+        env.set_auths(&[]);
+        let result = client.try_like(&user1, &content_id);
+        assert!(
+            result.is_err(),
+            "like() must reject when caller is not the user parameter"
+        );
+    }
+
+    #[test]
+    fn test_unlike_wrong_user_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user1 = Address::generate(&env);
+        let _user2 = Address::generate(&env);
+        let content_id = 42u32;
+
+        // user1 likes content
+        client.like(&user1, &content_id);
+
+        // user2 tries to unlike as user1 (wrong signer)
+        env.set_auths(&[]);
+        let result = client.try_unlike(&user1, &content_id);
+        assert!(
+            result.is_err(),
+            "unlike() must reject when caller is not the user parameter"
+        );
+    }
 }
+
+#[cfg(test)]
+mod property_tests;

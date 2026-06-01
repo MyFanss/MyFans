@@ -18,6 +18,8 @@ import { SubscriptionStateQueryDto } from './dto/subscription-state-query.dto';
 import { FanBearerGuard } from './guards/fan-bearer.guard';
 import type { RequestWithFan } from './guards/fan-bearer.guard';
 import { SubscriptionsService } from './subscriptions.service';
+import { RequireFeatureFlag } from '../feature-flags/feature-flag.decorator';
+import { FeatureFlagGuard } from '../feature-flags/feature-flag.guard';
 import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
 
 @ApiTags('subscriptions')
@@ -143,8 +145,11 @@ export class SubscriptionsController {
   }
 
   @Post('checkout')
+  @UseGuards(FeatureFlagGuard)
+  @RequireFeatureFlag('newSubscriptionFlow')
   @ApiOperation({ summary: 'Create a subscription checkout session' })
   @ApiResponse({ status: 201, description: 'Checkout session created' })
+  @ApiResponse({ status: 403, description: 'New subscription flow is disabled' })
   createCheckout(
     @Body()
     body: {

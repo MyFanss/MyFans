@@ -22,7 +22,40 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-          components: rustfmt, clippy
+          components: rustfmt, clippy, llvm-tools-preview
+
+      # Cache the Cargo registry index, downloaded crate sources, and the
+      # compiled dependency artifacts.  The cache is keyed on the OS, the
+      # Rust toolchain version, and the workspace Cargo.lock so it is
+      # invalidated whenever a dependency changes.
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract -> target
+          # Share the cache across branches so PRs benefit from main's warm cache.
+          shared-key: contract-rust-${{ runner.os }}
+
+      # Cache the compiled WASM release artifacts separately.  These are the
+      # outputs of `cargo build --release --target wasm32-unknown-unknown` and
+      # are the most expensive step to reproduce.  The cache is keyed on the
+      # Cargo.lock hash so it is invalidated whenever any dependency or
+      # workspace member version changes.
+      - name: Restore WASM artifact cache
+        id: wasm-cache
+        uses: actions/cache@v4
+        with:
+          path: contract/target/wasm32-unknown-unknown/release/*.wasm
+          key: contract-wasm-${{ runner.os }}-${{ hashFiles('contract/Cargo.lock') }}
+          restore-keys: |
+            contract-wasm-${{ runner.os }}-
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Cache Cargo registry and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract
 
       - name: Check formatting
         run: cargo fmt --all --check --manifest-path Cargo.toml
@@ -32,10 +65,111 @@ jobs:
         run: cargo clippy --all-targets --all-features --manifest-path Cargo.toml -- -D warnings
         working-directory: contract
 
-      - name: Run tests
-        run: cargo test --all-features --manifest-path Cargo.toml
+      - name: Run tests with coverage
+        run: cargo llvm-cov --all-features --manifest-path Cargo.toml --lcov --output-path lcov.info
         working-directory: contract
 
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-coverage-lcov
+          path: contract/lcov.info
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Write coverage summary
+        run: |
+          echo "## Contract Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cargo llvm-cov report --manifest-path Cargo.toml --summary-only 2>&1 | tail -5 >> $GITHUB_STEP_SUMMARY
+        working-directory: contract
+
+      # Only rebuild WASM artifacts when the cache was not restored.  This
+      # avoids the expensive wasm32 release build on every run when nothing
+      # has changed.
       - name: Build wasm target
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
         run: cargo build --release --target wasm32-unknown-unknown --manifest-path Cargo.toml
+        working-directory: contract
+
+      - name: Verify wasm artifacts
+        run: |
+          WASM_DIR="target/wasm32-unknown-unknown/release"
+          # Verify all contract wasm artifacts are built and non-empty
+          EXPECTED=(
+            subscription
+            myfans_token
+            content_access
+            content_likes
+            creator_registry
+            earnings
+            treasury
+          )
+          MISSING=0
+          for pkg in "${EXPECTED[@]}"; do
+            WASM_FILE="${WASM_DIR}/${pkg}.wasm"
+            if [[ -f "$WASM_FILE" && -s "$WASM_FILE" ]]; then
+              echo "✅ ${pkg}.wasm ($(du -sh "$WASM_FILE" | cut -f1))"
+            else
+              echo "❌ ${pkg}.wasm: missing or empty"
+              MISSING=1
+            fi
+          done
+          if [[ "$MISSING" -eq 1 ]]; then
+            echo "::error::One or more expected wasm artifacts are missing or empty after build."
+            exit 1
+          fi
+        working-directory: contract
+
+      - name: 🔐 Run Cargo audit
+        id: cargo-audit
+        run: |
+          # Install cargo-audit if not available
+          if ! command -v cargo-audit &> /dev/null; then
+            echo "Installing cargo-audit..."
+            cargo install cargo-audit --quiet
+          fi
+
+          # Run audit and capture output
+          AUDIT_OUTPUT=$(cargo audit --json 2>/dev/null || echo '{"vulnerabilities":[]}')
+          VULN_COUNT=$(echo "$AUDIT_OUTPUT" | jq '.vulnerabilities | length' 2>/dev/null || echo "0")
+          
+          echo "audit_vulns=$VULN_COUNT" >> $GITHUB_OUTPUT
+          
+          # Extract critical and high severity vulnerabilities
+          CRITICAL=$(echo "$AUDIT_OUTPUT" | jq '[.vulnerabilities[] | select(.severity=="critical")] | length' 2>/dev/null || echo "0")
+          HIGH=$(echo "$AUDIT_OUTPUT" | jq '[.vulnerabilities[] | select(.severity=="high")] | length' 2>/dev/null || echo "0")
+          
+          echo "audit_critical=$CRITICAL" >> $GITHUB_OUTPUT
+          echo "audit_high=$HIGH" >> $GITHUB_OUTPUT
+          
+          echo "### 🔐 Cargo Audit Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Critical | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+          echo "| Total | $VULN_COUNT |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Fail on critical vulnerabilities
+          if (( CRITICAL > 0 )); then
+            echo "❌ **CRITICAL vulnerabilities detected**" >> $GITHUB_STEP_SUMMARY
+            echo "::error::Critical Cargo vulnerabilities: $CRITICAL"
+            echo "$AUDIT_OUTPUT" | jq '.vulnerabilities[] | select(.severity=="critical") | {advisory, versions, severity}' 2>/dev/null || true
+            exit 1
+          fi
+          
+          # Warn on high severity vulnerabilities
+          if (( HIGH > 0 )); then
+            echo "⚠️  **HIGH severity vulnerabilities detected**" >> $GITHUB_STEP_SUMMARY
+            echo "::warning::High severity Cargo vulnerabilities: $HIGH"
+            echo "$AUDIT_OUTPUT" | jq '.vulnerabilities[] | select(.severity=="high") | {advisory, versions, severity}' 2>/dev/null || true
+          fi
+          
+          if (( VULN_COUNT > 0 )); then
+            echo "📋 **Full Audit Report:**" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+            echo "$AUDIT_OUTPUT" | jq '.' >> $GITHUB_STEP_SUMMARY || true
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
         working-directory: contract

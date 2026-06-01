@@ -1,6 +1,6 @@
 //! Treasury contract for holding platform funds
 
-use soroban_sdk::{contract, contracterror, contractimpl, panic_with_error, token, Address, Env};
+use soroban_sdk::{contract, contracterror, contractimpl, panic_with_error, token, Address, Env, Symbol};
 
 const ADMIN: &str = "ADMIN";
 const TOKEN: &str = "TOKEN";
@@ -27,6 +27,11 @@ impl Treasury {
         let token_address: Address = env.storage().instance().get(&TOKEN).unwrap();
         let contract_address = env.current_contract_address();
         token::Client::new(&env, &token_address).transfer(&from, &contract_address, &amount);
+
+        env.events().publish(
+            (Symbol::new(&env, "deposit"),),
+            (from.clone(), amount, token_address),
+        );
     }
 
     pub fn withdraw(env: Env, to: Address, amount: i128) {

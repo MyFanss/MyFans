@@ -116,6 +116,55 @@ fn test_init_rejects_non_positive_price() {
 }
 
 #[test]
+fn test_init_succeeds_sets_admin_and_configuration() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let fee_bps = 750u32;
+    let price = 2500i128;
+
+    client.init(&admin, &fee_bps, &fee_recipient, &token.address, &price);
+
+    assert_eq!(client.admin(), admin);
+    assert_eq!(client.is_paused(), false);
+    let stored_fee_bps: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::FeeBps)
+            .unwrap()
+    });
+    assert_eq!(stored_fee_bps, fee_bps);
+    let stored_fee_recipient: Address = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::FeeRecipient)
+            .unwrap()
+    });
+    assert_eq!(stored_fee_recipient, fee_recipient);
+    let stored_price: i128 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, i128>(&DataKey::Price)
+            .unwrap()
+    });
+    assert_eq!(stored_price, price);
+}
+
+#[test]
+fn test_init_rejects_duplicate_initialization() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    let result = client.try_init(&admin, &500, &fee_recipient, &token.address, &1000);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::AlreadyInitialized as u32,
+        )))
+    );
+}
+
+#[test]
 #[should_panic]
 fn test_subscribe_insufficient_balance_reverts() {
     let (env, client, admin, token, token_admin) = setup_test();
@@ -418,6 +467,192 @@ fn test_subscription_state_after_snapshot_restore() {
             .unwrap_or(0)
     });
     assert_eq!(plan_count, 1, "plan count matches after restore");
+}
+
+/// Protocol config (admin, fee_bps, fee_recipient) is fully preserved after snapshot/restore.
+#[test]
+fn test_protocol_config_preserved_after_snapshot_restore() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(
+        &admin,
+        &DUMMY_FEE_BPS,
+        &fee_recipient,
+        &token.address,
+        &DUMMY_PRICE,
+    );
+
+    let contract_id = client.address.clone();
+    let sc_admin: ScAddress = admin.clone().into();
+    let sc_fee_recipient: ScAddress = fee_recipient.clone().into();
+    let sc_contract: ScAddress = contract_id.clone().into();
+
+    let snapshot = env.to_snapshot();
+    let env2 = Env::from_snapshot(snapshot);
+    env2.mock_all_auths();
+
+    let contract_id2: Address = Address::try_from_val(&env2, &sc_contract).unwrap();
+    let admin2: Address = Address::try_from_val(&env2, &sc_admin).unwrap();
+    let fee_recipient2: Address = Address::try_from_val(&env2, &sc_fee_recipient).unwrap();
+
+    env2.register_contract(Some(&contract_id2), MyfansContract);
+    let client2 = MyfansContractClient::new(&env2, &contract_id2);
+
+    assert_eq!(
+        client2.admin(),
+        admin2,
+        "admin address must survive snapshot/restore"
+    );
+
+    let stored_fee_bps: u32 = env2.as_contract(&contract_id2, || {
+        env2.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::FeeBps)
+            .unwrap_or(0)
+    });
+    assert_eq!(
+        stored_fee_bps, DUMMY_FEE_BPS,
+        "fee_bps must survive snapshot/restore"
+    );
+
+    let stored_fee_recipient: Address = env2.as_contract(&contract_id2, || {
+        env2.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::FeeRecipient)
+            .unwrap()
+    });
+    assert_eq!(
+        stored_fee_recipient, fee_recipient2,
+        "fee_recipient must survive snapshot/restore"
+    );
+
+    let stored_price: i128 = env2.as_contract(&contract_id2, || {
+        env2.storage()
+            .instance()
+            .get::<DataKey, i128>(&DataKey::Price)
+            .unwrap()
+    });
+    assert_eq!(
+        stored_price, DUMMY_PRICE,
+        "price must survive snapshot/restore"
+    );
+}
+
+/// Paused state (true) survives snapshot/restore and continues to block mutations.
+#[test]
+fn test_paused_state_preserved_after_snapshot_restore() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(
+        &admin,
+        &DUMMY_FEE_BPS,
+        &fee_recipient,
+        &token.address,
+        &DUMMY_PRICE,
+    );
+    client.pause();
+    assert!(client.is_paused());
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &DUMMY_FAN_BALANCE);
+
+    let contract_id = client.address.clone();
+    let sc_contract: ScAddress = contract_id.clone().into();
+    let sc_fan: ScAddress = fan.clone().into();
+    let sc_creator: ScAddress = creator.clone().into();
+
+    let snapshot = env.to_snapshot();
+    let env2 = Env::from_snapshot(snapshot);
+    env2.mock_all_auths();
+
+    let contract_id2: Address = Address::try_from_val(&env2, &sc_contract).unwrap();
+    let fan2: Address = Address::try_from_val(&env2, &sc_fan).unwrap();
+    let creator2: Address = Address::try_from_val(&env2, &sc_creator).unwrap();
+
+    env2.register_contract(Some(&contract_id2), MyfansContract);
+    let client2 = MyfansContractClient::new(&env2, &contract_id2);
+
+    assert!(
+        client2.is_paused(),
+        "paused state must survive snapshot/restore"
+    );
+
+    // Mutations must remain blocked after restore
+    let r = client2.try_create_subscription(&fan2, &creator2, &17280);
+    assert!(
+        r.is_err(),
+        "create_subscription must remain blocked while paused after restore"
+    );
+}
+
+/// Extend subscription works correctly after snapshot/restore, updating expiry by exact ledger count.
+#[test]
+fn test_extend_subscription_after_snapshot_restore() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &DUMMY_PRICE);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &(DUMMY_FAN_BALANCE * 3));
+
+    env.ledger().with_mut(|li| li.sequence_number = 1000);
+
+    let plan_id = client.create_plan(
+        &creator,
+        &token.address,
+        &DUMMY_PLAN_AMOUNT,
+        &DUMMY_INTERVAL_DAYS,
+    );
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    let expiry_before: u64 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, Subscription>(&DataKey::Sub(fan.clone(), creator.clone()))
+            .unwrap()
+            .expiry
+    });
+
+    let contract_id = client.address.clone();
+    let sc_fan: ScAddress = fan.clone().into();
+    let sc_creator: ScAddress = creator.clone().into();
+    let sc_contract: ScAddress = contract_id.clone().into();
+    let sc_token: ScAddress = token.address.clone().into();
+
+    let snapshot = env.to_snapshot();
+    let env2 = Env::from_snapshot(snapshot);
+    env2.mock_all_auths();
+
+    let contract_id2: Address = Address::try_from_val(&env2, &sc_contract).unwrap();
+    let fan2: Address = Address::try_from_val(&env2, &sc_fan).unwrap();
+    let creator2: Address = Address::try_from_val(&env2, &sc_creator).unwrap();
+    let token_addr2: Address = Address::try_from_val(&env2, &sc_token).unwrap();
+
+    env2.register_contract(Some(&contract_id2), MyfansContract);
+    let client2 = MyfansContractClient::new(&env2, &contract_id2);
+
+    const EXTRA: u32 = 7_000;
+    client2.extend_subscription(&fan2, &creator2, &EXTRA, &token_addr2);
+
+    let expiry_after: u64 = env2.as_contract(&contract_id2, || {
+        env2.storage()
+            .instance()
+            .get::<DataKey, Subscription>(&DataKey::subscription(fan2.clone(), creator2.clone()))
+            .unwrap()
+            .expiry
+    });
+
+    assert_eq!(
+        expiry_after,
+        expiry_before + EXTRA as u64,
+        "extend after restore must increment expiry by exact extra_ledgers"
+    );
+    assert!(
+        client2.is_subscriber(&fan2, &creator2),
+        "fan must still be active subscriber after extend"
+    );
 }
 
 // ── #311 – event topic standardization ───────────────────────────────────────
@@ -854,7 +1089,6 @@ fn test_subscribe_fails_when_paused() {
 }
 
 #[test]
-#[should_panic(expected = "contract is paused")]
 fn test_extend_subscription_fails_when_paused() {
     let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
@@ -865,7 +1099,11 @@ fn test_extend_subscription_fails_when_paused() {
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
     client.subscribe(&fan, &plan_id, &token.address);
     client.pause();
-    client.extend_subscription(&fan, &creator, &17280, &token.address);
+    let result = client.try_extend_subscription(&fan, &creator, &17280, &token.address);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
 }
 
 #[test]
@@ -884,10 +1122,13 @@ fn test_cancel_fails_when_paused() {
 }
 
 #[test]
-#[should_panic]
 fn test_create_subscription_fails_when_paused() {
     let (_env, client, _admin, creator, fan, _token, _token_admin) = setup_paused();
-    client.create_subscription(&fan, &creator, &518400);
+    let result = client.try_create_subscription(&fan, &creator, &518400);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
 }
 
 /// Views must remain available while paused.
@@ -930,6 +1171,40 @@ fn test_mutations_succeed_after_unpause() {
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
     client.subscribe(&fan, &plan_id, &token.address);
     assert!(client.is_subscriber(&fan, &creator));
+}
+
+#[test]
+fn test_pause_non_admin_rejected() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    env.set_auths(&[]);
+
+    let result = client.try_pause();
+    assert!(result.is_err(), "non-admin must not pause the contract");
+    assert!(
+        !client.is_paused(),
+        "contract must remain unpaused after unauthorized pause attempt"
+    );
+}
+
+#[test]
+fn test_unpause_non_admin_rejected() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    client.pause();
+    assert!(client.is_paused());
+
+    env.set_auths(&[]);
+    let result = client.try_unpause();
+    assert!(result.is_err(), "non-admin must not unpause the contract");
+    assert!(
+        client.is_paused(),
+        "contract must remain paused after unauthorized unpause attempt"
+    );
 }
 
 // ── set_fee_recipient (admin fee recipient rotation) ─────────────────────────
@@ -1211,5 +1486,146 @@ fn admin_is_stable_after_pause_and_unpause() {
         client.admin(),
         admin,
         "admin() must be unchanged after unpause"
+    );
+}
+
+// ============================================================================
+// HEALTH CHECK / PING TESTS
+// Verifies Soroban RPC / contract connectivity probe (issue: health-check).
+// ============================================================================
+
+#[test]
+fn test_ping_returns_current_ledger_sequence() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    let seq = client.ping();
+    assert_eq!(seq, env.ledger().sequence());
+}
+
+#[test]
+fn test_ping_reflects_advanced_ledger_sequence() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    env.ledger().with_mut(|li| li.sequence_number = 99);
+    assert_eq!(client.ping(), 99);
+
+    env.ledger().with_mut(|li| li.sequence_number = 500_000);
+    assert_eq!(client.ping(), 500_000);
+}
+
+#[test]
+fn test_ping_requires_no_auth() {
+    // ping() must be callable without any authorization — it is a pure read.
+    // We deliberately do NOT call env.mock_all_auths() here.
+    let env = Env::default();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    // Should not panic even without mocked auths and without init().
+    let _ = client.ping();
+}
+
+#[test]
+fn test_ping_works_regardless_of_pause_state() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    // ping works when contract is live
+    let _ = client.ping();
+
+    // ping works when contract is paused
+    client.pause();
+    assert!(client.is_paused());
+    let _ = client.ping();
+
+    // ping works after unpause
+    client.unpause();
+    assert!(!client.is_paused());
+    let _ = client.ping();
+}
+
+#[test]
+fn test_ping_works_on_uninitialized_contract() {
+    // ping() must work even before init() is called — it is a connectivity
+    // probe and must never depend on contract state.
+    let env = Env::default();
+
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+
+    let seq = client.ping();
+    assert_eq!(seq, env.ledger().sequence());
+}
+
+// ── #895 – error code validation ─────────────────────────────────────────────
+
+/// subscribe with a plan_id that was never created returns Error::PlanNotFound (code 10).
+#[test]
+fn test_subscribe_nonexistent_plan_returns_plan_not_found() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let fan = Address::generate(&env);
+
+    let result = client.try_subscribe(&fan, &9999u32, &token.address);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::PlanNotFound as u32
+        )))
+    );
+}
+
+/// create_plan when paused returns Error::Paused (code 2).
+#[test]
+fn test_create_plan_paused_returns_typed_error() {
+    let (_env, client, _admin, creator, _fan, token, _token_admin) = setup_paused();
+    let result = client.try_create_plan(&creator, &token.address, &1000, &30);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
+}
+
+/// subscribe when paused returns Error::Paused (code 2).
+#[test]
+fn test_subscribe_paused_returns_typed_error() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    token_admin.mint(&fan, &50000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.pause();
+    let result = client.try_subscribe(&fan, &plan_id, &token.address);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
+}
+
+/// cancel when paused returns Error::Paused (code 2).
+#[test]
+fn test_cancel_paused_returns_typed_error() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    token_admin.mint(&fan, &50000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    client.pause();
+    let result = client.try_cancel(&fan, &creator, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
     );
 }

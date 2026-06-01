@@ -40,7 +40,30 @@ pub enum Error {
     InvalidAmount = 5,
 }
 
-/// -------- Events (INLINE) --------
+/// -------- Events --------
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InitializedEvent {
+    pub admin: Address,
+    pub token: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthorizedAddedEvent {
+    pub depositor: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DepositEvent {
+    pub from: Address,
+    pub creator: Address,
+    pub amount: i128,
+    pub token: Address,
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WithdrawEvent {
@@ -50,6 +73,9 @@ pub struct WithdrawEvent {
 }
 
 /// Avoid magic strings
+const INITIALIZED_EVENT: &str = "initialized";
+const AUTHORIZED_ADDED_EVENT: &str = "authorized_added";
+const DEPOSIT_EVENT: &str = "deposit";
 const WITHDRAW_EVENT: &str = "withdraw";
 
 #[contract]
@@ -69,6 +95,14 @@ impl CreatorEarnings {
         env.storage()
             .instance()
             .set(&DataKey::Token, &token_address);
+
+        env.events().publish(
+            (Symbol::new(&env, INITIALIZED_EVENT),),
+            InitializedEvent {
+                admin,
+                token: token_address,
+            },
+        );
     }
 
     /// Add authorized depositor contract (admin only)
@@ -78,7 +112,14 @@ impl CreatorEarnings {
 
         env.storage()
             .instance()
-            .set(&DataKey::AuthorizedDepositor(contract), &true);
+            .set(&DataKey::AuthorizedDepositor(contract.clone()), &true);
+
+        env.events().publish(
+            (Symbol::new(&env, AUTHORIZED_ADDED_EVENT),),
+            AuthorizedAddedEvent {
+                depositor: contract,
+            },
+        );
     }
 
     /// Deposit earnings for creator
@@ -102,6 +143,16 @@ impl CreatorEarnings {
         env.storage()
             .instance()
             .set(&DataKey::Balance(creator.clone()), &new_balance);
+
+        env.events().publish(
+            (Symbol::new(&env, DEPOSIT_EVENT),),
+            DepositEvent {
+                from,
+                creator,
+                amount,
+                token: token_address,
+            },
+        );
     }
 
     /// Get creator balance
@@ -112,7 +163,7 @@ impl CreatorEarnings {
             .unwrap_or(0)
     }
 
-    /// Withdraw earnings (WITH EVENT)
+    /// Withdraw earnings
     pub fn withdraw(env: Env, creator: Address, amount: i128) {
         if amount <= 0 {
             panic_with_error!(&env, Error::InvalidAmount);
@@ -141,7 +192,6 @@ impl CreatorEarnings {
             .instance()
             .set(&DataKey::Balance(creator.clone()), &new_balance);
 
-        // ✅ Typed event emission
         env.events().publish(
             (Symbol::new(&env, WITHDRAW_EVENT),),
             WithdrawEvent {

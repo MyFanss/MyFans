@@ -721,6 +721,55 @@ fn test_non_admin_cannot_set_admin() {
 }
 
 #[test]
+#[should_panic]
+fn test_initialize_only_once_panics() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0,
+    );
+
+    // Second initialization must panic to avoid accidental overwrite
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0,
+    );
+}
+
+#[test]
+#[should_panic]
+fn test_set_admin_unauthorized_panics() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0,
+    );
+
+    // Clear mocked auths so admin.require_auth() inside set_admin fails
+    env.mock_auths(&[]);
+
+    client.set_admin(&new_admin);
+}
+
+#[test]
 fn test_multiple_initializations_with_different_envs() {
     // Test that each test gets isolated env
     let env1 = Env::default();
@@ -898,4 +947,262 @@ fn test_mint_non_admin_is_rejected() {
     let non_admin = Address::generate(&env);
     // This must panic – the admin's auth is no longer mocked.
     client.mint(&non_admin, &100);
+}
+
+// ── Issue #884 – Snapshot/Restore Consistency Test ──────────────────────────
+//
+// This test verifies that the contract's state remains consistent and readable
+// after a series of operations. It simulates a "snapshot" by capturing key
+// state values before performing additional operations, then verifying those
+// values are still correct and unchanged.
+//
+// The test ensures:
+// 1. All storage (persistent and temporary) layers work correctly together
+// 2. State is not corrupted by concurrent operations
+// 3. Balance tracking remains consistent across multiple users
+// 4. Allowance expiration logic is correctly preserved
+// 5. Admin and metadata state is preserved
+#[test]
+fn test_snapshot_restore_consistency() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    // ── Setup: Initialize contract ──────────────────────────────────────────
+    let admin = Address::generate(&env);
+    let admin_name = String::from_str(&env, "MyFans Token");
+    let admin_symbol = String::from_str(&env, "MFAN");
+    let admin_decimals: u32 = 7;
+    let initial_supply: i128 = 0;
+
+    client.initialize(
+        &admin,
+        &admin_name,
+        &admin_symbol,
+        &admin_decimals,
+        &initial_supply,
+    );
+
+    // Create multiple test users
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+    let carol = Address::generate(&env);
+    let dave = Address::generate(&env);
+
+    // Mint tokens to multiple users
+    client.mint(&alice, &5000);
+    client.mint(&bob, &3000);
+    client.mint(&carol, &2000);
+    client.mint(&dave, &1000);
+
+    // ── Phase 1: Create initial allowances with different expiration ledgers ──
+    env.ledger().with_mut(|li| li.sequence_number = 10);
+
+    // Alice approves Bob for 1000 tokens, expiring at ledger 100
+    client.approve(&alice, &bob, &1000, &100);
+
+    // Bob approves Carol for 500 tokens, expiring at ledger 200
+    client.approve(&bob, &carol, &500, &200);
+
+    // Carol approves Dave for 300 tokens, expiring at ledger 50
+    client.approve(&carol, &dave, &300, &50);
+
+    // ── Snapshot Phase 1: Read and capture state ────────────────────────────
+    let snapshot_admin = client.admin();
+    let snapshot_name = client.name();
+    let snapshot_symbol = client.symbol();
+    let snapshot_decimals = client.decimals();
+    let snapshot_total_supply = client.total_supply();
+
+    let snapshot_alice_balance = client.balance(&alice);
+    let snapshot_bob_balance = client.balance(&bob);
+    let snapshot_carol_balance = client.balance(&carol);
+    let snapshot_dave_balance = client.balance(&dave);
+
+    let snapshot_alice_bob_allowance = client.allowance(&alice, &bob);
+    let snapshot_bob_carol_allowance = client.allowance(&bob, &carol);
+    let snapshot_carol_dave_allowance = client.allowance(&carol, &dave);
+
+    // ── Verify initial state snapshot ───────────────────────────────────────
+    assert_eq!(snapshot_admin, admin, "admin mismatch in snapshot");
+    assert_eq!(snapshot_name, admin_name, "name mismatch in snapshot");
+    assert_eq!(snapshot_symbol, admin_symbol, "symbol mismatch in snapshot");
+    assert_eq!(
+        snapshot_decimals, admin_decimals,
+        "decimals mismatch in snapshot"
+    );
+    assert_eq!(snapshot_total_supply, 11000, "total supply should be 11000");
+
+    assert_eq!(snapshot_alice_balance, 5000, "alice balance in snapshot");
+    assert_eq!(snapshot_bob_balance, 3000, "bob balance in snapshot");
+    assert_eq!(snapshot_carol_balance, 2000, "carol balance in snapshot");
+    assert_eq!(snapshot_dave_balance, 1000, "dave balance in snapshot");
+
+    assert_eq!(
+        snapshot_alice_bob_allowance, 1000,
+        "alice->bob allowance in snapshot"
+    );
+    assert_eq!(
+        snapshot_bob_carol_allowance, 500,
+        "bob->carol allowance in snapshot"
+    );
+    assert_eq!(
+        snapshot_carol_dave_allowance, 300,
+        "carol->dave allowance in snapshot"
+    );
+
+    // ── Phase 2: Perform additional operations ──────────────────────────────
+    // Advance ledger to allow some transfers
+    env.ledger().with_mut(|li| li.sequence_number = 30);
+
+    // Alice transfers 500 to Bob
+    client.transfer(&alice, &bob, &500);
+
+    // Bob uses allowance from Alice to transfer to Carol
+    client.transfer_from(&bob, &alice, &carol, &200);
+
+    // Carol burns some tokens
+    client.burn(&carol, &300);
+
+    // Dave approves a new allowance
+    client.approve(&dave, &alice, &500, &150);
+
+    // ── Phase 3: Restore and verify original state is still accessible ──────
+    // Re-read all state values to ensure consistency
+    let restored_admin = client.admin();
+    let restored_name = client.name();
+    let restored_symbol = client.symbol();
+    let restored_decimals = client.decimals();
+
+    // Verify metadata is unchanged (admin and metadata are in persistent storage)
+    assert_eq!(restored_admin, snapshot_admin, "admin changed unexpectedly");
+    assert_eq!(restored_name, snapshot_name, "name changed unexpectedly");
+    assert_eq!(
+        restored_symbol, snapshot_symbol,
+        "symbol changed unexpectedly"
+    );
+    assert_eq!(
+        restored_decimals, snapshot_decimals,
+        "decimals changed unexpectedly"
+    );
+
+    // ── Phase 4: Verify state consistency across operations ────────────────
+    // Calculate expected balances after Phase 2 operations
+    // Phase 2 operations:
+    // 1. alice transfers 500 to bob: alice -= 500, bob += 500
+    // 2. bob (spender) transfers 200 from alice to carol: alice -= 200, carol += 200
+    // 3. carol burns 300: carol -= 300
+    let expected_alice_balance = snapshot_alice_balance - 500 - 200; // transferred 500 + 200 via transfer_from
+    let expected_bob_balance = snapshot_bob_balance + 500; // received 500 from alice transfer (not from transfer_from)
+    let expected_carol_balance = snapshot_carol_balance + 200 - 300; // received 200 from transfer_from, burned 300
+    let expected_dave_balance = snapshot_dave_balance; // no changes
+
+    let final_alice_balance = client.balance(&alice);
+    let final_bob_balance = client.balance(&bob);
+    let final_carol_balance = client.balance(&carol);
+    let final_dave_balance = client.balance(&dave);
+
+    assert_eq!(
+        final_alice_balance, expected_alice_balance,
+        "alice final balance mismatch"
+    );
+    assert_eq!(
+        final_bob_balance, expected_bob_balance,
+        "bob final balance mismatch"
+    );
+    assert_eq!(
+        final_carol_balance, expected_carol_balance,
+        "carol final balance mismatch"
+    );
+    assert_eq!(
+        final_dave_balance, expected_dave_balance,
+        "dave final balance mismatch"
+    );
+
+    // ── Phase 5: Verify original allowances still readable ────────────────
+    // The original allowances should still be readable (though amounts may change)
+    // alice->bob allowance: started at 1000, transferred 200, should be 800
+    let final_alice_bob_allowance = client.allowance(&alice, &bob);
+    assert_eq!(
+        final_alice_bob_allowance, 800,
+        "alice->bob allowance should be 800 after transfer_from"
+    );
+
+    // bob->carol allowance should remain 500 (untouched)
+    let final_bob_carol_allowance = client.allowance(&bob, &carol);
+    assert_eq!(
+        final_bob_carol_allowance, 500,
+        "bob->carol allowance should remain 500"
+    );
+
+    // carol->dave allowance: Carol's balance decreased but allowance for dave remains 300
+    let final_carol_dave_allowance = client.allowance(&carol, &dave);
+    assert_eq!(
+        final_carol_dave_allowance, 300,
+        "carol->dave allowance should remain 300"
+    );
+
+    // ── Phase 6: Verify total supply consistency ────────────────────────────
+    // Initial total supply: 11000
+    // After burns: 11000 - 300 = 10700
+    let final_total_supply = client.total_supply();
+    let sum_of_balances =
+        final_alice_balance + final_bob_balance + final_carol_balance + final_dave_balance;
+
+    assert_eq!(
+        final_total_supply, 10700,
+        "total supply should be 10700 after burns"
+    );
+    assert_eq!(
+        sum_of_balances, final_total_supply,
+        "sum of balances should equal total supply"
+    );
+
+    // ── Phase 7: Verify state after expiration boundary ─────────────────────
+    // Advance ledger past carol's allowance expiration (was set to 50)
+    env.ledger().with_mut(|li| li.sequence_number = 51);
+
+    // carol->dave allowance should be expired and return 0
+    let expired_carol_dave_allowance = client.allowance(&carol, &dave);
+    assert_eq!(
+        expired_carol_dave_allowance, 0,
+        "expired allowance should return 0"
+    );
+
+    // alice->bob and bob->carol allowances should still be valid (expiration >= 100, 200)
+    let alice_bob_after_time = client.allowance(&alice, &bob);
+    let bob_carol_after_time = client.allowance(&bob, &carol);
+    assert_eq!(
+        alice_bob_after_time, 800,
+        "alice->bob allowance should still be valid"
+    );
+    assert_eq!(
+        bob_carol_after_time, 500,
+        "bob->carol allowance should still be valid"
+    );
+
+    // ── Phase 8: Final consistency check ────────────────────────────────────
+    // Re-verify all balances one more time to ensure no state corruption
+    assert_eq!(
+        client.balance(&alice),
+        final_alice_balance,
+        "alice balance changed unexpectedly"
+    );
+    assert_eq!(
+        client.balance(&bob),
+        final_bob_balance,
+        "bob balance changed unexpectedly"
+    );
+    assert_eq!(
+        client.balance(&carol),
+        final_carol_balance,
+        "carol balance changed unexpectedly"
+    );
+    assert_eq!(
+        client.balance(&dave),
+        final_dave_balance,
+        "dave balance changed unexpectedly"
+    );
 }

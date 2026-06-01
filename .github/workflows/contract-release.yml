@@ -48,6 +48,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-contract-target-
 
+      # Cache the compiled WASM release artifacts separately so the expensive
+      # wasm32 release build can be skipped when Cargo.lock has not changed.
+      - name: 🗜️ Restore WASM artifact cache
+        id: wasm-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: contract/target/wasm32-unknown-unknown/release/*.wasm
+          key: contract-wasm-${{ runner.os }}-${{ hashFiles('contract/Cargo.lock') }}
+          restore-keys: |
+            contract-wasm-${{ runner.os }}-
+
       - name: 🔧 Install Rust toolchain
         run: |
           rustup component add rustfmt clippy
@@ -91,12 +102,36 @@ jobs:
       - name: 🏗️ Build WASM release artifacts
         id: build
         run: |
-          cargo build --release --target wasm32-unknown-unknown
-          echo "### ✅ WASM Build" >> $GITHUB_STEP_SUMMARY
-          echo "Built packages:" >> $GITHUB_STEP_SUMMARY
-          find target/wasm32-unknown-unknown/release -maxdepth 1 -name '*.wasm' \
-            -exec bash -c 'echo "- $(basename {}) ($(du -sh {} | cut -f1))"' \; \
-            >> $GITHUB_STEP_SUMMARY
+          # Skip the expensive wasm32 build when artifacts were restored from cache.
+          if [[ "${{ steps.wasm-cache.outputs.cache-hit }}" == "true" ]]; then
+            echo "WASM artifacts restored from cache — skipping rebuild."
+            echo "### ✅ WASM Build" >> $GITHUB_STEP_SUMMARY
+            echo "Artifacts restored from cache (Cargo.lock unchanged)." >> $GITHUB_STEP_SUMMARY
+          else
+            cargo build --release --target wasm32-unknown-unknown
+            echo "### ✅ WASM Build" >> $GITHUB_STEP_SUMMARY
+            echo "Built packages:" >> $GITHUB_STEP_SUMMARY
+            find target/wasm32-unknown-unknown/release -maxdepth 1 -name '*.wasm' \
+              -exec bash -c 'echo "- $(basename {}) ($(du -sh {} | cut -f1))"' \; \
+              >> $GITHUB_STEP_SUMMARY
+          fi
+        working-directory: contract
+
+      - name: 📦 Verify creator-deposits wasm build
+        id: creator-deposits-build
+        run: |
+          # Verify creator-deposits wasm artifact was successfully produced
+          WASM_PATH="target/wasm32-unknown-unknown/release/creator_deposits.wasm"
+          if [[ -f "$WASM_PATH" ]]; then
+            WASM_SIZE=$(du -sh "$WASM_PATH" | cut -f1)
+            echo "✅ creator-deposits.wasm successfully built ($WASM_SIZE)"
+            echo "### ✅ Creator-Deposits WASM Build" >> $GITHUB_STEP_SUMMARY
+            echo "Artifact: creator_deposits.wasm ($WASM_SIZE)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ creator-deposits.wasm not found at $WASM_PATH"
+            echo "::error::creator-deposits.wasm build verification failed — artifact not found"
+            exit 1
+          fi
         working-directory: contract
 
       - name: 📏 Generate Wasm size report

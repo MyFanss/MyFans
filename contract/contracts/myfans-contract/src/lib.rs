@@ -365,6 +365,21 @@ impl MyfansContract {
             .get(&DataKey::Paused)
             .unwrap_or(false)
     }
+
+    /// Health check: verifies the contract is reachable and the Soroban RPC
+    /// node is connected.
+    ///
+    /// Returns the current ledger sequence number so callers can detect stale
+    /// or disconnected state (a sequence of 0 or one that never advances
+    /// indicates a problem).  This is a pure read — it writes nothing and
+    /// requires no authorization.
+    ///
+    /// HTTP callers should map:
+    ///   * any successful invocation → 200 OK
+    ///   * invocation error / RPC unreachable → 503 Service Unavailable
+    pub fn ping(env: Env) -> u32 {
+        env.ledger().sequence()
+    }
 }
 
 #[cfg(test)]
