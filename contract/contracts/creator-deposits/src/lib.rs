@@ -4,6 +4,20 @@ use soroban_sdk::{
     Symbol,
 };
 
+/// ── Event topic constants ──────────────────────────────────────────────
+/// Stable strings used as the first topic in Soroban events emitted by this
+/// contract.  Indexers should key on these constants rather than raw string
+/// literals so that renaming only requires a single point of change.
+///
+/// | Topic                     | Emitted from  | Data              |
+/// |---------------------------|---------------|-------------------|
+/// | `ContractInitialized`     | `init`        | `()`              |
+/// | `PlatformFeeUpdated`      | `set_platform_fee` | updated bps  |
+/// | `EarningsDeposited`       | `deposit`     | net deposit amount|
+/// | `EarningsWithdrawn`       | `withdraw`    | withdrawal amount |
+const TOPIC_INITIALIZED: &str = "ContractInitialized";
+const TOPIC_FEE_UPDATED: &str = "PlatformFeeUpdated";
+
 #[derive(Clone)]
 #[contracttype]
 pub enum DataKey {
@@ -56,6 +70,11 @@ impl CreatorDeposits {
         env.storage()
             .instance()
             .set(&DataKey::PlatformTreasury, &platform_treasury);
+
+        env.events().publish(
+            (Symbol::new(&env, TOPIC_INITIALIZED),),
+            (),
+        );
     }
 
     pub fn deposit(env: Env, creator: Address, token: Address, amount: i128) {
@@ -147,6 +166,11 @@ impl CreatorDeposits {
             panic_with_error!(&env, Error::InvalidFeeBps);
         }
         env.storage().instance().set(&DataKey::PlatformFeeBps, &bps);
+
+        env.events().publish(
+            (Symbol::new(&env, TOPIC_FEE_UPDATED),),
+            bps,
+        );
     }
 
     pub fn get_balance(env: Env, creator: Address) -> i128 {
@@ -170,8 +194,8 @@ mod test {
     use soroban_sdk::{
         testutils::{Address as _, Events, MockAuth, MockAuthInvoke},
         vec,
-        xdr::SorobanAuthorizationEntry,
-        Env, IntoVal, Symbol, TryFromVal,
+        xdr::{ScAddress, SorobanAuthorizationEntry},
+        Env, IntoVal, Symbol, TryFromVal, TryIntoVal,
     };
 
     const EMPTY_AUTHS: &[SorobanAuthorizationEntry] = &[];
@@ -206,22 +230,20 @@ mod test {
         assert_eq!(client.get_balance(&creator), 950); // 1000 - 50 fee
 
         let events = env.events().all();
-        assert_eq!(
-            events,
-            vec![
-                &env,
-                (
-                    contract_id.clone(),
-                    (
-                        Symbol::new(&env, "EarningsDeposited"),
-                        creator.clone(),
-                        token.clone()
-                    )
-                        .into_val(&env),
-                    950i128.into_val(&env)
-                )
-            ]
-        );
+        // events[0] is the ContractInitialized event from init()
+        // events[1] is the EarningsDeposited event
+        assert!(events.len() >= 2);
+        let deposit_event = events.get(events.len() - 1).unwrap();
+        assert_eq!(deposit_event.0, contract_id.clone());
+        let expected_topics = (
+            Symbol::new(&env, "EarningsDeposited"),
+            creator.clone(),
+            token.clone(),
+        )
+            .into_val(&env);
+        assert_eq!(deposit_event.1, expected_topics);
+        let data: i128 = i128::try_from_val(&env, &deposit_event.2).unwrap();
+        assert_eq!(data, 950);
     }
 
     #[test]
@@ -336,28 +358,19 @@ mod test {
 
         assert_eq!(client.get_balance(&creator), 1000);
 
-        // Let's test the event being output from deposit before clearing it
-        let events_deposit = env.events().all();
-        assert_eq!(
-            events_deposit,
-            vec![
-                &env,
-                (
-                    contract_id.clone(),
-                    (
-                        Symbol::new(&env, "EarningsDeposited"),
-                        creator.clone(),
-                        token.clone()
-                    )
-                        .into_val(&env),
-                    1000i128.into_val(&env)
-                )
-            ]
-        );
-
-        // Reset the event buffer or we just have two events
-        let mut events_vec = env.events().all();
-        events_vec.remove(0); // This just shows how you can clear, better to check length
+        // Verify deposit event (last event = EarningsDeposited since init also emits an event)
+        let events = env.events().all();
+        assert!(events.len() >= 2);
+        let dep_event = events.get(events.len() - 1).unwrap();
+        let expected_dep_topics = (
+            Symbol::new(&env, "EarningsDeposited"),
+            creator.clone(),
+            token.clone(),
+        )
+            .into_val(&env);
+        assert_eq!(dep_event.1, expected_dep_topics);
+        let dep_data: i128 = i128::try_from_val(&env, &dep_event.2).unwrap();
+        assert_eq!(dep_data, 1000);
 
         client.withdraw(&creator, &token, &500);
 
@@ -462,5 +475,287 @@ mod test {
         let result = client.try_deposit(&creator, &token, &1000);
         // Should fail with either PlatformFeeNotInitialized or PlatformTreasuryNotInitialized
         assert!(result.is_err(), "deposit without init should return error");
+    }
+
+    // ── Issue #930: Additional init / admin path tests ──────────────
+
+    #[test]
+    fn test_init_validates_fee_bps_upper_boundary() {
+        let (env, admin, treasury, _, _) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        let result = client.try_init(&admin, &9999, &treasury);
+        assert!(result.is_ok());
+        assert_eq!(client.get_platform_fee(), 9999);
+    }
+
+    #[test]
+    fn test_init_reinitialization_is_idempotent() {
+        let (env, admin, treasury, _, _) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        client.init(&admin, &500, &treasury);
+        let treasury2 = Address::generate(&env);
+        client.init(&admin, &1000, &treasury2);
+        assert_eq!(client.get_platform_fee(), 1000);
+    }
+
+    #[test]
+    fn test_get_platform_fee_before_init_returns_zero() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+        assert_eq!(client.get_platform_fee(), 0);
+    }
+
+    #[test]
+    fn test_get_balance_before_any_deposit_returns_zero() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+        assert_eq!(client.get_balance(&creator), 0);
+    }
+
+    // ── Issue #931: Unauthorized caller revert tests ────────────────
+
+    #[test]
+    fn test_unauthorized_deposit_reverts() {
+        let (env, admin, treasury, _, _) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+        let attacker = Address::generate(&env);
+        let token_addr = Address::generate(&env);
+
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "init",
+                args: vec![&env, admin.clone().into_val(&env), treasury.clone().into_val(&env), 500u32.into_val(&env)],
+                sub_invokes: &[],
+            },
+        }]);
+        client.init(&admin, &500, &treasury);
+        env.set_auths(EMPTY_AUTHS);
+
+        let result = client.try_deposit(&attacker, &token_addr, &1000);
+        assert!(result.is_err(), "deposit without auth should revert");
+    }
+
+    #[test]
+    fn test_unauthorized_set_platform_fee_reverts() {
+        let (env, admin, treasury, _, _) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+        let non_admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.init(&admin, &500, &treasury);
+        env.mock_auths(&[MockAuth {
+            address: &non_admin,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "set_platform_fee",
+                args: vec![&env, 200u32.into_val(&env)],
+                sub_invokes: &[],
+            },
+        }]);
+        let result = client.try_set_platform_fee(&200);
+        assert!(result.is_err(), "non-admin set_platform_fee should revert");
+        assert_eq!(client.get_platform_fee(), 500);
+    }
+
+    #[test]
+    fn test_unauthorized_admin_caller_reverts() {
+        let (env, admin, treasury, _, _) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+        let impostor = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.init(&admin, &500, &treasury);
+        env.set_auths(EMPTY_AUTHS);
+
+        env.mock_auths(&[MockAuth {
+            address: &impostor,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "set_platform_fee",
+                args: vec![&env, 200u32.into_val(&env)],
+                sub_invokes: &[],
+            },
+        }]);
+        let result = client.try_set_platform_fee(&200);
+        assert!(result.is_err(), "impostor calling set_platform_fee should revert");
+    }
+
+    // ── Issue #932: Event emission tests ───────────────────────────
+
+    #[test]
+    fn test_init_emits_event() {
+        let (env, admin, treasury, _, _) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        client.init(&admin, &500, &treasury);
+
+        let events = env.events().all();
+        let init_events: Vec<_> = events.iter().filter(|e| {
+            e.1.first().is_some_and(|t| {
+                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, TOPIC_INITIALIZED))
+            })
+        }).collect();
+        assert_eq!(init_events.len(), 1);
+    }
+
+    #[test]
+    fn test_set_platform_fee_emits_event() {
+        let (env, admin, treasury, _, _) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        client.init(&admin, &500, &treasury);
+        client.set_platform_fee(&750);
+
+        let events = env.events().all();
+        let fee_events: Vec<_> = events.iter().filter(|e| {
+            e.1.first().is_some_and(|t| {
+                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, TOPIC_FEE_UPDATED))
+            })
+        }).collect();
+        assert_eq!(fee_events.len(), 1);
+        let data: u32 = fee_events[0].2.try_into_val(&env).unwrap();
+        assert_eq!(data, 750);
+    }
+
+    #[test]
+    fn test_deposit_emits_event() {
+        let (env, admin, treasury, creator, token) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        client.init(&admin, &0, &treasury);
+        client.deposit(&creator, &token, &500);
+
+        let events = env.events().all();
+        let dep_events: Vec<_> = events.iter().filter(|e| {
+            e.1.first().is_some_and(|t| {
+                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, "EarningsDeposited"))
+            })
+        }).collect();
+        assert_eq!(dep_events.len(), 1);
+        let data: i128 = dep_events[0].2.try_into_val(&env).unwrap();
+        assert_eq!(data, 500);
+    }
+
+    #[test]
+    fn test_withdraw_emits_event() {
+        let (env, admin, treasury, creator, token) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        client.init(&admin, &0, &treasury);
+        client.deposit(&creator, &token, &1000);
+        client.withdraw(&creator, &token, &300);
+
+        let events = env.events().all();
+        let wd_events: Vec<_> = events.iter().filter(|e| {
+            e.1.first().is_some_and(|t| {
+                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, "EarningsWithdrawn"))
+            })
+        }).collect();
+        assert_eq!(wd_events.len(), 1);
+        let data: i128 = wd_events[0].2.try_into_val(&env).unwrap();
+        assert_eq!(data, 300);
+    }
+
+    #[test]
+    fn test_idempotent_init_multiple_events() {
+        let (env, admin, treasury, _, _) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        client.init(&admin, &500, &treasury);
+        client.init(&admin, &1000, &treasury);
+
+        let events = env.events().all();
+        let init_events: Vec<_> = events.iter().filter(|e| {
+            e.1.first().is_some_and(|t| {
+                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, TOPIC_INITIALIZED))
+            })
+        }).collect();
+        assert_eq!(init_events.len(), 2);
+    }
+
+    // ── Issue #934: Snapshot / restore consistency test ─────────────
+
+    #[test]
+    fn test_snapshot_restore_consistency() {
+        let mut env = Env::default();
+        let admin = Address::generate(&env);
+        let treasury = Address::generate(&env);
+        let creator1 = Address::generate(&env);
+        let creator2 = Address::generate(&env);
+        let token_addr = env.register_contract(None, MockToken);
+
+        env.mock_all_auths();
+
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        client.init(&admin, &500, &treasury);
+
+        client.deposit(&creator1, &token_addr, &2000);
+        client.deposit(&creator2, &token_addr, &1000);
+        client.deposit(&creator1, &token_addr, &1000);
+        client.withdraw(&creator1, &token_addr, &500);
+
+        let bal1 = client.get_balance(&creator1);
+        let bal2 = client.get_balance(&creator2);
+        let fee = client.get_platform_fee();
+
+        let sc_contract: ScAddress = contract_id.clone().into();
+        let sc_admin: ScAddress = admin.clone().into();
+        let sc_treasury: ScAddress = treasury.clone().into();
+        let sc_creator1: ScAddress = creator1.clone().into();
+        let sc_creator2: ScAddress = creator2.clone().into();
+
+        let snapshot = env.to_snapshot();
+
+        let env2 = Env::from_snapshot(snapshot);
+        env2.mock_all_auths();
+
+        let contract_id2: Address = Address::try_from_val(&env2, &sc_contract).unwrap();
+        let _admin2: Address = Address::try_from_val(&env2, &sc_admin).unwrap();
+        let _treasury2: Address = Address::try_from_val(&env2, &sc_treasury).unwrap();
+        let creator1_2: Address = Address::try_from_val(&env2, &sc_creator1).unwrap();
+        let creator2_2: Address = Address::try_from_val(&env2, &sc_creator2).unwrap();
+
+        env2.register_contract(Some(&contract_id2), CreatorDeposits);
+        let client2 = CreatorDepositsClient::new(&env2, &contract_id2);
+
+        assert_eq!(client2.get_platform_fee(), fee);
+        assert_eq!(client2.get_balance(&creator1_2), bal1);
+        assert_eq!(client2.get_balance(&creator2_2), bal2);
+
+        client2.set_platform_fee(&300);
+        assert_eq!(client2.get_platform_fee(), 300);
+
+        client2.deposit(&creator1_2, &token_addr, &500);
+        let expected = bal1 + 500 - ((500 * 300) / 10000);
+        assert_eq!(client2.get_balance(&creator1_2), expected);
+
+        client2.withdraw(&creator1_2, &token_addr, &100);
+        assert_eq!(client2.get_balance(&creator1_2), expected - 100);
     }
 }
