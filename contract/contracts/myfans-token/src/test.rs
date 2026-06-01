@@ -637,6 +637,76 @@ fn test_initialize() {
 }
 
 #[test]
+fn test_initialize_emits_event() {
+    use soroban_sdk::{symbol_short, TryIntoVal};
+
+    let env = Env::default();
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = generate_address(&env);
+    let name = String::from_str(&env, "MyFans Token");
+    let symbol = String::from_str(&env, "MFAN");
+    let decimals: u32 = 7;
+    let initial_supply: i128 = 1_000;
+
+    client.initialize(&admin, &name, &symbol, &decimals, &initial_supply);
+
+    let events = env.events().all();
+    let init_event = events.iter().find(|e| {
+        e.1.first()
+            .and_then(|t: soroban_sdk::Val| t.try_into_val(&env).ok())
+            .map(|s: soroban_sdk::Symbol| s == symbol_short!("init"))
+            .unwrap_or(false)
+    });
+
+    assert!(init_event.is_some(), "init event not emitted");
+    let ev = init_event.unwrap();
+    // payload: (admin, name, symbol, decimals, initial_supply)
+    let payload: (Address, String, String, u32, i128) = ev.2.try_into_val(&env).unwrap();
+    assert_eq!(payload.0, admin);
+    assert_eq!(payload.1, name);
+    assert_eq!(payload.2, symbol);
+    assert_eq!(payload.3, decimals);
+    assert_eq!(payload.4, initial_supply);
+}
+
+#[test]
+fn test_set_admin_emits_event() {
+    use soroban_sdk::{symbol_short, TryIntoVal};
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = generate_address(&env);
+    let new_admin = generate_address(&env);
+    let name = String::from_str(&env, "MyFans Token");
+    let symbol = String::from_str(&env, "MFAN");
+    let decimals: u32 = 7;
+    let initial_supply: i128 = 0;
+
+    client.initialize(&admin, &name, &symbol, &decimals, &initial_supply);
+    client.set_admin(&new_admin);
+
+    let events = env.events().all();
+    let admin_event = events.iter().find(|e| {
+        e.1.first()
+            .and_then(|t: soroban_sdk::Val| t.try_into_val(&env).ok())
+            .map(|s: soroban_sdk::Symbol| s == symbol_short!("admin_upd"))
+            .unwrap_or(false)
+    });
+
+    assert!(admin_event.is_some(), "admin_upd event not emitted");
+    let ev = admin_event.unwrap();
+    let payload: (Address, Address) = ev.2.try_into_val(&env).unwrap();
+    assert_eq!(payload.0, admin);
+    assert_eq!(payload.1, new_admin);
+}
+
+#[test]
 fn test_admin_view_returns_correct_address() {
     let env = Env::default();
     let contract_id = env.register_contract(None, MyFansToken);

@@ -127,6 +127,12 @@ impl MyFansToken {
             .set(&DataKey::TotalSupply, &initial_supply);
 
         // Note: Actual minting is deferred to Issue 3
+
+        // Emit an initialization event so indexers can detect contract setup.
+        env.events().publish(
+            (symbol_short!("init"),),
+            (admin.clone(), name.clone(), symbol.clone(), decimals, initial_supply),
+        );
     }
 
     /// Get the admin address (view function)
@@ -153,6 +159,11 @@ impl MyFansToken {
 
         // Update admin in storage
         env.storage().instance().set(&DataKey::Admin, &new_admin);
+        // Emit admin update event for indexers and monitoring.
+        env.events().publish(
+            (symbol_short!("admin_upd"),),
+            (current_admin.clone(), new_admin.clone()),
+        );
     }
 
     /// Update token name and symbol. Only admin can call this.
