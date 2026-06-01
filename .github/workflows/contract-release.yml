@@ -134,6 +134,29 @@ jobs:
           fi
         working-directory: contract
 
+      - name: 📦 Verify creator-earnings wasm build
+        id: creator-earnings-build
+        run: |
+          WASM_PATH="target/wasm32-unknown-unknown/release/creator_earnings.wasm"
+          if [[ -f "$WASM_PATH" && -s "$WASM_PATH" ]]; then
+            WASM_SIZE=$(du -sh "$WASM_PATH" | cut -f1)
+            # Validate WebAssembly magic bytes: 0x00 0x61 0x73 0x6D
+            MAGIC=$(xxd -p -l 4 "$WASM_PATH" 2>/dev/null || od -A n -N 4 -t x1 "$WASM_PATH" | tr -d ' \n')
+            if [[ "$MAGIC" != "0061736d" ]]; then
+              echo "❌ creator_earnings.wasm is not a valid WASM binary (magic=$MAGIC)"
+              echo "::error::creator_earnings.wasm failed magic-byte validation"
+              exit 1
+            fi
+            echo "✅ creator-earnings.wasm successfully built and validated ($WASM_SIZE)"
+            echo "### ✅ Creator-Earnings WASM Build" >> $GITHUB_STEP_SUMMARY
+            echo "Artifact: creator_earnings.wasm ($WASM_SIZE)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ creator-earnings.wasm not found or empty at $WASM_PATH"
+            echo "::error::creator-earnings.wasm build verification failed — artifact not found or empty"
+            exit 1
+          fi
+        working-directory: contract
+
       - name: 📏 Generate Wasm size report
         run: |
           REPORT="wasm-size-report.txt"
@@ -269,6 +292,7 @@ jobs:
           echo "| Linting (cargo clippy) | ${{ steps.clippy.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Tests (cargo test) | ${{ steps.tests.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| WASM build | ${{ steps.build.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| creator-earnings WASM | ${{ steps.creator-earnings-build.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| ABI snapshots | ${{ steps.abi.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Deploy output schema | ${{ steps.schema.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Release docs linked | ${{ steps.docs.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
@@ -285,8 +309,9 @@ jobs:
               fmt:    '${{ steps.fmt.outcome }}',
               clippy: '${{ steps.clippy.outcome }}',
               tests:  '${{ steps.tests.outcome }}',
-              build:  '${{ steps.build.outcome }}',
-              abi:    '${{ steps.abi.outcome }}',
+              build:           '${{ steps.build.outcome }}',
+              creatorEarnings: '${{ steps.creator-earnings-build.outcome }}',
+              abi:             '${{ steps.abi.outcome }}',
               schema: '${{ steps.schema.outcome }}',
               docs:   '${{ steps.docs.outcome }}',
             };
@@ -300,6 +325,7 @@ jobs:
               `| Linting (cargo clippy) | ${icon(steps.clippy)} |`,
               `| Tests (cargo test) | ${icon(steps.tests)} |`,
               `| WASM build | ${icon(steps.build)} |`,
+              `| creator-earnings WASM | ${icon(steps.creatorEarnings)} |`,
               `| ABI snapshots | ${icon(steps.abi)} |`,
               `| Deploy output schema | ${icon(steps.schema)} |`,
               `| Release docs linked | ${icon(steps.docs)} |`,
