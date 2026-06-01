@@ -1,4 +1,4 @@
-#  (2026-05-31)
+#  (2026-06-01)
 
 
 ### Bug Fixes
@@ -292,6 +292,7 @@
 * integrate TransactionProgress component into CheckoutFlow and add tests ([f0e468f](https://github.com/MyFanss/MyFans/commit/f0e468ffc36370ac6c43a367192790232dbce285))
 * **integration:** sync subscription state from chain ([42c50d6](https://github.com/MyFanss/MyFans/commit/42c50d62712979c4876d603fec65312fd2471cdd))
 * introduce internal domain events for module decoupling ([10a9d24](https://github.com/MyFanss/MyFans/commit/10a9d2413f2b459ee4d5fa8f9b9797b8e6fcb27a))
+* keyboard accessibility, E2E flow, skeleton loaders & error boundaries ([8b11114](https://github.com/MyFanss/MyFans/commit/8b11114e15b731eca5dbd361468a65829dfff634)), closes [#867](https://github.com/MyFanss/MyFans/issues/867) [#870](https://github.com/MyFanss/MyFans/issues/870) [#871](https://github.com/MyFanss/MyFans/issues/871) [#872](https://github.com/MyFanss/MyFans/issues/872)
 * **logging:** redact PII and secrets from logs ([0125540](https://github.com/MyFanss/MyFans/commit/0125540a22d51ed138943a8356e5eecfbc957a00)), closes [#717](https://github.com/MyFanss/MyFans/issues/717)
 * make creator dashboard mobile responsive ([858fc4d](https://github.com/MyFanss/MyFans/commit/858fc4db3416c5227a0756713181bb0ead472474))
 * make IMyFans trait public and add subscribe and get_subscription_details methods ([aecd378](https://github.com/MyFanss/MyFans/commit/aecd3788c6dfdc7a483e97fabffc590fc107fed9))
