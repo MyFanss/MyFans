@@ -759,3 +759,7 @@ mod test {
         assert_eq!(client2.get_balance(&creator1_2), expected - 100);
     }
 }
+
+#[cfg(test)]
+#[path = "property_tests.rs"]
+mod property_tests;

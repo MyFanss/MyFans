@@ -465,3 +465,254 @@ fn admin_can_deposit() {
 
     assert_eq!(client.balance(&creator), 400);
 }
+
+
+// -------- Additional initialize & admin path tests (issue #940) --------
+
+#[test]
+fn initialize_requires_admin_auth() {
+    let env = Env::default();
+    // Do not mock all auths — test with empty auths
+    let admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    #[allow(deprecated)]
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    let empty: &[SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+
+    let result = client.try_initialize(&admin, &token_id);
+    assert!(result.is_err(), "initialize without admin auth must revert");
+}
+
+#[test]
+fn initialize_sets_admin_and_token() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    #[allow(deprecated)]
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &token_id);
+
+    // Verify storage directly
+    let stored_admin: Address = env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin should be set")
+    });
+    assert_eq!(stored_admin, admin);
+
+    let stored_token: Address = env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .get(&DataKey::Token)
+            .expect("token should be set")
+    });
+    assert_eq!(stored_token, token_id);
+}
+
+#[test]
+fn add_authorized_requires_admin_auth() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    #[allow(deprecated)]
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &token_id);
+
+    let depositor = Address::generate(&env);
+
+    // Clear auths so non-admin caller cannot authorize
+    let empty: &[SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+
+    let result = client.try_add_authorized(&depositor);
+    assert!(result.is_err(), "add_authorized without admin auth must revert");
+}
+
+// -------- Error code validation tests (issue #945) --------
+
+#[test]
+fn deposit_not_initialized_reverts_with_not_initialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let from = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    #[allow(deprecated)]
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    let sac = StellarAssetClient::new(&env, &token_id);
+    sac.mint(&from, &100);
+
+    let result = client.try_deposit(&from, &creator, &100);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::NotInitialized as u32,
+        ))),
+        "deposit on uninitialized contract must return NotInitialized (code 1)"
+    );
+}
+
+#[test]
+fn add_authorized_not_initialized_reverts_with_not_initialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    let depositor = Address::generate(&env);
+
+    let result = client.try_add_authorized(&depositor);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::NotInitialized as u32,
+        ))),
+        "add_authorized on uninitialized contract must return NotInitialized (code 1)"
+    );
+}
+
+#[test]
+fn withdraw_not_initialized_reverts_with_not_initialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let creator = Address::generate(&env);
+
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    let result = client.try_withdraw(&creator, &100);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::NotInitialized as u32,
+        ))),
+        "withdraw on uninitialized contract must return NotInitialized (code 1)"
+    );
+}
+
+#[test]
+fn deposit_zero_amount_reverts_with_invalid_amount() {
+    let env = Env::default();
+    let (_, creator, depositor, client, _, _) = setup(&env);
+
+    let result = client.try_deposit(&depositor, &creator, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidAmount as u32,
+        ))),
+        "deposit(0) must return InvalidAmount (code 5)"
+    );
+}
+
+#[test]
+fn deposit_negative_amount_reverts_with_invalid_amount() {
+    let env = Env::default();
+    let (_, creator, depositor, client, _, _) = setup(&env);
+
+    let result = client.try_deposit(&depositor, &creator, &-50);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidAmount as u32,
+        ))),
+        "deposit(-50) must return InvalidAmount (code 5)"
+    );
+}
+
+#[test]
+fn withdraw_zero_amount_reverts_with_invalid_amount() {
+    let env = Env::default();
+    let (_, creator, depositor, client, _, _) = setup(&env);
+
+    // Fund first
+    client.deposit(&depositor, &creator, &500);
+
+    let result = client.try_withdraw(&creator, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidAmount as u32,
+        ))),
+        "withdraw(0) must return InvalidAmount (code 5)"
+    );
+}
+
+#[test]
+fn withdraw_negative_amount_reverts_with_invalid_amount() {
+    let env = Env::default();
+    let (_, creator, depositor, client, _, _) = setup(&env);
+
+    client.deposit(&depositor, &creator, &500);
+
+    let result = client.try_withdraw(&creator, &-10);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidAmount as u32,
+        ))),
+        "withdraw(-10) must return InvalidAmount (code 5)"
+    );
+}
+
+#[test]
+fn withdraw_insufficient_balance_reverts_with_correct_error_code() {
+    let env = Env::default();
+    let (_, creator, depositor, client, _, _) = setup(&env);
+
+    client.deposit(&depositor, &creator, &100);
+
+    let result = client.try_withdraw(&creator, &200);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InsufficientBalance as u32,
+        ))),
+        "withdraw(200) on balance 100 must return InsufficientBalance (code 3)"
+    );
+}
+
+#[test]
+fn unauthorized_deposit_reverts_with_not_authorized() {
+    let env = Env::default();
+    let (_, creator, _, client, _, sac) = setup(&env);
+
+    let unauthorized = Address::generate(&env);
+    sac.mint(&unauthorized, &100);
+
+    let result = client.try_deposit(&unauthorized, &creator, &100);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::NotAuthorized as u32,
+        ))),
+        "unauthorized deposit must return NotAuthorized (code 2)"
+    );
+}
+
+// -------- Tests from the original first insertion (issue #940) already covered above --------
