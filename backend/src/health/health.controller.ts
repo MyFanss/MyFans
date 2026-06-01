@@ -29,6 +29,29 @@ export class HealthController {
         return res.status(200).json(health);
     }
 
+    @Get('aggregate')
+    @ApiOperation({
+        summary: 'Aggregated health check with per-subsystem summary',
+        description:
+            'Runs all subsystem checks in parallel and returns a structured ' +
+            'summary including per-subsystem latency, uptime, version, and a ' +
+            'numeric breakdown (total/up/degraded/down). ' +
+            'Returns 200 for "up" and "degraded", 503 for "down".',
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Service is up or degraded — includes subsystem breakdown',
+    })
+    @ApiResponse({
+        status: 503,
+        description: 'Service is down — database or critical subsystem unreachable',
+    })
+    async getAggregatedHealth(@Res() res: Response) {
+        const health = await this.healthService.getAggregatedHealth();
+        const httpStatus = health.status === 'down' ? 503 : 200;
+        return res.status(httpStatus).json(health);
+    }
+
     @Get('db')
     @ApiOperation({ summary: 'Database health check' })
     @ApiResponse({ status: 200, description: 'Database is healthy' })

@@ -54,6 +54,14 @@
 - [x] like_count returns 0 for never-liked content
 - [x] has_liked returns false for never-liked content
 
+#### ✅ Test: Snapshot/Restore Consistency (Issue #924)
+- [x] Like counts preserved across snapshot/restore
+- [x] User like lists preserved and queryable
+- [x] Individual like status (has_liked) consistent
+- [x] Pagination state correct after restore
+- [x] Multiple users' likes remain independent
+- [x] State integrity maintained across environment boundaries
+
 ### Gas & Scalability
 
 #### Storage Model

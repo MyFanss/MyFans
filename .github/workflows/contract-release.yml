@@ -48,6 +48,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-contract-target-
 
+      # Cache the compiled WASM release artifacts separately so the expensive
+      # wasm32 release build can be skipped when Cargo.lock has not changed.
+      - name: 🗜️ Restore WASM artifact cache
+        id: wasm-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: contract/target/wasm32-unknown-unknown/release/*.wasm
+          key: contract-wasm-${{ runner.os }}-${{ hashFiles('contract/Cargo.lock') }}
+          restore-keys: |
+            contract-wasm-${{ runner.os }}-
+
       - name: 🔧 Install Rust toolchain
         run: |
           rustup component add rustfmt clippy
@@ -91,12 +102,59 @@ jobs:
       - name: 🏗️ Build WASM release artifacts
         id: build
         run: |
-          cargo build --release --target wasm32-unknown-unknown
-          echo "### ✅ WASM Build" >> $GITHUB_STEP_SUMMARY
-          echo "Built packages:" >> $GITHUB_STEP_SUMMARY
-          find target/wasm32-unknown-unknown/release -maxdepth 1 -name '*.wasm' \
-            -exec bash -c 'echo "- $(basename {}) ($(du -sh {} | cut -f1))"' \; \
-            >> $GITHUB_STEP_SUMMARY
+          # Skip the expensive wasm32 build when artifacts were restored from cache.
+          if [[ "${{ steps.wasm-cache.outputs.cache-hit }}" == "true" ]]; then
+            echo "WASM artifacts restored from cache — skipping rebuild."
+            echo "### ✅ WASM Build" >> $GITHUB_STEP_SUMMARY
+            echo "Artifacts restored from cache (Cargo.lock unchanged)." >> $GITHUB_STEP_SUMMARY
+          else
+            cargo build --release --target wasm32-unknown-unknown
+            echo "### ✅ WASM Build" >> $GITHUB_STEP_SUMMARY
+            echo "Built packages:" >> $GITHUB_STEP_SUMMARY
+            find target/wasm32-unknown-unknown/release -maxdepth 1 -name '*.wasm' \
+              -exec bash -c 'echo "- $(basename {}) ($(du -sh {} | cut -f1))"' \; \
+              >> $GITHUB_STEP_SUMMARY
+          fi
+        working-directory: contract
+
+      - name: 📦 Verify creator-deposits wasm build
+        id: creator-deposits-build
+        run: |
+          # Verify creator-deposits wasm artifact was successfully produced
+          WASM_PATH="target/wasm32-unknown-unknown/release/creator_deposits.wasm"
+          if [[ -f "$WASM_PATH" ]]; then
+            WASM_SIZE=$(du -sh "$WASM_PATH" | cut -f1)
+            echo "✅ creator-deposits.wasm successfully built ($WASM_SIZE)"
+            echo "### ✅ Creator-Deposits WASM Build" >> $GITHUB_STEP_SUMMARY
+            echo "Artifact: creator_deposits.wasm ($WASM_SIZE)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ creator-deposits.wasm not found at $WASM_PATH"
+            echo "::error::creator-deposits.wasm build verification failed — artifact not found"
+            exit 1
+          fi
+        working-directory: contract
+
+      - name: 📦 Verify creator-earnings wasm build
+        id: creator-earnings-build
+        run: |
+          WASM_PATH="target/wasm32-unknown-unknown/release/creator_earnings.wasm"
+          if [[ -f "$WASM_PATH" && -s "$WASM_PATH" ]]; then
+            WASM_SIZE=$(du -sh "$WASM_PATH" | cut -f1)
+            # Validate WebAssembly magic bytes: 0x00 0x61 0x73 0x6D
+            MAGIC=$(xxd -p -l 4 "$WASM_PATH" 2>/dev/null || od -A n -N 4 -t x1 "$WASM_PATH" | tr -d ' \n')
+            if [[ "$MAGIC" != "0061736d" ]]; then
+              echo "❌ creator_earnings.wasm is not a valid WASM binary (magic=$MAGIC)"
+              echo "::error::creator_earnings.wasm failed magic-byte validation"
+              exit 1
+            fi
+            echo "✅ creator-earnings.wasm successfully built and validated ($WASM_SIZE)"
+            echo "### ✅ Creator-Earnings WASM Build" >> $GITHUB_STEP_SUMMARY
+            echo "Artifact: creator_earnings.wasm ($WASM_SIZE)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ creator-earnings.wasm not found or empty at $WASM_PATH"
+            echo "::error::creator-earnings.wasm build verification failed — artifact not found or empty"
+            exit 1
+          fi
         working-directory: contract
 
       - name: 📏 Generate Wasm size report
@@ -234,6 +292,7 @@ jobs:
           echo "| Linting (cargo clippy) | ${{ steps.clippy.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Tests (cargo test) | ${{ steps.tests.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| WASM build | ${{ steps.build.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| creator-earnings WASM | ${{ steps.creator-earnings-build.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| ABI snapshots | ${{ steps.abi.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Deploy output schema | ${{ steps.schema.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Release docs linked | ${{ steps.docs.outcome == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
@@ -250,8 +309,9 @@ jobs:
               fmt:    '${{ steps.fmt.outcome }}',
               clippy: '${{ steps.clippy.outcome }}',
               tests:  '${{ steps.tests.outcome }}',
-              build:  '${{ steps.build.outcome }}',
-              abi:    '${{ steps.abi.outcome }}',
+              build:           '${{ steps.build.outcome }}',
+              creatorEarnings: '${{ steps.creator-earnings-build.outcome }}',
+              abi:             '${{ steps.abi.outcome }}',
               schema: '${{ steps.schema.outcome }}',
               docs:   '${{ steps.docs.outcome }}',
             };
@@ -265,6 +325,7 @@ jobs:
               `| Linting (cargo clippy) | ${icon(steps.clippy)} |`,
               `| Tests (cargo test) | ${icon(steps.tests)} |`,
               `| WASM build | ${icon(steps.build)} |`,
+              `| creator-earnings WASM | ${icon(steps.creatorEarnings)} |`,
               `| ABI snapshots | ${icon(steps.abi)} |`,
               `| Deploy output schema | ${icon(steps.schema)} |`,
               `| Release docs linked | ${icon(steps.docs)} |`,
