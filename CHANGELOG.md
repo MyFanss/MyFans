@@ -1,4 +1,4 @@
-#  (2026-06-01)
+#  (2026-06-02)
 
 
 ### Bug Fixes
@@ -304,6 +304,7 @@
 * metrics and alerting ([1f51207](https://github.com/MyFanss/MyFans/commit/1f5120755388c253d3861617a743a931dafa222d))
 * **moderation:** add content moderation flags model and admin endpoints ([#353](https://github.com/MyFanss/MyFans/issues/353)) ([227a0ec](https://github.com/MyFanss/MyFans/commit/227a0ec3686f6e3c9a6c747323b79acc6bda0275))
 * **myfans-token:** add property tests for allowance, approve, clear_allowance, set_admin, total_supply invariants ([#889](https://github.com/MyFanss/MyFans/issues/889)) ([1316e4b](https://github.com/MyFanss/MyFans/commit/1316e4b48d61fea106b75b16f48d5a3670ffeae1))
+* **myfans-token:** add property tests for approve/allowance and sequential transfer invariants ([#889](https://github.com/MyFanss/MyFans/issues/889)) ([e7082b6](https://github.com/MyFanss/MyFans/commit/e7082b66fc6669f5d824c2333b4669c663098671))
 * normalize subscription expiry ledger calculations ([#288](https://github.com/MyFanss/MyFans/issues/288)) ([31ccf63](https://github.com/MyFanss/MyFans/commit/31ccf63483e9d83269a1d4baa998a54704210375))
 * **observability:** add health check aggregation endpoint ([5003be2](https://github.com/MyFanss/MyFans/commit/5003be2087b17700b053f987a5bf5618bb1cfe14))
 * **observability:** define and enforce structured log fields standard ([739961b](https://github.com/MyFanss/MyFans/commit/739961b2575fce917a2ea64ae4630fd4d0f2fc7b))
