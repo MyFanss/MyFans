@@ -338,6 +338,7 @@
 * standardize API error response format across all endpoints ([#340](https://github.com/MyFanss/MyFans/issues/340)) ([51c928b](https://github.com/MyFanss/MyFans/commit/51c928b468547cfe9df5dc578bfcb3bbfdfa8b64))
 * standardize deployed contract env vars with backward-compatible aliases ([e976fe2](https://github.com/MyFanss/MyFans/commit/e976fe2ecad5435e46e6e0ae1b9a39e6ae2ae7b8))
 * Subscription List Filter by Status & Sorting ([cc37385](https://github.com/MyFanss/MyFans/commit/cc37385e6ff45abe89b46f4fea01fe1086ba085b))
+* **subscription:** add unauthorized caller revert tests ([#891](https://github.com/MyFanss/MyFans/issues/891)) ([4d174d9](https://github.com/MyFanss/MyFans/commit/4d174d9141df9bc7615c048b9717cebd10c77405))
 * **subscription:** add unauthorized caller revert tests ([#891](https://github.com/MyFanss/MyFans/issues/891)) ([7bef01e](https://github.com/MyFanss/MyFans/commit/7bef01ef3602014f2266963125dde0653bc27ad1))
 * **subscription:** add unit tests for initialize and admin paths ([#890](https://github.com/MyFanss/MyFans/issues/890)) ([3aad4b5](https://github.com/MyFanss/MyFans/commit/3aad4b549aad2b2161ee03a8b3aa68ee49d9249c))
 * **subscription:** add unit tests for initialize and admin paths ([#890](https://github.com/MyFanss/MyFans/issues/890)) ([9b3d0b9](https://github.com/MyFanss/MyFans/commit/9b3d0b944192676a42bca6b4ccbfccba8e7e08a9))
