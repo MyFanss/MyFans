@@ -1,4 +1,4 @@
-#  (2026-06-01)
+#  (2026-06-02)
 
 
 ### Bug Fixes
@@ -304,6 +304,7 @@
 * metrics and alerting ([1f51207](https://github.com/MyFanss/MyFans/commit/1f5120755388c253d3861617a743a931dafa222d))
 * **moderation:** add content moderation flags model and admin endpoints ([#353](https://github.com/MyFanss/MyFans/issues/353)) ([227a0ec](https://github.com/MyFanss/MyFans/commit/227a0ec3686f6e3c9a6c747323b79acc6bda0275))
 * **myfans-token:** add property tests for allowance, approve, clear_allowance, set_admin, total_supply invariants ([#889](https://github.com/MyFanss/MyFans/issues/889)) ([1316e4b](https://github.com/MyFanss/MyFans/commit/1316e4b48d61fea106b75b16f48d5a3670ffeae1))
+* **myfans-token:** add property tests for approve/allowance and sequential transfer invariants ([#889](https://github.com/MyFanss/MyFans/issues/889)) ([e7082b6](https://github.com/MyFanss/MyFans/commit/e7082b66fc6669f5d824c2333b4669c663098671))
 * normalize subscription expiry ledger calculations ([#288](https://github.com/MyFanss/MyFans/issues/288)) ([31ccf63](https://github.com/MyFanss/MyFans/commit/31ccf63483e9d83269a1d4baa998a54704210375))
 * **observability:** add health check aggregation endpoint ([5003be2](https://github.com/MyFanss/MyFans/commit/5003be2087b17700b053f987a5bf5618bb1cfe14))
 * **observability:** define and enforce structured log fields standard ([739961b](https://github.com/MyFanss/MyFans/commit/739961b2575fce917a2ea64ae4630fd4d0f2fc7b))
@@ -338,6 +339,7 @@
 * standardize deployed contract env vars with backward-compatible aliases ([e976fe2](https://github.com/MyFanss/MyFans/commit/e976fe2ecad5435e46e6e0ae1b9a39e6ae2ae7b8))
 * Subscription List Filter by Status & Sorting ([cc37385](https://github.com/MyFanss/MyFans/commit/cc37385e6ff45abe89b46f4fea01fe1086ba085b))
 * **subscription:** add unauthorized caller revert tests ([#891](https://github.com/MyFanss/MyFans/issues/891)) ([7bef01e](https://github.com/MyFanss/MyFans/commit/7bef01ef3602014f2266963125dde0653bc27ad1))
+* **subscription:** add unit tests for initialize and admin paths ([#890](https://github.com/MyFanss/MyFans/issues/890)) ([3aad4b5](https://github.com/MyFanss/MyFans/commit/3aad4b549aad2b2161ee03a8b3aa68ee49d9249c))
 * **subscription:** add unit tests for initialize and admin paths ([#890](https://github.com/MyFanss/MyFans/issues/890)) ([9b3d0b9](https://github.com/MyFanss/MyFans/commit/9b3d0b944192676a42bca6b4ccbfccba8e7e08a9))
 * **subscription:** admin set_fee_bps with bounds and fee_updated event ([5a7c7e2](https://github.com/MyFanss/MyFans/commit/5a7c7e26f5546b4b14ea65e71644765be2346475))
 * **subscription:** admin set_fee_recipient with validation and event ([c372cab](https://github.com/MyFanss/MyFans/commit/c372caba4c9716bcdc3fa1e4825f70af8158cd20))

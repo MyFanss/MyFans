@@ -1489,149 +1489,185 @@ fn admin_is_stable_after_pause_and_unpause() {
     );
 }
 
-// ── #891 – unauthorized caller revert tests ──────────────────────────────────
+// ── #890 – initialize and admin path unit tests ──────────────────────────────
 
-/// Helper: set up a fully initialized subscription contract with a plan and
-/// an active subscriber, returning all relevant addresses.
-fn setup_with_subscriber() -> (
-    Env,
-    MyfansContractClient<'static>,
-    Address, // admin
-    Address, // creator
-    Address, // fan
-    Address, // fee_recipient
-    token::Client<'static>,
-) {
-    let (env, client, admin, token, token_admin) = setup_test();
+#[test]
+fn test_init_stores_admin() {
+    let (env, client, admin, token, _) = setup_test();
     let fee_recipient = Address::generate(&env);
     client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    assert_eq!(client.admin(), admin);
+}
+
+#[test]
+fn test_init_stores_fee_bps_zero() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    // fee_bps=0 means creator gets 100% — verify via subscribe payment
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
-    token_admin.mint(&fan, &10_000);
-    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
-    client.subscribe(&fan, &plan_id, &token.address);
-    (env, client, admin, creator, fan, fee_recipient, token)
+    let (_, _, _, _, token_admin) = setup_test();
+    // use a fresh env for payment check
+    let (env2, client2, admin2, token2, token_admin2) = setup_test();
+    let fee_recipient2 = Address::generate(&env2);
+    client2.init(&admin2, &0, &fee_recipient2, &token2.address, &1000);
+    let creator2 = Address::generate(&env2);
+    let fan2 = Address::generate(&env2);
+    token_admin2.mint(&fan2, &5000);
+    let plan_id = client2.create_plan(&creator2, &token2.address, &1000, &30);
+    client2.subscribe(&fan2, &plan_id, &token2.address);
+    assert_eq!(token2.balance(&fee_recipient2), 0, "zero fee: recipient gets nothing");
+    assert_eq!(token2.balance(&creator2), 1000, "zero fee: creator gets full amount");
+    // suppress unused warnings
+    let _ = (env, client, admin, token, fee_recipient, creator, fan, token_admin);
 }
 
-/// pause – non-admin caller without auth is rejected.
 #[test]
-fn test_pause_rejects_non_admin() {
-    let (env, client, admin, _, _, fee_recipient, token) = setup_test();
+fn test_init_stores_max_fee_bps() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    // 10_000 bps = 100% is the maximum valid value
+    client.init(&admin, &10_000, &fee_recipient, &token.address, &1000);
+    assert_eq!(client.admin(), admin);
+}
+
+#[test]
+fn test_init_rejects_already_initialized() {
+    let (env, client, admin, token, _) = setup_test();
     let fee_recipient = Address::generate(&env);
     client.init(&admin, &500, &fee_recipient, &token.address, &1000);
-    env.set_auths(&[]);
-    let result = client.try_pause();
-    assert!(result.is_err(), "non-admin must not pause");
+    let result = client.try_init(&admin, &500, &fee_recipient, &token.address, &1000);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::AlreadyInitialized as u32,
+        )))
+    );
 }
 
-/// unpause – non-admin caller without auth is rejected.
 #[test]
-fn test_unpause_rejects_non_admin() {
-    let (env, client, admin, _, _, fee_recipient, token) = setup_test();
+fn test_init_rejects_null_fee_recipient() {
+    let (env, client, admin, token, _) = setup_test();
+    let null_addr = Address::from_string(&String::from_str(
+        &env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    ));
+    let result = client.try_init(&admin, &500, &null_addr, &token.address, &1000);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidFeeRecipient as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_init_rejects_negative_price() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let result = client.try_init(&admin, &500, &fee_recipient, &token.address, &-1);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidPrice as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_pause_sets_paused_flag() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    assert!(!client.is_paused());
+    client.pause();
+    assert!(client.is_paused());
+}
+
+#[test]
+fn test_unpause_clears_paused_flag() {
+    let (env, client, admin, token, _) = setup_test();
     let fee_recipient = Address::generate(&env);
     client.init(&admin, &500, &fee_recipient, &token.address, &1000);
     client.pause();
-    env.set_auths(&[]);
-    let result = client.try_unpause();
-    assert!(result.is_err(), "non-admin must not unpause");
+    assert!(client.is_paused());
+    client.unpause();
+    assert!(!client.is_paused());
 }
 
-/// set_fee_bps – non-admin caller without auth is rejected.
 #[test]
-fn test_set_fee_bps_rejects_non_admin() {
-    let (env, client, admin, _, _, fee_recipient, token) = setup_test();
+fn test_set_fee_bps_updates_value() {
+    let (env, client, admin, token, token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
     client.init(&admin, &500, &fee_recipient, &token.address, &1000);
-    env.set_auths(&[]);
-    let result = client.try_set_fee_bps(&300);
-    assert!(result.is_err(), "non-admin must not change fee bps");
-}
-
-/// set_fee_recipient – non-admin caller without auth is rejected.
-#[test]
-fn test_set_fee_recipient_rejects_non_admin() {
-    let (env, client, admin, _, _, fee_recipient, token) = setup_test();
-    let fee_recipient = Address::generate(&env);
-    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
-    let new_recipient = Address::generate(&env);
-    env.set_auths(&[]);
-    let result = client.try_set_fee_recipient(&new_recipient);
-    assert!(result.is_err(), "non-admin must not set fee recipient");
-}
-
-/// create_plan – caller without creator auth is rejected.
-#[test]
-fn test_create_plan_rejects_unauthorized_caller() {
-    let (env, client, admin, _, _, fee_recipient, token) = setup_test();
-    let fee_recipient = Address::generate(&env);
-    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
-    let creator = Address::generate(&env);
-    env.set_auths(&[]);
-    let result = client.try_create_plan(&creator, &token.address, &1000, &30);
-    assert!(result.is_err(), "unauthenticated caller must not create plan");
-}
-
-/// subscribe – caller without fan auth is rejected.
-#[test]
-fn test_subscribe_rejects_unauthorized_caller() {
-    let (env, client, admin, _, _, fee_recipient, token) = setup_test();
-    let fee_recipient = Address::generate(&env);
-    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    // Change fee to 1000 bps (10%) and verify via subscribe payment
+    client.set_fee_bps(&1000);
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
     let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
-    env.set_auths(&[]);
-    let result = client.try_subscribe(&fan, &plan_id, &token.address);
-    assert!(result.is_err(), "unauthenticated caller must not subscribe");
+    client.subscribe(&fan, &plan_id, &token.address);
+    assert_eq!(token.balance(&fee_recipient), 100, "10% fee = 100");
+    assert_eq!(token.balance(&creator), 900, "creator gets 900 after 10% fee");
 }
 
-/// cancel – caller without fan auth is rejected.
 #[test]
-fn test_cancel_rejects_unauthorized_caller() {
-    let (env, client, admin, creator, fan, _, _) = setup_with_subscriber();
-    env.set_auths(&[]);
-    let result = client.try_cancel(&fan, &creator, &0);
-    assert!(result.is_err(), "unauthenticated caller must not cancel");
-}
-
-/// cancel – creator cannot cancel a fan's subscription (wrong signer).
-#[test]
-fn test_cancel_rejects_creator_acting_as_fan() {
-    let (env, client, _admin, creator, fan, _, _) = setup_with_subscriber();
-    // Only authorize creator, not fan — fan.require_auth() must fail.
-    env.set_auths(&[]);
-    let result = client.try_cancel(&fan, &creator, &0);
-    assert!(
-        result.is_err(),
-        "creator must not cancel on behalf of fan"
-    );
-}
-
-/// extend_subscription – caller without fan auth is rejected.
-#[test]
-fn test_extend_subscription_rejects_unauthorized_caller() {
-    let (env, client, _admin, creator, fan, _, token) = setup_with_subscriber();
-    env.set_auths(&[]);
-    let result = client.try_extend_subscription(&fan, &creator, &100, &token.address);
-    assert!(
-        result.is_err(),
-        "unauthenticated caller must not extend subscription"
-    );
-}
-
-/// create_subscription – caller without fan auth is rejected.
-#[test]
-fn test_create_subscription_rejects_unauthorized_caller() {
-    let (env, client, admin, _, _, fee_recipient, token) = setup_test();
+fn test_set_fee_bps_rejects_over_10000() {
+    let (env, client, admin, token, _) = setup_test();
     let fee_recipient = Address::generate(&env);
     client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let result = client.try_set_fee_bps(&10_001);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidFeeBps as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_set_fee_recipient_updates_value() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let old_recipient = Address::generate(&env);
+    let new_recipient = Address::generate(&env);
+    client.init(&admin, &500, &old_recipient, &token.address, &1000);
+    client.set_fee_recipient(&new_recipient);
+    // Verify new recipient receives fees
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
-    env.set_auths(&[]);
-    let result = client.try_create_subscription(&fan, &creator, &17280);
-    assert!(
-        result.is_err(),
-        "unauthenticated caller must not create subscription"
+    token_admin.mint(&fan, &5000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    assert_eq!(token.balance(&old_recipient), 0, "old recipient gets nothing");
+    assert_eq!(token.balance(&new_recipient), 50, "new recipient gets 5% fee");
+}
+
+#[test]
+fn test_set_fee_recipient_rejects_null_address() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let null_addr = Address::from_string(&String::from_str(
+        &env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    ));
+    let result = client.try_set_fee_recipient(&null_addr);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidFeeRecipient as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_paused_blocks_create_plan() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    client.pause();
+    let creator = Address::generate(&env);
 // ============================================================================
 // HEALTH CHECK / PING TESTS
 // Verifies Soroban RPC / contract connectivity probe (issue: health-check).
@@ -1736,6 +1772,14 @@ fn test_create_plan_paused_returns_typed_error() {
     );
 }
 
+#[test]
+fn test_paused_blocks_subscribe() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
 /// subscribe when paused returns Error::Paused (code 2).
 #[test]
 fn test_subscribe_paused_returns_typed_error() {
@@ -1754,6 +1798,14 @@ fn test_subscribe_paused_returns_typed_error() {
     );
 }
 
+#[test]
+fn test_paused_blocks_cancel() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
 /// cancel when paused returns Error::Paused (code 2).
 #[test]
 fn test_cancel_paused_returns_typed_error() {

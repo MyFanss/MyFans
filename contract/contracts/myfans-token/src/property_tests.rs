@@ -529,3 +529,147 @@ mod props {
         }
     }
 }
+
+    // ── approve / allowance invariants ───────────────────────────────────────
+
+    proptest! {
+        /// approve followed by allowance query must return exactly the approved amount
+        /// (while the ledger is still before expiration_ledger).
+        #[test]
+        fn prop_approve_sets_exact_allowance(
+            amount in 0i128..=1_000_000i128,
+            expiry_offset in 1u32..=10_000u32,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let from    = Address::generate(&env);
+            let spender = Address::generate(&env);
+            let expiry  = env.ledger().sequence() + expiry_offset;
+
+            client.approve(&from, &spender, &amount, &expiry);
+            prop_assert_eq!(client.allowance(&from, &spender), amount);
+        }
+
+        /// After transfer_from consumes part of an allowance, the remaining
+        /// allowance equals (original - spent) and balances are consistent.
+        #[test]
+        fn prop_allowance_decreases_by_spent_amount(
+            mint_amount   in 1i128..=1_000_000i128,
+            allowance_amt in 1i128..=1_000_000i128,
+            spend_amount  in 1i128..=1_000_000i128,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let owner    = Address::generate(&env);
+            let spender  = Address::generate(&env);
+            let receiver = Address::generate(&env);
+
+            let mint = mint_amount.max(allowance_amt).max(spend_amount);
+            client.mint(&owner, &mint);
+            client.approve(&owner, &spender, &allowance_amt, &10_000);
+
+            if spend_amount <= allowance_amt && spend_amount <= mint {
+                client.transfer_from(&spender, &owner, &receiver, &spend_amount);
+                prop_assert_eq!(
+                    client.allowance(&owner, &spender),
+                    allowance_amt - spend_amount,
+                    "remaining allowance must equal original minus spent"
+                );
+            }
+        }
+
+        /// clear_allowance must zero the allowance regardless of the prior value.
+        #[test]
+        fn prop_clear_allowance_zeroes_it(
+            amount in 1i128..=1_000_000i128,
+            expiry_offset in 1u32..=10_000u32,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let from    = Address::generate(&env);
+            let spender = Address::generate(&env);
+            let expiry  = env.ledger().sequence() + expiry_offset;
+
+            client.approve(&from, &spender, &amount, &expiry);
+            prop_assert_eq!(client.allowance(&from, &spender), amount);
+
+            client.clear_allowance(&from, &spender);
+            prop_assert_eq!(client.allowance(&from, &spender), 0i128);
+        }
+
+        /// Approving with amount=0 is equivalent to clearing the allowance.
+        #[test]
+        fn prop_approve_zero_is_same_as_clear(
+            expiry_offset in 1u32..=10_000u32,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let from    = Address::generate(&env);
+            let spender = Address::generate(&env);
+            let expiry  = env.ledger().sequence() + expiry_offset;
+
+            client.approve(&from, &spender, &0i128, &expiry);
+            prop_assert_eq!(client.allowance(&from, &spender), 0i128);
+        }
+    }
+
+    // ── sequential transfer invariants ──────────────────────────────────────
+
+    proptest! {
+        /// Two sequential transfers A→B and B→C conserve total supply and
+        /// leave each balance consistent with the amounts moved.
+        #[test]
+        fn prop_sequential_transfers_conserve_supply(
+            mint_amount in 2i128..=1_000_000i128,
+            first_amount in 1i128..=500_000i128,
+            second_amount in 1i128..=500_000i128,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let a = Address::generate(&env);
+            let b = Address::generate(&env);
+            let c = Address::generate(&env);
+
+            client.mint(&a, &mint_amount);
+            let supply = client.total_supply();
+
+            if first_amount <= mint_amount && second_amount <= first_amount {
+                client.transfer(&a, &b, &first_amount);
+                client.transfer(&b, &c, &second_amount);
+
+                prop_assert_eq!(client.balance(&a), mint_amount - first_amount);
+                prop_assert_eq!(client.balance(&b), first_amount - second_amount);
+                prop_assert_eq!(client.balance(&c), second_amount);
+                prop_assert_eq!(client.total_supply(), supply, "supply unchanged after transfers");
+            }
+        }
+
+        /// Mint then burn the same amount must leave total supply unchanged.
+        #[test]
+        fn prop_mint_then_burn_same_amount_is_noop_on_supply(
+            amount in 1i128..=1_000_000_000i128,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let holder = Address::generate(&env);
+            let supply_before = client.total_supply();
+
+            client.mint(&holder, &amount);
+            client.burn(&holder, &amount);
+
+            prop_assert_eq!(client.total_supply(), supply_before);
+            prop_assert_eq!(client.balance(&holder), 0i128);
+        }
+    }
