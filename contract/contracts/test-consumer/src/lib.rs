@@ -578,7 +578,11 @@ mod test {
 
     mod content_access_integration {
         use content_access::{ContentAccess, ContentAccessClient};
-        use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol};
+        use soroban_sdk::{
+            contract, contractimpl,
+            testutils::{Address as _, Ledger},
+            Address, Env,
+        };
 
         // Mock token contract for testing
         #[contract]
@@ -628,10 +632,10 @@ mod test {
 
             let buyer = Address::generate(&env);
             let creator = Address::generate(&env);
-            let content_id = 1u32;
+            let content_id = 1u64;
 
             // Initially no access
-            assert!(!content_access.has_access(&buyer, &creator, content_id));
+            assert!(!content_access.has_access(&buyer, &creator, &content_id));
 
             // Set price for content
             content_access.set_content_price(&creator, &content_id, &100);
@@ -643,18 +647,18 @@ mod test {
             );
 
             // Buyer unlocks content
-            content_access.unlock_content(&buyer, &creator, content_id, &2000); // expiry far in future
+            content_access.unlock_content(&buyer, &creator, &content_id, &2000); // expiry far in future
 
             // Verify access is granted
-            assert!(content_access.has_access(&buyer, &creator, content_id));
+            assert!(content_access.has_access(&buyer, &creator, &content_id));
 
             // Verify access via verify_access (should not panic)
-            content_access.verify_access(&buyer, &creator, content_id);
+            content_access.verify_access(&buyer, &creator, &content_id);
 
             // Different buyer should not have access
             let other_buyer = Address::generate(&env);
-            assert!(!content_access.has_access(&other_buyer, &creator, content_id));
-            let result = content_access.try_verify_access(&other_buyer, &creator, content_id);
+            assert!(!content_access.has_access(&other_buyer, &creator, &content_id));
+            let result = content_access.try_verify_access(&other_buyer, &creator, &content_id);
             assert_eq!(
                 result,
                 Err(Ok(soroban_sdk::Error::from_contract_error(
@@ -684,24 +688,24 @@ mod test {
 
             let buyer = Address::generate(&env);
             let creator = Address::generate(&env);
-            let content_id = 1u32;
+            let content_id = 1u64;
 
             content_access.set_content_price(&creator, &content_id, &50);
 
             // Purchase with near expiry
-            content_access.unlock_content(&buyer, &creator, content_id, &1005); // expires at ledger 1005
-            assert!(content_access.has_access(&buyer, &creator, content_id));
+            content_access.unlock_content(&buyer, &creator, &content_id, &1005); // expires at ledger 1005
+            assert!(content_access.has_access(&buyer, &creator, &content_id));
 
             // Advance to just before expiry
             env.ledger().with_mut(|li| li.sequence_number = 1004);
-            assert!(content_access.has_access(&buyer, &creator, content_id));
+            assert!(content_access.has_access(&buyer, &creator, &content_id));
 
             // Advance to expiry - should lose access
             env.ledger().with_mut(|li| li.sequence_number = 1006);
-            assert!(!content_access.has_access(&buyer, &creator, content_id));
+            assert!(!content_access.has_access(&buyer, &creator, &content_id));
 
             // Verify access should fail with PurchaseExpired
-            let result = content_access.try_verify_access(&buyer, &creator, content_id);
+            let result = content_access.try_verify_access(&buyer, &creator, &content_id);
             assert_eq!(
                 result,
                 Err(Ok(soroban_sdk::Error::from_contract_error(
@@ -710,8 +714,8 @@ mod test {
             );
 
             // Repurchase with new expiry
-            content_access.unlock_content(&buyer, &creator, content_id, &2000);
-            assert!(content_access.has_access(&buyer, &creator, content_id));
+            content_access.unlock_content(&buyer, &creator, &content_id, &2000);
+            assert!(content_access.has_access(&buyer, &creator, &content_id));
         }
     }
 
@@ -726,7 +730,7 @@ mod test {
         extern crate std;
 
         use soroban_sdk::{
-            testutils::Address as _,
+            testutils::{Address as _, Ledger},
             token::{StellarAssetClient, TokenClient},
             Address, Env,
         };

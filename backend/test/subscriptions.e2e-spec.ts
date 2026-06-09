@@ -48,9 +48,8 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
   let app: INestApplication;
   let currentSubs: SubscriptionIndexEntity[];
   const mockRepo = {
-    create: jest.fn(
-      (data: Partial<SubscriptionIndexEntity>) =>
-        makeSubscription(data as Partial<SubscriptionIndexEntity>),
+    create: jest.fn((data: Partial<SubscriptionIndexEntity>) =>
+      makeSubscription(data),
     ),
     save: jest.fn(async (entity: SubscriptionIndexEntity) => {
       const existingIndex = currentSubs.findIndex(
@@ -68,14 +67,11 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       return next;
     }),
     findOne: jest.fn(
-      async ({
-        where,
-      }: {
-        where: Partial<SubscriptionIndexEntity>;
-      }) =>
+      async ({ where }: { where: Partial<SubscriptionIndexEntity> }) =>
         currentSubs.find((sub) =>
           Object.entries(where).every(
-            ([key, value]) => sub[key as keyof SubscriptionIndexEntity] === value,
+            ([key, value]) =>
+              sub[key as keyof SubscriptionIndexEntity] === value,
           ),
         ) ?? null,
     ),
@@ -91,7 +87,8 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       }) => {
         const filtered = currentSubs.filter((sub) =>
           Object.entries(where ?? {}).every(
-            ([key, value]) => sub[key as keyof SubscriptionIndexEntity] === value,
+            ([key, value]) =>
+              sub[key as keyof SubscriptionIndexEntity] === value,
           ),
         );
         return [filtered.slice(skip, skip + take), filtered.length];
@@ -105,7 +102,8 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       } = {}) =>
         currentSubs.filter((sub) =>
           Object.entries(where ?? {}).every(
-            ([key, value]) => sub[key as keyof SubscriptionIndexEntity] === value,
+            ([key, value]) =>
+              sub[key as keyof SubscriptionIndexEntity] === value,
           ),
         ),
     ),
@@ -116,7 +114,8 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       ) => {
         currentSubs = currentSubs.map((sub) =>
           Object.entries(criteria).every(
-            ([key, value]) => sub[key as keyof SubscriptionIndexEntity] === value,
+            ([key, value]) =>
+              sub[key as keyof SubscriptionIndexEntity] === value,
           )
             ? makeSubscription({ ...sub, ...partial })
             : sub,
@@ -153,7 +152,8 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
         select: () => builder,
         getRawOne: async () => ({
           maxLedger:
-            currentSubs.reduce((max, sub) => Math.max(max, sub.ledgerSeq), 0) || 0,
+            currentSubs.reduce((max, sub) => Math.max(max, sub.ledgerSeq), 0) ||
+            0,
         }),
         getMany: async () => {
           const filtered = currentSubs.filter(

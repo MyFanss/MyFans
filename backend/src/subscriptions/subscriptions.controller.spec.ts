@@ -5,6 +5,9 @@ import { plainToInstance } from 'class-transformer';
 import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionsService } from './subscriptions.service';
 import { SubscriptionStatus } from './entities/subscription-index.entity';
+import { Reflector } from '@nestjs/core';
+import { FeatureFlagGuard } from '../feature-flags/feature-flag.guard';
+import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import {
   FanBearerGuard,
   RequestWithFan,
@@ -67,6 +70,12 @@ describe('SubscriptionsController', () => {
       providers: [
         { provide: SubscriptionsService, useValue: service },
         FanBearerGuard,
+        Reflector,
+        FeatureFlagGuard,
+        {
+          provide: FeatureFlagsService,
+          useValue: { isEnabled: jest.fn().mockReturnValue(true) },
+        },
       ],
     }).compile();
 
@@ -216,6 +225,12 @@ describe('SubscriptionsController – listSubscriptions', () => {
       providers: [
         { provide: SubscriptionsService, useValue: service },
         FanBearerGuard,
+        Reflector,
+        FeatureFlagGuard,
+        {
+          provide: FeatureFlagsService,
+          useValue: { isEnabled: jest.fn().mockReturnValue(true) },
+        },
       ],
     }).compile();
 

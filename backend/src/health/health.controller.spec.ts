@@ -176,7 +176,7 @@ describe('HealthController', () => {
             expect(res.status).toHaveBeenCalledWith(503);
             expect(res.json).toHaveBeenCalledWith({
                 status: 'down',
-                message: 'Redis not configured',
+                error: 'Redis not configured',
             });
         });
     });

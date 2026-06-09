@@ -466,7 +466,6 @@ fn admin_can_deposit() {
     assert_eq!(client.balance(&creator), 400);
 }
 
-
 // -------- Additional initialize & admin path tests (issue #940) --------
 
 #[test]
@@ -543,7 +542,10 @@ fn add_authorized_requires_admin_auth() {
     env.set_auths(empty);
 
     let result = client.try_add_authorized(&depositor);
-    assert!(result.is_err(), "add_authorized without admin auth must revert");
+    assert!(
+        result.is_err(),
+        "add_authorized without admin auth must revert"
+    );
 }
 
 // -------- Error code validation tests (issue #945) --------

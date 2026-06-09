@@ -3,7 +3,7 @@ import * as path from 'path';
 
 /**
  * Security Audit Integration Tests
- * 
+ *
  * These tests verify the complete security auditing system works
  * end-to-end, including:
  * 1. Audit checks run successfully
@@ -59,13 +59,13 @@ describe('Security Audit Integration', () => {
 
       expect(cargoAuditOutput.vulnerabilities).toBeDefined();
       expect(Array.isArray(cargoAuditOutput.vulnerabilities)).toBe(true);
-      
+
       if (cargoAuditOutput.vulnerabilities.length > 0) {
         expect(cargoAuditOutput.vulnerabilities[0].severity).toBeDefined();
         expect(
           ['critical', 'high', 'medium', 'low'].includes(
-            cargoAuditOutput.vulnerabilities[0].severity
-          )
+            cargoAuditOutput.vulnerabilities[0].severity,
+          ),
         ).toBe(true);
       }
     });
@@ -104,7 +104,7 @@ describe('Security Audit Integration', () => {
     it('should enforce exception deadline tracking', () => {
       const docPath = path.join(repoRoot, 'docs/SECURITY_AUDIT.md');
       const content = fs.readFileSync(docPath, 'utf8');
-      
+
       // Documentation should mention tracking deadlines
       expect(content.toLowerCase()).toContain('deadline');
       expect(content.toLowerCase()).toContain('time');
@@ -116,7 +116,7 @@ describe('Security Audit Integration', () => {
     it('should trigger audits on pull requests', () => {
       const workflow = fs.readFileSync(
         path.join(repoRoot, '.github/workflows/audit-check.yml'),
-        'utf8'
+        'utf8',
       );
       expect(workflow).toContain('pull_request');
     });
@@ -124,7 +124,7 @@ describe('Security Audit Integration', () => {
     it('should trigger audits on push to main', () => {
       const workflow = fs.readFileSync(
         path.join(repoRoot, '.github/workflows/audit-check.yml'),
-        'utf8'
+        'utf8',
       );
       expect(workflow).toContain('push');
       expect(workflow).toContain('main');
@@ -133,7 +133,7 @@ describe('Security Audit Integration', () => {
     it('should trigger audits on schedule', () => {
       const workflow = fs.readFileSync(
         path.join(repoRoot, '.github/workflows/audit-check.yml'),
-        'utf8'
+        'utf8',
       );
       expect(workflow).toContain('schedule');
       expect(workflow).toContain('cron');
@@ -142,7 +142,7 @@ describe('Security Audit Integration', () => {
     it('should report results in PR comments', () => {
       const workflow = fs.readFileSync(
         path.join(repoRoot, '.github/workflows/audit-check.yml'),
-        'utf8'
+        'utf8',
       );
       expect(workflow).toContain('github-script');
       expect(workflow).toContain('issues.createComment');
@@ -151,7 +151,7 @@ describe('Security Audit Integration', () => {
     it('should publish audit results to step summary', () => {
       const workflow = fs.readFileSync(
         path.join(repoRoot, '.github/workflows/audit-check.yml'),
-        'utf8'
+        'utf8',
       );
       expect(workflow).toContain('GITHUB_STEP_SUMMARY');
     });
@@ -161,7 +161,7 @@ describe('Security Audit Integration', () => {
     it('should fail on critical vulnerabilities', () => {
       const scriptPath = path.join(repoRoot, 'scripts/check-audits.sh');
       const content = fs.readFileSync(scriptPath, 'utf8');
-      
+
       expect(content).toContain('CRITICAL_THRESHOLD=0');
       expect(content).toContain('if (( CRITICAL >');
       expect(content).toContain('FAILED=1');
@@ -170,7 +170,7 @@ describe('Security Audit Integration', () => {
     it('should fail on high vulnerabilities', () => {
       const scriptPath = path.join(repoRoot, 'scripts/check-audits.sh');
       const content = fs.readFileSync(scriptPath, 'utf8');
-      
+
       expect(content).toContain('HIGH_THRESHOLD');
       expect(content).toContain('if (( HIGH >');
     });
@@ -178,7 +178,7 @@ describe('Security Audit Integration', () => {
     it('should warn on moderate vulnerabilities', () => {
       const scriptPath = path.join(repoRoot, 'scripts/check-audits.sh');
       const content = fs.readFileSync(scriptPath, 'utf8');
-      
+
       expect(content).toContain('MODERATE_THRESHOLD');
       // Should warn but not fail
       expect(content).toContain('MODERATE');
@@ -208,7 +208,9 @@ describe('Security Audit Integration', () => {
       const found = paths.some((p) => {
         if (!fs.existsSync(p)) return false;
         const content = fs.readFileSync(p, 'utf8');
-        return content.includes('check-audits.sh') || content.includes('npm audit');
+        return (
+          content.includes('check-audits.sh') || content.includes('npm audit')
+        );
       });
 
       expect(found).toBe(true);
@@ -219,9 +221,9 @@ describe('Security Audit Integration', () => {
     it('should generate detailed audit summary', () => {
       const workflow = fs.readFileSync(
         path.join(repoRoot, '.github/workflows/audit-check.yml'),
-        'utf8'
+        'utf8',
       );
-      
+
       // Should create summary table
       expect(workflow).toContain('| Severity | Count |');
       expect(workflow).toContain('|----------|-------|');
@@ -230,7 +232,7 @@ describe('Security Audit Integration', () => {
     it('should include backend audit in report', () => {
       const workflow = fs.readFileSync(
         path.join(repoRoot, '.github/workflows/audit-check.yml'),
-        'utf8'
+        'utf8',
       );
       expect(workflow).toContain('Backend');
     });
@@ -238,7 +240,7 @@ describe('Security Audit Integration', () => {
     it('should include frontend audit in report', () => {
       const workflow = fs.readFileSync(
         path.join(repoRoot, '.github/workflows/audit-check.yml'),
-        'utf8'
+        'utf8',
       );
       expect(workflow).toContain('Frontend');
     });
@@ -246,7 +248,7 @@ describe('Security Audit Integration', () => {
     it('should include contract audit in report', () => {
       const workflow = fs.readFileSync(
         path.join(repoRoot, '.github/workflows/audit-check.yml'),
-        'utf8'
+        'utf8',
       );
       expect(workflow).toContain('Contract');
     });
@@ -256,7 +258,7 @@ describe('Security Audit Integration', () => {
     it('should handle missing package.json gracefully', () => {
       const scriptPath = path.join(repoRoot, 'scripts/check-audits.sh');
       const content = fs.readFileSync(scriptPath, 'utf8');
-      
+
       expect(content).toContain('2>/dev/null');
       expect(content).toContain('|| echo');
     });
@@ -264,7 +266,7 @@ describe('Security Audit Integration', () => {
     it('should handle missing Cargo.toml gracefully', () => {
       const scriptPath = path.join(repoRoot, 'scripts/check-audits.sh');
       const content = fs.readFileSync(scriptPath, 'utf8');
-      
+
       expect(content).toContain('[ -f "Cargo.toml" ]');
       expect(content).toContain('|| return');
     });
@@ -272,7 +274,7 @@ describe('Security Audit Integration', () => {
     it('should gracefully handle cargo-audit not installed', () => {
       const scriptPath = path.join(repoRoot, 'scripts/check-audits.sh');
       const content = fs.readFileSync(scriptPath, 'utf8');
-      
+
       expect(content).toContain('command -v cargo-audit');
       expect(content).toContain('cargo install cargo-audit');
     });
@@ -280,7 +282,7 @@ describe('Security Audit Integration', () => {
     it('should provide error messages on audit failure', () => {
       const workflow = fs.readFileSync(
         path.join(repoRoot, '.github/workflows/audit-check.yml'),
-        'utf8'
+        'utf8',
       );
       expect(workflow).toContain('::error::');
       expect(workflow).toContain('::warning::');
@@ -291,7 +293,7 @@ describe('Security Audit Integration', () => {
     it('should document CVE/advisory response process', () => {
       const docPath = path.join(repoRoot, 'docs/SECURITY_AUDIT.md');
       const content = fs.readFileSync(docPath, 'utf8');
-      
+
       expect(content.toLowerCase()).toContain('fix');
       expect(content.toLowerCase()).toContain('updat');
     });
@@ -299,7 +301,7 @@ describe('Security Audit Integration', () => {
     it('should recommend quarterly exception review', () => {
       const docPath = path.join(repoRoot, 'docs/SECURITY_AUDIT.md');
       const content = fs.readFileSync(docPath, 'utf8');
-      
+
       expect(content.toLowerCase()).toContain('review');
       expect(content.toLowerCase()).toContain('quarter');
     });
@@ -307,14 +309,14 @@ describe('Security Audit Integration', () => {
     it('should recommend weekly audit runs', () => {
       const docPath = path.join(repoRoot, 'docs/SECURITY_AUDIT.md');
       const content = fs.readFileSync(docPath, 'utf8');
-      
+
       expect(content.toLowerCase()).toContain('weekly');
     });
 
     it('should discourage ignoring critical vulnerabilities', () => {
       const docPath = path.join(repoRoot, 'docs/SECURITY_AUDIT.md');
       const content = fs.readFileSync(docPath, 'utf8');
-      
+
       expect(content).toContain('Never ignore');
       expect(content.toLowerCase()).toContain('critical');
     });

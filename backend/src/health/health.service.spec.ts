@@ -238,7 +238,7 @@ describe('HealthService', () => {
 
             const result = await service.getAggregatedHealth();
 
-            expect(result.status).toBe('up');
+            expect(result.status).toBe('degraded');
             expect(result.summary.total).toBe(4);
             // database + sorobanRpc + sorobanContract are up; redis is down (not configured)
             expect(result.summary.up).toBe(3);

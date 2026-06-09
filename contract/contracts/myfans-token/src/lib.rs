@@ -106,7 +106,7 @@ impl MyFansToken {
     ) {
         // Prevent accidental re-initialization which could overwrite admin
         // and metadata. Initialization is a one-time operation.
-        if env.storage().instance().get::<Address>(&DataKey::Admin).is_some() {
+        if env.storage().instance().has(&DataKey::Admin) {
             panic!("contract already initialized");
         }
 
@@ -131,7 +131,13 @@ impl MyFansToken {
         // Emit an initialization event so indexers can detect contract setup.
         env.events().publish(
             (symbol_short!("init"),),
-            (admin.clone(), name.clone(), symbol.clone(), decimals, initial_supply),
+            (
+                admin.clone(),
+                name.clone(),
+                symbol.clone(),
+                decimals,
+                initial_supply,
+            ),
         );
     }
 
@@ -350,14 +356,6 @@ impl MyFansToken {
             .instance()
             .get(&DataKey::Admin)
             .expect("admin not initialized");
-        // If the invoker is not the stored admin, return a contract-level
-        // `Unauthorized` error instead of letting `require_auth` produce an
-        // auth panic. This makes the guard observable as a contract error
-        // when called by a different caller.
-        if env.invoker() != admin {
-            return Err(Error::Unauthorized);
-        }
-        // Finally require the admin's auth to ensure the call is signed.
         admin.require_auth();
 
         let balance = read_balance(&env, to.clone());

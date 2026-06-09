@@ -500,10 +500,7 @@ export class SubscriptionsService {
     }
 
     if (cursor) {
-      const cursorId = parseInt(cursor, 10);
-      if (!isNaN(cursorId)) {
-        subscribers = subscribers.filter((sub) => sub.id > cursorId);
-      }
+      subscribers = subscribers.filter((sub) => sub.id > cursor);
     }
 
     const paginatedResults = subscribers.slice(0, limit + 1);

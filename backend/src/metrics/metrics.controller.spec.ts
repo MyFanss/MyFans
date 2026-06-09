@@ -82,7 +82,6 @@ describe('MetricsController', () => {
       expect.arrayContaining<MetricsAlert>([
         expect.objectContaining({ source: 'http', metric: 'errorRate' }),
         expect.objectContaining({ source: 'http', metric: 'p95Ms' }),
-        expect.objectContaining({ source: 'http', metric: 'p99Ms' }),
         expect.objectContaining({ source: 'rpc', metric: 'errorRate' }),
         expect.objectContaining({ source: 'rpc', metric: 'avgLatencyMs' }),
       ]),

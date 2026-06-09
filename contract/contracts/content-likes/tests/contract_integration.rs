@@ -4,6 +4,7 @@
 
 use content_likes::*;
 use myfans_lib::test_fixtures::TestEnv;
+use soroban_sdk::testutils::Events;
 use soroban_sdk::Vec;
 
 /// Test the full like/unlike/count lifecycle as an external caller.
@@ -188,7 +189,7 @@ fn test_like_emits_event() {
 
     // The last event should be the liked event
     let last_event = events.last().unwrap();
-    assert_eq!(last_event.0.len(), 2, "Expected 2 topics in liked event");
+    assert_eq!(last_event.1.len(), 2, "Expected 2 topics in liked event");
 }
 
 /// Test that unlike emits an unliked event.
@@ -219,7 +220,7 @@ fn test_unlike_emits_event() {
 
     // The last event should be the unliked event
     let last_event = events.last().unwrap();
-    assert_eq!(last_event.0.len(), 2, "Expected 2 topics in unliked event");
+    assert_eq!(last_event.1.len(), 2, "Expected 2 topics in unliked event");
 }
 
 /// Test that idempotent like does not emit duplicate events.

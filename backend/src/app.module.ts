@@ -43,10 +43,10 @@ const IDEMPOTENCY_ROUTES = [
 @Module({
   imports: [
     ThrottlerModule.forRoot([
-      { name: 'auth',   ttl: 60000, limit: 5   },
-      { name: 'short',  ttl: 60000, limit: 10  },
-      { name: 'medium', ttl: 60000, limit: 50  },
-      { name: 'long',   ttl: 60000, limit: 100 },
+      { name: 'auth', ttl: 60000, limit: 5 },
+      { name: 'short', ttl: 60000, limit: 10 },
+      { name: 'medium', ttl: 60000, limit: 50 },
+      { name: 'long', ttl: 60000, limit: 100 },
     ]),
     LoggingModule,
     MetricsModule,

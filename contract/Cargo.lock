@@ -200,6 +200,7 @@ dependencies = [
 name = "creator-deposits"
 version = "0.1.1"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -207,6 +208,7 @@ dependencies = [
 name = "creator-earnings"
 version = "0.1.1"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 

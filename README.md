@@ -192,9 +192,38 @@ If you are documenting or testing wallet-based flows in this repository, assume 
 
 ## Getting Started (After Initialization)
 
-- **Contract**: `cd contract && cargo test` for unit tests; `cargo build --release --target wasm32-unknown-unknown` for WASM artifacts (and deploy with soroban-cli). See [Contract Testing Guide](./contract/TESTING.md) for comprehensive testing documentation.
-- **Backend**: `cd backend && npm i && npm run start:dev`.
-- **Frontend**: `cd frontend && npm i && npm run dev`.
+Install dependencies for all packages:
+
+```bash
+./scripts/myfans install
+# or: npm run install:all
+```
+
+Build everything:
+
+```bash
+./scripts/myfans build
+# or: npm run build
+```
+
+Run dev servers (separate terminals):
+
+```bash
+./scripts/myfans dev:backend   # NestJS API on :3001
+./scripts/myfans dev:frontend  # Next.js app on :3000
+```
+
+Full local verification (lint + test + build):
+
+```bash
+./scripts/myfans check
+```
+
+Per-package commands are also available via root `package.json` scripts (`build:backend`, `test:contract`, etc.) or by `cd`-ing into each folder:
+
+- **Contract**: `cd contract && cargo test`; `npm run build` for WASM artifacts (deploy with stellar-cli). See [Contract Testing Guide](./contract/TESTING.md).
+- **Backend**: `cd backend && npm ci && npm run start:dev`.
+- **Frontend**: `cd frontend && npm ci && npm run dev`.
 
 ---
 

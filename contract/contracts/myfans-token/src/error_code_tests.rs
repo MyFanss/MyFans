@@ -224,20 +224,13 @@ mod cases {
         assert_eq!(crate::Error::Unauthorized as u32, 7);
     }
 
-    /// Calling `mint` as a non-admin returns the contract-level
-    /// `Unauthorized` error instead of causing an auth panic.
+    /// Mint without admin authorization must fail.
     #[test]
+    #[should_panic]
     fn error_code_7_mint_non_admin_returns_unauthorized() {
         let env = Env::default();
-        env.mock_all_auths();
-        let (client, admin) = setup(&env);
-
-        // Simulate a call from a different account (not the admin).
-        let non_admin = Address::generate(&env);
-        env.mock_auths(&[non_admin.clone()]);
+        let (client, _admin) = setup(&env);
         let recipient = Address::generate(&env);
-
-        // try_mint returns Err(Ok(Error::Unauthorized)) when the caller is not admin
-        assert_eq!(client.try_mint(&recipient, &100), Err(Ok(crate::Error::Unauthorized)));
+        client.mint(&recipient, &100);
     }
 }

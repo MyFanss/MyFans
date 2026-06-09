@@ -74,11 +74,11 @@ mod props {
             fee_bps in 0u32..9999u32,
         ) {
             let env = Env::default();
-            let (client, _, _, sac) = setup(&env, fee_bps);
+            let (client, _, token_client, sac) = setup(&env, fee_bps);
             let creator = funded_creator(&env, &sac, amount);
 
             let before = client.get_balance(&creator);
-            client.deposit(&creator, &client.address, &amount);
+            client.deposit(&creator, &token_client.address, &amount);
             let after = client.get_balance(&creator);
 
             let expected_net = net_amount(amount, fee_bps);
@@ -101,18 +101,21 @@ mod props {
             withdraw_frac in 0u32..=1000u32,
         ) {
             let env = Env::default();
-            let (client, _, _, sac) = setup(&env, fee_bps);
+            let (client, _, token_client, sac) = setup(&env, fee_bps);
             let creator = funded_creator(&env, &sac, deposit_amount);
 
-            client.deposit(&creator, &client.address, &deposit_amount);
+            client.deposit(&creator, &token_client.address, &deposit_amount);
             let balance = client.get_balance(&creator);
+            if balance <= 0 {
+                return Ok(());
+            }
 
             // Use a fraction of the available balance to stay within valid range
             let withdraw_amount = (balance * withdraw_frac as i128) / 1000;
             let withdraw_amount = withdraw_amount.max(1).min(balance);
 
             let before = client.get_balance(&creator);
-            client.withdraw(&creator, &client.address, &withdraw_amount);
+            client.withdraw(&creator, &token_client.address, &withdraw_amount);
             let after = client.get_balance(&creator);
 
             prop_assert_eq!(
@@ -129,14 +132,14 @@ mod props {
             fee_bps in 0u32..9999u32,
         ) {
             let env = Env::default();
-            let (client, _, _, sac) = setup(&env, fee_bps);
+            let (client, _, token_client, sac) = setup(&env, fee_bps);
             let creator = funded_creator(&env, &sac, deposit_amount);
 
-            client.deposit(&creator, &client.address, &deposit_amount);
+            client.deposit(&creator, &token_client.address, &deposit_amount);
             let balance = client.get_balance(&creator);
 
             if balance > 0 {
-                client.withdraw(&creator, &client.address, &balance);
+                client.withdraw(&creator, &token_client.address, &balance);
             }
 
             prop_assert!(
@@ -153,15 +156,15 @@ mod props {
             excess in 1i128..=1_000_000i128,
         ) {
             let env = Env::default();
-            let (client, _, _, sac) = setup(&env, fee_bps);
+            let (client, _, token_client, sac) = setup(&env, fee_bps);
             let creator = funded_creator(&env, &sac, deposit_amount);
 
-            client.deposit(&creator, &client.address, &deposit_amount);
+            client.deposit(&creator, &token_client.address, &deposit_amount);
             let balance = client.get_balance(&creator);
             let overdraft = balance.saturating_add(excess);
 
             prop_assert!(
-                client.try_withdraw(&creator, &client.address, &overdraft).is_err(),
+                client.try_withdraw(&creator, &token_client.address, &overdraft).is_err(),
                 "withdraw({}) on balance {} must be rejected",
                 overdraft, balance
             );
@@ -179,18 +182,18 @@ mod props {
             fee_bps in 0u32..9999u32,
         ) {
             let env = Env::default();
-            let (client, _, _, sac) = setup(&env, fee_bps);
+            let (client, _, token_client, sac) = setup(&env, fee_bps);
             let creator = funded_creator(&env, &sac, initial.saturating_add(amount));
 
             if initial > 0 {
-                client.deposit(&creator, &client.address, &initial);
+                client.deposit(&creator, &token_client.address, &initial);
             }
             let balance_before = client.get_balance(&creator);
 
-            client.deposit(&creator, &client.address, &amount);
+            client.deposit(&creator, &token_client.address, &amount);
             let net = net_amount(amount, fee_bps);
             if net > 0 {
-                client.withdraw(&creator, &client.address, &net);
+                client.withdraw(&creator, &token_client.address, &net);
             }
             let balance_after = client.get_balance(&creator);
 
@@ -237,7 +240,7 @@ mod props {
             fee_bps in 0u32..9999u32,
         ) {
             let env = Env::default();
-            let (client, _, _, sac) = setup(&env, fee_bps);
+            let (client, _, token_client, sac) = setup(&env, fee_bps);
             let creator_a = funded_creator(&env, &sac, amount_a);
             let creator_b = funded_creator(&env, &sac, amount_b);
 
@@ -246,10 +249,10 @@ mod props {
             let total = amount_a.saturating_add(amount_b);
             sac.mint(&depositor, &total);
 
-            client.deposit(&depositor, &client.address, &amount_b);
+            client.deposit(&depositor, &token_client.address, &amount_b);
             let b_before = client.get_balance(&creator_b);
 
-            client.deposit(&depositor, &client.address, &amount_a);
+            client.deposit(&depositor, &token_client.address, &amount_a);
 
             prop_assert_eq!(
                 client.get_balance(&creator_b), b_before,
@@ -265,7 +268,7 @@ mod props {
             fee_bps in 0u32..9999u32,
         ) {
             let env = Env::default();
-            let (client, _, _, sac) = setup(&env, fee_bps);
+            let (client, _, token_client, sac) = setup(&env, fee_bps);
             let creator_a = funded_creator(&env, &sac, amount_a);
             let creator_b = funded_creator(&env, &sac, amount_b);
 
@@ -273,13 +276,13 @@ mod props {
             let total = amount_a.saturating_add(amount_b);
             sac.mint(&depositor, &total);
 
-            client.deposit(&depositor, &client.address, &amount_a);
-            client.deposit(&depositor, &client.address, &amount_b);
+            client.deposit(&depositor, &token_client.address, &amount_a);
+            client.deposit(&depositor, &token_client.address, &amount_b);
             let b_before = client.get_balance(&creator_b);
 
             let balance_a = client.get_balance(&creator_a);
             if balance_a > 0 {
-                client.withdraw(&creator_a, &client.address, &balance_a);
+                client.withdraw(&creator_a, &token_client.address, &balance_a);
             }
 
             prop_assert_eq!(

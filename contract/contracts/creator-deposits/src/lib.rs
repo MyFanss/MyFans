@@ -71,10 +71,8 @@ impl CreatorDeposits {
             .instance()
             .set(&DataKey::PlatformTreasury, &platform_treasury);
 
-        env.events().publish(
-            (Symbol::new(&env, TOPIC_INITIALIZED),),
-            (),
-        );
+        env.events()
+            .publish((Symbol::new(&env, TOPIC_INITIALIZED),), ());
     }
 
     pub fn deposit(env: Env, creator: Address, token: Address, amount: i128) {
@@ -105,6 +103,13 @@ impl CreatorDeposits {
         // Optimization: Only transfer fee if nonzero, avoiding unnecessary transfer calls.
         if fee > 0 {
             token_client.transfer(&creator, &treasury, &fee);
+        }
+        if net > 0 {
+            token_client.transfer(
+                &creator,
+                &env.current_contract_address(),
+                &net,
+            );
         }
 
         // Optimization: Read balance once and update in single write;
@@ -167,10 +172,8 @@ impl CreatorDeposits {
         }
         env.storage().instance().set(&DataKey::PlatformFeeBps, &bps);
 
-        env.events().publish(
-            (Symbol::new(&env, TOPIC_FEE_UPDATED),),
-            bps,
-        );
+        env.events()
+            .publish((Symbol::new(&env, TOPIC_FEE_UPDATED),), bps);
     }
 
     pub fn get_balance(env: Env, creator: Address) -> i128 {
@@ -193,6 +196,7 @@ mod test {
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Events, MockAuth, MockAuthInvoke},
+        token::StellarAssetClient,
         vec,
         xdr::{ScAddress, SorobanAuthorizationEntry},
         Env, IntoVal, Symbol, TryFromVal, TryIntoVal,
@@ -536,7 +540,12 @@ mod test {
             invoke: &MockAuthInvoke {
                 contract: &contract_id,
                 fn_name: "init",
-                args: vec![&env, admin.clone().into_val(&env), treasury.clone().into_val(&env), 500u32.into_val(&env)],
+                args: vec![
+                    &env,
+                    admin.clone().into_val(&env),
+                    treasury.clone().into_val(&env),
+                    500u32.into_val(&env),
+                ],
                 sub_invokes: &[],
             },
         }]);
@@ -591,7 +600,10 @@ mod test {
             },
         }]);
         let result = client.try_set_platform_fee(&200);
-        assert!(result.is_err(), "impostor calling set_platform_fee should revert");
+        assert!(
+            result.is_err(),
+            "impostor calling set_platform_fee should revert"
+        );
     }
 
     // ── Issue #932: Event emission tests ───────────────────────────
@@ -606,12 +618,12 @@ mod test {
         client.init(&admin, &500, &treasury);
 
         let events = env.events().all();
-        let init_events: Vec<_> = events.iter().filter(|e| {
+        let init_count = events.iter().filter(|e| {
             e.1.first().is_some_and(|t| {
-                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, TOPIC_INITIALIZED))
+                t.try_into_val(&env).ok() == Some(Symbol::new(&env, TOPIC_INITIALIZED))
             })
-        }).collect();
-        assert_eq!(init_events.len(), 1);
+        }).count();
+        assert_eq!(init_count, 1);
     }
 
     #[test]
@@ -625,13 +637,23 @@ mod test {
         client.set_platform_fee(&750);
 
         let events = env.events().all();
-        let fee_events: Vec<_> = events.iter().filter(|e| {
+        let fee_count = events.iter().filter(|e| {
             e.1.first().is_some_and(|t| {
-                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, TOPIC_FEE_UPDATED))
+                t.try_into_val(&env).ok() == Some(Symbol::new(&env, TOPIC_FEE_UPDATED))
             })
-        }).collect();
-        assert_eq!(fee_events.len(), 1);
-        let data: u32 = fee_events[0].2.try_into_val(&env).unwrap();
+        }).count();
+        assert_eq!(fee_count, 1);
+        let data: u32 = events
+            .iter()
+            .find(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, TOPIC_FEE_UPDATED))
+                })
+            })
+            .unwrap()
+            .2
+            .try_into_val(&env)
+            .unwrap();
         assert_eq!(data, 750);
     }
 
@@ -646,13 +668,23 @@ mod test {
         client.deposit(&creator, &token, &500);
 
         let events = env.events().all();
-        let dep_events: Vec<_> = events.iter().filter(|e| {
+        let dep_count = events.iter().filter(|e| {
             e.1.first().is_some_and(|t| {
-                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, "EarningsDeposited"))
+                t.try_into_val(&env).ok() == Some(Symbol::new(&env, "EarningsDeposited"))
             })
-        }).collect();
-        assert_eq!(dep_events.len(), 1);
-        let data: i128 = dep_events[0].2.try_into_val(&env).unwrap();
+        }).count();
+        assert_eq!(dep_count, 1);
+        let data: i128 = events
+            .iter()
+            .find(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, "EarningsDeposited"))
+                })
+            })
+            .unwrap()
+            .2
+            .try_into_val(&env)
+            .unwrap();
         assert_eq!(data, 500);
     }
 
@@ -668,13 +700,23 @@ mod test {
         client.withdraw(&creator, &token, &300);
 
         let events = env.events().all();
-        let wd_events: Vec<_> = events.iter().filter(|e| {
+        let wd_count = events.iter().filter(|e| {
             e.1.first().is_some_and(|t| {
-                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, "EarningsWithdrawn"))
+                t.try_into_val(&env).ok() == Some(Symbol::new(&env, "EarningsWithdrawn"))
             })
-        }).collect();
-        assert_eq!(wd_events.len(), 1);
-        let data: i128 = wd_events[0].2.try_into_val(&env).unwrap();
+        }).count();
+        assert_eq!(wd_count, 1);
+        let data: i128 = events
+            .iter()
+            .find(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, "EarningsWithdrawn"))
+                })
+            })
+            .unwrap()
+            .2
+            .try_into_val(&env)
+            .unwrap();
         assert_eq!(data, 300);
     }
 
@@ -689,12 +731,12 @@ mod test {
         client.init(&admin, &1000, &treasury);
 
         let events = env.events().all();
-        let init_events: Vec<_> = events.iter().filter(|e| {
+        let init_count = events.iter().filter(|e| {
             e.1.first().is_some_and(|t| {
-                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, TOPIC_INITIALIZED))
+                t.try_into_val(&env).ok() == Some(Symbol::new(&env, TOPIC_INITIALIZED))
             })
-        }).collect();
-        assert_eq!(init_events.len(), 2);
+        }).count();
+        assert_eq!(init_count, 2);
     }
 
     // ── Issue #934: Snapshot / restore consistency test ─────────────
@@ -706,7 +748,11 @@ mod test {
         let treasury = Address::generate(&env);
         let creator1 = Address::generate(&env);
         let creator2 = Address::generate(&env);
-        let token_addr = env.register_contract(None, MockToken);
+        let token_admin = Address::generate(&env);
+        let token_addr = env
+            .register_stellar_asset_contract_v2(token_admin.clone())
+            .address();
+        let token_sac = StellarAssetClient::new(&env, &token_addr);
 
         env.mock_all_auths();
 
@@ -714,6 +760,8 @@ mod test {
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         client.init(&admin, &500, &treasury);
+        token_sac.mint(&creator1, &10_000);
+        token_sac.mint(&creator2, &10_000);
 
         client.deposit(&creator1, &token_addr, &2000);
         client.deposit(&creator2, &token_addr, &1000);
@@ -729,6 +777,7 @@ mod test {
         let sc_treasury: ScAddress = treasury.clone().into();
         let sc_creator1: ScAddress = creator1.clone().into();
         let sc_creator2: ScAddress = creator2.clone().into();
+        let sc_token: ScAddress = token_addr.clone().into();
 
         let snapshot = env.to_snapshot();
 
@@ -740,6 +789,7 @@ mod test {
         let _treasury2: Address = Address::try_from_val(&env2, &sc_treasury).unwrap();
         let creator1_2: Address = Address::try_from_val(&env2, &sc_creator1).unwrap();
         let creator2_2: Address = Address::try_from_val(&env2, &sc_creator2).unwrap();
+        let token_addr2: Address = Address::try_from_val(&env2, &sc_token).unwrap();
 
         env2.register_contract(Some(&contract_id2), CreatorDeposits);
         let client2 = CreatorDepositsClient::new(&env2, &contract_id2);
@@ -751,11 +801,11 @@ mod test {
         client2.set_platform_fee(&300);
         assert_eq!(client2.get_platform_fee(), 300);
 
-        client2.deposit(&creator1_2, &token_addr, &500);
+        client2.deposit(&creator1_2, &token_addr2, &500);
         let expected = bal1 + 500 - ((500 * 300) / 10000);
         assert_eq!(client2.get_balance(&creator1_2), expected);
 
-        client2.withdraw(&creator1_2, &token_addr, &100);
+        client2.withdraw(&creator1_2, &token_addr2, &100);
         assert_eq!(client2.get_balance(&creator1_2), expected - 100);
     }
 }

@@ -26,10 +26,18 @@ const makePost = (overrides: Partial<Post> = {}): Post =>
 
 describe('PostsService', () => {
   let service: PostsService;
+  let queryBuilder: {
+    where: jest.Mock;
+    andWhere: jest.Mock;
+    orderBy: jest.Mock;
+    take: jest.Mock;
+    getMany: jest.Mock;
+  };
   let repo: {
     create: jest.Mock;
     save: jest.Mock;
     findOne: jest.Mock;
+    findAndCount: jest.Mock;
     createQueryBuilder: jest.Mock;
     delete: jest.Mock;
   };
@@ -48,6 +56,7 @@ describe('PostsService', () => {
       create: jest.fn(),
       save: jest.fn(),
       findOne: jest.fn(),
+      findAndCount: jest.fn(),
       createQueryBuilder: jest.fn(() => queryBuilder),
       delete: jest.fn(),
     };
@@ -104,9 +113,9 @@ describe('PostsService', () => {
   describe('findAll', () => {
     it('calls findAndCount with deletedAt: IsNull() filter', async () => {
       const active = makePost();
-      queryBuilder.getMany.mockResolvedValue([active]);
+      repo.findAndCount.mockResolvedValue([[active], 1]);
 
-      await service.findAll({ limit: 20 });
+      const result = await service.findAll({ limit: 20 });
 
       expect(repo.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({
