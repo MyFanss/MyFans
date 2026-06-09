@@ -241,7 +241,7 @@ mod props {
         ) {
             let env = Env::default();
             let (client, _, token_client, sac) = setup(&env, fee_bps);
-            let creator_a = funded_creator(&env, &sac, amount_a);
+            let _creator_a = funded_creator(&env, &sac, amount_a);
             let creator_b = funded_creator(&env, &sac, amount_b);
 
             // Fund a single depositor with enough tokens

@@ -105,11 +105,7 @@ impl CreatorDeposits {
             token_client.transfer(&creator, &treasury, &fee);
         }
         if net > 0 {
-            token_client.transfer(
-                &creator,
-                &env.current_contract_address(),
-                &net,
-            );
+            token_client.transfer(&creator, &env.current_contract_address(), &net);
         }
 
         // Optimization: Read balance once and update in single write;
@@ -618,11 +614,14 @@ mod test {
         client.init(&admin, &500, &treasury);
 
         let events = env.events().all();
-        let init_count = events.iter().filter(|e| {
-            e.1.first().is_some_and(|t| {
-                t.try_into_val(&env).ok() == Some(Symbol::new(&env, TOPIC_INITIALIZED))
+        let init_count = events
+            .iter()
+            .filter(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, TOPIC_INITIALIZED))
+                })
             })
-        }).count();
+            .count();
         assert_eq!(init_count, 1);
     }
 
@@ -637,11 +636,14 @@ mod test {
         client.set_platform_fee(&750);
 
         let events = env.events().all();
-        let fee_count = events.iter().filter(|e| {
-            e.1.first().is_some_and(|t| {
-                t.try_into_val(&env).ok() == Some(Symbol::new(&env, TOPIC_FEE_UPDATED))
+        let fee_count = events
+            .iter()
+            .filter(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, TOPIC_FEE_UPDATED))
+                })
             })
-        }).count();
+            .count();
         assert_eq!(fee_count, 1);
         let data: u32 = events
             .iter()
@@ -668,11 +670,14 @@ mod test {
         client.deposit(&creator, &token, &500);
 
         let events = env.events().all();
-        let dep_count = events.iter().filter(|e| {
-            e.1.first().is_some_and(|t| {
-                t.try_into_val(&env).ok() == Some(Symbol::new(&env, "EarningsDeposited"))
+        let dep_count = events
+            .iter()
+            .filter(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, "EarningsDeposited"))
+                })
             })
-        }).count();
+            .count();
         assert_eq!(dep_count, 1);
         let data: i128 = events
             .iter()
@@ -700,11 +705,14 @@ mod test {
         client.withdraw(&creator, &token, &300);
 
         let events = env.events().all();
-        let wd_count = events.iter().filter(|e| {
-            e.1.first().is_some_and(|t| {
-                t.try_into_val(&env).ok() == Some(Symbol::new(&env, "EarningsWithdrawn"))
+        let wd_count = events
+            .iter()
+            .filter(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, "EarningsWithdrawn"))
+                })
             })
-        }).count();
+            .count();
         assert_eq!(wd_count, 1);
         let data: i128 = events
             .iter()
@@ -731,11 +739,14 @@ mod test {
         client.init(&admin, &1000, &treasury);
 
         let events = env.events().all();
-        let init_count = events.iter().filter(|e| {
-            e.1.first().is_some_and(|t| {
-                t.try_into_val(&env).ok() == Some(Symbol::new(&env, TOPIC_INITIALIZED))
+        let init_count = events
+            .iter()
+            .filter(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, TOPIC_INITIALIZED))
+                })
             })
-        }).count();
+            .count();
         assert_eq!(init_count, 2);
     }
 
@@ -743,7 +754,7 @@ mod test {
 
     #[test]
     fn test_snapshot_restore_consistency() {
-        let mut env = Env::default();
+        let env = Env::default();
         let admin = Address::generate(&env);
         let treasury = Address::generate(&env);
         let creator1 = Address::generate(&env);

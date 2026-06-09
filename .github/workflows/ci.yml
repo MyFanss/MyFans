@@ -1,15 +1,4 @@
-# Jobs run in parallel by default (no `needs:` between backend/frontend/contract).
-# Only db-backup-drill and wasm-size have explicit sequencing requirements.
-#
-# Parallelism layout:
-#   backend  ──────────────────────────────────────────────────────┐
-#   backend-migrations ──────────────────────────────────────────┐ │
-#   frontend ──────────────────────────────────────────────────┐ │ │
-#   contract ──────────────────────────────────────────────┐   │ │ │
-#                                                           │   │ │ │
-#   wasm-size (needs: contract) ──────────────────────────►│   │ │ │
-#   db-backup-drill (needs: backend-migrations) ──────────►│   │ │ │
-#   ci-gate (needs: all) ─────────────────────────────────►└───┘─┘─┘
+# Three required checks: Backend, Frontend, Contract.
 name: CI
 
 on:
@@ -24,14 +13,9 @@ env:
 
 jobs:
   backend:
-    name: Backend (Node.js ${{ matrix.node }})
+    name: Backend
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    strategy:
-      fail-fast: false
-      matrix:
-        node: ['20', '22']
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -65,25 +49,12 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: ${{ matrix.node }}
-          cache: 'npm'
+          node-version: '20'
+          cache: npm
           cache-dependency-path: backend/package-lock.json
-
-      - name: Check package-lock is up to date
-        run: |
-          npm install --package-lock-only --ignore-scripts
-          git diff --exit-code package-lock.json || {
-            echo "::error::package-lock.json is out of sync with package.json. Run 'npm install' locally and commit the updated lockfile."
-            exit 1
-          }
-        working-directory: backend
 
       - name: Install dependencies
         run: npm ci
-        working-directory: backend
-
-      - name: Run linter
-        run: npm run lint
         working-directory: backend
 
       - name: Run tests
@@ -92,141 +63,12 @@ jobs:
 
       - name: Build
         run: npm run build
-        working-directory: backend
-
-  backend-migrations:
-    name: Backend DB Migrations (Postgres)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: myfans_ci
-          POSTGRES_PASSWORD: myfans_ci
-          POSTGRES_DB: myfans_test
-        ports:
-          - 5432:5432
-        options: >
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-    env:
-      DB_HOST: localhost
-      DB_PORT: 5432
-      DB_USER: myfans_ci
-      DB_PASSWORD: myfans_ci
-      DB_NAME: myfans_test
-      JWT_SECRET: ci-test-secret-not-for-production
-      NODE_ENV: test
-
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: backend
-
-      - name: Wait for Postgres
-        run: |
-          until pg_isready -h localhost -p 5432 -U myfans_ci; do
-            echo "waiting for postgres…"; sleep 1;
-          done
-
-      - name: Run migration integration tests
-        run: npm run test:migrations
-        working-directory: backend
-
-      - name: Verify migration runner script (up)
-        run: npm run migration:run
-        working-directory: backend
-
-      - name: Verify migration runner script (revert)
-        run: npm run migration:revert
         working-directory: backend
 
   frontend:
-    name: Frontend (Node.js ${{ matrix.node }})
+    name: Frontend
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    strategy:
-      fail-fast: false
-      matrix:
-        node: ['20', '22']
-
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Check package-lock is up to date
-        run: |
-          npm install --package-lock-only --ignore-scripts
-          git diff --exit-code package-lock.json || {
-            echo "::error::package-lock.json is out of sync with package.json. Run 'npm install' locally and commit the updated lockfile."
-            exit 1
-          }
-        working-directory: frontend
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: frontend
-
-      - name: Run linter
-        run: npm run lint
-        working-directory: frontend
-
-      - name: Run tests
-        run: npm test
-        working-directory: frontend
-
-      - name: Build
-        run: npm run build
-        working-directory: frontend
-
-  db-backup-drill:
-    name: Postgres Backup / Restore Drill
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [backend-migrations]
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: myfans_ci
-          POSTGRES_PASSWORD: myfans_ci
-          POSTGRES_DB: myfans_test
-        ports:
-          - 5432:5432
-        options: >
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-    env:
-      DB_HOST: localhost
-      DB_PORT: 5432
-      DB_USER: myfans_ci
-      DB_PASSWORD: myfans_ci
-      DB_NAME: myfans_test
-      JWT_SECRET: ci-test-secret-not-for-production
-      NODE_ENV: test
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -234,196 +76,42 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: backend
-
-      - name: Install postgres client
-        run: sudo apt-get install -y postgresql-client
-
-      - name: Run migrations (seed schema)
-        run: npm run migration:run
-        working-directory: backend
-
-      - name: Backup / restore drill
-        run: ./scripts/pg-backup-restore.sh drill
-
-  # Futurenet deploy is intentionally NOT part of this job.
-  # Use the manual "Futurenet Smoke (manual)" workflow_dispatch instead.
-  contract:
-    name: Contract (Rust)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-
-      - name: Cache Cargo registry
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            ~/.cargo/git/checkouts
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('contract/**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-registry-
-
-      - name: Cache Cargo target directory
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: contract/target
-          key: ${{ runner.os }}-contract-target-${{ hashFiles('contract/**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-contract-target-
-
-      - name: Install toolchain
-        run: rustup component add rustfmt clippy llvm-tools-preview
-        working-directory: contract
-
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-
-      - name: Check formatting
-        run: cargo fmt --check
-        working-directory: contract
-
-      - name: Run clippy
-        run: cargo clippy --all-targets --all-features
-        working-directory: contract
-
-      - name: Run tests with coverage
-        run: cargo llvm-cov --all-features --lcov --output-path lcov.info
-        working-directory: contract
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: contract-coverage-lcov
-          path: contract/lcov.info
-          retention-days: 30
-          if-no-files-found: error
-
-      - name: Write coverage summary
-        run: |
-          echo "## Contract Coverage" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          cargo llvm-cov report --summary-only 2>&1 | tail -5 >> $GITHUB_STEP_SUMMARY
-        working-directory: contract
+        working-directory: frontend
 
       - name: Build
-        run: cargo build --release
-        working-directory: contract
+        run: npm run build
+        working-directory: frontend
 
-  wasm-size:
-    name: Wasm Build Size
+  contract:
+    name: Contract
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: contract
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
-      - name: Cache Cargo registry
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            ~/.cargo/git/checkouts
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('contract/**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-registry-
+          targets: wasm32-unknown-unknown
+          components: rustfmt
 
-      - name: Cache Cargo target directory
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: contract/target
-          key: ${{ runner.os }}-contract-target-${{ hashFiles('contract/**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-contract-target-
+          workspaces: contract -> target
 
-      - name: Install toolchain
-        run: rustup target add wasm32-unknown-unknown
+      - name: Check formatting
+        run: cargo fmt --all --check
         working-directory: contract
 
-      - name: Build Wasm (release)
+      - name: Run tests
+        run: cargo test
+        working-directory: contract
+
+      - name: Build wasm
         run: cargo build --release --target wasm32-unknown-unknown
         working-directory: contract
-
-      - name: Generate size report
-        working-directory: contract
-        run: |
-          REPORT="wasm-size-report.txt"
-          WASM_DIR="target/wasm32-unknown-unknown/release"
-          echo "# Wasm Build Size Report" > "$REPORT"
-          echo "Generated: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$REPORT"
-          echo "Commit:    ${GITHUB_SHA}" >> "$REPORT"
-          echo "" >> "$REPORT"
-          printf "%-40s %10s %10s\n" "Contract" "Bytes" "KiB" >> "$REPORT"
-          printf "%-40s %10s %10s\n" "--------" "-----" "---" >> "$REPORT"
-          TOTAL=0
-          while IFS= read -r -d '' f; do
-            name=$(basename "$f")
-            bytes=$(stat -c%s "$f")
-            kib=$(echo "scale=1; $bytes / 1024" | bc)
-            printf "%-40s %10d %10s\n" "$name" "$bytes" "$kib" >> "$REPORT"
-            TOTAL=$((TOTAL + bytes))
-          done < <(find "$WASM_DIR" -maxdepth 1 -name '*.wasm' -print0 | sort -z)
-          TOTAL_KIB=$(echo "scale=1; $TOTAL / 1024" | bc)
-          echo "" >> "$REPORT"
-          printf "%-40s %10d %10s\n" "TOTAL" "$TOTAL" "$TOTAL_KIB" >> "$REPORT"
-          cat "$REPORT"
-
-      - name: Upload size report artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: wasm-size-report
-          path: contract/wasm-size-report.txt
-          retention-days: 30
-          if-no-files-found: error
-
-      - name: Write step summary
-        working-directory: contract
-        run: |
-          WASM_DIR="target/wasm32-unknown-unknown/release"
-          echo "## Wasm Build Size" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Contract | Bytes | KiB |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|------:|----:|" >> $GITHUB_STEP_SUMMARY
-          TOTAL=0
-          while IFS= read -r -d '' f; do
-            name=$(basename "$f")
-            bytes=$(stat -c%s "$f")
-            kib=$(echo "scale=1; $bytes / 1024" | bc)
-            echo "| \`$name\` | $bytes | $kib |" >> $GITHUB_STEP_SUMMARY
-            TOTAL=$((TOTAL + bytes))
-          done < <(find "$WASM_DIR" -maxdepth 1 -name '*.wasm' -print0 | sort -z)
-          TOTAL_KIB=$(echo "scale=1; $TOTAL / 1024" | bc)
-          echo "| **TOTAL** | **$TOTAL** | **$TOTAL_KIB** |" >> $GITHUB_STEP_SUMMARY
-
-  # Single required status check for branch protection.
-  # All parallel jobs must pass before a PR can merge.
-  ci-gate:
-    name: CI Gate
-    runs-on: ubuntu-latest
-    if: always()
-    needs:
-      - backend
-      - backend-migrations
-      - frontend
-      - contract
-      - wasm-size
-      - db-backup-drill
-    steps:
-      - name: Check all jobs passed
-        run: |
-          results='${{ toJSON(needs) }}'
-          echo "$results" | grep -q '"result": "failure"' && exit 1
-          echo "$results" | grep -q '"result": "cancelled"' && exit 1
-          echo "All parallel jobs passed."

@@ -171,13 +171,12 @@ impl CreatorEarnings {
 
         creator.require_auth();
 
+        let token_address = Self::get_token(&env);
         let current_balance = Self::balance(env.clone(), creator.clone());
 
         if current_balance < amount {
             panic_with_error!(&env, Error::InsufficientBalance);
         }
-
-        let token_address = Self::get_token(&env);
         let token_client = token::Client::new(&env, &token_address);
 
         // transfer first (fail-fast if token fails)
