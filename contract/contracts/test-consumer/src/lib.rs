@@ -719,6 +719,221 @@ mod test {
         }
     }
 
+    // ── creator-earnings integration ───────────────────────────────────────
+
+    mod creator_earnings_integration {
+        use creator_earnings::{CreatorEarnings, CreatorEarningsClient, Error as EarningsError};
+        use myfans_token::{MyFansToken, MyFansTokenClient};
+        use soroban_sdk::{testutils::Address as _, Address, Env, String};
+
+        fn deploy_token(env: &Env) -> (MyFansTokenClient<'_>, Address) {
+            let admin = Address::generate(env);
+            let id = env.register_contract(None, MyFansToken);
+            let client = MyFansTokenClient::new(env, &id);
+            client.initialize(
+                &admin,
+                &String::from_str(env, "MyFans Token"),
+                &String::from_str(env, "MFAN"),
+                &7,
+                &0,
+            );
+            (client, admin)
+        }
+
+        fn deploy_earnings<'a>(
+            env: &'a Env,
+            admin: &Address,
+            token_id: &Address,
+        ) -> CreatorEarningsClient<'a> {
+            let id = env.register_contract(None, CreatorEarnings);
+            let client = CreatorEarningsClient::new(env, &id);
+            client.initialize(admin, token_id);
+            client
+        }
+
+        /// End-to-end: initialize → deposit → balance → withdraw flow works correctly.
+        #[test]
+        fn creator_earnings_deposit_and_withdraw_flow() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (token, _) = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let earnings = deploy_earnings(&env, &admin, &token.address);
+
+            // authorize admin as a depositor and mint
+            earnings.add_authorized(&admin);
+            token.mint(&admin, &1_000i128);
+
+            // deposit 600 for creator
+            earnings.deposit(&admin, &creator, &600i128);
+            assert_eq!(
+                earnings.balance(&creator),
+                600i128,
+                "balance after deposit must be 600"
+            );
+
+            // creator withdraws 250
+            earnings.withdraw(&creator, &250i128);
+            assert_eq!(
+                earnings.balance(&creator),
+                350i128,
+                "balance after withdrawal must be 350"
+            );
+            assert_eq!(
+                token.balance(&creator),
+                250i128,
+                "creator token balance must be 250 after withdrawal"
+            );
+        }
+
+        /// Second initialize is rejected with AlreadyInitialized.
+        #[test]
+        fn creator_earnings_double_initialize_reverts() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (token, _) = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let earnings = deploy_earnings(&env, &admin, &token.address);
+
+            let result = earnings.try_initialize(&admin, &token.address);
+            assert_eq!(
+                result,
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    EarningsError::AlreadyInitialized as u32,
+                ))),
+                "second initialize must return AlreadyInitialized"
+            );
+        }
+
+        /// Unauthorized depositor is rejected with NotAuthorized.
+        #[test]
+        fn creator_earnings_unauthorized_depositor_reverts() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (token, _) = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let stranger = Address::generate(&env);
+            let earnings = deploy_earnings(&env, &admin, &token.address);
+
+            token.mint(&stranger, &500i128);
+
+            let result = earnings.try_deposit(&stranger, &creator, &100i128);
+            assert_eq!(
+                result,
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    EarningsError::NotAuthorized as u32,
+                ))),
+                "unauthorized deposit must return NotAuthorized"
+            );
+        }
+
+        /// Withdraw more than balance returns InsufficientBalance.
+        #[test]
+        fn creator_earnings_withdraw_over_balance_reverts() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (token, _) = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let earnings = deploy_earnings(&env, &admin, &token.address);
+
+            earnings.add_authorized(&admin);
+            token.mint(&admin, &500i128);
+            earnings.deposit(&admin, &creator, &300i128);
+
+            let result = earnings.try_withdraw(&creator, &400i128);
+            assert_eq!(
+                result,
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    EarningsError::InsufficientBalance as u32,
+                ))),
+                "withdraw exceeding balance must return InsufficientBalance"
+            );
+            // balance unchanged
+            assert_eq!(earnings.balance(&creator), 300i128);
+        }
+
+        /// Zero balance starts at zero.
+        #[test]
+        fn creator_earnings_initial_balance_is_zero() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (token, _) = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let earnings = deploy_earnings(&env, &admin, &token.address);
+
+            assert_eq!(
+                earnings.balance(&creator),
+                0i128,
+                "balance before any deposit must be zero"
+            );
+        }
+
+        /// Multiple authorized depositors can each deposit independently.
+        #[test]
+        fn creator_earnings_multiple_depositors_accumulate() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (token, _) = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let dep1 = Address::generate(&env);
+            let dep2 = Address::generate(&env);
+            let earnings = deploy_earnings(&env, &admin, &token.address);
+
+            earnings.add_authorized(&dep1);
+            earnings.add_authorized(&dep2);
+            token.mint(&dep1, &1_000i128);
+            token.mint(&dep2, &1_000i128);
+
+            earnings.deposit(&dep1, &creator, &400i128);
+            earnings.deposit(&dep2, &creator, &600i128);
+
+            assert_eq!(
+                earnings.balance(&creator),
+                1_000i128,
+                "balances from two depositors must accumulate"
+            );
+        }
+
+        /// Zero and negative deposit amounts are rejected with InvalidAmount.
+        #[test]
+        fn creator_earnings_invalid_deposit_amounts_revert() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (token, _) = deploy_token(&env);
+            let admin = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let earnings = deploy_earnings(&env, &admin, &token.address);
+            earnings.add_authorized(&admin);
+
+            assert_eq!(
+                earnings.try_deposit(&admin, &creator, &0i128),
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    EarningsError::InvalidAmount as u32,
+                ))),
+                "deposit(0) must return InvalidAmount"
+            );
+            assert_eq!(
+                earnings.try_deposit(&admin, &creator, &-1i128),
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    EarningsError::InvalidAmount as u32,
+                ))),
+                "deposit(-1) must return InvalidAmount"
+            );
+        }
+    }
+
     // ── treasury integration (Issue #907) ─────────────────────────────────
     //
     // Test-consumer pattern: drive `treasury` exclusively through its public
