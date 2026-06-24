@@ -1792,3 +1792,152 @@ fn test_cancel_paused_returns_typed_error() {
         Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
     );
 }
+
+// ── #891 – unauthorized caller revert tests ───────────────────────────────────
+
+/// create_plan: caller without creator auth must be rejected.
+#[test]
+fn test_create_plan_unauthorized_caller() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    env.set_auths(&[]);
+    let creator = Address::generate(&env);
+    let result = client.try_create_plan(&creator, &token.address, &1000, &30);
+    assert!(result.is_err(), "create_plan without creator auth must fail");
+}
+
+/// subscribe: caller without fan auth must be rejected.
+#[test]
+fn test_subscribe_unauthorized_caller() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    let creator = Address::generate(&env);
+    token_admin.mint(&creator, &5000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+
+    env.set_auths(&[]);
+    let fan = Address::generate(&env);
+    let result = client.try_subscribe(&fan, &plan_id, &token.address);
+    assert!(result.is_err(), "subscribe without fan auth must fail");
+}
+
+/// extend_subscription: caller without fan auth must be rejected.
+#[test]
+fn test_extend_subscription_unauthorized_caller() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &50000);
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    env.set_auths(&[]);
+    let result = client.try_extend_subscription(&fan, &creator, &1000, &token.address);
+    assert!(
+        result.is_err(),
+        "extend_subscription without fan auth must fail"
+    );
+}
+
+/// cancel: caller without fan auth must be rejected; subscription remains.
+#[test]
+fn test_cancel_unauthorized_caller() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &10000);
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    env.set_auths(&[]);
+    let result = client.try_cancel(&fan, &creator, &0);
+    assert!(result.is_err(), "cancel without fan auth must fail");
+    env.mock_all_auths();
+    assert!(
+        client.is_subscriber(&fan, &creator),
+        "subscription must remain after unauthorized cancel attempt"
+    );
+}
+
+/// create_subscription: caller without fan auth must be rejected.
+#[test]
+fn test_create_subscription_unauthorized_caller() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    env.set_auths(&[]);
+    let fan = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let result = client.try_create_subscription(&fan, &creator, &1000);
+    assert!(
+        result.is_err(),
+        "create_subscription without fan auth must fail"
+    );
+}
+
+/// pause: non-admin caller must be rejected; contract stays unpaused.
+#[test]
+fn test_pause_unauthorized_caller_contract_stays_unpaused() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    env.set_auths(&[]);
+    let result = client.try_pause();
+    assert!(result.is_err(), "non-admin must not pause contract");
+    env.mock_all_auths();
+    assert!(!client.is_paused(), "contract must remain unpaused");
+}
+
+/// unpause: non-admin caller must be rejected; paused state is preserved.
+#[test]
+fn test_unpause_unauthorized_caller_contract_stays_paused() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    client.pause();
+
+    env.set_auths(&[]);
+    let result = client.try_unpause();
+    assert!(result.is_err(), "non-admin must not unpause contract");
+    env.mock_all_auths();
+    assert!(client.is_paused(), "contract must remain paused");
+}
+
+/// set_fee_recipient: non-admin caller must be rejected.
+#[test]
+fn test_set_fee_recipient_unauthorized_caller() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let new_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    env.set_auths(&[]);
+    let result = client.try_set_fee_recipient(&new_recipient);
+    assert!(result.is_err(), "non-admin must not update fee recipient");
+}
+
+/// set_fee_bps: non-admin caller must be rejected.
+#[test]
+fn test_set_fee_bps_unauthorized_caller() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    env.set_auths(&[]);
+    let result = client.try_set_fee_bps(&100u32);
+    assert!(result.is_err(), "non-admin must not update fee bps");
+}
