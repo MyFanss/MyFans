@@ -1792,3 +1792,59 @@ fn test_cancel_paused_returns_typed_error() {
         Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
     );
 }
+
+// ── #890 – initialize and admin path unit tests ───────────────────────────────
+
+/// init stores PlanCount as zero so the first create_plan gets id=1.
+#[test]
+fn test_init_stores_plan_count_zero() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    let stored_count: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::PlanCount)
+            .unwrap_or(0)
+    });
+    assert_eq!(stored_count, 0, "init must set PlanCount to 0");
+}
+
+/// init emits the "initialized" event with fee_bps as data.
+#[test]
+fn test_init_emits_initialized_event() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let fee_bps = 300u32;
+    client.init(&admin, &fee_bps, &fee_recipient, &token.address, &1000);
+
+    let ev = find_event(&env, "initialized").expect("initialized event not emitted");
+    let d_fee_bps: u32 = ev.2.try_into_val(&env).unwrap();
+    assert_eq!(d_fee_bps, fee_bps, "event data must carry fee_bps");
+}
+
+/// admin() panics when the contract has never been initialized.
+#[test]
+#[should_panic]
+fn test_admin_panics_when_uninitialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+    client.admin();
+}
+
+/// admin() returns the same address after fee configuration changes.
+#[test]
+fn test_admin_unchanged_after_fee_updates() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let new_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    client.set_fee_bps(&200u32);
+    client.set_fee_recipient(&new_recipient);
+
+    assert_eq!(client.admin(), admin, "admin must not change after fee updates");
+}
