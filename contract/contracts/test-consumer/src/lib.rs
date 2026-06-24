@@ -922,4 +922,66 @@ mod test {
             assert_eq!(token_client.balance(&treasury_id), 1_300_000);
         }
     }
+
+    // ── creator-registry integration (Issue #957) ─────────────────────────
+    //
+    // Exercise creator-registry only through its public client, matching the
+    // boundary an external contract or service uses in production.
+    mod creator_registry_integration {
+        use creator_registry::{CreatorRegistryContract, CreatorRegistryContractClient, Error};
+        use soroban_sdk::{
+            testutils::{Address as _, Ledger},
+            Address, Env, Error as SorobanError,
+        };
+
+        fn deploy_registry<'a>(env: &'a Env, admin: &Address) -> CreatorRegistryContractClient<'a> {
+            let id = env.register_contract(None, CreatorRegistryContract);
+            let client = CreatorRegistryContractClient::new(env, &id);
+            client.initialize(admin);
+            client
+        }
+
+        /// An external consumer can register a creator, read its ID, and see
+        /// the mapping disappear after the admin unregisters it.
+        #[test]
+        fn creator_registry_register_lookup_and_unregister_flow() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let admin = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let registry = deploy_registry(&env, &admin);
+
+            registry.register_creator(&creator, &creator, &42u64);
+            assert_eq!(registry.get_creator_id(&creator), Some(42u64));
+
+            registry.unregister_creator(&creator);
+            assert_eq!(registry.get_creator_id(&creator), None);
+        }
+
+        /// A consumer receives the typed rate-limit failure and no partially
+        /// registered creator when an admin submits too quickly.
+        #[test]
+        fn creator_registry_rate_limit_keeps_rejected_creator_unregistered() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let admin = Address::generate(&env);
+            let first_creator = Address::generate(&env);
+            let rejected_creator = Address::generate(&env);
+            let registry = deploy_registry(&env, &admin);
+
+            env.ledger().with_mut(|ledger| ledger.sequence_number = 100);
+            registry.register_creator(&admin, &first_creator, &1u64);
+
+            assert_eq!(
+                registry.try_register_creator(&admin, &rejected_creator, &2u64),
+                Err(Ok(SorobanError::from_contract_error(
+                    Error::RateLimited as u32
+                )))
+            );
+            assert_eq!(registry.get_creator_id(&first_creator), Some(1u64));
+            assert_eq!(registry.get_creator_id(&rejected_creator), None);
+        }
+    }
 }
