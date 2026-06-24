@@ -672,4 +672,152 @@ mod props {
             prop_assert_eq!(client.balance(&holder), 0i128);
         }
     }
+
+    // ── balance-sum == total_supply invariant ─────────────────────────────────
+
+    proptest! {
+        /// Sum of all individual balances must equal total_supply at all times,
+        /// regardless of how many mint/transfer/burn operations are performed.
+        #[test]
+        fn prop_sum_of_balances_equals_total_supply(
+            mint_a in 1i128..=1_000_000i128,
+            mint_b in 1i128..=1_000_000i128,
+            transfer in 1i128..=500_000i128,
+            burn   in 1i128..=500_000i128,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let a = Address::generate(&env);
+            let b = Address::generate(&env);
+            let c = Address::generate(&env);
+
+            client.mint(&a, &mint_a);
+            client.mint(&b, &mint_b);
+
+            if transfer <= mint_a {
+                client.transfer(&a, &c, &transfer);
+            }
+            if burn <= mint_b {
+                client.burn(&b, &burn);
+            }
+
+            let sum = client.balance(&a) + client.balance(&b) + client.balance(&c);
+            prop_assert_eq!(
+                sum,
+                client.total_supply(),
+                "sum of all balances must equal total_supply"
+            );
+        }
+    }
+
+    // ── unauthorized mint invariant ───────────────────────────────────────────
+
+    proptest! {
+        /// A non-admin address must never be able to mint tokens; every attempt
+        /// without admin auth must return an error.
+        ///
+        /// `initialize` has no `require_auth`, so it works without mocked auths.
+        /// `mint` calls `admin.require_auth()` — without mocked auth it panics,
+        /// which `try_mint` maps to `Err`.
+        #[test]
+        fn prop_unauthorized_mint_fails(amount in 1i128..=1_000_000i128) {
+            let env = Env::default();
+            // Auth is NOT mocked: require_auth() calls will fail.
+            let contract_id = env.register_contract(None, MyFansToken);
+            let client = MyFansTokenClient::new(&env, &contract_id);
+            let admin = Address::generate(&env);
+            // initialize has no require_auth — works without mock.
+            client.initialize(
+                &admin,
+                &String::from_str(&env, "MyFans Token"),
+                &String::from_str(&env, "MFAN"),
+                &7,
+                &0,
+            );
+            let recipient = Address::generate(&env);
+            let result = client.try_mint(&recipient, &amount);
+            prop_assert!(result.is_err(), "mint without admin auth must fail");
+        }
+    }
+
+    // ── NoAllowance error invariant ───────────────────────────────────────────
+
+    proptest! {
+        /// transfer_from when no allowance has ever been set must fail with
+        /// NoAllowance, not a panic or a different error code.
+        #[test]
+        fn prop_transfer_from_no_allowance_returns_no_allowance(
+            mint_amount  in 1i128..=1_000_000i128,
+            spend_amount in 1i128..=1_000_000i128,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let owner    = Address::generate(&env);
+            let spender  = Address::generate(&env);
+            let receiver = Address::generate(&env);
+
+            client.mint(&owner, &mint_amount);
+
+            // No approve() call — allowance record does not exist.
+            prop_assert_eq!(
+                client.try_transfer_from(&spender, &owner, &receiver, &spend_amount),
+                Err(Ok(Error::NoAllowance))
+            );
+        }
+    }
+
+    // ── decimals immutability invariant ──────────────────────────────────────
+
+    proptest! {
+        /// set_metadata must never alter the stored decimals value; decimals
+        /// are fixed at initialization and immutable thereafter.
+        #[test]
+        fn prop_set_metadata_preserves_decimals(_dummy in 0u32..=1u32) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            // Decimals are set to 7 by the setup() helper.
+            let before = client.decimals();
+
+            client.set_metadata(
+                &String::from_str(&env, "New Name"),
+                &String::from_str(&env, "NEW"),
+            );
+
+            prop_assert_eq!(
+                client.decimals(),
+                before,
+                "decimals must remain unchanged after set_metadata"
+            );
+        }
+    }
+
+    // ── approve negative amount invariant ────────────────────────────────────
+
+    proptest! {
+        /// approve with a negative amount must always be rejected with
+        /// InvalidAmount, regardless of the expiration_ledger.
+        #[test]
+        fn prop_approve_rejects_negative_amount(
+            bad_amount in i128::MIN..=-1i128,
+            expiry in 100u32..=10_000u32,
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, _) = setup(&env);
+
+            let owner   = Address::generate(&env);
+            let spender = Address::generate(&env);
+
+            prop_assert_eq!(
+                client.try_approve(&owner, &spender, &bad_amount, &expiry),
+                Err(Ok(Error::InvalidAmount))
+            );
+        }
+    }
 }
