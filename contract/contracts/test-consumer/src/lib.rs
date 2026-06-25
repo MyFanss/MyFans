@@ -1137,4 +1137,166 @@ mod test {
             assert_eq!(token_client.balance(&treasury_id), 1_300_000);
         }
     }
+
+    // ── earnings integration ──────────────────────────────────────────────
+
+    mod earnings_integration {
+        use earnings::{Earnings, EarningsClient};
+        use soroban_sdk::{testutils::Address as _, Address, Env, Error as SorobanError};
+
+        fn setup(env: &Env) -> (EarningsClient<'_>, Address, Address) {
+            env.mock_all_auths();
+
+            let admin = Address::generate(env);
+            let creator = Address::generate(env);
+
+            let contract_id = env.register_contract(None, Earnings);
+            let client = EarningsClient::new(env, &contract_id);
+
+            client.init(&admin);
+            (client, admin, creator)
+        }
+
+        /// Contract initializes with admin and records earnings correctly.
+        #[test]
+        fn earnings_init_and_record() {
+            let env = Env::default();
+            let (client, admin, creator) = setup(&env);
+
+            // Verify admin is set correctly.
+            assert_eq!(client.admin(), admin);
+
+            // Record earnings for creator.
+            client.record(&creator, &1_000);
+            assert_eq!(client.get_earnings(&creator), 1_000);
+
+            // Record additional earnings; totals accumulate.
+            client.record(&creator, &500);
+            assert_eq!(client.get_earnings(&creator), 1_500);
+        }
+
+        /// Multiple creators maintain independent balances.
+        #[test]
+        fn earnings_multiple_creators_independent() {
+            let env = Env::default();
+            let (client, _, _) = setup(&env);
+
+            let creator1 = Address::generate(&env);
+            let creator2 = Address::generate(&env);
+
+            client.record(&creator1, &1_000);
+            client.record(&creator2, &2_000);
+
+            assert_eq!(client.get_earnings(&creator1), 1_000);
+            assert_eq!(client.get_earnings(&creator2), 2_000);
+
+            client.record(&creator1, &500);
+            assert_eq!(client.get_earnings(&creator1), 1_500);
+            assert_eq!(client.get_earnings(&creator2), 2_000);
+        }
+
+        /// Full withdrawal lifecycle: record → withdraw → verify balance.
+        #[test]
+        fn earnings_withdraw_full_lifecycle() {
+            let env = Env::default();
+            let (client, _, creator) = setup(&env);
+
+            // Record earnings.
+            client.record(&creator, &1_000);
+            assert_eq!(client.get_earnings(&creator), 1_000);
+
+            // Withdraw partial amount.
+            client.withdraw(&creator, &300);
+            assert_eq!(client.get_earnings(&creator), 700);
+
+            // Withdraw remaining.
+            client.withdraw(&creator, &700);
+            assert_eq!(client.get_earnings(&creator), 0);
+        }
+
+        /// Multiple withdrawals from a single creator work correctly.
+        #[test]
+        fn earnings_multiple_withdrawals() {
+            let env = Env::default();
+            let (client, _, creator) = setup(&env);
+
+            client.record(&creator, &1_000);
+            client.withdraw(&creator, &100);
+            client.withdraw(&creator, &200);
+            client.withdraw(&creator, &300);
+
+            assert_eq!(client.get_earnings(&creator), 400);
+        }
+
+        /// Withdraw with insufficient balance returns error.
+        #[test]
+        fn earnings_withdraw_insufficient_balance_fails() {
+            let env = Env::default();
+            let (client, _, creator) = setup(&env);
+
+            client.record(&creator, &500);
+
+            let result = client.try_withdraw(&creator, &600);
+            assert!(result.is_err(), "expected withdraw to fail with insufficient balance");
+        }
+
+        /// Withdraw from zero balance returns error.
+        #[test]
+        fn earnings_withdraw_from_zero_balance_fails() {
+            let env = Env::default();
+            let (client, _, creator) = setup(&env);
+
+            let result = client.try_withdraw(&creator, &1);
+            assert!(result.is_err(), "expected withdraw to fail on zero balance");
+        }
+
+        /// Non-admin cannot record earnings.
+        #[test]
+        fn earnings_non_admin_record_fails() {
+            let env = Env::default();
+            let (client, _, creator) = setup(&env);
+
+            // Remove mocked auths so admin.require_auth() fails.
+            let empty: &[soroban_sdk::xdr::SorobanAuthorizationEntry] = &[];
+            env.set_auths(empty);
+
+            let result = client.try_record(&creator, &100);
+            assert!(result.is_err(), "expected non-admin record to fail");
+        }
+
+        /// Non-creator cannot withdraw another creator's earnings.
+        #[test]
+        fn earnings_non_creator_withdraw_fails() {
+            let env = Env::default();
+            let (client, _, creator) = setup(&env);
+
+            client.record(&creator, &500);
+
+            let other = Address::generate(&env);
+            let empty: &[soroban_sdk::xdr::SorobanAuthorizationEntry] = &[];
+            env.set_auths(empty);
+
+            let result = client.try_withdraw(&other, &100);
+            assert!(result.is_err(), "expected non-creator withdraw to fail");
+        }
+
+        /// Initialize twice returns AlreadyInitialized error (code 1).
+        #[test]
+        fn earnings_double_init_fails() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let admin = Address::generate(&env);
+            let contract_id = env.register_contract(None, Earnings);
+            let client = EarningsClient::new(&env, &contract_id);
+
+            client.init(&admin);
+            let result = client.try_init(&admin);
+
+            assert_eq!(
+                result,
+                Err(Ok(SorobanError::from_contract_error(1))) // AlreadyInitialized
+            );
+        }
+    }
 }

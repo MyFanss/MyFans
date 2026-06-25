@@ -12,8 +12,10 @@ enum DataKey {
 
 /// Per-contract error codes for the **earnings** contract.
 ///
-/// These discriminants are stable and form part of the public client API.
-/// Do **not** renumber existing variants; add new ones at the end.
+/// Numbering scheme: error codes must be non-zero u32 values, and each variant
+/// must have a unique discriminant. These discriminants are stable and form part
+/// of the public client API. Do **not** renumber existing variants; add new ones
+/// at the end with the next available code.
 ///
 /// | Code | Variant |
 /// |------|---------|
@@ -47,14 +49,12 @@ impl Earnings {
         let admin = Self::admin(env.clone());
         admin.require_auth();
 
-        let current: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::Earnings(creator.clone()))
-            .unwrap_or(0);
+        // GAS: Cache the DataKey to minimize cloning of creator address.
+        let earnings_key = DataKey::Earnings(creator.clone());
+        let current: i128 = env.storage().instance().get(&earnings_key).unwrap_or(0);
         env.storage()
             .instance()
-            .set(&DataKey::Earnings(creator), &(current + amount));
+            .set(&earnings_key, &(current + amount));
     }
 
     pub fn get_earnings(env: Env, creator: Address) -> i128 {
@@ -72,11 +72,9 @@ impl Earnings {
     pub fn withdraw(env: Env, creator: Address, amount: i128) {
         creator.require_auth();
 
-        let current: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::Earnings(creator.clone()))
-            .unwrap_or(0);
+        // GAS: Cache the DataKey to avoid cloning creator twice.
+        let earnings_key = DataKey::Earnings(creator.clone());
+        let current: i128 = env.storage().instance().get(&earnings_key).unwrap_or(0);
 
         if amount > current {
             panic!("insufficient balance");
@@ -84,7 +82,7 @@ impl Earnings {
 
         env.storage()
             .instance()
-            .set(&DataKey::Earnings(creator.clone()), &(current - amount));
+            .set(&earnings_key, &(current - amount));
 
         env.events()
             .publish((Symbol::new(&env, "withdraw"), creator), amount);

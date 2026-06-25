@@ -112,6 +112,21 @@ jobs:
         run: cargo test
         working-directory: contract
 
-      - name: Build wasm
-        run: cargo build --release --target wasm32-unknown-unknown
+      # Verify wasm release build independently from cargo test, which uses the host target.
+      # cargo test compiles for the native architecture, while the wasm build targets wasm32-unknown-unknown.
+      # This step ensures the contract compiles correctly for deployment to Soroban.
+      - name: Build wasm release for earnings contract
+        run: cargo build --release --target wasm32-unknown-unknown -p earnings
+        working-directory: contract
+
+      - name: Verify earnings.wasm artifact exists
+        run: test -f target/wasm32-unknown-unknown/release/earnings.wasm
+        working-directory: contract
+
+      - name: Verify creator-registry wasm
+        run: |
+          wasm_path="target/wasm32-unknown-unknown/release/creator_registry.wasm"
+          test -s "$wasm_path"
+          magic="$(xxd -p -l 4 "$wasm_path" 2>/dev/null || od -A n -N 4 -t x1 "$wasm_path" | tr -d ' ')"
+          test "$magic" = "0061736d"
         working-directory: contract

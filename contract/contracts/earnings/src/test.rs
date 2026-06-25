@@ -41,6 +41,43 @@ fn test_init_second_time_fails() {
     );
 }
 
+/// Initialization stores the supplied admin, which is then exposed through
+/// the public admin view used by downstream callers.
+#[test]
+fn test_init_stores_and_returns_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let contract_id = env.register_contract(None, Earnings);
+    let client = EarningsClient::new(&env, &contract_id);
+
+    client.init(&admin);
+
+    assert_eq!(client.admin(), admin);
+}
+
+/// Initialization is admin-authorized and a rejected attempt leaves the
+/// contract uninitialized, allowing a later valid initialization.
+#[test]
+fn test_init_requires_admin_auth_without_persisting_state() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let contract_id = env.register_contract(None, Earnings);
+    let client = EarningsClient::new(&env, &contract_id);
+
+    let empty: &[SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+    assert!(
+        client.try_init(&admin).is_err(),
+        "init must require admin auth"
+    );
+
+    env.mock_all_auths();
+    client.init(&admin);
+    assert_eq!(client.admin(), admin);
+}
+
 // ── #319 – non-admin record reverts ──────────────────────────────────────────
 
 /// Non-admin caller (no admin auth) must not be able to record earnings.
@@ -56,6 +93,11 @@ fn test_non_admin_record_reverts() {
 
     let result = client.try_record(&creator, &500);
     assert!(result.is_err(), "expected non-admin record to revert");
+    assert_eq!(
+        client.get_earnings(&creator),
+        0,
+        "a rejected admin path must not change earnings"
+    );
 }
 
 // ── #319 – admin record success + totals ─────────────────────────────────────
