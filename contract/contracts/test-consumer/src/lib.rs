@@ -1143,6 +1143,7 @@ mod test {
     mod earnings_integration {
         use earnings::{Earnings, EarningsClient};
         use soroban_sdk::{testutils::Address as _, Address, Env, Error as SorobanError};
+        use proptest::proptest;
 
         fn setup(env: &Env) -> (EarningsClient<'_>, Address, Address) {
             env.mock_all_auths();
@@ -1297,6 +1298,214 @@ mod test {
                 result,
                 Err(Ok(SorobanError::from_contract_error(1))) // AlreadyInitialized
             );
+        }
+
+        /// Full lifecycle integration test: initialize → record → get → withdraw.
+        /// Verifies state consistency at each step and final balance is correct.
+        #[test]
+        fn test_integration_full_lifecycle() {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let admin = Address::generate(&env);
+            let creator1 = Address::generate(&env);
+            let creator2 = Address::generate(&env);
+
+            let contract_id = env.register_contract(None, Earnings);
+            let client = EarningsClient::new(&env, &contract_id);
+
+            // Step 1: Initialize
+            client.init(&admin);
+            assert_eq!(client.admin(), admin, "admin must be set after init");
+            assert_eq!(
+                client.get_earnings(&creator1),
+                0,
+                "balance must start at zero for uninitialized creator"
+            );
+
+            // Step 2: Record earnings for creator1
+            client.record(&creator1, &1_000);
+            assert_eq!(
+                client.get_earnings(&creator1),
+                1_000,
+                "balance after single record must equal recorded amount"
+            );
+
+            // Step 3: Record additional earnings; verify accumulation
+            client.record(&creator1, &500);
+            assert_eq!(
+                client.get_earnings(&creator1),
+                1_500,
+                "balance must accumulate across multiple records"
+            );
+
+            // Step 4: Record earnings for creator2; verify independence
+            client.record(&creator2, &800);
+            assert_eq!(
+                client.get_earnings(&creator1),
+                1_500,
+                "creator1 balance must remain unchanged after creator2 record"
+            );
+            assert_eq!(
+                client.get_earnings(&creator2),
+                800,
+                "creator2 must have independent balance"
+            );
+
+            // Step 5: Withdraw partial amount from creator1
+            client.withdraw(&creator1, &400);
+            assert_eq!(
+                client.get_earnings(&creator1),
+                1_100,
+                "balance after withdrawal must be reduced by withdrawn amount"
+            );
+
+            // Step 6: Withdraw remaining from creator1
+            client.withdraw(&creator1, &1_100);
+            assert_eq!(
+                client.get_earnings(&creator1),
+                0,
+                "balance must be zero after full withdrawal"
+            );
+
+            // Step 7: Verify creator2 balance unchanged
+            assert_eq!(
+                client.get_earnings(&creator2),
+                800,
+                "creator2 balance must remain after creator1 withdrawal"
+            );
+
+            // Step 8: Withdraw from creator2
+            client.withdraw(&creator2, &200);
+            assert_eq!(
+                client.get_earnings(&creator2),
+                600,
+                "creator2 balance must reflect withdrawal"
+            );
+
+            // Final state consistency check: all balances sum correctly
+            assert_eq!(
+                client.get_earnings(&creator1) + client.get_earnings(&creator2),
+                600,
+                "total of all balances must be consistent"
+            );
+        }
+
+        // ── Property-based invariant tests ────────────────────────────────
+
+        /// Invariant: balance conservation. For any sequence of recorded earnings
+        /// and withdrawals, the final balance equals initial balance (0) + recorded - withdrawn,
+        /// and final balance >= 0. Proptest generates arbitrary valid amounts and verifies
+        /// that no funds leak and all accounting is consistent.
+        proptest! {
+            #[test]
+            fn prop_invariant_balance_conservation(
+                records in proptest::collection::vec(1i128..=10_000i128, 1..=20),
+                withdrawals in proptest::collection::vec(0i128..=10_000i128, 0..=20),
+            ) {
+                let env = Env::default();
+                env.mock_all_auths();
+
+                let admin = Address::generate(&env);
+                let creator = Address::generate(&env);
+
+                let contract_id = env.register_contract(None, Earnings);
+                let client = EarningsClient::new(&env, &contract_id);
+                client.init(&admin);
+
+                let total_recorded: i128 = records.iter().sum();
+                let total_possible_withdrawal: i128 = withdrawals.iter().sum();
+
+                for record_amount in records {
+                    client.record(&creator, &record_amount);
+                }
+
+                let balance_after_records = client.get_earnings(&creator);
+                prop_assert_eq!(
+                    balance_after_records, total_recorded,
+                    "balance after records must equal sum of all records"
+                );
+
+                let mut total_withdrawn: i128 = 0;
+                for &withdraw_amount in &withdrawals {
+                    let current_balance = client.get_earnings(&creator);
+                    if current_balance > 0 && withdraw_amount > 0 {
+                        let safe_withdraw = std::cmp::min(withdraw_amount, current_balance);
+                        client.withdraw(&creator, &safe_withdraw);
+                        total_withdrawn += safe_withdraw;
+                    }
+                }
+
+                let final_balance = client.get_earnings(&creator);
+                prop_assert!(
+                    final_balance >= 0,
+                    "final balance must never be negative"
+                );
+                prop_assert_eq!(
+                    final_balance,
+                    total_recorded - total_withdrawn,
+                    "final balance must equal recorded - withdrawn"
+                );
+            }
+        }
+
+        /// Invariant: idempotency of read functions. Calling admin() or get_earnings()
+        /// twice with the same arguments must return the same result and must not
+        /// change any contract state. Proptest generates arbitrary valid creator addresses
+        /// and verifies that repeated reads are idempotent.
+        proptest! {
+            #[test]
+            fn prop_invariant_read_function_idempotency(
+                num_records in 0i128..=100i128,
+            ) {
+                let env = Env::default();
+                env.mock_all_auths();
+
+                let admin = Address::generate(&env);
+                let creator = Address::generate(&env);
+
+                let contract_id = env.register_contract(None, Earnings);
+                let client = EarningsClient::new(&env, &contract_id);
+                client.init(&admin);
+
+                if num_records > 0 {
+                    client.record(&creator, &num_records);
+                }
+
+                // Call admin() twice and verify it returns the same value
+                let admin_call1 = client.admin();
+                let admin_call2 = client.admin();
+                prop_assert_eq!(
+                    admin_call1, admin_call2,
+                    "admin() must be idempotent"
+                );
+
+                // Call get_earnings() twice and verify it returns the same value
+                let earnings_call1 = client.get_earnings(&creator);
+                let earnings_call2 = client.get_earnings(&creator);
+                prop_assert_eq!(
+                    earnings_call1, earnings_call2,
+                    "get_earnings() must be idempotent"
+                );
+                prop_assert_eq!(
+                    earnings_call1, num_records,
+                    "get_earnings() value must be consistent"
+                );
+
+                // Call admin() again and verify it still returns the same value
+                let admin_call3 = client.admin();
+                prop_assert_eq!(
+                    admin_call3, admin,
+                    "admin() must remain unchanged after read-only operations"
+                );
+
+                // Verify get_earnings() still returns same value
+                let earnings_call3 = client.get_earnings(&creator);
+                prop_assert_eq!(
+                    earnings_call3, num_records,
+                    "get_earnings() must remain unchanged after other read operations"
+                );
+            }
         }
     }
 }
