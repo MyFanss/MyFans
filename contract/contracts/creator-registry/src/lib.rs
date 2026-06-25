@@ -195,3 +195,6 @@ impl CreatorRegistryContract {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod property_tests;

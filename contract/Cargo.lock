@@ -216,6 +216,7 @@ dependencies = [
 name = "creator-registry"
 version = "0.1.1"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 
