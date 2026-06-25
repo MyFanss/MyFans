@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env, Symbol,
 };
 
 use soroban_sdk::token::Client;
@@ -64,6 +64,47 @@ pub enum Error {
     InvalidAmount = 7,
 }
 
+/// -------- Events --------
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InitializedEvent {
+    pub admin: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreatorRegisteredEvent {
+    pub caller: Address,
+    pub creator: Address,
+    pub creator_id: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreatorUnregisteredEvent {
+    pub creator: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RateLimitSetEvent {
+    pub ledgers: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SpamFeeSetEvent {
+    pub token: Address,
+    pub amount: i128,
+}
+
+const INITIALIZED_EVENT: &str = "initialized";
+const CREATOR_REGISTERED_EVENT: &str = "creator_registered";
+const CREATOR_UNREGISTERED_EVENT: &str = "creator_unregistered";
+const RATE_LIMIT_SET_EVENT: &str = "rate_limit_set";
+const SPAM_FEE_SET_EVENT: &str = "spam_fee_set";
+
 #[contract]
 pub struct CreatorRegistryContract;
 
@@ -80,6 +121,13 @@ impl CreatorRegistryContract {
             .instance()
             .set(&DataKey::RateLimit, &DEFAULT_RATE_LIMIT);
         env.storage().instance().set(&DataKey::SpamFee, &0i128);
+
+        env.events().publish(
+            (Symbol::new(&env, INITIALIZED_EVENT),),
+            InitializedEvent {
+                admin,
+            },
+        );
     }
     // set the number of ledgers for rate limiting (admin only)
     pub fn set_rate_limit(env: Env, ledgers: u32) {
@@ -87,6 +135,11 @@ impl CreatorRegistryContract {
         admin.require_auth();
 
         env.storage().instance().set(&DataKey::RateLimit, &ledgers);
+
+        env.events().publish(
+            (Symbol::new(&env, RATE_LIMIT_SET_EVENT),),
+            RateLimitSetEvent { ledgers },
+        );
     }
 
     // set the fee for spamming registrations (admin only)
@@ -100,6 +153,14 @@ impl CreatorRegistryContract {
 
         env.storage().instance().set(&DataKey::SpamFee, &amount);
         env.storage().instance().set(&DataKey::FeeToken, &token);
+
+        env.events().publish(
+            (Symbol::new(&env, SPAM_FEE_SET_EVENT),),
+            SpamFeeSetEvent {
+                token,
+                amount,
+            },
+        );
     }
 
     /// Register a creator with a specific creator_id
@@ -134,6 +195,15 @@ impl CreatorRegistryContract {
         env.storage().persistent().set(&last_key, &current);
         env.storage().persistent().set(&key, &creator_id);
 
+        env.events().publish(
+            (Symbol::new(&env, CREATOR_REGISTERED_EVENT),),
+            CreatorRegisteredEvent {
+                caller: caller.clone(),
+                creator: creator_address.clone(),
+                creator_id,
+            },
+        );
+
         let fee: i128 = env.storage().instance().get(&DataKey::SpamFee).unwrap_or(0);
 
         if fee > 0 {
@@ -153,20 +223,22 @@ impl CreatorRegistryContract {
     /// Unregister a creator (admin only).
     /// Panics if the creator is not currently registered.
     pub fn unregister_creator(env: Env, creator_address: Address) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("not initialized"));
-
+        let admin = Self::get_admin(&env);
         admin.require_auth();
 
-        let key = DataKey::Creator(creator_address);
+        let key = DataKey::Creator(creator_address.clone());
         if !env.storage().persistent().has(&key) {
-            panic!("creator not registered");
+            panic_with_error!(&env, Error::NotRegistered);
         }
 
         env.storage().persistent().remove(&key);
+
+        env.events().publish(
+            (Symbol::new(&env, CREATOR_UNREGISTERED_EVENT),),
+            CreatorUnregisteredEvent {
+                creator: creator_address,
+            },
+        );
     }
 
     /// Read-only getter for the configured admin address.
