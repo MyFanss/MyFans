@@ -17,6 +17,7 @@ myfans-lib = { path = "../myfans-lib" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+myfans-lib = { path = "../myfans-lib", features = ["testutils"] }
 subscription = { package = "subscription", path = "../subscription" }
 content_access = { package = "content-access", path = "../content-access" }
 content_likes = { package = "content-likes", path = "../content-likes" }
