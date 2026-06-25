@@ -1,4 +1,4 @@
-# 0.1.0 (2026-06-09)
+# 0.1.0 (2026-06-25)
 
 
 ### Bug Fixes
@@ -99,6 +99,7 @@
 * update backend Nest deps for CI audit ([fd2a1fa](https://github.com/MyFanss/MyFans/commit/fd2a1fa57f9cc2f841a25355a0b817ed83ec6db7))
 * update package-lock.json to sync with package.json ([458210f](https://github.com/MyFanss/MyFans/commit/458210fbb10be290a36d2b6ce880614735182be3))
 * use rpc.Server and import rpc.Api helpers where UInt32Val is used ([#581](https://github.com/MyFanss/MyFans/issues/581)) ([a96b86e](https://github.com/MyFanss/MyFans/commit/a96b86e262b3e05ead6de3f4f796b5d40f059a92))
+* validate error codes and panic messages in earnings contract ([#965](https://github.com/MyFanss/MyFans/issues/965)) ([45278b8](https://github.com/MyFanss/MyFans/commit/45278b85b2605fe1ae8e8375c1119213f74e5202))
 * wrap CLI top-level awaits in async main() for CommonJS compatibility ([c75238e](https://github.com/MyFanss/MyFans/commit/c75238e1684a3b695025001ca4c19ad48e34c612))
 
 
@@ -362,6 +363,7 @@
 
 ### Performance Improvements
 
+* optimise gas usage in earnings contract hot paths ([#966](https://github.com/MyFanss/MyFans/issues/966)) ([799bd81](https://github.com/MyFanss/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
 * Optimize creator profile page performance ([d8ba3ca](https://github.com/MyFanss/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/MyFanss/MyFans/issues/415)
 
 
