@@ -5,21 +5,31 @@ import { CreatorDashboardService } from './creator-dashboard.service';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { PaginatedResponseDto } from '../common/dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
-import { BadRequestException } from '@nestjs/common';
+import { PlanDto } from './dto/plan.dto';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 
 describe('CreatorsController', () => {
   let controller: CreatorsController;
+  let mockCreatorsService: any;
+  let mockDashboardService: any;
 
-  const mockCreatorsService = {
+  const mockCreatorsServiceFactory = () => ({
     searchCreators: jest.fn(),
     createPlan: jest.fn(),
     findAllPlans: jest.fn(),
     findCreatorPlans: jest.fn(),
     listCreators: jest.fn(),
-  };
+  });
+
+  const mockDashboardServiceFactory = () => ({
+    getDashboard: jest.fn(),
+  });
 
   beforeEach(async () => {
+    mockCreatorsService = mockCreatorsServiceFactory();
+    mockDashboardService = mockDashboardServiceFactory();
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [CreatorsController],
       providers: [
@@ -29,7 +39,7 @@ describe('CreatorsController', () => {
         },
         {
           provide: CreatorDashboardService,
-          useValue: { getDashboard: jest.fn() },
+          useValue: mockDashboardService,
         },
       ],
     })
@@ -400,6 +410,203 @@ describe('CreatorsController', () => {
         expect(result.data).toEqual(mockData);
         expect(result.nextCursor).toBe('testuser');
       });
+    });
+  });
+
+  describe('createPlan', () => {
+    it('should call service.createPlan with correct parameters', () => {
+      const mockPlan = { id: 1, creator: 'creator1', asset: 'USDC', amount: '100', intervalDays: 30 };
+      mockCreatorsService.createPlan.mockReturnValue(mockPlan);
+
+      const result = controller.createPlan({
+        creator: 'creator1',
+        asset: 'USDC',
+        amount: '100',
+        intervalDays: 30,
+      });
+
+      expect(mockCreatorsService.createPlan).toHaveBeenCalledWith(
+        'creator1',
+        'USDC',
+        '100',
+        30,
+      );
+      expect(result).toEqual(mockPlan);
+    });
+
+    it('should create plan with valid input', () => {
+      const mockPlan = { id: 2, creator: 'creator2', asset: 'EURC', amount: '50', intervalDays: 7 };
+      mockCreatorsService.createPlan.mockReturnValue(mockPlan);
+
+      const result = controller.createPlan({
+        creator: 'creator2',
+        asset: 'EURC',
+        amount: '50',
+        intervalDays: 7,
+      });
+
+      expect(result.id).toBe(2);
+      expect(result.creator).toBe('creator2');
+      expect(result.asset).toBe('EURC');
+    });
+
+    it('should throw BadRequestException on invalid input', () => {
+      mockCreatorsService.createPlan.mockImplementation(() => {
+        throw new BadRequestException('Invalid plan parameters');
+      });
+
+      expect(() =>
+        controller.createPlan({
+          creator: '',
+          asset: 'USDC',
+          amount: '100',
+          intervalDays: 30,
+        }),
+      ).toThrow(BadRequestException);
+    });
+  });
+
+  describe('getAllPlans', () => {
+    it('should call service.findAllPlans with pagination', () => {
+      const mockPlans = new PaginatedResponseDto(
+        [
+          { id: 1, creator: 'creator1', asset: 'USDC', amount: '100', intervalDays: 30 },
+        ],
+        20,
+        '1',
+        false,
+      );
+      mockCreatorsService.findAllPlans.mockReturnValue(mockPlans);
+
+      const result = controller.getAllPlans({ limit: 20 });
+
+      expect(mockCreatorsService.findAllPlans).toHaveBeenCalledWith({ limit: 20 });
+      expect(result).toEqual(mockPlans);
+    });
+
+    it('should return paginated plans', () => {
+      const mockPlans = new PaginatedResponseDto(
+        [
+          { id: 1, creator: 'creator1', asset: 'USDC', amount: '100', intervalDays: 30 },
+          { id: 2, creator: 'creator2', asset: 'EURC', amount: '50', intervalDays: 7 },
+        ],
+        20,
+        '2',
+        false,
+      );
+      mockCreatorsService.findAllPlans.mockReturnValue(mockPlans);
+
+      const result = controller.getAllPlans({ cursor: '0', limit: 20 });
+
+      expect(result.data.length).toBe(2);
+      expect(result.hasMore).toBe(false);
+      expect(result.nextCursor).toBe('2');
+    });
+
+    it('should return empty list when no plans exist', () => {
+      const mockPlans = new PaginatedResponseDto([], 20, null, false);
+      mockCreatorsService.findAllPlans.mockReturnValue(mockPlans);
+
+      const result = controller.getAllPlans({ limit: 20 });
+
+      expect(result.data.length).toBe(0);
+      expect(result.hasMore).toBe(false);
+    });
+  });
+
+  describe('getPlans', () => {
+    it('should call service.findCreatorPlans with creator and pagination', () => {
+      const mockPlans = new PaginatedResponseDto(
+        [{ id: 1, creator: 'creator1', asset: 'USDC', amount: '100', intervalDays: 30 }],
+        20,
+        '1',
+        false,
+      );
+      mockCreatorsService.findCreatorPlans.mockReturnValue(mockPlans);
+
+      const result = controller.getPlans('creator1', { limit: 20 });
+
+      expect(mockCreatorsService.findCreatorPlans).toHaveBeenCalledWith('creator1', {
+        limit: 20,
+      });
+      expect(result).toEqual(mockPlans);
+    });
+
+    it('should return creator plans when creator has plans', () => {
+      const mockPlans = new PaginatedResponseDto(
+        [
+          { id: 1, creator: 'creator1', asset: 'USDC', amount: '100', intervalDays: 30 },
+          { id: 2, creator: 'creator1', asset: 'EURC', amount: '50', intervalDays: 7 },
+        ],
+        20,
+        '2',
+        false,
+      );
+      mockCreatorsService.findCreatorPlans.mockReturnValue(mockPlans);
+
+      const result = controller.getPlans('creator1', { limit: 20 });
+
+      expect(result.data.length).toBe(2);
+      expect(result.data[0].creator).toBe('creator1');
+      expect(result.data[1].creator).toBe('creator1');
+    });
+
+    it('should return empty list when creator has no plans', () => {
+      const mockPlans = new PaginatedResponseDto([], 20, null, false);
+      mockCreatorsService.findCreatorPlans.mockReturnValue(mockPlans);
+
+      const result = controller.getPlans('nonexistent', { limit: 20 });
+
+      expect(result.data.length).toBe(0);
+      expect(mockCreatorsService.findCreatorPlans).toHaveBeenCalledWith('nonexistent', {
+        limit: 20,
+      });
+    });
+  });
+
+  describe('getDashboard', () => {
+    it('should call dashboard service with address and query', () => {
+      const mockDashboard = { totalEarnings: 1000, subscribers: 50 };
+      mockDashboardService.getDashboard.mockReturnValue(mockDashboard);
+
+      const result = controller.getDashboard('creator1', {});
+
+      expect(mockDashboardService.getDashboard).toHaveBeenCalledWith('creator1', {});
+      expect(result).toEqual(mockDashboard);
+    });
+
+    it('should return dashboard metrics for creator', () => {
+      const mockDashboard = { totalEarnings: 5000, subscribers: 150, activeSubscriptions: 120 };
+      mockDashboardService.getDashboard.mockReturnValue(mockDashboard);
+
+      const result = controller.getDashboard('creator1', { days: '30' });
+
+      expect(result.totalEarnings).toBe(5000);
+      expect(result.subscribers).toBe(150);
+      expect(mockDashboardService.getDashboard).toHaveBeenCalledWith('creator1', {
+        days: '30',
+      });
+    });
+
+    it('should pass query parameters to dashboard service', async () => {
+      const mockDashboard = { totalEarnings: 0, subscribers: 0 };
+      mockDashboardService.getDashboard.mockResolvedValue(mockDashboard);
+
+      const result = await controller.getDashboard('creator1', { days: '90' });
+
+      expect(mockDashboardService.getDashboard).toHaveBeenCalledWith('creator1', {
+        days: '90',
+      });
+    });
+
+    it('should handle dashboard not found error', () => {
+      mockDashboardService.getDashboard.mockImplementation(() => {
+        throw new NotFoundException('Creator dashboard not found');
+      });
+
+      expect(() => controller.getDashboard('nonexistent', {})).toThrow(
+        NotFoundException,
+      );
     });
   });
 });
