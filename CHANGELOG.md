@@ -221,6 +221,7 @@
 * Created transaction page ([3cf50f0](https://github.com/MyFanss/MyFans/commit/3cf50f017e4fbf6799910f1ab30d3f629288815a))
 * creator earnings withdraw event ([483b5a0](https://github.com/MyFanss/MyFans/commit/483b5a0b7abc7585b265cc4ad16b7d601f11c3e4))
 * creator registry - spam fee or rate limit ([26e1188](https://github.com/MyFanss/MyFans/commit/26e118824c85453f2657990129f695d4f3e31bb2))
+* creator registry contract enhancements ([dbebbc3](https://github.com/MyFanss/MyFans/commit/dbebbc3daa66af8b9ba4f21d76e29c3876f4ee92))
 * **creator-earnings:** emit event on withdraw ([#850](https://github.com/MyFanss/MyFans/issues/850)) ([95e59c2](https://github.com/MyFanss/MyFans/commit/95e59c28ad066095ce8910d9834fb4a3d59b3a76))
 * **creator-registry:** add rate limit or fee for registration ([#852](https://github.com/MyFanss/MyFans/issues/852)) ([a06902c](https://github.com/MyFanss/MyFans/commit/a06902ca0dcadcf3dfe750aadf678c3d26fe09d4))
 * **creators:** add search by display name or handle ([#856](https://github.com/MyFanss/MyFans/issues/856)) ([a35feeb](https://github.com/MyFanss/MyFans/commit/a35feeb6c282199408f1c6d776ff27f1413fc865))
