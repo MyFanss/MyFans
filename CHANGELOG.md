@@ -292,6 +292,7 @@
 * implement token transfer indexer module ([14df6c1](https://github.com/MyFanss/MyFans/commit/14df6c1143fa125901be0aa1cc067a132b39276c))
 * implement user management module with create, update, and delete functionalities ([fcedbd2](https://github.com/MyFanss/MyFans/commit/fcedbd2d26ed014b9a8ee483f946e2721220af23))
 * implement wallet selection modal for Stellar/Soroban ([0ed0aba](https://github.com/MyFanss/MyFans/commit/0ed0aba433be9590c957ea588344e5dfa5f52b31))
+* improve creator-registry and creator-earnings contracts ([d8ebe9c](https://github.com/MyFanss/MyFans/commit/d8ebe9cb27ff3ab1f67f8ae2c2e63092e80a4863))
 * improve tx failure recovery with guided UI and failure-type detection ([d9cbf8f](https://github.com/MyFanss/MyFans/commit/d9cbf8f814ccf26ea815c1e63262e0b8a55aa743))
 * initialization and cli ([a7c449f](https://github.com/MyFanss/MyFans/commit/a7c449f68e41b1c3276d7393ce605218a4a5a7e0))
 * initialization and cli ([ba1ebb1](https://github.com/MyFanss/MyFans/commit/ba1ebb19a5400601704666ab3fe5699aa46eefae))
@@ -370,4 +371,4 @@
 
 ### Reverts
 
-* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/chriz-cloud/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
+* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/MyFanss/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
