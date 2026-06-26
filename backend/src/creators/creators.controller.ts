@@ -8,6 +8,7 @@ import { PlanDto } from './dto/plan.dto';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
 import { DashboardQueryDto } from './dto/creator-dashboard.dto';
+import { CreatePlanDto } from './dto/create-plan.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 
 @ApiTags('creators')
@@ -86,40 +87,13 @@ export class CreatorsController {
   @Post('plans')
   @Throttle({ short: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Create a new subscription plan' })
-  @ApiResponse({
-    status: 201,
-    description: 'Plan created successfully',
-    type: PlanDto,
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Invalid plan parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid plan parameters' } },
-  })
-  @ApiResponse({
-    status: 429,
-    description: 'Too many requests',
-    schema: { example: { statusCode: 429, message: 'Too many requests' } },
-  })
-  @ApiResponse({
-    status: 500,
-    description: 'Internal server error',
-    schema: { example: { statusCode: 500, message: 'Internal server error' } },
-  })
-  createPlan(
-    @Body()
-    body: {
-      creator: string;
-      asset: string;
-      amount: string;
-      intervalDays: number;
-    },
-  ) {
+  @ApiResponse({ status: 201, description: 'Plan created successfully' })
+  createPlan(@Body() planDto: CreatePlanDto) {
     return this.creatorsService.createPlan(
-      body.creator,
-      body.asset,
-      body.amount,
-      body.intervalDays,
+      planDto.creator,
+      planDto.asset,
+      planDto.amount,
+      planDto.intervalDays,
     );
   }
 
