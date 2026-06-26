@@ -19,3 +19,4 @@ testutils = ["soroban-sdk/testutils"]
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+proptest = { workspace = true }
