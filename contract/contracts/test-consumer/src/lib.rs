@@ -1,12 +1,96 @@
 #![no_std]
 use myfans_lib::{ContentType, MyfansError, SubscriptionStatus};
-use soroban_sdk::{contract, contractimpl, Env};
+use soroban_sdk::{contract, contractimpl, Env, Address, Symbol};
+
+/// Data keys for contract storage
+#[derive(Clone, Copy)]
+pub enum DataKey {
+    Admin = 0,
+    Paused = 1,
+}
+
+impl DataKey {
+    pub fn to_symbol(&self) -> Symbol {
+        match self {
+            DataKey::Admin => Symbol::short("admin"),
+            DataKey::Paused => Symbol::short("paused"),
+        }
+    }
+}
 
 #[contract]
 pub struct TestConsumer;
 
 #[contractimpl]
 impl TestConsumer {
+    /// Initialize the contract with an admin address.
+    /// 
+    /// Must be called once per contract instance to set up admin privileges.
+    /// Can only be called once; subsequent calls will fail with AlreadyInitialized.
+    pub fn initialize(env: Env, admin: Address) -> Result<(), MyfansError> {
+        let storage = env.storage().instance();
+        
+        // Check if already initialized
+        if storage.has(&DataKey::Admin.to_symbol()) {
+            return Err(MyfansError::AlreadyInitialized);
+        }
+        
+        // Set the admin
+        storage.set(&DataKey::Admin.to_symbol(), &admin);
+        
+        // Initialize paused to false
+        storage.set(&DataKey::Paused.to_symbol(), &false);
+        
+        Ok(())
+    }
+
+    /// Get the current admin address.
+    /// 
+    /// Returns the admin address set during initialization.
+    /// Fails with NotInitialized if initialize was not called first.
+    pub fn admin(env: Env) -> Result<Address, MyfansError> {
+        let storage = env.storage().instance();
+        
+        storage
+            .get::<_, Address>(&DataKey::Admin.to_symbol())
+            .ok_or(MyfansError::NotInitialized)
+    }
+
+    /// Set the paused status. Only the admin can call this.
+    /// 
+    /// Requires the caller to be the admin. Fails with NotAuthorized
+    /// if the caller is not the admin.
+    pub fn set_paused(env: Env, paused: bool) -> Result<(), MyfansError> {
+        let storage = env.storage().instance();
+        
+        // Get admin
+        let admin = storage
+            .get::<_, Address>(&DataKey::Admin.to_symbol())
+            .ok_or(MyfansError::NotInitialized)?;
+        
+        // Get current caller
+        let caller = env.invoker();
+        
+        // Check authorization
+        if caller != admin {
+            return Err(MyfansError::NotAuthorized);
+        }
+        
+        // Set paused status
+        storage.set(&DataKey::Paused.to_symbol(), &paused);
+        
+        Ok(())
+    }
+
+    /// Get the current paused status.
+    pub fn is_paused(env: Env) -> Result<bool, MyfansError> {
+        let storage = env.storage().instance();
+        
+        Ok(storage
+            .get::<_, bool>(&DataKey::Paused.to_symbol())
+            .unwrap_or(false))
+    }
+
     /// Returns true only when `status` is `Active`.
     pub fn is_active(_env: Env, status: SubscriptionStatus) -> bool {
         status == SubscriptionStatus::Active
@@ -27,7 +111,122 @@ impl TestConsumer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::Env;
+    use soroban_sdk::{Env, Address};
+
+    // ── Unauthorized Caller Tests (Admin-Protected Functions) ────────────
+
+    #[test]
+    fn test_set_paused_admin_authorization() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let id = env.register_contract(None, TestConsumer);
+        let client = TestConsumerClient::new(&env, &id);
+        
+        let admin = Address::generate(&env);
+        
+        // Initialize
+        let result = client.initialize(&admin);
+        assert_eq!(result, Ok(()));
+        
+        // Admin should be able to set paused
+        let result = client.set_paused(&true);
+        assert_eq!(result, Ok(()));
+        
+        // Verify paused is set
+        let is_paused = client.is_paused();
+        assert_eq!(is_paused, Ok(true));
+    }
+
+    #[test]
+    fn test_set_paused_unauthorized_caller_revert() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let id = env.register_contract(None, TestConsumer);
+        let client = TestConsumerClient::new(&env, &id);
+        
+        let admin = Address::generate(&env);
+        let unauthorized = Address::generate(&env);
+        
+        // Initialize with admin
+        let result = client.initialize(&admin);
+        assert_eq!(result, Ok(()));
+        
+        // Unauthorized caller tries to set paused
+        let result = client.try_set_paused(&true);
+        assert_eq!(
+            result,
+            Err(Ok(soroban_sdk::Error::from_contract_error(
+                MyfansError::NotAuthorized as u32
+            )))
+        );
+        
+        // Paused should still be false
+        let is_paused = client.is_paused();
+        assert_eq!(is_paused, Ok(false));
+    }
+
+    #[test]
+    fn test_set_paused_multiple_unauthorized_callers() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let id = env.register_contract(None, TestConsumer);
+        let client = TestConsumerClient::new(&env, &id);
+        
+        let admin = Address::generate(&env);
+        
+        // Initialize with admin
+        let result = client.initialize(&admin);
+        assert_eq!(result, Ok(()));
+        
+        // Multiple unauthorized callers should all be rejected
+        for _ in 0..3 {
+            let unauthorized = Address::generate(&env);
+            let result = client.try_set_paused(&true);
+            assert_eq!(
+                result,
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    MyfansError::NotAuthorized as u32
+                )))
+            );
+        }
+        
+        // Paused should still be false
+        let is_paused = client.is_paused();
+        assert_eq!(is_paused, Ok(false));
+    }
+
+    #[test]
+    fn test_set_paused_admin_can_toggle() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let id = env.register_contract(None, TestConsumer);
+        let client = TestConsumerClient::new(&env, &id);
+        
+        let admin = Address::generate(&env);
+        
+        // Initialize with admin
+        let result = client.initialize(&admin);
+        assert_eq!(result, Ok(()));
+        
+        // Admin sets paused to true
+        let result = client.set_paused(&true);
+        assert_eq!(result, Ok(()));
+        assert_eq!(client.is_paused(), Ok(true));
+        
+        // Admin sets paused to false
+        let result = client.set_paused(&false);
+        assert_eq!(result, Ok(()));
+        assert_eq!(client.is_paused(), Ok(false));
+        
+        // Admin sets paused to true again
+        let result = client.set_paused(&true);
+        assert_eq!(result, Ok(()));
+        assert_eq!(client.is_paused(), Ok(true));
+    }
 
     // ── SubscriptionStatus ────────────────────────────────────────────────
 
