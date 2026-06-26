@@ -934,6 +934,176 @@ mod test {
         }
     }
 
+    // ── myfans-lib integration via test-consumer (Issue #977) ─────────────────
+    //
+    // These tests drive `myfans-lib` types exclusively through the public
+    // `TestConsumerClient` interface and the `TestEnv` fixture, mirroring how
+    // an external consumer contract imports and uses the library.
+
+    mod myfans_lib_integration {
+        use super::*;
+        use myfans_lib::{
+            error_codes, test_fixtures::TestEnv, ContentType, MyfansError, SubscriptionStatus,
+        };
+        use soroban_sdk::Env;
+
+        fn deploy_consumer(env: &Env) -> TestConsumerClient<'_> {
+            let id = env.register_contract(None, TestConsumer);
+            TestConsumerClient::new(env, &id)
+        }
+
+        // ── SubscriptionStatus through TestConsumer ────────────────────────────
+
+        /// Only Active status returns true from is_active; all others return false.
+        #[test]
+        fn subscription_status_active_only_via_consumer() {
+            let f = TestEnv::new();
+            let client = deploy_consumer(&f.env);
+
+            assert!(client.is_active(&SubscriptionStatus::Active));
+            assert!(!client.is_active(&SubscriptionStatus::Pending));
+            assert!(!client.is_active(&SubscriptionStatus::Cancelled));
+            assert!(!client.is_active(&SubscriptionStatus::Expired));
+        }
+
+        /// SubscriptionStatus discriminants are stable and all variants are distinct.
+        #[test]
+        fn subscription_status_discriminants_are_stable_and_unique() {
+            assert_eq!(SubscriptionStatus::Pending as u32, 0);
+            assert_eq!(SubscriptionStatus::Active as u32, 1);
+            assert_eq!(SubscriptionStatus::Cancelled as u32, 2);
+            assert_eq!(SubscriptionStatus::Expired as u32, 3);
+            let all = [
+                SubscriptionStatus::Pending as u32,
+                SubscriptionStatus::Active as u32,
+                SubscriptionStatus::Cancelled as u32,
+                SubscriptionStatus::Expired as u32,
+            ];
+            for i in 0..all.len() {
+                for j in (i + 1)..all.len() {
+                    assert_ne!(all[i], all[j], "two SubscriptionStatus variants must not share a code");
+                }
+            }
+        }
+
+        // ── ContentType through TestConsumer ──────────────────────────────────
+
+        /// ContentType codes are returned correctly via the consumer contract.
+        #[test]
+        fn content_type_codes_via_consumer() {
+            let f = TestEnv::new();
+            let client = deploy_consumer(&f.env);
+
+            assert_eq!(client.content_code(&ContentType::Free), 0);
+            assert_eq!(client.content_code(&ContentType::Paid), 1);
+        }
+
+        // ── MyfansError through TestConsumer ──────────────────────────────────
+
+        /// All MyfansError discriminants are returned correctly via the consumer.
+        #[test]
+        fn myfans_error_all_codes_via_consumer() {
+            let f = TestEnv::new();
+            let client = deploy_consumer(&f.env);
+
+            assert_eq!(client.error_code(&MyfansError::AlreadyInitialized), 1);
+            assert_eq!(client.error_code(&MyfansError::NotInitialized), 2);
+            assert_eq!(client.error_code(&MyfansError::NotAuthorized), 3);
+            assert_eq!(client.error_code(&MyfansError::InsufficientBalance), 4);
+            assert_eq!(client.error_code(&MyfansError::InvalidFeeBps), 5);
+            assert_eq!(client.error_code(&MyfansError::RateLimited), 6);
+            assert_eq!(client.error_code(&MyfansError::AlreadyRegistered), 7);
+            assert_eq!(client.error_code(&MyfansError::NotLiked), 8);
+            assert_eq!(client.error_code(&MyfansError::Paused), 9);
+            assert_eq!(client.error_code(&MyfansError::ContentPriceNotSet), 101);
+            assert_eq!(client.error_code(&MyfansError::SubscriptionNotFound), 102);
+            assert_eq!(client.error_code(&MyfansError::SubscriptionExpired), 103);
+            assert_eq!(client.error_code(&MyfansError::AdminNotInitialized), 104);
+            assert_eq!(client.error_code(&MyfansError::NegativeMinBalance), 105);
+            assert_eq!(client.error_code(&MyfansError::MinBalanceViolation), 106);
+        }
+
+        /// Init and admin path MyfansError codes are consistent with error_codes module.
+        #[test]
+        fn myfans_error_init_and_admin_codes_consistent() {
+            let f = TestEnv::new();
+            let client = deploy_consumer(&f.env);
+
+            let already_init = client.error_code(&MyfansError::AlreadyInitialized);
+            let not_init = client.error_code(&MyfansError::NotInitialized);
+            let admin_not_init = client.error_code(&MyfansError::AdminNotInitialized);
+            let not_authorized = client.error_code(&MyfansError::NotAuthorized);
+
+            assert_eq!(already_init, error_codes::subscription::ALREADY_INITIALIZED);
+            assert_eq!(already_init, error_codes::content_access::ALREADY_INITIALIZED);
+            assert_eq!(already_init, error_codes::creator_registry::ALREADY_INITIALIZED);
+            assert_eq!(not_init, error_codes::creator_registry::NOT_INITIALIZED);
+            // treasury NOT_INITIALIZED is 5 (its own numbering), not shared with MyfansError::NotInitialized.
+            assert_eq!(error_codes::treasury::NOT_INITIALIZED, 5u32);
+            assert_eq!(admin_not_init, MyfansError::AdminNotInitialized as u32);
+            assert_eq!(not_authorized, error_codes::creator_registry::UNAUTHORIZED);
+        }
+
+        // ── error_codes module constants ──────────────────────────────────────
+
+        /// All error_codes sub-module constants are non-zero and stable.
+        #[test]
+        fn error_codes_all_non_zero() {
+            assert!(error_codes::subscription::ALREADY_INITIALIZED > 0);
+            assert!(error_codes::subscription::PLAN_NOT_FOUND > 0);
+            assert!(error_codes::content_access::ALREADY_INITIALIZED > 0);
+            assert!(error_codes::content_access::CONTENT_PRICE_NOT_SET > 0);
+            assert!(error_codes::creator_registry::ALREADY_INITIALIZED > 0);
+            assert!(error_codes::creator_registry::UNAUTHORIZED > 0);
+            assert!(error_codes::treasury::NOT_INITIALIZED > 0);
+            assert!(error_codes::treasury::INSUFFICIENT_BALANCE > 0);
+            assert!(error_codes::earnings::ALREADY_INITIALIZED > 0);
+            assert!(error_codes::creator_earnings::NOT_AUTHORIZED > 0);
+            assert!(error_codes::myfans_token::UNAUTHORIZED > 0);
+        }
+
+        // ── TestEnv fixture integration ────────────────────────────────────────
+
+        /// TestEnv roles are distinct, mint works, and ledger advancement works.
+        #[test]
+        fn test_env_full_integration() {
+            let f = TestEnv::new();
+
+            // All four roles must be distinct.
+            let addrs = [&f.admin, &f.fee_recipient, &f.creator, &f.fan];
+            for i in 0..addrs.len() {
+                for j in (i + 1)..addrs.len() {
+                    assert_ne!(addrs[i], addrs[j], "TestEnv roles must be distinct");
+                }
+            }
+
+            // Minting lands on the correct address.
+            f.mint(&f.fan, 5_000);
+            assert_eq!(f.token_client.balance(&f.fan), 5_000);
+            assert_eq!(f.token_client.balance(&f.creator), 0);
+
+            // Ledger advancement increments the sequence.
+            let seq = f.env.ledger().sequence();
+            f.advance_ledger(10);
+            assert_eq!(f.env.ledger().sequence(), seq + 10);
+        }
+
+        /// Two TestEnv instances are fully independent.
+        #[test]
+        fn two_test_envs_are_independent() {
+            let f1 = TestEnv::new();
+            let f2 = TestEnv::new();
+
+            f1.mint(&f1.fan, 1_000);
+            assert_eq!(f1.token_client.balance(&f1.fan), 1_000);
+
+            // f2 has its own Env so its fan balance is independent (zero).
+            f2.mint(&f2.creator, 500);
+            assert_eq!(f2.token_client.balance(&f2.creator), 500);
+            assert_eq!(f2.token_client.balance(&f2.fan), 0);
+        }
+    }
+
     // ── treasury integration (Issue #907) ─────────────────────────────────
     //
     // Test-consumer pattern: drive `treasury` exclusively through its public
