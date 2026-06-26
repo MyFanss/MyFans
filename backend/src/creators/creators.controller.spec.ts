@@ -60,6 +60,151 @@ describe('CreatorsController', () => {
       await controller.listCreators('true');
       expect(mockCreatorsService.listCreators).toHaveBeenCalledWith(true);
     });
+
+    it('should return array of plans', async () => {
+      const mockPlans = [
+        { id: 1, creator: 'user1', asset: 'native', amount: '100', intervalDays: 30 },
+        { id: 2, creator: 'user2', asset: 'native', amount: '50', intervalDays: 7 },
+      ];
+      mockCreatorsService.listCreators.mockResolvedValue(mockPlans);
+
+      const result = await controller.listCreators('false');
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result.length).toBe(2);
+    });
+
+    it('should propagate service errors', async () => {
+      const error = new Error('DB error');
+      mockCreatorsService.listCreators.mockRejectedValue(error);
+
+      await expect(controller.listCreators(undefined)).rejects.toThrow(error);
+    });
+  });
+
+  describe('createPlan', () => {
+    it('should call service.createPlan with correct parameters', async () => {
+      const planBody = {
+        creator: 'user1',
+        asset: 'native',
+        amount: '100',
+        intervalDays: 30,
+      };
+      const mockPlan = { id: 1, ...planBody };
+      mockCreatorsService.createPlan.mockResolvedValue(mockPlan);
+
+      await controller.createPlan(planBody);
+
+      expect(mockCreatorsService.createPlan).toHaveBeenCalledWith(
+        'user1',
+        'native',
+        '100',
+        30,
+      );
+    });
+
+    it('should return created plan with id', async () => {
+      const planBody = {
+        creator: 'user1',
+        asset: 'native',
+        amount: '100',
+        intervalDays: 30,
+      };
+      const mockPlan = { id: 1, ...planBody };
+      mockCreatorsService.createPlan.mockResolvedValue(mockPlan);
+
+      const result = await controller.createPlan(planBody);
+
+      expect(result).toEqual(mockPlan);
+      expect(result.id).toBe(1);
+    });
+
+    it('should propagate service errors', async () => {
+      const planBody = {
+        creator: 'user1',
+        asset: 'native',
+        amount: '100',
+        intervalDays: 30,
+      };
+      const error = new Error('Invalid plan');
+      mockCreatorsService.createPlan.mockRejectedValue(error);
+
+      await expect(controller.createPlan(planBody)).rejects.toThrow(error);
+    });
+  });
+
+  describe('getAllPlans', () => {
+    it('should call service.findAllPlans with pagination', async () => {
+      const pagination = { page: 1, limit: 20 };
+      const mockResponse = new PaginatedResponseDto([], 20, null, false);
+      mockCreatorsService.findAllPlans.mockReturnValue(mockResponse);
+
+      await controller.getAllPlans(pagination);
+
+      expect(mockCreatorsService.findAllPlans).toHaveBeenCalledWith(pagination);
+    });
+
+    it('should return paginated plans', async () => {
+      const pagination = { page: 1, limit: 20 };
+      const mockPlans = [
+        { id: 1, creator: 'user1', asset: 'native', amount: '100', intervalDays: 30 },
+      ];
+      const mockResponse = new PaginatedResponseDto(mockPlans, 20, null, false);
+      mockCreatorsService.findAllPlans.mockReturnValue(mockResponse);
+
+      const result = await controller.getAllPlans(pagination);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.limit).toBe(20);
+    });
+  });
+
+  describe('getPlans', () => {
+    it('should call service.findCreatorPlans with address and pagination', async () => {
+      const address = 'GBCQ6C7OXWTKJ7APCIQPKK6X4CQBFGWJKW35GD7H5GMVVDANQCXLSV7';
+      const pagination = { page: 1, limit: 20 };
+      const mockResponse = new PaginatedResponseDto([], 20, null, false);
+      mockCreatorsService.findCreatorPlans.mockReturnValue(mockResponse);
+
+      await controller.getPlans(address, pagination);
+
+      expect(mockCreatorsService.findCreatorPlans).toHaveBeenCalledWith(
+        address,
+        pagination,
+      );
+    });
+
+    it('should return creator plans', async () => {
+      const address = 'GBCQ6C7OXWTKJ7APCIQPKK6X4CQBFGWJKW35GD7H5GMVVDANQCXLSV7';
+      const pagination = { page: 1, limit: 20 };
+      const mockPlans = [
+        { id: 1, creator: address, asset: 'native', amount: '100', intervalDays: 30 },
+      ];
+      const mockResponse = new PaginatedResponseDto(mockPlans, 20, null, false);
+      mockCreatorsService.findCreatorPlans.mockReturnValue(mockResponse);
+
+      const result = await controller.getPlans(address, pagination);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].creator).toBe(address);
+    });
+  });
+
+  describe('getDashboard', () => {
+    it('should call dashboardService.getDashboard with address and query', async () => {
+      const address = 'GBCQ6C7OXWTKJ7APCIQPKK6X4CQBFGWJKW35GD7H5GMVVDANQCXLSV7';
+      const query = { period: 'month' };
+      const mockDashboard = {
+        totalRevenue: '1000',
+        subscriberCount: 10,
+      };
+      const mockDashboardService = controller['dashboardService'];
+      jest.spyOn(mockDashboardService, 'getDashboard').mockReturnValue(mockDashboard as any);
+
+      await controller.getDashboard(address, query as any);
+
+      expect(mockDashboardService.getDashboard).toHaveBeenCalledWith(address, query);
+    });
   });
 
 
