@@ -72,6 +72,7 @@
 * merge conflicts ([1de5e12](https://github.com/MyFanss/MyFans/commit/1de5e1284184ab4fc035b09efdd3756b193a19b6))
 * merge issues ([dc4d47c](https://github.com/MyFanss/MyFans/commit/dc4d47cb5ad9108bd6119041e1ed6c9270f360e5))
 * minimatch issue ([56db84a](https://github.com/MyFanss/MyFans/commit/56db84a1c0909e0561d912ee73b1903c6fa897c7))
+* **myfans-lib:** add #[repr(u32)] to stabilize error discriminants (fix [#975](https://github.com/MyFanss/MyFans/issues/975)) ([cad82fe](https://github.com/MyFanss/MyFans/commit/cad82feaaedc42815097070fda29215ffafdea63))
 * **pagination:** standardize utils in comments, posts, users services ([2da1e6b](https://github.com/MyFanss/MyFans/commit/2da1e6b8516d9d487ae0b3796a5409645601f3fd)), closes [#364](https://github.com/MyFanss/MyFans/issues/364)
 * **reconciler:** narrow action type to satisfy applyRepair parameter ([b9f0d99](https://github.com/MyFanss/MyFans/commit/b9f0d99999541d9de4a6e06a55fa32874b5ed449))
 * remove duplicate keys and missing comma in package.json ([31fd41c](https://github.com/MyFanss/MyFans/commit/31fd41cc95eec7ce9f4a3d176f84ff3c0816a791))
