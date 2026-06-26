@@ -468,6 +468,289 @@ describe('CreatorsService', () => {
     });
   });
 
+  describe('happy path - createPlan', () => {
+    it('should create a plan with valid inputs and return plan with id, creator, asset, amount, intervalDays', () => {
+      // Act
+      const plan = service.createPlan('creator1', 'USDC', '100.50', 30);
+
+      // Assert
+      expect(plan).toBeDefined();
+      expect(plan.id).toBeGreaterThan(0);
+      expect(plan.creator).toBe('creator1');
+      expect(plan.asset).toBe('USDC');
+      expect(plan.amount).toBe('100.50');
+      expect(plan.intervalDays).toBe(30);
+    });
+
+    it('should publish PlanCreatedEvent when EventBus is wired', () => {
+      const publish = jest.fn();
+      const module = Test.createTestingModule({
+        providers: [
+          CreatorsService,
+          { provide: EventBus, useValue: { publish } },
+          {
+            provide: getRepositoryToken(User),
+            useValue: {
+              createQueryBuilder: jest.fn(() => mockQueryBuilder),
+            },
+          },
+        ],
+      });
+
+      return module.compile().then((m) => {
+        const svc = m.get<CreatorsService>(CreatorsService);
+        svc.createPlan('creator1', 'XLM', '50', 7);
+
+        expect(publish).toHaveBeenCalledTimes(1);
+        expect(publish.mock.calls[0][0].constructor.name).toBe('PlanCreatedEvent');
+      });
+    });
+  });
+
+  describe('happy path - getPlan', () => {
+    it('should retrieve a created plan by id', () => {
+      // Arrange
+      const plan1 = service.createPlan('creator1', 'USDC', '100', 30);
+
+      // Act
+      const retrieved = service.getPlan(plan1.id);
+
+      // Assert
+      expect(retrieved).toBeDefined();
+      expect(retrieved?.id).toBe(plan1.id);
+      expect(retrieved?.creator).toBe('creator1');
+    });
+
+    it('should return undefined for non-existent plan id', () => {
+      // Act
+      const retrieved = service.getPlan(99999);
+
+      // Assert
+      expect(retrieved).toBeUndefined();
+    });
+  });
+
+  describe('happy path - getCreatorPlans', () => {
+    it('should return all plans for a creator', () => {
+      // Arrange
+      service.createPlan('alice', 'USDC', '100', 30);
+      service.createPlan('alice', 'XLM', '50', 7);
+      service.createPlan('bob', 'USDC', '75', 14);
+
+      // Act
+      const alicePlans = service.getCreatorPlans('alice');
+
+      // Assert
+      expect(alicePlans).toHaveLength(2);
+      expect(alicePlans.every((p) => p.creator === 'alice')).toBe(true);
+    });
+
+    it('should return empty array for creator with no plans', () => {
+      // Act
+      const plans = service.getCreatorPlans('nonexistent');
+
+      // Assert
+      expect(plans).toHaveLength(0);
+    });
+  });
+
+  describe('happy path - findAllPlans', () => {
+    it('should return all plans paginated with default limit', () => {
+      // Arrange
+      service.createPlan('alice', 'USDC', '100', 30);
+      service.createPlan('bob', 'XLM', '50', 7);
+
+      // Act
+      const result = service.findAllPlans({ limit: 20 });
+
+      // Assert
+      expect(result.data).toHaveLength(2);
+      expect(result.limit).toBe(20);
+      expect(result.hasMore).toBe(false);
+      // nextCursor is the last plan's ID when there are results
+      expect(result.nextCursor).toBe('2');
+    });
+
+    it('should paginate correctly with cursor and limit', () => {
+      // Arrange
+      service.createPlan('a', 'USDC', '1', 1);
+      service.createPlan('b', 'USDC', '2', 2);
+      service.createPlan('c', 'USDC', '3', 3);
+
+      // Act - first page
+      const page1 = service.findAllPlans({ limit: 1 });
+
+      // Assert first page
+      expect(page1.data).toHaveLength(1);
+      expect(page1.hasMore).toBe(true);
+      expect(page1.nextCursor).toBe('1');
+
+      // Act - second page
+      const page2 = service.findAllPlans({
+        cursor: page1.nextCursor ?? undefined,
+        limit: 1,
+      });
+
+      // Assert second page
+      expect(page2.data).toHaveLength(1);
+      expect(page2.data[0].id).toBeGreaterThan(page1.data[0].id);
+    });
+
+    it('should return data with correct shape', () => {
+      // Arrange
+      service.createPlan('creator1', 'USDC', '100.50', 30);
+
+      // Act
+      const result = service.findAllPlans({ limit: 20 });
+
+      // Assert
+      expect(result.data[0]).toHaveProperty('id');
+      expect(result.data[0]).toHaveProperty('creator');
+      expect(result.data[0]).toHaveProperty('asset');
+      expect(result.data[0]).toHaveProperty('amount');
+      expect(result.data[0]).toHaveProperty('intervalDays');
+    });
+  });
+
+  describe('happy path - findCreatorPlans', () => {
+    it('should return paginated plans for a specific creator', () => {
+      // Arrange
+      service.createPlan('alice', 'USDC', '100', 30);
+      service.createPlan('alice', 'XLM', '50', 7);
+      service.createPlan('bob', 'USDC', '75', 14);
+
+      // Act
+      const result = service.findCreatorPlans('alice', { limit: 20 });
+
+      // Assert
+      expect(result.data).toHaveLength(2);
+      expect(result.data.every((p) => p.creator === 'alice')).toBe(true);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should handle pagination with cursor for creator plans', () => {
+      // Arrange
+      service.createPlan('alice', 'USDC', '1', 1);
+      service.createPlan('alice', 'XLM', '2', 2);
+      service.createPlan('alice', 'ETH', '3', 3);
+
+      // Act
+      const page1 = service.findCreatorPlans('alice', { limit: 1 });
+      const page2 = service.findCreatorPlans('alice', {
+        cursor: page1.nextCursor ?? undefined,
+        limit: 1,
+      });
+
+      // Assert
+      expect(page1.data).toHaveLength(1);
+      expect(page2.data).toHaveLength(1);
+      expect(page1.data[0].id).not.toBe(page2.data[0].id);
+    });
+
+    it('should return empty pagination for creator with no plans', () => {
+      // Act
+      const result = service.findCreatorPlans('nonexistent', { limit: 20 });
+
+      // Assert
+      expect(result.data).toHaveLength(0);
+      expect(result.hasMore).toBe(false);
+      expect(result.nextCursor).toBeNull();
+    });
+  });
+
+  describe('happy path - listCreators', () => {
+    it('should list all plans without chain merge', async () => {
+      // Arrange
+      service.createPlan('alice', 'USDC', '100', 30);
+      service.createPlan('bob', 'XLM', '50', 7);
+
+      // Act
+      const result = await service.listCreators(false);
+
+      // Assert
+      expect(result).toHaveLength(2);
+      expect(result[0]).toHaveProperty('id');
+      expect(result[0]).toHaveProperty('creator');
+      expect(result[0]).toHaveProperty('asset');
+    });
+
+    it('should return sorted plans by id', async () => {
+      // Arrange
+      const plan1 = service.createPlan('alice', 'USDC', '100', 30);
+      const plan2 = service.createPlan('bob', 'XLM', '50', 7);
+
+      // Act
+      const result = await service.listCreators(false);
+
+      // Assert
+      expect(result[0].id).toBe(plan1.id);
+      expect(result[1].id).toBe(plan2.id);
+    });
+
+    it('should mark syncStatus as unknown when chain reader is not configured', async () => {
+      // Arrange
+      service.createPlan('alice', 'USDC', '100', 30);
+
+      // Act
+      const result = await service.listCreators(true);
+
+      // Assert
+      expect(result[0]).toHaveProperty('syncStatus');
+      expect(result[0].syncStatus).toBe('unknown');
+    });
+  });
+
+  describe('happy path - searchCreators', () => {
+    it('should search creators and return paginated results', async () => {
+      // Arrange
+      const mockUsers: User[] = [
+        createMockUser('1', 'alice', 'Alice Smith'),
+        createMockUser('2', 'bob', 'Bob Jones'),
+      ];
+
+      (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
+        entities: mockUsers,
+        raw: [{ creator_bio: 'Alice bio' }, { creator_bio: 'Bob bio' }],
+      });
+
+      // Act
+      const result = await service.searchCreators({
+        q: 'alice',
+        limit: 20,
+      });
+
+      // Assert
+      expect(result.data).toHaveLength(2);
+      expect(result.limit).toBe(20);
+      expect(result.hasMore).toBe(false);
+      expect(result.data[0]).toHaveProperty('id');
+      expect(result.data[0]).toHaveProperty('username');
+      expect(result.data[0]).toHaveProperty('display_name');
+      expect(result.data[0]).toHaveProperty('avatar_url');
+      expect(result.data[0]).toHaveProperty('bio');
+    });
+
+    it('should return correct pagination metadata', async () => {
+      // Arrange
+      const mockUsers: User[] = Array.from({ length: 6 }, (_, i) =>
+        createMockUser(`${i}`, `user${i}`, `User ${i}`),
+      );
+
+      (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
+        entities: mockUsers,
+        raw: mockUsers.map(() => ({ creator_bio: 'Bio' })),
+      });
+
+      // Act
+      const result = await service.searchCreators({ limit: 5 });
+
+      // Assert
+      expect(result.data).toHaveLength(5);
+      expect(result.hasMore).toBe(true);
+      expect(result.nextCursor).toBe('user4');
+    });
+  });
+
   describe('logging and resilience', () => {
     it('createPlan logs debug when EventBus is not wired', async () => {
       const module: TestingModule = await Test.createTestingModule({
