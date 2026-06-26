@@ -139,3 +139,19 @@ jobs:
           magic="$(xxd -p -l 4 "$wasm_path" 2>/dev/null || od -A n -N 4 -t x1 "$wasm_path" | tr -d ' ')"
           test "$magic" = "0061736d"
         working-directory: contract
+
+      - name: Build wasm release for myfans-lib
+        run: cargo build --release --target wasm32-unknown-unknown -p myfans-lib
+        working-directory: contract
+
+      - name: Verify myfans_lib.wasm artifact exists
+        run: test -f target/wasm32-unknown-unknown/release/myfans_lib.wasm
+        working-directory: contract
+
+      - name: Verify myfans_lib wasm
+        run: |
+          wasm_path="target/wasm32-unknown-unknown/release/myfans_lib.wasm"
+          test -s "$wasm_path"
+          magic="$(xxd -p -l 4 "$wasm_path" 2>/dev/null || od -A n -N 4 -t x1 "$wasm_path" | tr -d ' ')"
+          test "$magic" = "0061736d"
+        working-directory: contract
