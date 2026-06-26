@@ -25,6 +25,7 @@ pub enum ContentType {
 /// Shared error enum across all MyFans contracts.
 /// Codes preserved exactly for test snapshot compatibility.
 #[contracterror]
+#[repr(u32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MyfansError {
     /// Common init/admin errors
@@ -51,6 +52,10 @@ pub enum MyfansError {
     NegativeMinBalance = 105,
     MinBalanceViolation = 106,
 }
+
+// Ensure numeric discriminants are represented as `u32` in the compiled ABI.
+// This keeps the contracterror discriminants stable across builds and targets.
+
 
 /// Stable numeric error codes for every MyFans contract, grouped by contract.
 /// Clients can import these instead of hard-coding magic numbers.
