@@ -1468,5 +1468,79 @@ mod test {
                 Err(Ok(SorobanError::from_contract_error(1))) // AlreadyInitialized
             );
         }
+
+        /// Snapshot/restore consistency: earnings values remain stable across no-op operations.
+        ///
+        /// This test verifies that after a sequence of state-changing operations
+        /// (record and withdraw), the recorded storage values do not drift or become
+        /// corrupted when subsequent no-op queries are performed. The snapshot is
+        /// taken after the sequence completes, and then re-verified to ensure
+        /// consistency.
+        #[test]
+        fn test_snapshot_restore_consistency() {
+            let env = Env::default();
+            let (client, _admin, creator1) = setup(&env);
+            let creator2 = Address::generate(&env);
+
+            // ── Sequence of state-changing operations ──
+
+            // Initialize with an admin (done in setup).
+            // Record earnings for two creators.
+            client.record(&creator1, &1_000);
+            client.record(&creator2, &2_500);
+
+            // Record additional earnings for creator1.
+            client.record(&creator1, &500);
+
+            // Perform partial withdrawal from creator1.
+            client.withdraw(&creator1, &300);
+
+            // ── Take initial snapshot ──
+
+            let snapshot_admin = client.admin();
+            let snapshot_earnings_creator1 = client.get_earnings(&creator1);
+            let snapshot_earnings_creator2 = client.get_earnings(&creator2);
+
+            // ── Perform no-op operations and ledger advance ──
+
+            // Reading admin multiple times does not change state.
+            let _ = client.admin();
+            let _ = client.admin();
+
+            // Reading earnings multiple times does not change state.
+            let _ = client.get_earnings(&creator1);
+            let _ = client.get_earnings(&creator2);
+
+            // Advance the ledger (simulates time passing).
+            env.ledger().with_mut(|ledger| {
+                ledger.sequence = ledger.sequence.saturating_add(100);
+            });
+
+            // ── Restore and verify snapshot consistency ──
+
+            // Re-read the same values after no-op operations.
+            let restored_admin = client.admin();
+            let restored_earnings_creator1 = client.get_earnings(&creator1);
+            let restored_earnings_creator2 = client.get_earnings(&creator2);
+
+            // Assert that snapshot values exactly match restored values.
+            assert_eq!(
+                snapshot_admin, restored_admin,
+                "admin mismatch after restore"
+            );
+            assert_eq!(
+                snapshot_earnings_creator1, restored_earnings_creator1,
+                "creator1 earnings mismatch after restore"
+            );
+            assert_eq!(
+                snapshot_earnings_creator2, restored_earnings_creator2,
+                "creator2 earnings mismatch after restore"
+            );
+
+            // Verify expected values (no drift).
+            assert_eq!(restored_admin, client.admin());
+            assert_eq!(restored_earnings_creator1, 1_200); // 1000 + 500 - 300
+            assert_eq!(restored_earnings_creator2, 2_500);
+        }
     }
 }
