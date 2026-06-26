@@ -1313,6 +1313,7 @@ mod test {
     mod earnings_integration {
         use earnings::{Earnings, EarningsClient};
         use soroban_sdk::{testutils::Address as _, Address, Env, Error as SorobanError};
+        use proptest::proptest;
 
         fn setup(env: &Env) -> (EarningsClient<'_>, Address, Address) {
             env.mock_all_auths();
