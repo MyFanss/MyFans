@@ -1,12 +1,56 @@
 #![no_std]
 use myfans_lib::{ContentType, MyfansError, SubscriptionStatus};
-use soroban_sdk::{contract, contractimpl, Env};
+use soroban_sdk::{contract, contractimpl, Env, Address, Symbol};
+
+/// Data keys for contract storage
+#[derive(Clone, Copy)]
+pub enum DataKey {
+    Admin = 0,
+}
+
+impl DataKey {
+    pub fn to_symbol(&self) -> Symbol {
+        match self {
+            DataKey::Admin => Symbol::short("admin"),
+        }
+    }
+}
 
 #[contract]
 pub struct TestConsumer;
 
 #[contractimpl]
 impl TestConsumer {
+    /// Initialize the contract with an admin address.
+    /// 
+    /// Must be called once per contract instance to set up admin privileges.
+    /// Can only be called once; subsequent calls will fail with AlreadyInitialized.
+    pub fn initialize(env: Env, admin: Address) -> Result<(), MyfansError> {
+        let storage = env.storage().instance();
+        
+        // Check if already initialized
+        if storage.has(&DataKey::Admin.to_symbol()) {
+            return Err(MyfansError::AlreadyInitialized);
+        }
+        
+        // Set the admin
+        storage.set(&DataKey::Admin.to_symbol(), &admin);
+        
+        Ok(())
+    }
+
+    /// Get the current admin address.
+    /// 
+    /// Returns the admin address set during initialization.
+    /// Fails with NotInitialized if initialize was not called first.
+    pub fn admin(env: Env) -> Result<Address, MyfansError> {
+        let storage = env.storage().instance();
+        
+        storage
+            .get::<_, Address>(&DataKey::Admin.to_symbol())
+            .ok_or(MyfansError::NotInitialized)
+    }
+
     /// Returns true only when `status` is `Active`.
     pub fn is_active(_env: Env, status: SubscriptionStatus) -> bool {
         status == SubscriptionStatus::Active
@@ -27,7 +71,95 @@ impl TestConsumer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::Env;
+    use soroban_sdk::{Env, Address};
+
+    // ── Initialize and Admin Tests ────────────────────────────────────────
+
+    #[test]
+    fn test_initialize_sets_admin() {
+        let env = Env::default();
+        let id = env.register_contract(None, TestConsumer);
+        let client = TestConsumerClient::new(&env, &id);
+        
+        let admin = Address::generate(&env);
+        
+        // Initialize should succeed
+        let result = client.initialize(&admin);
+        assert_eq!(result, Ok(()));
+        
+        // Admin should return the set admin
+        let stored_admin = client.admin();
+        assert_eq!(stored_admin, Ok(admin));
+    }
+
+    #[test]
+    fn test_initialize_idempotency_check() {
+        let env = Env::default();
+        let id = env.register_contract(None, TestConsumer);
+        let client = TestConsumerClient::new(&env, &id);
+        
+        let admin1 = Address::generate(&env);
+        let admin2 = Address::generate(&env);
+        
+        // First initialize should succeed
+        let result1 = client.initialize(&admin1);
+        assert_eq!(result1, Ok(()));
+        
+        // Second initialize with different admin should fail with AlreadyInitialized
+        let result2 = client.try_initialize(&admin2);
+        assert_eq!(
+            result2,
+            Err(Ok(soroban_sdk::Error::from_contract_error(
+                MyfansError::AlreadyInitialized as u32
+            )))
+        );
+        
+        // Admin should still be the first one
+        let stored_admin = client.admin();
+        assert_eq!(stored_admin, Ok(admin1));
+    }
+
+    #[test]
+    fn test_admin_not_initialized() {
+        let env = Env::default();
+        let id = env.register_contract(None, TestConsumer);
+        let client = TestConsumerClient::new(&env, &id);
+        
+        // Calling admin without initialize should fail with NotInitialized
+        let result = client.try_admin();
+        assert_eq!(
+            result,
+            Err(Ok(soroban_sdk::Error::from_contract_error(
+                MyfansError::NotInitialized as u32
+            )))
+        );
+    }
+
+    #[test]
+    fn test_initialize_different_admins() {
+        let env = Env::default();
+        
+        // Deploy two instances
+        let id1 = env.register_contract(None, TestConsumer);
+        let client1 = TestConsumerClient::new(&env, &id1);
+        
+        let id2 = env.register_contract(None, TestConsumer);
+        let client2 = TestConsumerClient::new(&env, &id2);
+        
+        let admin1 = Address::generate(&env);
+        let admin2 = Address::generate(&env);
+        
+        // Initialize each with different admin
+        let result1 = client1.initialize(&admin1);
+        assert_eq!(result1, Ok(()));
+        
+        let result2 = client2.initialize(&admin2);
+        assert_eq!(result2, Ok(()));
+        
+        // Each should return their respective admin
+        assert_eq!(client1.admin(), Ok(admin1));
+        assert_eq!(client2.admin(), Ok(admin2));
+    }
 
     // ── SubscriptionStatus ────────────────────────────────────────────────
 
