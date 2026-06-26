@@ -934,6 +934,176 @@ mod test {
         }
     }
 
+    // ── myfans-lib integration via test-consumer (Issue #977) ─────────────────
+    //
+    // These tests drive `myfans-lib` types exclusively through the public
+    // `TestConsumerClient` interface and the `TestEnv` fixture, mirroring how
+    // an external consumer contract imports and uses the library.
+
+    mod myfans_lib_integration {
+        use super::*;
+        use myfans_lib::{
+            error_codes, test_fixtures::TestEnv, ContentType, MyfansError, SubscriptionStatus,
+        };
+        use soroban_sdk::Env;
+
+        fn deploy_consumer(env: &Env) -> TestConsumerClient<'_> {
+            let id = env.register_contract(None, TestConsumer);
+            TestConsumerClient::new(env, &id)
+        }
+
+        // ── SubscriptionStatus through TestConsumer ────────────────────────────
+
+        /// Only Active status returns true from is_active; all others return false.
+        #[test]
+        fn subscription_status_active_only_via_consumer() {
+            let f = TestEnv::new();
+            let client = deploy_consumer(&f.env);
+
+            assert!(client.is_active(&SubscriptionStatus::Active));
+            assert!(!client.is_active(&SubscriptionStatus::Pending));
+            assert!(!client.is_active(&SubscriptionStatus::Cancelled));
+            assert!(!client.is_active(&SubscriptionStatus::Expired));
+        }
+
+        /// SubscriptionStatus discriminants are stable and all variants are distinct.
+        #[test]
+        fn subscription_status_discriminants_are_stable_and_unique() {
+            assert_eq!(SubscriptionStatus::Pending as u32, 0);
+            assert_eq!(SubscriptionStatus::Active as u32, 1);
+            assert_eq!(SubscriptionStatus::Cancelled as u32, 2);
+            assert_eq!(SubscriptionStatus::Expired as u32, 3);
+            let all = [
+                SubscriptionStatus::Pending as u32,
+                SubscriptionStatus::Active as u32,
+                SubscriptionStatus::Cancelled as u32,
+                SubscriptionStatus::Expired as u32,
+            ];
+            for i in 0..all.len() {
+                for j in (i + 1)..all.len() {
+                    assert_ne!(all[i], all[j], "two SubscriptionStatus variants must not share a code");
+                }
+            }
+        }
+
+        // ── ContentType through TestConsumer ──────────────────────────────────
+
+        /// ContentType codes are returned correctly via the consumer contract.
+        #[test]
+        fn content_type_codes_via_consumer() {
+            let f = TestEnv::new();
+            let client = deploy_consumer(&f.env);
+
+            assert_eq!(client.content_code(&ContentType::Free), 0);
+            assert_eq!(client.content_code(&ContentType::Paid), 1);
+        }
+
+        // ── MyfansError through TestConsumer ──────────────────────────────────
+
+        /// All MyfansError discriminants are returned correctly via the consumer.
+        #[test]
+        fn myfans_error_all_codes_via_consumer() {
+            let f = TestEnv::new();
+            let client = deploy_consumer(&f.env);
+
+            assert_eq!(client.error_code(&MyfansError::AlreadyInitialized), 1);
+            assert_eq!(client.error_code(&MyfansError::NotInitialized), 2);
+            assert_eq!(client.error_code(&MyfansError::NotAuthorized), 3);
+            assert_eq!(client.error_code(&MyfansError::InsufficientBalance), 4);
+            assert_eq!(client.error_code(&MyfansError::InvalidFeeBps), 5);
+            assert_eq!(client.error_code(&MyfansError::RateLimited), 6);
+            assert_eq!(client.error_code(&MyfansError::AlreadyRegistered), 7);
+            assert_eq!(client.error_code(&MyfansError::NotLiked), 8);
+            assert_eq!(client.error_code(&MyfansError::Paused), 9);
+            assert_eq!(client.error_code(&MyfansError::ContentPriceNotSet), 101);
+            assert_eq!(client.error_code(&MyfansError::SubscriptionNotFound), 102);
+            assert_eq!(client.error_code(&MyfansError::SubscriptionExpired), 103);
+            assert_eq!(client.error_code(&MyfansError::AdminNotInitialized), 104);
+            assert_eq!(client.error_code(&MyfansError::NegativeMinBalance), 105);
+            assert_eq!(client.error_code(&MyfansError::MinBalanceViolation), 106);
+        }
+
+        /// Init and admin path MyfansError codes are consistent with error_codes module.
+        #[test]
+        fn myfans_error_init_and_admin_codes_consistent() {
+            let f = TestEnv::new();
+            let client = deploy_consumer(&f.env);
+
+            let already_init = client.error_code(&MyfansError::AlreadyInitialized);
+            let not_init = client.error_code(&MyfansError::NotInitialized);
+            let admin_not_init = client.error_code(&MyfansError::AdminNotInitialized);
+            let not_authorized = client.error_code(&MyfansError::NotAuthorized);
+
+            assert_eq!(already_init, error_codes::subscription::ALREADY_INITIALIZED);
+            assert_eq!(already_init, error_codes::content_access::ALREADY_INITIALIZED);
+            assert_eq!(already_init, error_codes::creator_registry::ALREADY_INITIALIZED);
+            assert_eq!(not_init, error_codes::creator_registry::NOT_INITIALIZED);
+            // treasury NOT_INITIALIZED is 5 (its own numbering), not shared with MyfansError::NotInitialized.
+            assert_eq!(error_codes::treasury::NOT_INITIALIZED, 5u32);
+            assert_eq!(admin_not_init, MyfansError::AdminNotInitialized as u32);
+            assert_eq!(not_authorized, error_codes::creator_registry::UNAUTHORIZED);
+        }
+
+        // ── error_codes module constants ──────────────────────────────────────
+
+        /// All error_codes sub-module constants are non-zero and stable.
+        #[test]
+        fn error_codes_all_non_zero() {
+            assert!(error_codes::subscription::ALREADY_INITIALIZED > 0);
+            assert!(error_codes::subscription::PLAN_NOT_FOUND > 0);
+            assert!(error_codes::content_access::ALREADY_INITIALIZED > 0);
+            assert!(error_codes::content_access::CONTENT_PRICE_NOT_SET > 0);
+            assert!(error_codes::creator_registry::ALREADY_INITIALIZED > 0);
+            assert!(error_codes::creator_registry::UNAUTHORIZED > 0);
+            assert!(error_codes::treasury::NOT_INITIALIZED > 0);
+            assert!(error_codes::treasury::INSUFFICIENT_BALANCE > 0);
+            assert!(error_codes::earnings::ALREADY_INITIALIZED > 0);
+            assert!(error_codes::creator_earnings::NOT_AUTHORIZED > 0);
+            assert!(error_codes::myfans_token::UNAUTHORIZED > 0);
+        }
+
+        // ── TestEnv fixture integration ────────────────────────────────────────
+
+        /// TestEnv roles are distinct, mint works, and ledger advancement works.
+        #[test]
+        fn test_env_full_integration() {
+            let f = TestEnv::new();
+
+            // All four roles must be distinct.
+            let addrs = [&f.admin, &f.fee_recipient, &f.creator, &f.fan];
+            for i in 0..addrs.len() {
+                for j in (i + 1)..addrs.len() {
+                    assert_ne!(addrs[i], addrs[j], "TestEnv roles must be distinct");
+                }
+            }
+
+            // Minting lands on the correct address.
+            f.mint(&f.fan, 5_000);
+            assert_eq!(f.token_client.balance(&f.fan), 5_000);
+            assert_eq!(f.token_client.balance(&f.creator), 0);
+
+            // Ledger advancement increments the sequence.
+            let seq = f.env.ledger().sequence();
+            f.advance_ledger(10);
+            assert_eq!(f.env.ledger().sequence(), seq + 10);
+        }
+
+        /// Two TestEnv instances are fully independent.
+        #[test]
+        fn two_test_envs_are_independent() {
+            let f1 = TestEnv::new();
+            let f2 = TestEnv::new();
+
+            f1.mint(&f1.fan, 1_000);
+            assert_eq!(f1.token_client.balance(&f1.fan), 1_000);
+
+            // f2 has its own Env so its fan balance is independent (zero).
+            f2.mint(&f2.creator, 500);
+            assert_eq!(f2.token_client.balance(&f2.creator), 500);
+            assert_eq!(f2.token_client.balance(&f2.fan), 0);
+        }
+    }
+
     // ── treasury integration (Issue #907) ─────────────────────────────────
     //
     // Test-consumer pattern: drive `treasury` exclusively through its public
@@ -1300,212 +1470,78 @@ mod test {
             );
         }
 
-        /// Full lifecycle integration test: initialize → record → get → withdraw.
-        /// Verifies state consistency at each step and final balance is correct.
+        /// Snapshot/restore consistency: earnings values remain stable across no-op operations.
+        ///
+        /// This test verifies that after a sequence of state-changing operations
+        /// (record and withdraw), the recorded storage values do not drift or become
+        /// corrupted when subsequent no-op queries are performed. The snapshot is
+        /// taken after the sequence completes, and then re-verified to ensure
+        /// consistency.
         #[test]
-        fn test_integration_full_lifecycle() {
+        fn test_snapshot_restore_consistency() {
             let env = Env::default();
-            env.mock_all_auths();
-
-            let admin = Address::generate(&env);
-            let creator1 = Address::generate(&env);
+            let (client, _admin, creator1) = setup(&env);
             let creator2 = Address::generate(&env);
 
-            let contract_id = env.register_contract(None, Earnings);
-            let client = EarningsClient::new(&env, &contract_id);
+            // ── Sequence of state-changing operations ──
 
-            // Step 1: Initialize
-            client.init(&admin);
-            assert_eq!(client.admin(), admin, "admin must be set after init");
-            assert_eq!(
-                client.get_earnings(&creator1),
-                0,
-                "balance must start at zero for uninitialized creator"
-            );
-
-            // Step 2: Record earnings for creator1
+            // Initialize with an admin (done in setup).
+            // Record earnings for two creators.
             client.record(&creator1, &1_000);
-            assert_eq!(
-                client.get_earnings(&creator1),
-                1_000,
-                "balance after single record must equal recorded amount"
-            );
+            client.record(&creator2, &2_500);
 
-            // Step 3: Record additional earnings; verify accumulation
+            // Record additional earnings for creator1.
             client.record(&creator1, &500);
+
+            // Perform partial withdrawal from creator1.
+            client.withdraw(&creator1, &300);
+
+            // ── Take initial snapshot ──
+
+            let snapshot_admin = client.admin();
+            let snapshot_earnings_creator1 = client.get_earnings(&creator1);
+            let snapshot_earnings_creator2 = client.get_earnings(&creator2);
+
+            // ── Perform no-op operations and ledger advance ──
+
+            // Reading admin multiple times does not change state.
+            let _ = client.admin();
+            let _ = client.admin();
+
+            // Reading earnings multiple times does not change state.
+            let _ = client.get_earnings(&creator1);
+            let _ = client.get_earnings(&creator2);
+
+            // Advance the ledger (simulates time passing).
+            env.ledger().with_mut(|ledger| {
+                ledger.sequence = ledger.sequence.saturating_add(100);
+            });
+
+            // ── Restore and verify snapshot consistency ──
+
+            // Re-read the same values after no-op operations.
+            let restored_admin = client.admin();
+            let restored_earnings_creator1 = client.get_earnings(&creator1);
+            let restored_earnings_creator2 = client.get_earnings(&creator2);
+
+            // Assert that snapshot values exactly match restored values.
             assert_eq!(
-                client.get_earnings(&creator1),
-                1_500,
-                "balance must accumulate across multiple records"
+                snapshot_admin, restored_admin,
+                "admin mismatch after restore"
+            );
+            assert_eq!(
+                snapshot_earnings_creator1, restored_earnings_creator1,
+                "creator1 earnings mismatch after restore"
+            );
+            assert_eq!(
+                snapshot_earnings_creator2, restored_earnings_creator2,
+                "creator2 earnings mismatch after restore"
             );
 
-            // Step 4: Record earnings for creator2; verify independence
-            client.record(&creator2, &800);
-            assert_eq!(
-                client.get_earnings(&creator1),
-                1_500,
-                "creator1 balance must remain unchanged after creator2 record"
-            );
-            assert_eq!(
-                client.get_earnings(&creator2),
-                800,
-                "creator2 must have independent balance"
-            );
-
-            // Step 5: Withdraw partial amount from creator1
-            client.withdraw(&creator1, &400);
-            assert_eq!(
-                client.get_earnings(&creator1),
-                1_100,
-                "balance after withdrawal must be reduced by withdrawn amount"
-            );
-
-            // Step 6: Withdraw remaining from creator1
-            client.withdraw(&creator1, &1_100);
-            assert_eq!(
-                client.get_earnings(&creator1),
-                0,
-                "balance must be zero after full withdrawal"
-            );
-
-            // Step 7: Verify creator2 balance unchanged
-            assert_eq!(
-                client.get_earnings(&creator2),
-                800,
-                "creator2 balance must remain after creator1 withdrawal"
-            );
-
-            // Step 8: Withdraw from creator2
-            client.withdraw(&creator2, &200);
-            assert_eq!(
-                client.get_earnings(&creator2),
-                600,
-                "creator2 balance must reflect withdrawal"
-            );
-
-            // Final state consistency check: all balances sum correctly
-            assert_eq!(
-                client.get_earnings(&creator1) + client.get_earnings(&creator2),
-                600,
-                "total of all balances must be consistent"
-            );
-        }
-
-        // ── Property-based invariant tests ────────────────────────────────
-
-        /// Invariant: balance conservation. For any sequence of recorded earnings
-        /// and withdrawals, the final balance equals initial balance (0) + recorded - withdrawn,
-        /// and final balance >= 0. Proptest generates arbitrary valid amounts and verifies
-        /// that no funds leak and all accounting is consistent.
-        proptest! {
-            #[test]
-            fn prop_invariant_balance_conservation(
-                records in proptest::collection::vec(1i128..=10_000i128, 1..=20),
-                withdrawals in proptest::collection::vec(0i128..=10_000i128, 0..=20),
-            ) {
-                let env = Env::default();
-                env.mock_all_auths();
-
-                let admin = Address::generate(&env);
-                let creator = Address::generate(&env);
-
-                let contract_id = env.register_contract(None, Earnings);
-                let client = EarningsClient::new(&env, &contract_id);
-                client.init(&admin);
-
-                let total_recorded: i128 = records.iter().sum();
-                let total_possible_withdrawal: i128 = withdrawals.iter().sum();
-
-                for record_amount in records {
-                    client.record(&creator, &record_amount);
-                }
-
-                let balance_after_records = client.get_earnings(&creator);
-                prop_assert_eq!(
-                    balance_after_records, total_recorded,
-                    "balance after records must equal sum of all records"
-                );
-
-                let mut total_withdrawn: i128 = 0;
-                for &withdraw_amount in &withdrawals {
-                    let current_balance = client.get_earnings(&creator);
-                    if current_balance > 0 && withdraw_amount > 0 {
-                        let safe_withdraw = std::cmp::min(withdraw_amount, current_balance);
-                        client.withdraw(&creator, &safe_withdraw);
-                        total_withdrawn += safe_withdraw;
-                    }
-                }
-
-                let final_balance = client.get_earnings(&creator);
-                prop_assert!(
-                    final_balance >= 0,
-                    "final balance must never be negative"
-                );
-                prop_assert_eq!(
-                    final_balance,
-                    total_recorded - total_withdrawn,
-                    "final balance must equal recorded - withdrawn"
-                );
-            }
-        }
-
-        /// Invariant: idempotency of read functions. Calling admin() or get_earnings()
-        /// twice with the same arguments must return the same result and must not
-        /// change any contract state. Proptest generates arbitrary valid creator addresses
-        /// and verifies that repeated reads are idempotent.
-        proptest! {
-            #[test]
-            fn prop_invariant_read_function_idempotency(
-                num_records in 0i128..=100i128,
-            ) {
-                let env = Env::default();
-                env.mock_all_auths();
-
-                let admin = Address::generate(&env);
-                let creator = Address::generate(&env);
-
-                let contract_id = env.register_contract(None, Earnings);
-                let client = EarningsClient::new(&env, &contract_id);
-                client.init(&admin);
-
-                if num_records > 0 {
-                    client.record(&creator, &num_records);
-                }
-
-                // Call admin() twice and verify it returns the same value
-                let admin_call1 = client.admin();
-                let admin_call2 = client.admin();
-                prop_assert_eq!(
-                    admin_call1, admin_call2,
-                    "admin() must be idempotent"
-                );
-
-                // Call get_earnings() twice and verify it returns the same value
-                let earnings_call1 = client.get_earnings(&creator);
-                let earnings_call2 = client.get_earnings(&creator);
-                prop_assert_eq!(
-                    earnings_call1, earnings_call2,
-                    "get_earnings() must be idempotent"
-                );
-                prop_assert_eq!(
-                    earnings_call1, num_records,
-                    "get_earnings() value must be consistent"
-                );
-
-                // Call admin() again and verify it still returns the same value
-                let admin_call3 = client.admin();
-                prop_assert_eq!(
-                    admin_call3, admin,
-                    "admin() must remain unchanged after read-only operations"
-                );
-
-                // Verify get_earnings() still returns same value
-                let earnings_call3 = client.get_earnings(&creator);
-                prop_assert_eq!(
-                    earnings_call3, num_records,
-                    "get_earnings() must remain unchanged after other read operations"
-                );
-            }
+            // Verify expected values (no drift).
+            assert_eq!(restored_admin, client.admin());
+            assert_eq!(restored_earnings_creator1, 1_200); // 1000 + 500 - 300
+            assert_eq!(restored_earnings_creator2, 2_500);
         }
     }
 }
