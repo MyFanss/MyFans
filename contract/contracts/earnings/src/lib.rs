@@ -90,4 +90,6 @@ impl Earnings {
 }
 
 #[cfg(test)]
+mod property_tests;
+#[cfg(test)]
 mod test;
