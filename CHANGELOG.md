@@ -89,6 +89,7 @@
 * resolve remaining CI build errors ([7ff23d0](https://github.com/MyFanss/MyFans/commit/7ff23d0d9f304ab5a604f1681cdbbcf1425e944e))
 * resolve TypeScript errors in pagination implementation ([1ba68e0](https://github.com/MyFanss/MyFans/commit/1ba68e0041ce903e2ff737bb50c61d63b31a56da))
 * restore Jest configuration for UUID module handling ([272c2ed](https://github.com/MyFanss/MyFans/commit/272c2ed7e4a937f49a2ff560d72a84eb791aae56))
+* return consistent error shape on creators and posts module failures ([#995](https://github.com/MyFanss/MyFans/issues/995)) ([2147319](https://github.com/MyFanss/MyFans/commit/2147319977f6a48dc204ac8e122d663b253c5528))
 * **security:** fix CORS duplicate origin key bug and add per-environment host allowlist tests ([d6feee9](https://github.com/MyFanss/MyFans/commit/d6feee93af56cd1a9fe173491d10ccdf9062588f))
 * **security:** remediate frontend high-severity npm audit vulnerabilities ([93a35a1](https://github.com/MyFanss/MyFans/commit/93a35a1ab77c679b0cd5976d86eb90e60df66719)), closes [hi#severity](https://github.com/hi/issues/severity)
 * **subscription:** validate error codes, optimize gas, add integration tests, verify wasm CI ([#895](https://github.com/MyFanss/MyFans/issues/895) [#896](https://github.com/MyFanss/MyFans/issues/896) [#897](https://github.com/MyFanss/MyFans/issues/897) [#898](https://github.com/MyFanss/MyFans/issues/898)) ([0ab1336](https://github.com/MyFanss/MyFans/commit/0ab13369ee87aa193d3ea8e7fca69f56bec28119))
@@ -374,4 +375,4 @@
 
 ### Reverts
 
-* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/Jambox11/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
+* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/MyFanss/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
