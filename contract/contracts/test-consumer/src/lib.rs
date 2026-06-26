@@ -1,6 +1,6 @@
 #![no_std]
 use myfans_lib::{ContentType, MyfansError, SubscriptionStatus};
-use soroban_sdk::{contract, contractimpl, Env};
+use soroban_sdk::{contract, contractimpl, Env, Symbol};
 
 #[contract]
 pub struct TestConsumer;
@@ -8,19 +8,28 @@ pub struct TestConsumer;
 #[contractimpl]
 impl TestConsumer {
     /// Returns true only when `status` is `Active`.
-    pub fn is_active(_env: Env, status: SubscriptionStatus) -> bool {
-        status == SubscriptionStatus::Active
+    pub fn is_active(env: Env, status: SubscriptionStatus) -> bool {
+        let active = status == SubscriptionStatus::Active;
+        env.events()
+            .publish((Symbol::new(&env, "test_consumer:is_active"),), active);
+        active
     }
 
     /// Returns the numeric discriminant of a `MyfansError` variant, confirming
     /// the shared error type is importable and its codes are stable.
-    pub fn error_code(_env: Env, err: MyfansError) -> u32 {
-        err as u32
+    pub fn error_code(env: Env, err: MyfansError) -> u32 {
+        let code = err as u32;
+        env.events()
+            .publish((Symbol::new(&env, "test_consumer:error_code"),), code);
+        code
     }
 
     /// Returns the numeric discriminant of a `ContentType` variant.
-    pub fn content_code(_env: Env, ct: ContentType) -> u32 {
-        ct as u32
+    pub fn content_code(env: Env, ct: ContentType) -> u32 {
+        let code = ct as u32;
+        env.events()
+            .publish((Symbol::new(&env, "test_consumer:content_code"),), code);
+        code
     }
 }
 
