@@ -1,5 +1,20 @@
 #![no_std]
 use myfans_lib::{ContentType, MyfansError, SubscriptionStatus};
+use soroban_sdk::{contract, contractimpl, Env, Address, Symbol};
+
+/// Data keys for contract storage
+#[derive(Clone, Copy)]
+pub enum DataKey {
+    Admin = 0,
+}
+
+impl DataKey {
+    pub fn to_symbol(&self) -> Symbol {
+        match self {
+            DataKey::Admin => Symbol::short("admin"),
+        }
+    }
+}
 use soroban_sdk::{contract, contractimpl, Env, Symbol};
 
 #[contract]
