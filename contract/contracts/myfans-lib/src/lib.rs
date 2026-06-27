@@ -66,6 +66,9 @@ pub enum MyfansError {
 /// ```
 pub mod error_codes;
 
+pub mod events;
+pub mod auth;
+
 /// Shared test fixtures for cross-contract integration tests.
 /// Only compiled when the `testutils` feature is enabled.
 #[cfg(any(test, feature = "testutils"))]
@@ -75,8 +78,7 @@ pub mod test_fixtures;
 mod property_tests;
 #[cfg(test)]
 mod tests {
-    use super::*;
-
+    use super::*;    use soroban_sdk::{Env, Symbol, testutils::Address as _};
     // ── SubscriptionStatus discriminants ──────────────────────────────────────
 
     #[test]
@@ -213,6 +215,58 @@ mod tests {
         assert!(error_codes::creator_earnings::NOT_AUTHORIZED > 0);
         assert!(error_codes::myfans_contract::NOT_INITIALIZED > 0);
         assert!(error_codes::myfans_contract::ADMIN_NOT_INITIALIZED > 0);
+    }
+
+    #[test]
+    fn test_auth_require_authorized_reverts_with_not_authorized() {
+        let env = Env::default();
+        let caller = Address::generate(&env);
+        let expected = Address::generate(&env);
+        let action = Symbol::new(&env, "test_action");
+
+        let result = std::panic::catch_unwind(|| {
+            crate::auth::require_authorized(&env, &caller, &expected, &action);
+        });
+
+        assert!(result.is_err(), "require_authorized should panic when caller is not authorized");
+    }
+
+    #[test]
+    fn test_emit_unauthorized_caller_event_publishes_event() {
+        let env = Env::default();
+        let caller = Address::generate(&env);
+        let action = Symbol::new(&env, "test_action");
+
+        crate::auth::emit_unauthorized_caller_event(&env, &caller, &action);
+
+        let events = env.events().all();
+        assert_eq!(events.len(), 1, "expected exactly one event");
+        let (_, topics, data) = &events[0];
+        let topic: Symbol = topics[0].try_into_val(&env).unwrap();
+        assert_eq!(topic, Symbol::new(&env, "unauthorized_caller"));
+        let event: crate::events::UnauthorizedCallerEvent = data.clone().try_into().unwrap();
+        assert_eq!(event.caller, caller);
+        assert_eq!(event.action, action);
+    }
+
+    #[test]
+    fn test_emit_primary_state_change_event_publishes_event() {
+        let env = Env::default();
+        let subject = Address::generate(&env);
+        let changed_by = Address::generate(&env);
+        let action = Symbol::new(&env, "state_update");
+
+        crate::auth::emit_primary_state_change_event(&env, &action, &subject, &changed_by);
+
+        let events = env.events().all();
+        assert_eq!(events.len(), 1, "expected exactly one event");
+        let (_, topics, data) = &events[0];
+        let topic: Symbol = topics[0].try_into_val(&env).unwrap();
+        assert_eq!(topic, Symbol::new(&env, "primary_state_change"));
+        let event: crate::events::PrimaryStateChangeEvent = data.clone().try_into().unwrap();
+        assert_eq!(event.action, action);
+        assert_eq!(event.subject, subject);
+        assert_eq!(event.changed_by, changed_by);
     }
 
     /// All error_codes sub-modules: spot-check several constants are correct.
