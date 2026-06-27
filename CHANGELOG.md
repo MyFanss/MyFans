@@ -1,4 +1,4 @@
-# 0.1.0 (2026-06-25)
+# 0.1.0 (2026-06-27)
 
 
 ### Bug Fixes
@@ -72,6 +72,7 @@
 * merge conflicts ([1de5e12](https://github.com/MyFanss/MyFans/commit/1de5e1284184ab4fc035b09efdd3756b193a19b6))
 * merge issues ([dc4d47c](https://github.com/MyFanss/MyFans/commit/dc4d47cb5ad9108bd6119041e1ed6c9270f360e5))
 * minimatch issue ([56db84a](https://github.com/MyFanss/MyFans/commit/56db84a1c0909e0561d912ee73b1903c6fa897c7))
+* **myfans-lib:** add #[repr(u32)] to stabilize error discriminants (fix [#975](https://github.com/MyFanss/MyFans/issues/975)) ([cad82fe](https://github.com/MyFanss/MyFans/commit/cad82feaaedc42815097070fda29215ffafdea63))
 * **pagination:** standardize utils in comments, posts, users services ([2da1e6b](https://github.com/MyFanss/MyFans/commit/2da1e6b8516d9d487ae0b3796a5409645601f3fd)), closes [#364](https://github.com/MyFanss/MyFans/issues/364)
 * **reconciler:** narrow action type to satisfy applyRepair parameter ([b9f0d99](https://github.com/MyFanss/MyFans/commit/b9f0d99999541d9de4a6e06a55fa32874b5ed449))
 * remove duplicate keys and missing comma in package.json ([31fd41c](https://github.com/MyFanss/MyFans/commit/31fd41cc95eec7ce9f4a3d176f84ff3c0816a791))
@@ -89,6 +90,7 @@
 * resolve remaining CI build errors ([7ff23d0](https://github.com/MyFanss/MyFans/commit/7ff23d0d9f304ab5a604f1681cdbbcf1425e944e))
 * resolve TypeScript errors in pagination implementation ([1ba68e0](https://github.com/MyFanss/MyFans/commit/1ba68e0041ce903e2ff737bb50c61d63b31a56da))
 * restore Jest configuration for UUID module handling ([272c2ed](https://github.com/MyFanss/MyFans/commit/272c2ed7e4a937f49a2ff560d72a84eb791aae56))
+* return consistent error shape on creators and posts module failures ([#995](https://github.com/MyFanss/MyFans/issues/995)) ([2147319](https://github.com/MyFanss/MyFans/commit/2147319977f6a48dc204ac8e122d663b253c5528))
 * **security:** fix CORS duplicate origin key bug and add per-environment host allowlist tests ([d6feee9](https://github.com/MyFanss/MyFans/commit/d6feee93af56cd1a9fe173491d10ccdf9062588f))
 * **security:** remediate frontend high-severity npm audit vulnerabilities ([93a35a1](https://github.com/MyFanss/MyFans/commit/93a35a1ab77c679b0cd5976d86eb90e60df66719)), closes [hi#severity](https://github.com/hi/issues/severity)
 * **subscription:** validate error codes, optimize gas, add integration tests, verify wasm CI ([#895](https://github.com/MyFanss/MyFans/issues/895) [#896](https://github.com/MyFanss/MyFans/issues/896) [#897](https://github.com/MyFanss/MyFans/issues/897) [#898](https://github.com/MyFanss/MyFans/issues/898)) ([0ab1336](https://github.com/MyFanss/MyFans/commit/0ab13369ee87aa193d3ea8e7fca69f56bec28119))
@@ -100,6 +102,7 @@
 * update package-lock.json to sync with package.json ([458210f](https://github.com/MyFanss/MyFans/commit/458210fbb10be290a36d2b6ce880614735182be3))
 * use rpc.Server and import rpc.Api helpers where UInt32Val is used ([#581](https://github.com/MyFanss/MyFans/issues/581)) ([a96b86e](https://github.com/MyFanss/MyFans/commit/a96b86e262b3e05ead6de3f4f796b5d40f059a92))
 * validate error codes and panic messages in earnings contract ([#965](https://github.com/MyFanss/MyFans/issues/965)) ([45278b8](https://github.com/MyFanss/MyFans/commit/45278b85b2605fe1ae8e8375c1119213f74e5202))
+* validate error codes and panic messages in test-consumer contract ([#985](https://github.com/MyFanss/MyFans/issues/985)) ([aead6b4](https://github.com/MyFanss/MyFans/commit/aead6b4c789068993b95d04f3a159c07897cc8d7))
 * wrap CLI top-level awaits in async main() for CommonJS compatibility ([c75238e](https://github.com/MyFanss/MyFans/commit/c75238e1684a3b695025001ca4c19ad48e34c612))
 
 
@@ -141,6 +144,7 @@
 * add mock ERC20 contract for testing subscription payments ([ccbc304](https://github.com/MyFanss/MyFans/commit/ccbc304e9ced5d49dc369698aa8b0f5529991e7a))
 * add notification channel preferences form with per-event toggles ([4ee4100](https://github.com/MyFanss/MyFans/commit/4ee41003c74730039279159893c392faa74f2093))
 * add notification inbox UI with backend API integration ([cf56c64](https://github.com/MyFanss/MyFans/commit/cf56c6446786d27d2fd9ae7e91d2c29c6838dba0))
+* add pagination or limit query support to creators module ([#994](https://github.com/MyFanss/MyFans/issues/994)) ([fbf6361](https://github.com/MyFanss/MyFans/commit/fbf636137a7ded95b63f913c8265eb8605ca0a09))
 * Add pending status components and client for issue [#83](https://github.com/MyFanss/MyFans/issues/83) ([fc7bb48](https://github.com/MyFanss/MyFans/commit/fc7bb48e542b42f4fbb9a0f6d19240f3b5f90da7))
 * Add PII and secret redaction to logging ([#232](https://github.com/MyFanss/MyFans/issues/232)) ([31a1bc0](https://github.com/MyFanss/MyFans/commit/31a1bc0e33141cdeefdd9a5795c57c07c52b1b70))
 * add rate limiting ([1c8e4bb](https://github.com/MyFanss/MyFans/commit/1c8e4bbc47e26a6cf14c4ff07f1ceea34b0d466a))
@@ -366,6 +370,7 @@
 ### Performance Improvements
 
 * optimise gas usage in earnings contract hot paths ([#966](https://github.com/MyFanss/MyFans/issues/966)) ([799bd81](https://github.com/MyFanss/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
+* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/MyFanss/MyFans/issues/986)) ([97d059e](https://github.com/MyFanss/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
 * Optimize creator profile page performance ([d8ba3ca](https://github.com/MyFanss/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/MyFanss/MyFans/issues/415)
 
 
