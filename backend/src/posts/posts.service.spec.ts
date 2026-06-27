@@ -106,6 +106,53 @@ describe('PostsService', () => {
         expect.objectContaining({ isPublished: false, isPremium: false }),
       );
     });
+
+    it('threads authorId from caller into the created entity', async () => {
+      const post = makePost({ authorId: 'caller-42' });
+      repo.create.mockReturnValue(post);
+      repo.save.mockResolvedValue(post);
+
+      const result = await service.create('caller-42', { title: 'T', content: 'C' });
+
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ authorId: 'caller-42' }),
+      );
+      expect(result.authorId).toBe('caller-42');
+    });
+
+    it('honours explicit isPublished and isPremium when provided', async () => {
+      const post = makePost({ isPublished: true, isPremium: true });
+      repo.create.mockReturnValue(post);
+      repo.save.mockResolvedValue(post);
+
+      const result = await service.create('author-1', {
+        title: 'Premium Post',
+        content: 'Exclusive content',
+        isPublished: true,
+        isPremium: true,
+      });
+
+      expect(result.isPublished).toBe(true);
+      expect(result.isPremium).toBe(true);
+    });
+
+    it('returns a mapped PostDto with all expected fields populated', async () => {
+      const post = makePost({ title: 'Hello', content: 'World', authorId: 'author-1' });
+      repo.create.mockReturnValue(post);
+      repo.save.mockResolvedValue(post);
+
+      const result = await service.create('author-1', { title: 'Hello', content: 'World' });
+
+      expect(result).toMatchObject({
+        id: 'post-1',
+        title: 'Hello',
+        content: 'World',
+        authorId: 'author-1',
+        isPublished: false,
+        isPremium: false,
+        likesCount: 0,
+      });
+    });
   });
 
   // ── findAll ─────────────────────────────────────────────────────────────────
