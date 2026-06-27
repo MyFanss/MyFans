@@ -1500,6 +1500,7 @@ dependencies = [
  "myfans-contract",
  "myfans-lib",
  "myfans-token",
+ "proptest",
  "soroban-sdk",
  "subscription",
  "treasury",
