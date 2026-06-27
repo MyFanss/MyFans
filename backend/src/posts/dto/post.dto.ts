@@ -1,18 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
+import {
+  IsBoolean,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class PostDto {
-  @ApiProperty({
-    example: 'post-123',
-    description: 'Unique post identifier',
-  })
+  @ApiProperty({ example: 'post-123', description: 'Unique post identifier' })
   @Expose()
   id: string;
 
-  @ApiProperty({
-    example: 'My First Post',
-    description: 'Post title',
-  })
+  @ApiProperty({ example: 'My First Post', description: 'Post title' })
   @Expose()
   title: string;
 
@@ -23,17 +25,11 @@ export class PostDto {
   @Expose()
   content: string;
 
-  @ApiProperty({
-    example: 'author-456',
-    description: 'Author user ID',
-  })
+  @ApiProperty({ example: 'author-456', description: 'Author user ID' })
   @Expose()
   authorId: string;
 
-  @ApiProperty({
-    example: true,
-    description: 'Whether post is published',
-  })
+  @ApiProperty({ example: true, description: 'Whether post is published' })
   @Expose()
   isPublished: boolean;
 
@@ -44,10 +40,7 @@ export class PostDto {
   @Expose()
   isPremium: boolean;
 
-  @ApiProperty({
-    example: 5,
-    description: 'Number of likes',
-  })
+  @ApiProperty({ example: 5, description: 'Number of likes' })
   @Expose()
   likesCount: number;
 
@@ -81,6 +74,10 @@ export class CreatePostDto {
     minLength: 1,
     maxLength: 500,
   })
+  @IsNotEmpty()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
   title: string;
 
   @ApiProperty({
@@ -89,18 +86,26 @@ export class CreatePostDto {
     minLength: 1,
     maxLength: 10000,
   })
+  @IsNotEmpty()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(10000)
   content: string;
 
   @ApiPropertyOptional({
     example: true,
     description: 'Whether to publish post immediately (default: false)',
   })
+  @IsOptional()
+  @IsBoolean()
   isPublished?: boolean;
 
   @ApiPropertyOptional({
     example: false,
     description: 'Whether this is a premium post (default: false)',
   })
+  @IsOptional()
+  @IsBoolean()
   isPremium?: boolean;
 }
 
@@ -111,6 +116,10 @@ export class UpdatePostDto {
     minLength: 1,
     maxLength: 500,
   })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
   title?: string;
 
   @ApiPropertyOptional({
@@ -119,17 +128,22 @@ export class UpdatePostDto {
     minLength: 1,
     maxLength: 10000,
   })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(10000)
   content?: string;
 
-  @ApiPropertyOptional({
-    example: true,
-    description: 'Whether to publish post',
-  })
+  @ApiPropertyOptional({ example: true, description: 'Whether to publish post' })
+  @IsOptional()
+  @IsBoolean()
   isPublished?: boolean;
 
   @ApiPropertyOptional({
     example: false,
     description: 'Whether this is a premium post',
   })
+  @IsOptional()
+  @IsBoolean()
   isPremium?: boolean;
 }
