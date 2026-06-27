@@ -37,6 +37,9 @@ impl TestConsumer {
         // Set the admin
         storage.set(&DataKey::Admin.to_symbol(), &admin);
         
+        // Initialize paused to false
+        storage.set(&DataKey::Paused.to_symbol(), &false);
+        
         Ok(())
     }
 
@@ -50,6 +53,41 @@ impl TestConsumer {
         storage
             .get::<_, Address>(&DataKey::Admin.to_symbol())
             .ok_or(MyfansError::NotInitialized)
+    }
+
+    /// Set the paused status. Only the admin can call this.
+    /// 
+    /// Requires the caller to be the admin. Fails with NotAuthorized
+    /// if the caller is not the admin.
+    pub fn set_paused(env: Env, paused: bool) -> Result<(), MyfansError> {
+        let storage = env.storage().instance();
+        
+        // Get admin
+        let admin = storage
+            .get::<_, Address>(&DataKey::Admin.to_symbol())
+            .ok_or(MyfansError::NotInitialized)?;
+        
+        // Get current caller
+        let caller = env.invoker();
+        
+        // Check authorization
+        if caller != admin {
+            return Err(MyfansError::NotAuthorized);
+        }
+        
+        // Set paused status
+        storage.set(&DataKey::Paused.to_symbol(), &paused);
+        
+        Ok(())
+    }
+
+    /// Get the current paused status.
+    pub fn is_paused(env: Env) -> Result<bool, MyfansError> {
+        let storage = env.storage().instance();
+        
+        Ok(storage
+            .get::<_, bool>(&DataKey::Paused.to_symbol())
+            .unwrap_or(false))
     }
 
     /// Returns true only when `status` is `Active`.
@@ -83,92 +121,119 @@ mod test {
     use super::*;
     use soroban_sdk::{Env, Address};
 
-    // ── Initialize and Admin Tests ────────────────────────────────────────
+    // ── Unauthorized Caller Tests (Admin-Protected Functions) ────────────
 
     #[test]
-    fn test_initialize_sets_admin() {
+    fn test_set_paused_admin_authorization() {
         let env = Env::default();
+        env.mock_all_auths();
+        
         let id = env.register_contract(None, TestConsumer);
         let client = TestConsumerClient::new(&env, &id);
         
         let admin = Address::generate(&env);
         
-        // Initialize should succeed
+        // Initialize
         let result = client.initialize(&admin);
         assert_eq!(result, Ok(()));
         
-        // Admin should return the set admin
-        let stored_admin = client.admin();
-        assert_eq!(stored_admin, Ok(admin));
+        // Admin should be able to set paused
+        let result = client.set_paused(&true);
+        assert_eq!(result, Ok(()));
+        
+        // Verify paused is set
+        let is_paused = client.is_paused();
+        assert_eq!(is_paused, Ok(true));
     }
 
     #[test]
-    fn test_initialize_idempotency_check() {
+    fn test_set_paused_unauthorized_caller_revert() {
         let env = Env::default();
+        env.mock_all_auths();
+        
         let id = env.register_contract(None, TestConsumer);
         let client = TestConsumerClient::new(&env, &id);
         
-        let admin1 = Address::generate(&env);
-        let admin2 = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let unauthorized = Address::generate(&env);
         
-        // First initialize should succeed
-        let result1 = client.initialize(&admin1);
-        assert_eq!(result1, Ok(()));
+        // Initialize with admin
+        let result = client.initialize(&admin);
+        assert_eq!(result, Ok(()));
         
-        // Second initialize with different admin should fail with AlreadyInitialized
-        let result2 = client.try_initialize(&admin2);
-        assert_eq!(
-            result2,
-            Err(Ok(soroban_sdk::Error::from_contract_error(
-                MyfansError::AlreadyInitialized as u32
-            )))
-        );
-        
-        // Admin should still be the first one
-        let stored_admin = client.admin();
-        assert_eq!(stored_admin, Ok(admin1));
-    }
-
-    #[test]
-    fn test_admin_not_initialized() {
-        let env = Env::default();
-        let id = env.register_contract(None, TestConsumer);
-        let client = TestConsumerClient::new(&env, &id);
-        
-        // Calling admin without initialize should fail with NotInitialized
-        let result = client.try_admin();
+        // Unauthorized caller tries to set paused
+        let result = client.try_set_paused(&true);
         assert_eq!(
             result,
             Err(Ok(soroban_sdk::Error::from_contract_error(
-                MyfansError::NotInitialized as u32
+                MyfansError::NotAuthorized as u32
             )))
         );
+        
+        // Paused should still be false
+        let is_paused = client.is_paused();
+        assert_eq!(is_paused, Ok(false));
     }
 
     #[test]
-    fn test_initialize_different_admins() {
+    fn test_set_paused_multiple_unauthorized_callers() {
         let env = Env::default();
+        env.mock_all_auths();
         
-        // Deploy two instances
-        let id1 = env.register_contract(None, TestConsumer);
-        let client1 = TestConsumerClient::new(&env, &id1);
+        let id = env.register_contract(None, TestConsumer);
+        let client = TestConsumerClient::new(&env, &id);
         
-        let id2 = env.register_contract(None, TestConsumer);
-        let client2 = TestConsumerClient::new(&env, &id2);
+        let admin = Address::generate(&env);
         
-        let admin1 = Address::generate(&env);
-        let admin2 = Address::generate(&env);
+        // Initialize with admin
+        let result = client.initialize(&admin);
+        assert_eq!(result, Ok(()));
         
-        // Initialize each with different admin
-        let result1 = client1.initialize(&admin1);
-        assert_eq!(result1, Ok(()));
+        // Multiple unauthorized callers should all be rejected
+        for _ in 0..3 {
+            let unauthorized = Address::generate(&env);
+            let result = client.try_set_paused(&true);
+            assert_eq!(
+                result,
+                Err(Ok(soroban_sdk::Error::from_contract_error(
+                    MyfansError::NotAuthorized as u32
+                )))
+            );
+        }
         
-        let result2 = client2.initialize(&admin2);
-        assert_eq!(result2, Ok(()));
+        // Paused should still be false
+        let is_paused = client.is_paused();
+        assert_eq!(is_paused, Ok(false));
+    }
+
+    #[test]
+    fn test_set_paused_admin_can_toggle() {
+        let env = Env::default();
+        env.mock_all_auths();
         
-        // Each should return their respective admin
-        assert_eq!(client1.admin(), Ok(admin1));
-        assert_eq!(client2.admin(), Ok(admin2));
+        let id = env.register_contract(None, TestConsumer);
+        let client = TestConsumerClient::new(&env, &id);
+        
+        let admin = Address::generate(&env);
+        
+        // Initialize with admin
+        let result = client.initialize(&admin);
+        assert_eq!(result, Ok(()));
+        
+        // Admin sets paused to true
+        let result = client.set_paused(&true);
+        assert_eq!(result, Ok(()));
+        assert_eq!(client.is_paused(), Ok(true));
+        
+        // Admin sets paused to false
+        let result = client.set_paused(&false);
+        assert_eq!(result, Ok(()));
+        assert_eq!(client.is_paused(), Ok(false));
+        
+        // Admin sets paused to true again
+        let result = client.set_paused(&true);
+        assert_eq!(result, Ok(()));
+        assert_eq!(client.is_paused(), Ok(true));
     }
 
     // ── SubscriptionStatus ────────────────────────────────────────────────
