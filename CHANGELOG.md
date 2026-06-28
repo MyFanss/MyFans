@@ -374,11 +374,11 @@
 
 ### Performance Improvements
 
-* optimise gas usage in earnings contract hot paths ([#966](https://github.com/MyFanss/MyFans/issues/966)) ([799bd81](https://github.com/MyFanss/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
-* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/MyFanss/MyFans/issues/986)) ([97d059e](https://github.com/MyFanss/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
-* Optimize creator profile page performance ([d8ba3ca](https://github.com/MyFanss/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/MyFanss/MyFans/issues/415)
+* optimise gas usage in earnings contract hot paths ([#966](https://github.com/jhayniffy/MyFans/issues/966)) ([799bd81](https://github.com/jhayniffy/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
+* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/jhayniffy/MyFans/issues/986)) ([97d059e](https://github.com/jhayniffy/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
+* Optimize creator profile page performance ([d8ba3ca](https://github.com/jhayniffy/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/jhayniffy/MyFans/issues/415)
 
 
 ### Reverts
 
-* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/MyFanss/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
+* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/jhayniffy/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
