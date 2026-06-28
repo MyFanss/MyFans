@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { PostsController } from './posts.controller';
 import { PostsService } from './posts.service';
 import { PostDto, CreatePostDto, UpdatePostDto } from './dto';
@@ -41,7 +42,12 @@ describe('PostsController', () => {
   let service: jest.Mocked<
     Pick<
       PostsService,
-      'create' | 'findAll' | 'findByAuthor' | 'findOne' | 'update' | 'softDelete'
+      | 'create'
+      | 'findAll'
+      | 'findByAuthor'
+      | 'findOne'
+      | 'update'
+      | 'softDelete'
     >
   >;
 
@@ -56,6 +62,9 @@ describe('PostsController', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [
+        ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 100 }]),
+      ],
       controllers: [PostsController],
       providers: [{ provide: PostsService, useValue: service }],
     }).compile();
@@ -323,9 +332,9 @@ describe('PostsController', () => {
         new NotFoundException('Post with ID post-1 not found'),
       );
 
-      await expect(
-        controller.update('post-1', dto),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.update('post-1', dto)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 
@@ -361,9 +370,9 @@ describe('PostsController', () => {
         new NotFoundException('Post with ID missing not found'),
       );
 
-      await expect(controller.remove('missing', 'user-1')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        controller.remove('missing', 'user-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('propagates NotFoundException when post is already soft-deleted', async () => {
@@ -371,16 +380,18 @@ describe('PostsController', () => {
         new NotFoundException('Post with ID post-1 not found'),
       );
 
-      await expect(controller.remove('post-1', 'user-1')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        controller.remove('post-1', 'user-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('propagates other errors', async () => {
       const error = new Error('DB error');
       service.softDelete.mockRejectedValue(error);
 
-      await expect(controller.remove('post-1', 'user-1')).rejects.toThrow(error);
+      await expect(controller.remove('post-1', 'user-1')).rejects.toThrow(
+        error,
+      );
     });
   });
 });
