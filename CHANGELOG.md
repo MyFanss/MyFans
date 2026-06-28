@@ -180,6 +180,7 @@
 * **analytics:** payment analytics endpoints ([0a31511](https://github.com/MyFanss/MyFans/commit/0a31511c45b7bbf2fba829e92a5a2c6e17bcadb9)), closes [#payment-analytics](https://github.com/MyFanss/MyFans/issues/payment-analytics)
 * API versioning ([c62bb64](https://github.com/MyFanss/MyFans/commit/c62bb648e1fc7745ca67b945fbfb991718152117))
 * **api:** standardize pagination on subscriptions, creators, and posts ([#861](https://github.com/MyFanss/MyFans/issues/861)) ([ad25d72](https://github.com/MyFanss/MyFans/commit/ad25d7280d658e48c73b4277506a45712163bd41))
+* **auth:** add pagination and limit query support ([ca9bfea](https://github.com/MyFanss/MyFans/commit/ca9bfeabc33f65e4f4ad4d61c29d1356c1fd7677))
 * **auth:** wallet signature challenge endpoints ([561d65d](https://github.com/MyFanss/MyFans/commit/561d65d498549206d65d72ce9ca3a6105f6826d7)), closes [#wallet-challenge-auth](https://github.com/MyFanss/MyFans/issues/wallet-challenge-auth)
 * backend contract health checks against CI deployment outputs ([5282a06](https://github.com/MyFanss/MyFans/commit/5282a06a8c02a7395a65e8f6e3b591b5c8f45e61))
 * **backend:** add getLatestLedgerSequence & getNetworkEvents to SorobanRpcService; guard poller behind feature flag ([bad9786](https://github.com/MyFanss/MyFans/commit/bad9786ed42e28652b91be8576c59c09ec3e473e))
