@@ -19,7 +19,7 @@ describe('SubscriptionsController', () => {
   let service: jest.Mocked<
     Pick<
       SubscriptionsService,
-      'getFanCreatorSubscriptionState' | 'listCreatorSubscribers' | 'listSubscriptions'
+      'getFanCreatorSubscriptionState' | 'listCreatorSubscribers' | 'listSubscriptions' | 'getFanDashboardSummary'
     >
   >;
 
@@ -62,6 +62,14 @@ describe('SubscriptionsController', () => {
         hasMore: false,
         nextCursor: null,
         cursor: null,
+      }),
+      getFanDashboardSummary: jest.fn().mockResolvedValue({
+        fan,
+        totalActive: 0,
+        subscriptions: [],
+        page: 1,
+        limit: 20,
+        totalPages: 0,
       }),
     };
 
@@ -155,6 +163,20 @@ describe('SubscriptionsController', () => {
       undefined,
       20,
     );
+  });
+
+  it('getFanDashboard delegates to getFanDashboardSummary with fan from request', async () => {
+    const req = { fanAddress: fan } as RequestWithFan;
+    await controller.getFanDashboard(req, { page: 2, limit: 10 });
+
+    expect(service.getFanDashboardSummary).toHaveBeenCalledWith(fan, 2, 10);
+  });
+
+  it('getFanDashboard uses default page and limit', async () => {
+    const req = { fanAddress: fan } as RequestWithFan;
+    await controller.getFanDashboard(req, {});
+
+    expect(service.getFanDashboardSummary).toHaveBeenCalledWith(fan, undefined, undefined);
   });
 });
 
