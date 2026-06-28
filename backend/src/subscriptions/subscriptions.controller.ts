@@ -7,22 +7,41 @@ import {
   Post,
   Query,
   Req,
+  UseFilters,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Reflector } from '@nestjs/core';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 import { ListCreatorSubscribersQueryDto } from './dto/list-creator-subscribers-query.dto';
 import { SubscriptionStateQueryDto } from './dto/subscription-state-query.dto';
+import {
+  CreateCheckoutDto,
+  CheckoutResponseDto,
+  ValidateBalanceDto,
+  ValidateBalanceResponseDto,
+  ConfirmSubscriptionDto,
+  ConfirmSubscriptionResponseDto,
+  FailCheckoutDto,
+  CancelSubscriptionDto,
+  PlanSummaryResponseDto,
+  PriceBreakdownResponseDto,
+  WalletStatusResponseDto,
+  TransactionPreviewResponseDto,
+} from './dto/checkout.dto';
 import { FanBearerGuard } from './guards/fan-bearer.guard';
 import type { RequestWithFan } from './guards/fan-bearer.guard';
 import { SubscriptionsService } from './subscriptions.service';
 import { RequireFeatureFlag } from '../feature-flags/feature-flag.decorator';
 import { FeatureFlagGuard } from '../feature-flags/feature-flag.guard';
 import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
+import { SubscriptionsExceptionFilter } from './filters/subscriptions-exception.filter';
 
 @ApiTags('subscriptions')
+@UseFilters(new SubscriptionsExceptionFilter())
+@UseGuards(ThrottlerGuard)
 @Controller({ path: 'subscriptions', version: '1' })
 export class SubscriptionsController {
   constructor(private subscriptionsService: SubscriptionsService) {}
@@ -145,20 +164,16 @@ export class SubscriptionsController {
   }
 
   @Post('checkout')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @UseGuards(FeatureFlagGuard)
   @RequireFeatureFlag('newSubscriptionFlow')
-  @ApiOperation({ summary: 'Create a subscription checkout session' })
-  @ApiResponse({ status: 201, description: 'Checkout session created' })
+  @ApiOperation({ summary: 'Create a subscription checkout session', description: 'Initiates a new checkout session for subscribing to a creator plan. The session expires after 15 minutes.' })
+  @ApiResponse({ status: 201, description: 'Checkout session created', type: CheckoutResponseDto })
   @ApiResponse({ status: 403, description: 'New subscription flow is disabled' })
+  @ApiResponse({ status: 404, description: 'Plan not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   createCheckout(
-    @Body()
-    body: {
-      fanAddress: string;
-      creatorAddress: string;
-      planId: number;
-      assetCode?: string;
-      assetIssuer?: string;
-    },
+    @Body() body: CreateCheckoutDto,
     @Headers('x-network') requestNetwork?: string,
   ) {
     const checkout = this.subscriptionsService.createCheckout(
@@ -188,9 +203,10 @@ export class SubscriptionsController {
   }
 
   @Get('checkout/:id')
-  @ApiOperation({ summary: 'Get a checkout session by ID' })
+  @ApiOperation({ summary: 'Get a checkout session by ID', description: 'Returns full checkout details including transaction hash and error if present.' })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
-  @ApiResponse({ status: 200, description: 'Checkout session details' })
+  @ApiResponse({ status: 200, description: 'Checkout session details', type: CheckoutResponseDto })
+  @ApiResponse({ status: 400, description: 'Checkout session has expired' })
   @ApiResponse({ status: 404, description: 'Checkout not found' })
   getCheckout(@Param('id') checkoutId: string) {
     const checkout = this.subscriptionsService.getCheckout(checkoutId);
@@ -214,46 +230,53 @@ export class SubscriptionsController {
   }
 
   @Get('checkout/:id/plan')
-  @ApiOperation({ summary: 'Get plan summary for a checkout session' })
+  @ApiOperation({ summary: 'Get plan summary for a checkout session', description: 'Returns creator name, asset, amount, and billing interval for the plan attached to this checkout.' })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
-  @ApiResponse({ status: 200, description: 'Plan summary' })
+  @ApiResponse({ status: 200, description: 'Plan summary', type: PlanSummaryResponseDto })
+  @ApiResponse({ status: 404, description: 'Checkout or plan not found' })
   getPlanSummary(@Param('id') checkoutId: string) {
     const checkout = this.subscriptionsService.getCheckout(checkoutId);
     return this.subscriptionsService.getPlanSummary(checkout.planId);
   }
 
   @Get('checkout/:id/price')
-  @ApiOperation({ summary: 'Get price breakdown for a checkout session' })
+  @ApiOperation({ summary: 'Get price breakdown for a checkout session', description: 'Returns subtotal, platform fee, network fee, and total for the checkout.' })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
-  @ApiResponse({ status: 200, description: 'Price breakdown' })
+  @ApiResponse({ status: 200, description: 'Price breakdown', type: PriceBreakdownResponseDto })
+  @ApiResponse({ status: 404, description: 'Checkout not found' })
   getPriceBreakdown(@Param('id') checkoutId: string) {
     return this.subscriptionsService.getPriceBreakdown(checkoutId);
   }
 
   @Get('checkout/:id/wallet')
-  @ApiOperation({ summary: 'Get wallet status for a checkout session' })
+  @ApiOperation({ summary: 'Get wallet status for a checkout session', description: 'Returns the fan wallet balances and connection status for the checkout session.' })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
-  @ApiResponse({ status: 200, description: 'Wallet status' })
+  @ApiResponse({ status: 200, description: 'Wallet status', type: WalletStatusResponseDto })
+  @ApiResponse({ status: 404, description: 'Checkout not found' })
   getWalletStatus(@Param('id') checkoutId: string) {
     const checkout = this.subscriptionsService.getCheckout(checkoutId);
     return this.subscriptionsService.getWalletStatus(checkout.fanAddress);
   }
 
   @Get('checkout/:id/preview')
-  @ApiOperation({ summary: 'Get transaction preview for a checkout session' })
+  @ApiOperation({ summary: 'Get transaction preview for a checkout session', description: 'Returns a preview of the Stellar transaction including from/to addresses, asset, amount, fee, and memo.' })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
-  @ApiResponse({ status: 200, description: 'Transaction preview' })
+  @ApiResponse({ status: 200, description: 'Transaction preview', type: TransactionPreviewResponseDto })
+  @ApiResponse({ status: 404, description: 'Checkout not found' })
   getTransactionPreview(@Param('id') checkoutId: string) {
     return this.subscriptionsService.getTransactionPreview(checkoutId);
   }
 
   @Post('checkout/:id/validate')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Validate fan wallet balance for a checkout session' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
-  @ApiResponse({ status: 200, description: 'Balance validation result' })
+  @ApiResponse({ status: 200, description: 'Balance validation result', type: ValidateBalanceResponseDto })
+  @ApiResponse({ status: 404, description: 'Checkout not found' })
   validateBalance(
     @Param('id') checkoutId: string,
-    @Body() body: { assetCode: string; amount: string },
+    @Body() body: ValidateBalanceDto,
   ) {
     const checkout = this.subscriptionsService.getCheckout(checkoutId);
     return this.subscriptionsService.validateBalance(
@@ -264,23 +287,30 @@ export class SubscriptionsController {
   }
 
   @Post('checkout/:id/confirm')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Confirm a subscription checkout' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
-  @ApiResponse({ status: 200, description: 'Subscription confirmed' })
+  @ApiResponse({ status: 200, description: 'Subscription confirmed', type: ConfirmSubscriptionResponseDto })
+  @ApiResponse({ status: 400, description: 'Checkout expired' })
+  @ApiResponse({ status: 404, description: 'Checkout not found' })
   confirmSubscription(
     @Param('id') checkoutId: string,
-    @Body() body: { txHash?: string },
+    @Body() body: ConfirmSubscriptionDto,
   ) {
     return this.subscriptionsService.confirmSubscription(checkoutId, body.txHash);
   }
 
   @Post('checkout/:id/fail')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Mark a checkout session as failed' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
   @ApiResponse({ status: 200, description: 'Checkout marked as failed' })
+  @ApiResponse({ status: 404, description: 'Checkout not found' })
   failCheckout(
     @Param('id') checkoutId: string,
-    @Body() body: { error: string; rejected?: boolean },
+    @Body() body: FailCheckoutDto,
   ) {
     return this.subscriptionsService.failCheckout(
       checkoutId,
@@ -290,10 +320,13 @@ export class SubscriptionsController {
   }
 
   @Post('cancel')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Cancel a subscription' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiResponse({ status: 200, description: 'Subscription cancelled' })
+  @ApiResponse({ status: 404, description: 'Subscription not found' })
   cancelSubscription(
-    @Body() body: { fanAddress: string; creatorAddress: string },
+    @Body() body: CancelSubscriptionDto,
   ) {
     return this.subscriptionsService.cancelSubscription(
       body.fanAddress,
