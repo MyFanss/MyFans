@@ -1,4 +1,4 @@
-# 0.1.0 (2026-06-27)
+# 0.1.0 (2026-06-28)
 
 
 ### Bug Fixes
@@ -192,6 +192,7 @@
 * **backend:** creator dashboard endpoint for revenue and subscriber metrics ([d1a39ea](https://github.com/MyFanss/MyFans/commit/d1a39eab6d25c3d77ae84a590a73545515d2e1ed))
 * **backend:** harden CreatorsService with Logger and resilient edges ([d4418ed](https://github.com/MyFanss/MyFans/commit/d4418edfe825c4d03bf7cf0363ab8a2edcdcae9c))
 * **backend:** IPFS metadata upload flow ([c46de68](https://github.com/MyFanss/MyFans/commit/c46de682411b3f69f24ccd4e450ae743c4d41629))
+* **backend:** social-links service tests, DTO validation, e2e coverage, pagination ([2f1db47](https://github.com/MyFanss/MyFans/commit/2f1db47e7ae4491bf0cae7789cd1fe7e661b5e08))
 * **backend:** subscription reconciler job with dry-run and audit logging ([0a145a1](https://github.com/MyFanss/MyFans/commit/0a145a18aea622f9797ea79828030a2eeb06fb41))
 * **backend:** validate Soroban env at startup with tests ([a10971a](https://github.com/MyFanss/MyFans/commit/a10971ad7be01e549a0526df2bd114af7d68a179))
 * bootstrap runtime contract config ([676e56a](https://github.com/MyFanss/MyFans/commit/676e56a2c195ca3371754479de6406555595dcfb))
