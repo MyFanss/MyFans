@@ -8,7 +8,8 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
-import { LikesModule } from '../src/likes/likes.module';
+import { LikesController } from '../src/likes/likes.controller';
+import { LikesService } from '../src/likes/likes.service';
 import { Like } from '../src/likes/entities/like.entity';
 import { JwtAuthGuard } from '../src/auth-module/guards/jwt-auth.guard';
 import { PostsService } from '../src/posts/posts.service';
@@ -31,7 +32,7 @@ const mockPost = {
 
 function makeLike(overrides: Partial<Like> = {}): Like {
   return {
-    id: `like-${Date.now()}`,
+    id: `like-${Date.now()}-${Math.random()}`,
     userId: TEST_USER_ID,
     postId: TEST_POST_ID,
     createdAt: new Date(),
@@ -89,7 +90,9 @@ describe('LikesController (e2e) – primary endpoints', () => {
 
   const mockJwtAuthGuard = {
     canActivate: (context: ExecutionContext) => {
-      const req = context.switchToHttp().getRequest<{ user: { userId: string } }>();
+      const req = context
+        .switchToHttp()
+        .getRequest<{ user: { userId: string } }>();
       req.user = { userId: TEST_USER_ID };
       return true;
     },
@@ -100,12 +103,13 @@ describe('LikesController (e2e) – primary endpoints', () => {
     jest.clearAllMocks();
 
     const moduleRef: TestingModule = await Test.createTestingModule({
-      imports: [LikesModule],
+      controllers: [LikesController],
+      providers: [
+        LikesService,
+        { provide: getRepositoryToken(Like), useValue: mockLikeRepo },
+        { provide: PostsService, useValue: mockPostsService },
+      ],
     })
-      .overrideProvider(getRepositoryToken(Like))
-      .useValue(mockLikeRepo)
-      .overrideProvider(PostsService)
-      .useValue(mockPostsService)
       .overrideGuard(JwtAuthGuard)
       .useValue(mockJwtAuthGuard)
       .compile();
@@ -204,7 +208,11 @@ describe('LikesController (e2e) – primary endpoints', () => {
     it('respects limit query parameter', async () => {
       for (let i = 0; i < 5; i++) {
         storedLikes.push(
-          makeLike({ id: `like-${i}`, userId: `user-${i}`, postId: TEST_POST_ID }),
+          makeLike({
+            id: `like-${i}`,
+            userId: `user-${i}`,
+            postId: TEST_POST_ID,
+          }),
         );
       }
 
@@ -244,7 +252,7 @@ describe('LikesController (e2e) – primary endpoints', () => {
       expect(res.body).toHaveProperty('count', 0);
     });
 
-    it('returns the correct count after liking', async () => {
+    it('returns the correct count after likes are added', async () => {
       storedLikes.push(
         makeLike({ id: 'like-a', userId: 'user-a', postId: TEST_POST_ID }),
         makeLike({ id: 'like-b', userId: 'user-b', postId: TEST_POST_ID }),
