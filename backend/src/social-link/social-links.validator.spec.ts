@@ -107,7 +107,9 @@ describe('IsAllowedDomainConstraint', () => {
   });
 
   it('passes for URL with path and query string', () => {
-    expect(constraint.validate('https://linkedin.com/in/johndoe?ref=share')).toBe(true);
+    expect(
+      constraint.validate('https://linkedin.com/in/johndoe?ref=share'),
+    ).toBe(true);
   });
 
   // ── Optional fields ──
@@ -444,6 +446,31 @@ describe('SocialLinksDto validation', () => {
     expect(errors.some((e) => e.property === 'websiteUrl')).toBe(true);
   });
 
+  it.each([
+    ['websiteUrl', 123],
+    ['otherLink', { href: 'https://twitter.com/page' }],
+    ['twitterHandle', ['johndoe']],
+    ['instagramHandle', true],
+  ])(
+    'fails for non-string %s input without throwing',
+    async (property, value) => {
+      const dto = plainToInstance(SocialLinksDto, { [property]: value });
+      const errors = await validate(dto);
+
+      expect(errors.some((e) => e.property === property)).toBe(true);
+    },
+  );
+
+  it.each([
+    ['websiteUrl', `https://twitter.com/${'a'.repeat(501)}`],
+    ['otherLink', `https://linkedin.com/in/${'a'.repeat(501)}`],
+    ['twitterHandle', 'a'.repeat(51)],
+    ['instagramHandle', `@${'a'.repeat(51)}`],
+  ])('fails when %s exceeds max length', async (property, value) => {
+    const errors = await validate_({ [property]: value });
+    expect(errors.some((e) => e.property === property)).toBe(true);
+  });
+
   // ── Disallowed domain ──
 
   it('fails for websiteUrl on disallowed domain example.com', async () => {
@@ -455,7 +482,9 @@ describe('SocialLinksDto validation', () => {
     const errors = await validate_({ websiteUrl: 'https://facebook.com' });
     const websiteErrors = errors.find((e) => e.property === 'websiteUrl');
     const messages = Object.values(websiteErrors?.constraints || {});
-    expect(messages.some((m) => /facebook\.com/i.test(m) && /not allowed/i.test(m))).toBe(true);
+    expect(
+      messages.some((m) => /facebook\.com/i.test(m) && /not allowed/i.test(m)),
+    ).toBe(true);
   });
 
   it('fails for otherLink on disallowed domain evil.com', async () => {
@@ -482,19 +511,19 @@ describe('SocialLinksDto validation', () => {
 
   // ── Transform integration ──
 
-  it('sanitizes websiteUrl via Transform', async () => {
+  it('sanitizes websiteUrl via Transform', () => {
     const dto = plainToInstance(SocialLinksDto, {
       websiteUrl: '  https://twitter.com/page  ',
     });
     expect(dto.websiteUrl).toBe('https://twitter.com/page');
   });
 
-  it('normalizes twitterHandle via Transform', async () => {
+  it('normalizes twitterHandle via Transform', () => {
     const dto = plainToInstance(SocialLinksDto, { twitterHandle: '@JohnDoe' });
     expect(dto.twitterHandle).toBe('johndoe');
   });
 
-  it('normalizes instagramHandle via Transform', async () => {
+  it('normalizes instagramHandle via Transform', () => {
     const dto = plainToInstance(SocialLinksDto, { instagramHandle: '@MyUser' });
     expect(dto.instagramHandle).toBe('myuser');
   });
