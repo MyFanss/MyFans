@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Reflector } from '@nestjs/core';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 import { ListCreatorSubscribersQueryDto } from './dto/list-creator-subscribers-query.dto';
 import { SubscriptionStateQueryDto } from './dto/subscription-state-query.dto';
@@ -23,6 +24,7 @@ import { FeatureFlagGuard } from '../feature-flags/feature-flag.guard';
 import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
 
 @ApiTags('subscriptions')
+@UseGuards(ThrottlerGuard)
 @Controller({ path: 'subscriptions', version: '1' })
 export class SubscriptionsController {
   constructor(private subscriptionsService: SubscriptionsService) {}
@@ -145,9 +147,11 @@ export class SubscriptionsController {
   }
 
   @Post('checkout')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @UseGuards(FeatureFlagGuard)
   @RequireFeatureFlag('newSubscriptionFlow')
   @ApiOperation({ summary: 'Create a subscription checkout session' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiResponse({ status: 201, description: 'Checkout session created' })
   @ApiResponse({ status: 403, description: 'New subscription flow is disabled' })
   createCheckout(
@@ -248,7 +252,9 @@ export class SubscriptionsController {
   }
 
   @Post('checkout/:id/validate')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Validate fan wallet balance for a checkout session' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
   @ApiResponse({ status: 200, description: 'Balance validation result' })
   validateBalance(
@@ -264,7 +270,9 @@ export class SubscriptionsController {
   }
 
   @Post('checkout/:id/confirm')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Confirm a subscription checkout' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
   @ApiResponse({ status: 200, description: 'Subscription confirmed' })
   confirmSubscription(
@@ -275,7 +283,9 @@ export class SubscriptionsController {
   }
 
   @Post('checkout/:id/fail')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Mark a checkout session as failed' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
   @ApiResponse({ status: 200, description: 'Checkout marked as failed' })
   failCheckout(
@@ -290,7 +300,9 @@ export class SubscriptionsController {
   }
 
   @Post('cancel')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Cancel a subscription' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiResponse({ status: 200, description: 'Subscription cancelled' })
   cancelSubscription(
     @Body() body: { fanAddress: string; creatorAddress: string },
