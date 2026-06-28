@@ -1,4 +1,4 @@
-# 0.1.0 (2026-06-27)
+# 0.1.0 (2026-06-28)
 
 
 ### Bug Fixes
@@ -94,6 +94,7 @@
 * return consistent error shape on creators and posts module failures ([#995](https://github.com/MyFanss/MyFans/issues/995)) ([2147319](https://github.com/MyFanss/MyFans/commit/2147319977f6a48dc204ac8e122d663b253c5528))
 * **security:** fix CORS duplicate origin key bug and add per-environment host allowlist tests ([d6feee9](https://github.com/MyFanss/MyFans/commit/d6feee93af56cd1a9fe173491d10ccdf9062588f))
 * **security:** remediate frontend high-severity npm audit vulnerabilities ([93a35a1](https://github.com/MyFanss/MyFans/commit/93a35a1ab77c679b0cd5976d86eb90e60df66719)), closes [hi#severity](https://github.com/hi/issues/severity)
+* **subscriptions:** return consistent error shape on failure ([74ba625](https://github.com/MyFanss/MyFans/commit/74ba6259f04da649de791c70be6ddb4a893c2ece))
 * **subscription:** validate error codes, optimize gas, add integration tests, verify wasm CI ([#895](https://github.com/MyFanss/MyFans/issues/895) [#896](https://github.com/MyFanss/MyFans/issues/896) [#897](https://github.com/MyFanss/MyFans/issues/897) [#898](https://github.com/MyFanss/MyFans/issues/898)) ([0ab1336](https://github.com/MyFanss/MyFans/commit/0ab13369ee87aa193d3ea8e7fca69f56bec28119))
 * test errors ([d48694f](https://github.com/MyFanss/MyFans/commit/d48694f2a32b5021c29fdd817add9a17a6331df0))
 * **test:** add CreatorDashboardService mock to creators controller spec ([70db6a7](https://github.com/MyFanss/MyFans/commit/70db6a7694ad813fcd10fd0041ee62cbe7134e0c))
@@ -179,6 +180,7 @@
 * **analytics:** payment analytics endpoints ([0a31511](https://github.com/MyFanss/MyFans/commit/0a31511c45b7bbf2fba829e92a5a2c6e17bcadb9)), closes [#payment-analytics](https://github.com/MyFanss/MyFans/issues/payment-analytics)
 * API versioning ([c62bb64](https://github.com/MyFanss/MyFans/commit/c62bb648e1fc7745ca67b945fbfb991718152117))
 * **api:** standardize pagination on subscriptions, creators, and posts ([#861](https://github.com/MyFanss/MyFans/issues/861)) ([ad25d72](https://github.com/MyFanss/MyFans/commit/ad25d7280d658e48c73b4277506a45712163bd41))
+* **auth:** add pagination and limit query support ([ca9bfea](https://github.com/MyFanss/MyFans/commit/ca9bfeabc33f65e4f4ad4d61c29d1356c1fd7677))
 * **auth:** wallet signature challenge endpoints ([561d65d](https://github.com/MyFanss/MyFans/commit/561d65d498549206d65d72ce9ca3a6105f6826d7)), closes [#wallet-challenge-auth](https://github.com/MyFanss/MyFans/issues/wallet-challenge-auth)
 * backend contract health checks against CI deployment outputs ([5282a06](https://github.com/MyFanss/MyFans/commit/5282a06a8c02a7395a65e8f6e3b591b5c8f45e61))
 * **backend:** add getLatestLedgerSequence & getNetworkEvents to SorobanRpcService; guard poller behind feature flag ([bad9786](https://github.com/MyFanss/MyFans/commit/bad9786ed42e28652b91be8576c59c09ec3e473e))
@@ -192,6 +194,7 @@
 * **backend:** creator dashboard endpoint for revenue and subscriber metrics ([d1a39ea](https://github.com/MyFanss/MyFans/commit/d1a39eab6d25c3d77ae84a590a73545515d2e1ed))
 * **backend:** harden CreatorsService with Logger and resilient edges ([d4418ed](https://github.com/MyFanss/MyFans/commit/d4418edfe825c4d03bf7cf0363ab8a2edcdcae9c))
 * **backend:** IPFS metadata upload flow ([c46de68](https://github.com/MyFanss/MyFans/commit/c46de682411b3f69f24ccd4e450ae743c4d41629))
+* **backend:** social-links service tests, DTO validation, e2e coverage, pagination ([2f1db47](https://github.com/MyFanss/MyFans/commit/2f1db47e7ae4491bf0cae7789cd1fe7e661b5e08))
 * **backend:** subscription reconciler job with dry-run and audit logging ([0a145a1](https://github.com/MyFanss/MyFans/commit/0a145a18aea622f9797ea79828030a2eeb06fb41))
 * **backend:** validate Soroban env at startup with tests ([a10971a](https://github.com/MyFanss/MyFans/commit/a10971ad7be01e549a0526df2bd114af7d68a179))
 * bootstrap runtime contract config ([676e56a](https://github.com/MyFanss/MyFans/commit/676e56a2c195ca3371754479de6406555595dcfb))
@@ -260,6 +263,7 @@
 * **frontend:** persist wallet/subscription state for e2e critical flow ([ad944bd](https://github.com/MyFanss/MyFans/commit/ad944bd992753f3a00f0e82cad13ee072b92dff4))
 * **frontend:** show offline banner when RPC or network is unavailable ([11a4a2c](https://github.com/MyFanss/MyFans/commit/11a4a2cb54b8fbd36d089358a3b36744cd9eaba6))
 * **frontend:** standardize error copy with actionable recovery steps ([53e8b4f](https://github.com/MyFanss/MyFans/commit/53e8b4fbb0721d7df0eea13702de2b1c878d81ed))
+* **games:** add pagination and limit query support ([4d06881](https://github.com/MyFanss/MyFans/commit/4d06881649619b64065e0afd40cd1c3ab7409aa1))
 * harden backend secret management ([#350](https://github.com/MyFanss/MyFans/issues/350)) ([4cc8a96](https://github.com/MyFanss/MyFans/commit/4cc8a9662faa27a06a9c3ead0a9b4f6e5d437c26))
 * Health check for Soroban RPC ([5f189be](https://github.com/MyFanss/MyFans/commit/5f189be70eec41873edeb0fcb666bec2fd10d283))
 * **idempotency:** document TTL & harden collision behavior ([770024e](https://github.com/MyFanss/MyFans/commit/770024e7281b58bbf4f3ebb9884fd4ef3f7017c2))
@@ -320,6 +324,7 @@
 * **onboarding:** creator onboarding progress UI — stale state handling + tests ([3ca82f8](https://github.com/MyFanss/MyFans/commit/3ca82f84f0fd8ecf3f3068333845374574adb6f7))
 * optimistic updates for content metadata actions ([1dba8a5](https://github.com/MyFanss/MyFans/commit/1dba8a50337619e76c346f76ef2ae813a9ea31bf))
 * Posts: soft delete and audit trail ([36561ec](https://github.com/MyFanss/MyFans/commit/36561ecd34e5f6e2eb3b706947f40102b5b6ee5a))
+* **posts:** DTO validation, pagination enforcement, Swagger docs, e2e tests ([ffb605c](https://github.com/MyFanss/MyFans/commit/ffb605c9c52534c75bd6c1bd1a1c7bb29fce2904)), closes [#1000](https://github.com/MyFanss/MyFans/issues/1000) [#1001](https://github.com/MyFanss/MyFans/issues/1001) [#1002](https://github.com/MyFanss/MyFans/issues/1002) [#1004](https://github.com/MyFanss/MyFans/issues/1004) [#1000](https://github.com/MyFanss/MyFans/issues/1000) [#1001](https://github.com/MyFanss/MyFans/issues/1001) [#1002](https://github.com/MyFanss/MyFans/issues/1002) [#1004](https://github.com/MyFanss/MyFans/issues/1004)
 * **posts:** soft delete with audit trail ([d3741fb](https://github.com/MyFanss/MyFans/commit/d3741fbadd72af907b5377abaaf0089801f1d178)), closes [#732](https://github.com/MyFanss/MyFans/issues/732)
 * PR template with test plan ([#723](https://github.com/MyFanss/MyFans/issues/723)) ([ac66a6d](https://github.com/MyFanss/MyFans/commit/ac66a6d5d9825781ab5de2a9297f45edd8b742aa))
 * profile settings for fans and creators with API + validation ([165a7b5](https://github.com/MyFanss/MyFans/commit/165a7b56c48da00a92df7f0e70e0dc86e03661e3))
@@ -352,6 +357,7 @@
 * **subscription:** add unit tests for initialize and admin paths ([#890](https://github.com/MyFanss/MyFans/issues/890)) ([9b3d0b9](https://github.com/MyFanss/MyFans/commit/9b3d0b944192676a42bca6b4ccbfccba8e7e08a9))
 * **subscription:** admin set_fee_bps with bounds and fee_updated event ([5a7c7e2](https://github.com/MyFanss/MyFans/commit/5a7c7e26f5546b4b14ea65e71644765be2346475))
 * **subscription:** admin set_fee_recipient with validation and event ([c372cab](https://github.com/MyFanss/MyFans/commit/c372caba4c9716bcdc3fa1e4825f70af8158cd20))
+* **subscriptions:** add rate limiting on write endpoints ([5f47524](https://github.com/MyFanss/MyFans/commit/5f4752492db317bdfa90b138c180d3d6644dc22e))
 * **subscriptions:** add status filter and sort to subscription list endpoints ([ddaf69a](https://github.com/MyFanss/MyFans/commit/ddaf69a0f5b8da995d52d0505a8fc0204325f879))
 * **subscriptions:** gated content access guard ([da2d891](https://github.com/MyFanss/MyFans/commit/da2d891ae5062ab9ded3994d67c28521ce42b318)), closes [#gated-content-access](https://github.com/MyFanss/MyFans/issues/gated-content-access)
 * **subscriptions:** GET fan–creator subscription state with auth ([2fec38f](https://github.com/MyFanss/MyFans/commit/2fec38f7d73e046ce497399ec412220b12fd8044))

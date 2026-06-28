@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { CreatorsController } from './creators.controller';
 import { CreatorsService } from './creators.service';
 import { CreatorDashboardService } from './creator-dashboard.service';
@@ -31,6 +32,9 @@ describe('CreatorsController', () => {
     mockDashboardService = mockDashboardServiceFactory();
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [
+        ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 100 }]),
+      ],
       controllers: [CreatorsController],
       providers: [
         {
@@ -73,8 +77,20 @@ describe('CreatorsController', () => {
 
     it('should return array of plans', async () => {
       const mockPlans = [
-        { id: 1, creator: 'user1', asset: 'native', amount: '100', intervalDays: 30 },
-        { id: 2, creator: 'user2', asset: 'native', amount: '50', intervalDays: 7 },
+        {
+          id: 1,
+          creator: 'user1',
+          asset: 'native',
+          amount: '100',
+          intervalDays: 30,
+        },
+        {
+          id: 2,
+          creator: 'user2',
+          asset: 'native',
+          amount: '50',
+          intervalDays: 7,
+        },
       ];
       mockCreatorsService.listCreators.mockResolvedValue(mockPlans);
 
@@ -157,7 +173,13 @@ describe('CreatorsController', () => {
     it('should return paginated plans', async () => {
       const pagination = { page: 1, limit: 20 };
       const mockPlans = [
-        { id: 1, creator: 'user1', asset: 'native', amount: '100', intervalDays: 30 },
+        {
+          id: 1,
+          creator: 'user1',
+          asset: 'native',
+          amount: '100',
+          intervalDays: 30,
+        },
       ];
       const mockResponse = new PaginatedResponseDto(mockPlans, 20, null, false);
       mockCreatorsService.findAllPlans.mockReturnValue(mockResponse);
@@ -188,7 +210,13 @@ describe('CreatorsController', () => {
       const address = 'GBCQ6C7OXWTKJ7APCIQPKK6X4CQBFGWJKW35GD7H5GMVVDANQCXLSV7';
       const pagination = { page: 1, limit: 20 };
       const mockPlans = [
-        { id: 1, creator: address, asset: 'native', amount: '100', intervalDays: 30 },
+        {
+          id: 1,
+          creator: address,
+          asset: 'native',
+          amount: '100',
+          intervalDays: 30,
+        },
       ];
       const mockResponse = new PaginatedResponseDto(mockPlans, 20, null, false);
       mockCreatorsService.findCreatorPlans.mockReturnValue(mockResponse);
@@ -209,14 +237,18 @@ describe('CreatorsController', () => {
         subscriberCount: 10,
       };
       const mockDashboardService = controller['dashboardService'];
-      jest.spyOn(mockDashboardService, 'getDashboard').mockReturnValue(mockDashboard as any);
+      jest
+        .spyOn(mockDashboardService, 'getDashboard')
+        .mockReturnValue(mockDashboard as any);
 
       await controller.getDashboard(address, query as any);
 
-      expect(mockDashboardService.getDashboard).toHaveBeenCalledWith(address, query);
+      expect(mockDashboardService.getDashboard).toHaveBeenCalledWith(
+        address,
+        query,
+      );
     });
   });
-
 
   describe('searchCreators', () => {
     describe('GET /creators endpoint exists and is accessible', () => {
@@ -246,7 +278,11 @@ describe('CreatorsController', () => {
       });
 
       it('should accept query parameter cursor', async () => {
-        const searchDto: SearchCreatorsDto = { q: '', cursor: 'alice', limit: 10 };
+        const searchDto: SearchCreatorsDto = {
+          q: '',
+          cursor: 'alice',
+          limit: 10,
+        };
         const mockResponse = new PaginatedResponseDto([], 10, null, false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
@@ -274,7 +310,11 @@ describe('CreatorsController', () => {
 
       it('should accept all query parameters together', async () => {
         // Arrange
-        const searchDto: SearchCreatorsDto = { q: 'alice', cursor: 'bob', limit: 15 };
+        const searchDto: SearchCreatorsDto = {
+          q: 'alice',
+          cursor: 'bob',
+          limit: 15,
+        };
         const mockResponse = new PaginatedResponseDto([], 15, null, false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
@@ -301,7 +341,12 @@ describe('CreatorsController', () => {
             bio: 'Test bio',
           },
         ];
-        const mockResponse = new PaginatedResponseDto(mockData, 10, 'testuser', false);
+        const mockResponse = new PaginatedResponseDto(
+          mockData,
+          10,
+          'testuser',
+          false,
+        );
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
         // Act
@@ -326,7 +371,12 @@ describe('CreatorsController', () => {
             bio: 'Test bio',
           },
         ];
-        const mockResponse = new PaginatedResponseDto(mockData, 10, 'testuser', false);
+        const mockResponse = new PaginatedResponseDto(
+          mockData,
+          10,
+          'testuser',
+          false,
+        );
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
         // Act
@@ -505,7 +555,11 @@ describe('CreatorsController', () => {
     describe('CreatorsService.searchCreators method is called', () => {
       it('should call service.searchCreators with correct parameters', async () => {
         // Arrange
-        const searchDto: SearchCreatorsDto = { q: 'alice', cursor: 'bob', limit: 15 };
+        const searchDto: SearchCreatorsDto = {
+          q: 'alice',
+          cursor: 'bob',
+          limit: 15,
+        };
         const mockResponse = new PaginatedResponseDto([], 15, null, false);
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
@@ -544,7 +598,12 @@ describe('CreatorsController', () => {
             bio: 'Test bio',
           },
         ];
-        const mockResponse = new PaginatedResponseDto(mockData, 10, 'testuser', false);
+        const mockResponse = new PaginatedResponseDto(
+          mockData,
+          10,
+          'testuser',
+          false,
+        );
         mockCreatorsService.searchCreators.mockResolvedValue(mockResponse);
 
         // Act
@@ -560,7 +619,13 @@ describe('CreatorsController', () => {
 
   describe('createPlan', () => {
     it('should call service.createPlan with correct parameters', () => {
-      const mockPlan = { id: 1, creator: 'creator1', asset: 'USDC', amount: '100', intervalDays: 30 };
+      const mockPlan = {
+        id: 1,
+        creator: 'creator1',
+        asset: 'USDC',
+        amount: '100',
+        intervalDays: 30,
+      };
       mockCreatorsService.createPlan.mockReturnValue(mockPlan);
 
       const result = controller.createPlan({
@@ -580,7 +645,13 @@ describe('CreatorsController', () => {
     });
 
     it('should create plan with valid input', () => {
-      const mockPlan = { id: 2, creator: 'creator2', asset: 'EURC', amount: '50', intervalDays: 7 };
+      const mockPlan = {
+        id: 2,
+        creator: 'creator2',
+        asset: 'EURC',
+        amount: '50',
+        intervalDays: 7,
+      };
       mockCreatorsService.createPlan.mockReturnValue(mockPlan);
 
       const result = controller.createPlan({
@@ -615,7 +686,13 @@ describe('CreatorsController', () => {
     it('should call service.findAllPlans with pagination', () => {
       const mockPlans = new PaginatedResponseDto(
         [
-          { id: 1, creator: 'creator1', asset: 'USDC', amount: '100', intervalDays: 30 },
+          {
+            id: 1,
+            creator: 'creator1',
+            asset: 'USDC',
+            amount: '100',
+            intervalDays: 30,
+          },
         ],
         20,
         '1',
@@ -625,15 +702,29 @@ describe('CreatorsController', () => {
 
       const result = controller.getAllPlans({ limit: 20 });
 
-      expect(mockCreatorsService.findAllPlans).toHaveBeenCalledWith({ limit: 20 });
+      expect(mockCreatorsService.findAllPlans).toHaveBeenCalledWith({
+        limit: 20,
+      });
       expect(result).toEqual(mockPlans);
     });
 
     it('should return paginated plans', () => {
       const mockPlans = new PaginatedResponseDto(
         [
-          { id: 1, creator: 'creator1', asset: 'USDC', amount: '100', intervalDays: 30 },
-          { id: 2, creator: 'creator2', asset: 'EURC', amount: '50', intervalDays: 7 },
+          {
+            id: 1,
+            creator: 'creator1',
+            asset: 'USDC',
+            amount: '100',
+            intervalDays: 30,
+          },
+          {
+            id: 2,
+            creator: 'creator2',
+            asset: 'EURC',
+            amount: '50',
+            intervalDays: 7,
+          },
         ],
         20,
         '2',
@@ -662,7 +753,15 @@ describe('CreatorsController', () => {
   describe('getPlans', () => {
     it('should call service.findCreatorPlans with creator and pagination', () => {
       const mockPlans = new PaginatedResponseDto(
-        [{ id: 1, creator: 'creator1', asset: 'USDC', amount: '100', intervalDays: 30 }],
+        [
+          {
+            id: 1,
+            creator: 'creator1',
+            asset: 'USDC',
+            amount: '100',
+            intervalDays: 30,
+          },
+        ],
         20,
         '1',
         false,
@@ -671,17 +770,32 @@ describe('CreatorsController', () => {
 
       const result = controller.getPlans('creator1', { limit: 20 });
 
-      expect(mockCreatorsService.findCreatorPlans).toHaveBeenCalledWith('creator1', {
-        limit: 20,
-      });
+      expect(mockCreatorsService.findCreatorPlans).toHaveBeenCalledWith(
+        'creator1',
+        {
+          limit: 20,
+        },
+      );
       expect(result).toEqual(mockPlans);
     });
 
     it('should return creator plans when creator has plans', () => {
       const mockPlans = new PaginatedResponseDto(
         [
-          { id: 1, creator: 'creator1', asset: 'USDC', amount: '100', intervalDays: 30 },
-          { id: 2, creator: 'creator1', asset: 'EURC', amount: '50', intervalDays: 7 },
+          {
+            id: 1,
+            creator: 'creator1',
+            asset: 'USDC',
+            amount: '100',
+            intervalDays: 30,
+          },
+          {
+            id: 2,
+            creator: 'creator1',
+            asset: 'EURC',
+            amount: '50',
+            intervalDays: 7,
+          },
         ],
         20,
         '2',
@@ -703,9 +817,12 @@ describe('CreatorsController', () => {
       const result = controller.getPlans('nonexistent', { limit: 20 });
 
       expect(result.data.length).toBe(0);
-      expect(mockCreatorsService.findCreatorPlans).toHaveBeenCalledWith('nonexistent', {
-        limit: 20,
-      });
+      expect(mockCreatorsService.findCreatorPlans).toHaveBeenCalledWith(
+        'nonexistent',
+        {
+          limit: 20,
+        },
+      );
     });
   });
 
@@ -716,21 +833,31 @@ describe('CreatorsController', () => {
 
       const result = controller.getDashboard('creator1', {});
 
-      expect(mockDashboardService.getDashboard).toHaveBeenCalledWith('creator1', {});
+      expect(mockDashboardService.getDashboard).toHaveBeenCalledWith(
+        'creator1',
+        {},
+      );
       expect(result).toEqual(mockDashboard);
     });
 
     it('should return dashboard metrics for creator', () => {
-      const mockDashboard = { totalEarnings: 5000, subscribers: 150, activeSubscriptions: 120 };
+      const mockDashboard = {
+        totalEarnings: 5000,
+        subscribers: 150,
+        activeSubscriptions: 120,
+      };
       mockDashboardService.getDashboard.mockReturnValue(mockDashboard);
 
       const result = controller.getDashboard('creator1', { days: '30' });
 
       expect(result.totalEarnings).toBe(5000);
       expect(result.subscribers).toBe(150);
-      expect(mockDashboardService.getDashboard).toHaveBeenCalledWith('creator1', {
-        days: '30',
-      });
+      expect(mockDashboardService.getDashboard).toHaveBeenCalledWith(
+        'creator1',
+        {
+          days: '30',
+        },
+      );
     });
 
     it('should pass query parameters to dashboard service', async () => {
@@ -739,9 +866,12 @@ describe('CreatorsController', () => {
 
       const result = await controller.getDashboard('creator1', { days: '90' });
 
-      expect(mockDashboardService.getDashboard).toHaveBeenCalledWith('creator1', {
-        days: '90',
-      });
+      expect(mockDashboardService.getDashboard).toHaveBeenCalledWith(
+        'creator1',
+        {
+          days: '90',
+        },
+      );
     });
 
     it('should handle dashboard not found error', () => {

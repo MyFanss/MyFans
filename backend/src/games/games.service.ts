@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Game, GameStatus } from './entities/game.entity';
 import { Player } from './entities/player.entity';
+import { ListGamesDto } from './dto/list-games.dto';
+import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
 
 @Injectable()
 export class GamesService {
@@ -13,6 +15,27 @@ export class GamesService {
     private playerRepository: Repository<Player>,
     private dataSource: DataSource,
   ) {}
+
+  async findAll(listGamesDto: ListGamesDto): Promise<PaginatedResponseDto<Game>> {
+    const { page = 1, limit = 20, status } = listGamesDto;
+
+    const queryBuilder = this.gameRepository
+      .createQueryBuilder('game')
+      .orderBy('game.created_at', 'DESC');
+
+    if (status) {
+      queryBuilder.where('game.status = :status', { status });
+    }
+
+    const total = await queryBuilder.getCount();
+
+    const data = await queryBuilder
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getMany();
+
+    return new PaginatedResponseDto(data, total, page, limit);
+  }
 
   async joinGame(gameId: string, userId: string): Promise<Player> {
     return await this.dataSource.transaction(async (manager) => {
