@@ -261,6 +261,7 @@
 * **frontend:** persist wallet/subscription state for e2e critical flow ([ad944bd](https://github.com/MyFanss/MyFans/commit/ad944bd992753f3a00f0e82cad13ee072b92dff4))
 * **frontend:** show offline banner when RPC or network is unavailable ([11a4a2c](https://github.com/MyFanss/MyFans/commit/11a4a2cb54b8fbd36d089358a3b36744cd9eaba6))
 * **frontend:** standardize error copy with actionable recovery steps ([53e8b4f](https://github.com/MyFanss/MyFans/commit/53e8b4fbb0721d7df0eea13702de2b1c878d81ed))
+* **games:** add pagination and limit query support ([4d06881](https://github.com/MyFanss/MyFans/commit/4d06881649619b64065e0afd40cd1c3ab7409aa1))
 * harden backend secret management ([#350](https://github.com/MyFanss/MyFans/issues/350)) ([4cc8a96](https://github.com/MyFanss/MyFans/commit/4cc8a9662faa27a06a9c3ead0a9b4f6e5d437c26))
 * Health check for Soroban RPC ([5f189be](https://github.com/MyFanss/MyFans/commit/5f189be70eec41873edeb0fcb666bec2fd10d283))
 * **idempotency:** document TTL & harden collision behavior ([770024e](https://github.com/MyFanss/MyFans/commit/770024e7281b58bbf4f3ebb9884fd4ef3f7017c2))
@@ -374,11 +375,11 @@
 
 ### Performance Improvements
 
-* optimise gas usage in earnings contract hot paths ([#966](https://github.com/jhayniffy/MyFans/issues/966)) ([799bd81](https://github.com/jhayniffy/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
-* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/jhayniffy/MyFans/issues/986)) ([97d059e](https://github.com/jhayniffy/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
-* Optimize creator profile page performance ([d8ba3ca](https://github.com/jhayniffy/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/jhayniffy/MyFans/issues/415)
+* optimise gas usage in earnings contract hot paths ([#966](https://github.com/MyFanss/MyFans/issues/966)) ([799bd81](https://github.com/MyFanss/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
+* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/MyFanss/MyFans/issues/986)) ([97d059e](https://github.com/MyFanss/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
+* Optimize creator profile page performance ([d8ba3ca](https://github.com/MyFanss/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/MyFanss/MyFans/issues/415)
 
 
 ### Reverts
 
-* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/jhayniffy/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
+* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/MyFanss/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
