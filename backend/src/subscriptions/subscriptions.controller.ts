@@ -7,6 +7,7 @@ import {
   Post,
   Query,
   Req,
+  UseFilters,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -36,8 +37,10 @@ import { SubscriptionsService } from './subscriptions.service';
 import { RequireFeatureFlag } from '../feature-flags/feature-flag.decorator';
 import { FeatureFlagGuard } from '../feature-flags/feature-flag.guard';
 import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
+import { SubscriptionsExceptionFilter } from './filters/subscriptions-exception.filter';
 
 @ApiTags('subscriptions')
+@UseFilters(new SubscriptionsExceptionFilter())
 @UseGuards(ThrottlerGuard)
 @Controller({ path: 'subscriptions', version: '1' })
 export class SubscriptionsController {
