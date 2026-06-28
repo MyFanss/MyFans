@@ -8,6 +8,14 @@ import { Repository } from 'typeorm';
 import { Like } from './entities/like.entity';
 import { PostsService } from '../posts/posts.service';
 
+export interface PaginatedLikesResult {
+  data: Like[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
+
 @Injectable()
 export class LikesService {
   constructor(
@@ -74,6 +82,24 @@ export class LikesService {
    */
   async getLikesCount(postId: string): Promise<number> {
     return this.likesRepository.count({ where: { postId } });
+  }
+
+  /**
+   * Get paginated list of likes for a post
+   */
+  async getLikesByPost(
+    postId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<PaginatedLikesResult> {
+    const skip = (page - 1) * limit;
+    const [data, total] = await this.likesRepository.findAndCount({
+      where: { postId },
+      order: { createdAt: 'DESC' },
+      skip,
+      take: limit,
+    });
+    return { data, total, page, limit, hasMore: page * limit < total };
   }
 
   /**
