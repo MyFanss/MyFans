@@ -357,6 +357,7 @@
 * **subscription:** add unit tests for initialize and admin paths ([#890](https://github.com/MyFanss/MyFans/issues/890)) ([9b3d0b9](https://github.com/MyFanss/MyFans/commit/9b3d0b944192676a42bca6b4ccbfccba8e7e08a9))
 * **subscription:** admin set_fee_bps with bounds and fee_updated event ([5a7c7e2](https://github.com/MyFanss/MyFans/commit/5a7c7e26f5546b4b14ea65e71644765be2346475))
 * **subscription:** admin set_fee_recipient with validation and event ([c372cab](https://github.com/MyFanss/MyFans/commit/c372caba4c9716bcdc3fa1e4825f70af8158cd20))
+* **subscriptions:** add pagination query support for fan dashboard ([a9c55f7](https://github.com/MyFanss/MyFans/commit/a9c55f7a89bd1a6cd7321c8a36c2dfe38f506166))
 * **subscriptions:** add rate limiting on write endpoints ([5f47524](https://github.com/MyFanss/MyFans/commit/5f4752492db317bdfa90b138c180d3d6644dc22e))
 * **subscriptions:** add status filter and sort to subscription list endpoints ([ddaf69a](https://github.com/MyFanss/MyFans/commit/ddaf69a0f5b8da995d52d0505a8fc0204325f879))
 * **subscriptions:** gated content access guard ([da2d891](https://github.com/MyFanss/MyFans/commit/da2d891ae5062ab9ded3994d67c28521ce42b318)), closes [#gated-content-access](https://github.com/MyFanss/MyFans/issues/gated-content-access)
