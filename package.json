@@ -19,6 +19,7 @@
     "test:backend": "npm test --prefix backend",
     "test:frontend": "npm test --prefix frontend",
     "test:contract": "npm test --prefix contract",
-    "check": "npm run lint && npm run test && npm run build"
+    "check": "npm run lint && npm run test && npm run build",
+    "prepare": "npm ci --prefix backend && cd backend && npx husky install .husky"
   }
 }
