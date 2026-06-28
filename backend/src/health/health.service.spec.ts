@@ -39,7 +39,7 @@ describe('HealthService', () => {
     describe('getHealth', () => {
         it('should return basic health status', () => {
             const result = service.getHealth();
-            expect(result.status).toBe('ok');
+            expect(result.status).toBe('up');
             expect(result.timestamp).toBeDefined();
         });
     });
