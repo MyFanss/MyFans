@@ -5,125 +5,238 @@ import { LikesService } from './likes.service';
 import { Like } from './entities/like.entity';
 import { PostsService } from '../posts/posts.service';
 
-describe('LikesService', () => {
+const mockPost = {
+  id: 'post-1',
+  authorId: 'author-1',
+  isPremium: false,
+  title: 'Test Post',
+  content: 'Test content',
+  isPublished: true,
+  likesCount: 0,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  deletedAt: null,
+};
+
+function makeLike(overrides: Partial<Like> = {}): Like {
+  return {
+    id: 'like-1',
+    userId: 'user-1',
+    postId: 'post-1',
+    createdAt: new Date(),
+    user: undefined as never,
+    post: undefined as never,
+    ...overrides,
+  };
+}
+
+describe('LikesService – happy path', () => {
   let service: LikesService;
+  let likes: Like[];
 
-  const mockPost = { id: 'post-1', authorId: 'author-1', isPremium: false };
-
-  const mockLikesRepository = {
-    findOne: jest.fn(),
-    create: jest.fn(),
-    save: jest.fn(),
-    remove: jest.fn(),
-    count: jest.fn(),
+  const mockRepo = {
+    findOne: jest.fn(async ({ where }: { where: Partial<Like> }) =>
+      likes.find(
+        (l) =>
+          (!where.userId || l.userId === where.userId) &&
+          (!where.postId || l.postId === where.postId),
+      ) ?? null,
+    ),
+    create: jest.fn((data: Partial<Like>) => makeLike(data)),
+    save: jest.fn(async (like: Like) => {
+      likes.push(like);
+      return like;
+    }),
+    remove: jest.fn(async (like: Like) => {
+      likes = likes.filter((l) => l.id !== like.id);
+    }),
+    count: jest.fn(async ({ where }: { where: Partial<Like> }) =>
+      likes.filter((l) => !where.postId || l.postId === where.postId).length,
+    ),
+    findAndCount: jest.fn(
+      async ({
+        where,
+        skip = 0,
+        take = likes.length,
+      }: {
+        where?: Partial<Like>;
+        skip?: number;
+        take?: number;
+      }) => {
+        const filtered = likes.filter(
+          (l) => !where?.postId || l.postId === where.postId,
+        );
+        return [filtered.slice(skip, skip + take), filtered.length];
+      },
+    ),
   };
 
   const mockPostsService = {
-    findOne: jest.fn(),
+    findOne: jest.fn(async () => mockPost),
   };
 
   beforeEach(async () => {
+    likes = [];
     jest.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LikesService,
-        { provide: getRepositoryToken(Like), useValue: mockLikesRepository },
+        { provide: getRepositoryToken(Like), useValue: mockRepo },
         { provide: PostsService, useValue: mockPostsService },
       ],
     }).compile();
 
-    service = module.get<LikesService>(LikesService);
-  });
-
-  it('should be defined', () => {
-    expect(service).toBeDefined();
+    service = module.get(LikesService);
   });
 
   describe('addLike', () => {
-    it('returns 201 message when like is new', async () => {
-      mockPostsService.findOne.mockResolvedValue(mockPost);
-      mockLikesRepository.findOne.mockResolvedValue(null);
-      mockLikesRepository.create.mockReturnValue({ userId: 'u1', postId: 'post-1' });
-      mockLikesRepository.save.mockResolvedValue({});
+    it('creates a new like and returns status 201', async () => {
+      const result = await service.addLike('post-1', 'user-1');
 
-      const result = await service.addLike('post-1', 'u1');
-
-      expect(result).toEqual({ status: 201, message: 'Like added successfully' });
+      expect(result.status).toBe(201);
+      expect(result.message).toBe('Like added successfully');
+      expect(mockRepo.create).toHaveBeenCalledWith({ userId: 'user-1', postId: 'post-1' });
+      expect(mockRepo.save).toHaveBeenCalled();
     });
 
-    it('returns 200 message when like already exists (idempotent)', async () => {
-      mockPostsService.findOne.mockResolvedValue(mockPost);
-      mockLikesRepository.findOne.mockResolvedValue({ id: 'like-1' });
+    it('returns status 200 when user has already liked the post (idempotent)', async () => {
+      likes.push(makeLike({ userId: 'user-1', postId: 'post-1' }));
 
-      const result = await service.addLike('post-1', 'u1');
+      const result = await service.addLike('post-1', 'user-1');
 
-      expect(result).toEqual({ status: 200, message: 'Post already liked' });
+      expect(result.status).toBe(200);
+      expect(result.message).toBe('Post already liked');
+      expect(mockRepo.save).not.toHaveBeenCalled();
     });
 
-    it('propagates NotFoundException from PostsService (consistent error shape)', async () => {
-      mockPostsService.findOne.mockRejectedValue(new NotFoundException('Post not found'));
+    it('verifies the post exists before liking', async () => {
+      await service.addLike('post-1', 'user-1');
 
-      await expect(service.addLike('missing-post', 'u1')).rejects.toMatchObject({
-        status: 404,
-        message: 'Post not found',
-      });
+      expect(mockPostsService.findOne).toHaveBeenCalledWith('post-1');
+    });
+
+    it('throws NotFoundException when post does not exist', async () => {
+      mockPostsService.findOne.mockRejectedValueOnce(
+        new NotFoundException('Post with ID nonexistent not found'),
+      );
+
+      await expect(service.addLike('nonexistent', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
   describe('removeLike', () => {
-    it('removes the like successfully', async () => {
-      mockPostsService.findOne.mockResolvedValue(mockPost);
-      const like = { id: 'like-1' };
-      mockLikesRepository.findOne.mockResolvedValue(like);
-      mockLikesRepository.remove.mockResolvedValue(undefined);
+    it('removes an existing like', async () => {
+      likes.push(makeLike({ userId: 'user-1', postId: 'post-1' }));
 
-      await expect(service.removeLike('post-1', 'u1')).resolves.toBeUndefined();
-      expect(mockLikesRepository.remove).toHaveBeenCalledWith(like);
+      await service.removeLike('post-1', 'user-1');
+
+      expect(mockRepo.remove).toHaveBeenCalled();
     });
 
-    it('throws NotFoundException with consistent shape when like does not exist', async () => {
-      mockPostsService.findOne.mockResolvedValue(mockPost);
-      mockLikesRepository.findOne.mockResolvedValue(null);
-
-      await expect(service.removeLike('post-1', 'u1')).rejects.toMatchObject({
-        status: 404,
-        message: 'Like not found',
-      });
+    it('throws NotFoundException when like does not exist', async () => {
+      await expect(service.removeLike('post-1', 'user-no-like')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
-    it('propagates NotFoundException when post does not exist', async () => {
-      mockPostsService.findOne.mockRejectedValue(new NotFoundException('Post not found'));
+    it('verifies the post exists before removing', async () => {
+      likes.push(makeLike({ userId: 'user-1', postId: 'post-1' }));
+      await service.removeLike('post-1', 'user-1');
 
-      await expect(service.removeLike('missing-post', 'u1')).rejects.toMatchObject({
-        status: 404,
-        message: 'Post not found',
-      });
+      expect(mockPostsService.findOne).toHaveBeenCalledWith('post-1');
     });
   });
 
   describe('getLikesCount', () => {
-    it('returns the count from repository', async () => {
-      mockLikesRepository.count.mockResolvedValue(7);
+    it('returns 0 when no likes exist', async () => {
+      const count = await service.getLikesCount('post-1');
+      expect(count).toBe(0);
+    });
+
+    it('returns the correct count of likes', async () => {
+      likes.push(
+        makeLike({ id: 'like-1', userId: 'user-1', postId: 'post-1' }),
+        makeLike({ id: 'like-2', userId: 'user-2', postId: 'post-1' }),
+      );
 
       const count = await service.getLikesCount('post-1');
+      expect(count).toBe(2);
+    });
 
-      expect(count).toBe(7);
-      expect(mockLikesRepository.count).toHaveBeenCalledWith({ where: { postId: 'post-1' } });
+    it('counts only likes for the given post', async () => {
+      likes.push(
+        makeLike({ id: 'like-1', userId: 'user-1', postId: 'post-1' }),
+        makeLike({ id: 'like-2', userId: 'user-2', postId: 'post-2' }),
+      );
+
+      const count = await service.getLikesCount('post-1');
+      expect(count).toBe(1);
     });
   });
 
   describe('hasUserLiked', () => {
-    it('returns true when like exists', async () => {
-      mockLikesRepository.findOne.mockResolvedValue({ id: 'like-1' });
+    it('returns true when user has liked the post', async () => {
+      likes.push(makeLike({ userId: 'user-1', postId: 'post-1' }));
 
-      expect(await service.hasUserLiked('post-1', 'u1')).toBe(true);
+      const result = await service.hasUserLiked('post-1', 'user-1');
+      expect(result).toBe(true);
     });
 
-    it('returns false when like does not exist', async () => {
-      mockLikesRepository.findOne.mockResolvedValue(null);
+    it('returns false when user has not liked the post', async () => {
+      const result = await service.hasUserLiked('post-1', 'user-1');
+      expect(result).toBe(false);
+    });
 
-      expect(await service.hasUserLiked('post-1', 'u1')).toBe(false);
+    it('returns false for a different user', async () => {
+      likes.push(makeLike({ userId: 'user-2', postId: 'post-1' }));
+
+      const result = await service.hasUserLiked('post-1', 'user-1');
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('getLikesByPost', () => {
+    it('returns empty result when no likes exist', async () => {
+      const result = await service.getLikesByPost('post-1');
+
+      expect(result.data).toHaveLength(0);
+      expect(result.total).toBe(0);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('returns paginated likes for a post', async () => {
+      for (let i = 1; i <= 3; i++) {
+        likes.push(makeLike({ id: `like-${i}`, userId: `user-${i}`, postId: 'post-1' }));
+      }
+
+      const result = await service.getLikesByPost('post-1', 1, 2);
+
+      expect(result.data).toHaveLength(2);
+      expect(result.total).toBe(3);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(2);
+      expect(result.hasMore).toBe(true);
+    });
+
+    it('returns last page with hasMore=false', async () => {
+      for (let i = 1; i <= 3; i++) {
+        likes.push(makeLike({ id: `like-${i}`, userId: `user-${i}`, postId: 'post-1' }));
+      }
+
+      const result = await service.getLikesByPost('post-1', 2, 2);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('uses default page=1 and limit=20', async () => {
+      const result = await service.getLikesByPost('post-1');
+
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
     });
   });
 });

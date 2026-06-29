@@ -12,15 +12,18 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  UseFilters,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiBody, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { CommentsService } from './comments.service';
 import { CommentDto, CreateCommentDto, UpdateCommentDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
+import { CommentsExceptionFilter } from './filters/comments-exception.filter';
 
 @ApiTags('comments')
 @UseGuards(ThrottlerGuard)
+@UseFilters(new CommentsExceptionFilter())
 @UseInterceptors(ClassSerializerInterceptor)
 @Controller({ path: 'comments', version: '1' })
 export class CommentsController {

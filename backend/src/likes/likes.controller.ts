@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -19,6 +20,7 @@ import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { LikesService } from './likes.service';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
+import { GetLikesQueryDto } from './dto/get-likes-query.dto';
 
 @ApiTags('likes')
 @Controller({ path: 'posts', version: '1' })
@@ -89,6 +91,16 @@ export class LikesController {
     @CurrentUser() user: { userId: string },
   ) {
     await this.likesService.removeLike(postId, user.userId);
+  }
+
+  @Get(':id/likes')
+  @ApiOperation({ summary: 'Get paginated likes for a post' })
+  @ApiResponse({ status: 200, description: 'Paginated likes list' })
+  async getLikesByPost(
+    @Param('id') postId: string,
+    @Query() query: GetLikesQueryDto,
+  ) {
+    return this.likesService.getLikesByPost(postId, query.page, query.limit);
   }
 
   @Get(':id/likes/count')
