@@ -11,32 +11,19 @@ describe('SocialLinkController', () => {
   let controller: SocialLinkController;
 
   const mockSocialLinksService = {
-    extractUpdatePayload: jest
-      .fn()
-      .mockImplementation((dto: SocialLinksDto) => dto),
-    createSocialLinks: jest
-      .fn()
-      .mockImplementation((dto: SocialLinksDto) => dto),
-    updateSocialLinks: jest
-      .fn()
-      .mockImplementation((_id: string, dto: SocialLinksDto) => dto),
-    listSocialLinks: jest.fn().mockReturnValue({
-      data: [],
-      cursor: null,
-      limit: 20,
-      nextCursor: null,
-      hasMore: false,
-      total: 0,
-      page: 1,
-      totalPages: 0,
-    }),
+    createSocialLinks: jest.fn(),
+    updateSocialLinks: jest.fn(),
+    listSocialLinks: jest.fn(),
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
     controller = new SocialLinkController(
       mockSocialLinksService as unknown as SocialLinksService,
     );
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
   it('should be defined', () => {
@@ -54,14 +41,8 @@ describe('SocialLinkController', () => {
   it('configures create with the expected throttling policy', () => {
     // eslint-disable-next-line @typescript-eslint/unbound-method
     const createHandler = controller.create;
-    const limit: unknown = Reflect.getMetadata(
-      THROTTLER_LIMIT + 'default',
-      createHandler,
-    );
-    const ttl: unknown = Reflect.getMetadata(
-      THROTTLER_TTL + 'default',
-      createHandler,
-    );
+    const limit: unknown = Reflect.getMetadata(THROTTLER_LIMIT + 'default', createHandler);
+    const ttl: unknown = Reflect.getMetadata(THROTTLER_TTL + 'default', createHandler);
 
     expect(limit).toBe(5);
     expect(ttl).toBe(60000);
@@ -70,46 +51,49 @@ describe('SocialLinkController', () => {
   it('configures update with the expected throttling policy', () => {
     // eslint-disable-next-line @typescript-eslint/unbound-method
     const updateHandler = controller.update;
-    const limit: unknown = Reflect.getMetadata(
-      THROTTLER_LIMIT + 'default',
-      updateHandler,
-    );
-    const ttl: unknown = Reflect.getMetadata(
-      THROTTLER_TTL + 'default',
-      updateHandler,
-    );
+    const limit: unknown = Reflect.getMetadata(THROTTLER_LIMIT + 'default', updateHandler);
+    const ttl: unknown = Reflect.getMetadata(THROTTLER_TTL + 'default', updateHandler);
 
     expect(limit).toBe(5);
     expect(ttl).toBe(60000);
   });
 
-  it('delegates create to the service happy path', () => {
-    const dto = { twitterHandle: 'johndoe' };
+  describe('create', () => {
+    it('delegates to createSocialLinks and returns its result', () => {
+      const dto = { twitterHandle: 'johndoe' } as SocialLinksDto;
+      const payload = { twitterHandle: 'johndoe' };
+      mockSocialLinksService.createSocialLinks.mockReturnValue(payload);
 
-    expect(controller.create(dto)).toEqual(dto);
-    expect(mockSocialLinksService.createSocialLinks).toHaveBeenCalledWith(dto);
-  });
+      const result = controller.create(dto);
 
-  it('delegates update to the service with the user id', () => {
-    const dto = { instagramHandle: 'johndoe' };
-
-    expect(controller.update('user-1', dto)).toEqual(dto);
-    expect(mockSocialLinksService.updateSocialLinks).toHaveBeenCalledWith(
-      'user-1',
-      dto,
-    );
-  });
-
-  it('delegates list pagination to the service', () => {
-    const pagination = { page: 1, limit: 10 };
-
-    expect(controller.list(pagination)).toMatchObject({
-      data: [],
-      page: 1,
-      limit: 20,
+      expect(mockSocialLinksService.createSocialLinks).toHaveBeenCalledWith(dto);
+      expect(result).toBe(payload);
     });
-    expect(mockSocialLinksService.listSocialLinks).toHaveBeenCalledWith(
-      pagination,
-    );
+  });
+
+  describe('update', () => {
+    it('delegates to updateSocialLinks with the user id and returns its result', () => {
+      const dto = { instagramHandle: 'johndoe' } as SocialLinksDto;
+      const payload = { instagramHandle: 'johndoe' };
+      mockSocialLinksService.updateSocialLinks.mockReturnValue(payload);
+
+      const result = controller.update('user-123', dto);
+
+      expect(mockSocialLinksService.updateSocialLinks).toHaveBeenCalledWith('user-123', dto);
+      expect(result).toBe(payload);
+    });
+  });
+
+  describe('list', () => {
+    it('delegates to listSocialLinks with pagination params and returns its result', () => {
+      const pagination = { page: 1, limit: 10 };
+      const response = { data: [], page: 1, limit: 10, total: 0, hasMore: false };
+      mockSocialLinksService.listSocialLinks.mockReturnValue(response);
+
+      const result = controller.list(pagination as any);
+
+      expect(mockSocialLinksService.listSocialLinks).toHaveBeenCalledWith(pagination);
+      expect(result).toBe(response);
+    });
   });
 });
