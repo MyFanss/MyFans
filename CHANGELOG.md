@@ -67,6 +67,7 @@
 * **frontend:** remove duplicate typescript key, add missing comma after vitest ([b8c6484](https://github.com/MyFanss/MyFans/commit/b8c648425a0b025ff586609a3ef6e1d615f5874c))
 * **frontend:** replace invalid ErrorCode COPY_FAILED with UNKNOWN_ERROR ([ad7f66a](https://github.com/MyFanss/MyFans/commit/ad7f66a5a99e9a6ff63982dbe4d06a8c14c2ebbd))
 * **frontend:** resolve all remaining build errors - build passes ([1e6aebe](https://github.com/MyFanss/MyFans/commit/1e6aebe665641fc5457896977bf244e477b07fd2))
+* implement issue resolution ([1434376](https://github.com/MyFanss/MyFans/commit/1434376fd2fe65d63fd46f15101ceb5b46179425))
 * implement issue resolution ([fbac9ae](https://github.com/MyFanss/MyFans/commit/fbac9aec6f9be5abf7b4377025bf6b5f8eab528a))
 * implement issue resolution ([e6ed891](https://github.com/MyFanss/MyFans/commit/e6ed891397ae6f12090cd761595ef1cd1286ae73))
 * implement issue resolution ([9966e1a](https://github.com/MyFanss/MyFans/commit/9966e1a97d935bd73d137422d2e03e15bc35b191))
