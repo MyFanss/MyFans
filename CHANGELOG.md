@@ -1,4 +1,4 @@
-# 0.1.0 (2026-06-28)
+# 0.1.0 (2026-06-29)
 
 
 ### Bug Fixes
@@ -67,6 +67,9 @@
 * **frontend:** remove duplicate typescript key, add missing comma after vitest ([b8c6484](https://github.com/MyFanss/MyFans/commit/b8c648425a0b025ff586609a3ef6e1d615f5874c))
 * **frontend:** replace invalid ErrorCode COPY_FAILED with UNKNOWN_ERROR ([ad7f66a](https://github.com/MyFanss/MyFans/commit/ad7f66a5a99e9a6ff63982dbe4d06a8c14c2ebbd))
 * **frontend:** resolve all remaining build errors - build passes ([1e6aebe](https://github.com/MyFanss/MyFans/commit/1e6aebe665641fc5457896977bf244e477b07fd2))
+* implement issue resolution ([e6ed891](https://github.com/MyFanss/MyFans/commit/e6ed891397ae6f12090cd761595ef1cd1286ae73))
+* implement issue resolution ([9966e1a](https://github.com/MyFanss/MyFans/commit/9966e1a97d935bd73d137422d2e03e15bc35b191))
+* implement issue resolution ([e799082](https://github.com/MyFanss/MyFans/commit/e799082298d7206e52cffe64e136ac9741596c0c))
 * initialize useRef with undefined to satisfy TS ([6be4aa4](https://github.com/MyFanss/MyFans/commit/6be4aa4439cdf2d5f91923468827599076e0f364))
 * make backend CLI checks pass for issue [#211](https://github.com/MyFanss/MyFans/issues/211) ([a1884ce](https://github.com/MyFanss/MyFans/commit/a1884cefc886c0a578578f4e5c7a271f517a4abc))
 * merge conflicts ([1de5e12](https://github.com/MyFanss/MyFans/commit/1de5e1284184ab4fc035b09efdd3756b193a19b6))

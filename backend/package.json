@@ -13,6 +13,8 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" --fix",
+    "lint:check": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
+    "prepare": "cd .. && husky backend/.husky",
     "generate:openapi": "ts-node -r tsconfig-paths/register scripts/generate-openapi.ts",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -83,7 +85,19 @@
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^8.20.0"
+    "typescript-eslint": "^8.20.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.3.0"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "test/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ]
   },
   "jest": {
     "moduleFileExtensions": [
