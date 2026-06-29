@@ -19,6 +19,7 @@
 * add use client to TransactionCard and fix ImageUpload import ([9094bc2](https://github.com/MyFanss/MyFans/commit/9094bc23c30a4f5128a8777e5f644b9c4579e0fb))
 * align UserRole imports under src/common/enums ([#575](https://github.com/MyFanss/MyFans/issues/575)) ([cc01772](https://github.com/MyFanss/MyFans/commit/cc017727f5645a5e0062c3fdb065fd9009cd3e4c))
 * **auth:** narrow address type before passing to service ([7692e00](https://github.com/MyFanss/MyFans/commit/7692e00cd033d7394fcd9856543bb8b16ffae85c))
+* **auth:** return consistent error shape on failure ([89275ea](https://github.com/MyFanss/MyFans/commit/89275ea75fc9849888e9407c312d908c5cf836cd)), closes [#1051](https://github.com/MyFanss/MyFans/issues/1051)
 * **backend,contract:** listCreators chain merge, JwtAuthGuard test wiring, cargo audit exceptions, treasury SorobanError scope ([1cb3d6d](https://github.com/MyFanss/MyFans/commit/1cb3d6daeeaf8a8a7898835258589726ede62452))
 * **backend:** [#592](https://github.com/MyFanss/MyFans/issues/592) [#593](https://github.com/MyFanss/MyFans/issues/593) [#752](https://github.com/MyFanss/MyFans/issues/752) [#742](https://github.com/MyFanss/MyFans/issues/742) correlation ID propagation, OpenAPI DTO fixes, archive CI_CHECKS_STATUS, fan spending caps ([b93f584](https://github.com/MyFanss/MyFans/commit/b93f5843a4f66114e2524ca35fa0bf77d195a09f))
 * **backend:** align subscription flows with indexed repo ([ea454d9](https://github.com/MyFanss/MyFans/commit/ea454d939fa5ebeed64277f9bd7f4945eaa2eca3))
