@@ -8,10 +8,11 @@ import {
   HttpStatus,
   Post,
   UseFilters,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import {
   ApiBody,
   ApiHeader,
@@ -43,6 +44,7 @@ const X_NETWORK_HEADER = {
 } as const;
 
 @ApiTags('auth')
+@UseGuards(ThrottlerGuard)
 @UseFilters(new AuthExceptionFilter())
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
