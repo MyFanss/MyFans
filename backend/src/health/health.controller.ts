@@ -1,4 +1,4 @@
-import { Controller, Get, Res } from '@nestjs/common';
+import { Controller, Get, Query, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
@@ -10,6 +10,7 @@ import {
   SubsystemStatusDto,
   QueueMetricsDto,
 } from './dto/health-response.dto';
+import { HealthQueryDto } from './dto/health-query.dto';
 
 @ApiTags('health')
 @Controller({ path: 'health', version: '1' })
@@ -125,5 +126,13 @@ export class HealthController {
   @ApiResponse({ status: 429, description: 'Too many requests' })
   getQueueMetrics() {
     return this.healthService.getQueueMetrics();
+  }
+
+  @Get('checks')
+  @ApiOperation({ summary: 'Paginated list of available health check endpoints' })
+  @ApiResponse({ status: 200, description: 'Paginated health check list' })
+  @ApiResponse({ status: 400, description: 'Invalid pagination parameters' })
+  getHealthChecks(@Query() query: HealthQueryDto) {
+    return this.healthService.getHealthChecks(query.page, query.limit);
   }
 }

@@ -186,4 +186,21 @@ export class HealthService {
       queues: this.queueMetrics.snapshot(),
     };
   }
+
+  private readonly HEALTH_CHECKS = [
+    { name: 'app', endpoint: '/health' },
+    { name: 'detailed', endpoint: '/health/detailed' },
+    { name: 'aggregate', endpoint: '/health/aggregate' },
+    { name: 'db', endpoint: '/health/db' },
+    { name: 'redis', endpoint: '/health/redis' },
+    { name: 'soroban', endpoint: '/health/soroban' },
+    { name: 'soroban-contract', endpoint: '/health/soroban-contract' },
+    { name: 'queue-metrics', endpoint: '/health/queue-metrics' },
+  ];
+
+  getHealthChecks(page = 1, limit = 20) {
+    const start = (page - 1) * limit;
+    const data = this.HEALTH_CHECKS.slice(start, start + limit);
+    return { data, total: this.HEALTH_CHECKS.length, page, limit };
+  }
 }
