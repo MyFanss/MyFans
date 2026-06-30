@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 import { SocialLinksDto } from './social-links.dto';
-import { SocialLinksResponseDto } from './user-profile.dto';
+import { SocialLinksResponseDto, SocialLinksListItemDto } from './user-profile.dto';
 import {
   isAllowedDomain,
   getAllowedDomains,
@@ -16,7 +16,7 @@ type SocialLinksPayload = Partial<{
   otherLink: string | null;
 }>;
 
-export type SocialLinksListItem = SocialLinksResponseDto & { id: string };
+export type SocialLinksListItem = SocialLinksListItemDto;
 
 /**
  * SocialLinksService
