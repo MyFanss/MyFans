@@ -210,6 +210,7 @@
 * **cards:** create reusable card UI component library ([0d06284](https://github.com/MyFanss/MyFans/commit/0d06284fd1671f9acc2caca92a98dde1b1fb992c))
 * ci cach cargo and npm dependencies ([d61d0ba](https://github.com/MyFanss/MyFans/commit/d61d0ba28c3160f81fe3cc86ffbbe5d9ead7d2af))
 * ci run contract tests ([44bb30f](https://github.com/MyFanss/MyFans/commit/44bb30f72f35a379bc2b4ba52203be5969e4d63b))
+* **comments:** add pagination, e2e tests, DTO validation, and controller unit tests ([59c9afc](https://github.com/MyFanss/MyFans/commit/59c9afc98fb5d4b97019c944b0a5fd58ee1db2a6))
 * commit anything ([c5a3675](https://github.com/MyFanss/MyFans/commit/c5a3675e16a9eeffffd13596a32393edefd37fbb))
 * complete contract interface docs generation [#301](https://github.com/MyFanss/MyFans/issues/301) ([7a7c292](https://github.com/MyFanss/MyFans/commit/7a7c292e41f9415561162d9eefe46f2abca618b8))
 * **content-likes:** add invariant property tests ([ec35f84](https://github.com/MyFanss/MyFans/commit/ec35f84bf72ccf118557d7a05d9ee94f4876abeb))
