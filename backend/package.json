@@ -16,9 +16,9 @@
     "lint:check": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
     "prepare": "cd .. && husky backend/.husky",
     "generate:openapi": "ts-node -r tsconfig-paths/register scripts/generate-openapi.ts",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
+    "test": "jest --config jest.config.js",
+    "test:watch": "jest --config jest.config.js --watch",
+    "test:cov": "jest --config jest.config.js --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:migrations": "jest --config ./test/jest-migrations.json --runInBand",
@@ -80,7 +80,7 @@
     "prettier": "^3.4.2",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
-    "ts-jest": "^29.4.9",
+    "ts-jest": "^29.4.11",
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
@@ -97,35 +97,6 @@
     "test/**/*.ts": [
       "eslint --fix",
       "prettier --write"
-    ]
-  },
-  "jest": {
-    "moduleFileExtensions": [
-      "js",
-      "json",
-      "ts"
-    ],
-    "rootDir": "src",
-    "testRegex": ".*\\.spec\\.ts$",
-    "testPathIgnorePatterns": [
-      "\\.e2e\\.spec\\.ts$"
-    ],
-    "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
-    },
-    "transformIgnorePatterns": [
-      "node_modules/(?!(uuid|@stellar)/)"
-    ],
-    "setupFilesAfterEnv": [
-      "<rootDir>/../test-setup.ts"
-    ],
-    "collectCoverageFrom": [
-      "**/*.(t|j)s"
-    ],
-    "coverageDirectory": "../coverage",
-    "testEnvironment": "node",
-    "unmockedModulePathPatterns": [
-      "supertest"
     ]
   },
   "overrides": {
