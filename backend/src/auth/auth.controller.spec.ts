@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { WalletAuthService } from './wallet-auth.service';
@@ -32,6 +33,7 @@ describe('AuthController', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [ThrottlerModule.forRoot([{ name: 'auth', ttl: 60000, limit: 5 }])],
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: authService },
