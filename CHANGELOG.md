@@ -355,6 +355,7 @@
 * **social-link:** add URL and domain validation with unit tests ([2f9e43f](https://github.com/MyFanss/MyFans/commit/2f9e43f7312038c574a1186ea0f0ea90d5ac138f))
 * **social-links:** add rate limiting on create and update ([#854](https://github.com/MyFanss/MyFans/issues/854)) ([e72696f](https://github.com/MyFanss/MyFans/commit/e72696fb2569dc42a09d3047cd822e6a1dc37e56))
 * **social-links:** add URL validation and domain allowlist ([#853](https://github.com/MyFanss/MyFans/issues/853)) ([afec2e4](https://github.com/MyFanss/MyFans/commit/afec2e49c9043aff969188472346783135f66574))
+* **social-links:** document endpoints in Swagger/OpenAPI ([e7ff302](https://github.com/MyFanss/MyFans/commit/e7ff302c1c854bfb99342630046d2dc12de01e82))
 * Soft Delete Audit ([2e7bf94](https://github.com/MyFanss/MyFans/commit/2e7bf9426f2283f2d72fddaa9ff77a170e01ac03))
 * standardize API error response format across all endpoints ([#340](https://github.com/MyFanss/MyFans/issues/340)) ([51c928b](https://github.com/MyFanss/MyFans/commit/51c928b468547cfe9df5dc578bfcb3bbfdfa8b64))
 * standardize deployed contract env vars with backward-compatible aliases ([e976fe2](https://github.com/MyFanss/MyFans/commit/e976fe2ecad5435e46e6e0ae1b9a39e6ae2ae7b8))
