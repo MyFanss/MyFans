@@ -1,4 +1,4 @@
-# 0.1.0 (2026-06-28)
+# 0.1.0 (2026-06-30)
 
 
 ### Bug Fixes
@@ -19,6 +19,7 @@
 * add use client to TransactionCard and fix ImageUpload import ([9094bc2](https://github.com/MyFanss/MyFans/commit/9094bc23c30a4f5128a8777e5f644b9c4579e0fb))
 * align UserRole imports under src/common/enums ([#575](https://github.com/MyFanss/MyFans/issues/575)) ([cc01772](https://github.com/MyFanss/MyFans/commit/cc017727f5645a5e0062c3fdb065fd9009cd3e4c))
 * **auth:** narrow address type before passing to service ([7692e00](https://github.com/MyFanss/MyFans/commit/7692e00cd033d7394fcd9856543bb8b16ffae85c))
+* **auth:** return consistent error shape on failure ([89275ea](https://github.com/MyFanss/MyFans/commit/89275ea75fc9849888e9407c312d908c5cf836cd)), closes [#1051](https://github.com/MyFanss/MyFans/issues/1051)
 * **backend,contract:** listCreators chain merge, JwtAuthGuard test wiring, cargo audit exceptions, treasury SorobanError scope ([1cb3d6d](https://github.com/MyFanss/MyFans/commit/1cb3d6daeeaf8a8a7898835258589726ede62452))
 * **backend:** [#592](https://github.com/MyFanss/MyFans/issues/592) [#593](https://github.com/MyFanss/MyFans/issues/593) [#752](https://github.com/MyFanss/MyFans/issues/752) [#742](https://github.com/MyFanss/MyFans/issues/742) correlation ID propagation, OpenAPI DTO fixes, archive CI_CHECKS_STATUS, fan spending caps ([b93f584](https://github.com/MyFanss/MyFans/commit/b93f5843a4f66114e2524ca35fa0bf77d195a09f))
 * **backend:** align subscription flows with indexed repo ([ea454d9](https://github.com/MyFanss/MyFans/commit/ea454d939fa5ebeed64277f9bd7f4945eaa2eca3))
@@ -67,6 +68,11 @@
 * **frontend:** remove duplicate typescript key, add missing comma after vitest ([b8c6484](https://github.com/MyFanss/MyFans/commit/b8c648425a0b025ff586609a3ef6e1d615f5874c))
 * **frontend:** replace invalid ErrorCode COPY_FAILED with UNKNOWN_ERROR ([ad7f66a](https://github.com/MyFanss/MyFans/commit/ad7f66a5a99e9a6ff63982dbe4d06a8c14c2ebbd))
 * **frontend:** resolve all remaining build errors - build passes ([1e6aebe](https://github.com/MyFanss/MyFans/commit/1e6aebe665641fc5457896977bf244e477b07fd2))
+* implement issue resolution ([1434376](https://github.com/MyFanss/MyFans/commit/1434376fd2fe65d63fd46f15101ceb5b46179425))
+* implement issue resolution ([fbac9ae](https://github.com/MyFanss/MyFans/commit/fbac9aec6f9be5abf7b4377025bf6b5f8eab528a))
+* implement issue resolution ([e6ed891](https://github.com/MyFanss/MyFans/commit/e6ed891397ae6f12090cd761595ef1cd1286ae73))
+* implement issue resolution ([9966e1a](https://github.com/MyFanss/MyFans/commit/9966e1a97d935bd73d137422d2e03e15bc35b191))
+* implement issue resolution ([e799082](https://github.com/MyFanss/MyFans/commit/e799082298d7206e52cffe64e136ac9741596c0c))
 * initialize useRef with undefined to satisfy TS ([6be4aa4](https://github.com/MyFanss/MyFans/commit/6be4aa4439cdf2d5f91923468827599076e0f364))
 * make backend CLI checks pass for issue [#211](https://github.com/MyFanss/MyFans/issues/211) ([a1884ce](https://github.com/MyFanss/MyFans/commit/a1884cefc886c0a578578f4e5c7a271f517a4abc))
 * merge conflicts ([1de5e12](https://github.com/MyFanss/MyFans/commit/1de5e1284184ab4fc035b09efdd3756b193a19b6))
@@ -183,6 +189,7 @@
 * **api:** standardize pagination on subscriptions, creators, and posts ([#861](https://github.com/MyFanss/MyFans/issues/861)) ([ad25d72](https://github.com/MyFanss/MyFans/commit/ad25d7280d658e48c73b4277506a45712163bd41))
 * **auth:** add pagination and limit query support ([ca9bfea](https://github.com/MyFanss/MyFans/commit/ca9bfeabc33f65e4f4ad4d61c29d1356c1fd7677))
 * **auth:** wallet signature challenge endpoints ([561d65d](https://github.com/MyFanss/MyFans/commit/561d65d498549206d65d72ce9ca3a6105f6826d7)), closes [#wallet-challenge-auth](https://github.com/MyFanss/MyFans/issues/wallet-challenge-auth)
+* **auth:** wire ThrottlerGuard explicitly and add rate-limit tests ([9b97ae7](https://github.com/MyFanss/MyFans/commit/9b97ae7fe1195f47fc0d583363e6e4d9d813e934)), closes [#1053](https://github.com/MyFanss/MyFans/issues/1053)
 * backend contract health checks against CI deployment outputs ([5282a06](https://github.com/MyFanss/MyFans/commit/5282a06a8c02a7395a65e8f6e3b591b5c8f45e61))
 * **backend:** add getLatestLedgerSequence & getNetworkEvents to SorobanRpcService; guard poller behind feature flag ([bad9786](https://github.com/MyFanss/MyFans/commit/bad9786ed42e28652b91be8576c59c09ec3e473e))
 * **backend:** add health check endpoints for monitoring and load balancers ([9f7a373](https://github.com/MyFanss/MyFans/commit/9f7a373b699f554850e7407c20b3ceb02f677d0f))
