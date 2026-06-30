@@ -163,6 +163,29 @@ export class SubscriptionsController {
     );
   }
 
+  @Get('me/dashboard')
+  @UseGuards(FanBearerGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get fan dashboard summary with active subscriptions',
+    description:
+      'Offset-paginated dashboard. Pass `page` and `limit` to control pagination.',
+  })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (1-based, default 1)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default 20, max 100)' })
+  @ApiResponse({ status: 200, description: 'Fan dashboard summary with pagination' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  getFanDashboard(
+    @Req() req: RequestWithFan,
+    @Query() query: FanDashboardQueryDto,
+  ) {
+    return this.subscriptionsService.getFanDashboardSummary(
+      req.fanAddress,
+      query.page,
+      query.limit,
+    );
+  }
+
   @Post('checkout')
   @Throttle({ short: { limit: 10, ttl: 60000 } })
   @UseGuards(FeatureFlagGuard)

@@ -47,7 +47,7 @@ export class HealthService {
 
   getHealth(): DetailedHealthCheckResult {
     return {
-      status: 'ok' as any, // Legacy compatibility
+      status: 'up',
       timestamp: new Date().toISOString(),
     };
   }
@@ -145,7 +145,8 @@ export class HealthService {
       await this.dataSource.query('SELECT 1');
       return { status: 'up' };
     } catch (error) {
-      return { status: 'down', error: error.message };
+      const msg = error instanceof Error ? error.message : String(error);
+      return { status: 'down', error: msg };
     }
   }
 
@@ -159,7 +160,8 @@ export class HealthService {
       await this.dataSource.query('SELECT 1');
       return { status: 'up', latencyMs: Date.now() - start };
     } catch (error) {
-      return { status: 'down', latencyMs: Date.now() - start, error: error.message };
+      const msg = error instanceof Error ? error.message : String(error);
+      return { status: 'down', latencyMs: Date.now() - start, error: msg };
     }
   }
 
