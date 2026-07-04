@@ -1,9 +1,17 @@
-import { Inject, Injectable, LoggerService as NestLoggerService } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  LoggerService as NestLoggerService,
+} from '@nestjs/common';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { Logger as WinstonLogger } from 'winston';
 import { RequestContextService } from './request-context.service';
 import { redact } from '../utils/redact';
 import { LOG_FIELDS } from '../logger/log-fields';
+import type {
+  StructuredLogData,
+  StructuredLogLevel,
+} from '../logger/structured-log.dto';
 
 @Injectable()
 export class LoggerService implements NestLoggerService {
@@ -28,7 +36,7 @@ export class LoggerService implements NestLoggerService {
     if (typeof message === 'string') {
       return message;
     }
-    const redactedMessage = redact(message);
+    const redactedMessage: unknown = redact(message);
     return JSON.stringify(redactedMessage);
   }
 
@@ -37,10 +45,16 @@ export class LoggerService implements NestLoggerService {
   }
 
   error(message: any, trace?: string, context?: string) {
-    this.logger.error(this.sanitizeMessage(message), { ...this.meta(context), ...(trace ? { trace } : {}) });
+    this.logger.error(this.sanitizeMessage(message), {
+      ...this.meta(context),
+      ...(trace ? { trace } : {}),
+    });
     this.logger.error(
       typeof message === 'string' ? message : JSON.stringify(message),
-      { ...this.meta(context), ...(trace ? { [LOG_FIELDS.TRACE]: trace } : {}) },
+      {
+        ...this.meta(context),
+        ...(trace ? { [LOG_FIELDS.TRACE]: trace } : {}),
+      },
     );
   }
 
@@ -61,12 +75,12 @@ export class LoggerService implements NestLoggerService {
    * `data` is automatically redacted before logging.
    */
   logStructured(
-    level: 'info' | 'warn' | 'error' | 'debug',
+    level: StructuredLogLevel,
     message: string,
-    data?: unknown,
+    data?: StructuredLogData,
     context?: string,
   ) {
-    const redactedData = data !== undefined ? redact(data) : undefined;
+    const redactedData: unknown = data !== undefined ? redact(data) : undefined;
     this.logger.log(level, message, {
       ...this.meta(context),
       ...(redactedData !== undefined && { [LOG_FIELDS.DATA]: redactedData }),
