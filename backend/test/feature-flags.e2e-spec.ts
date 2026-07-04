@@ -1,4 +1,5 @@
 import {
+  ExecutionContext,
   INestApplication,
   ValidationPipe,
   VersioningType,
@@ -9,7 +10,10 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { FeatureFlagsModule } from '../src/feature-flags/feature-flags.module';
 import { FeatureFlagGuard } from '../src/feature-flags/feature-flag.guard';
-import { FeatureFlagsService } from '../src/feature-flags/feature-flags.service';
+import {
+  FeatureFlagsService,
+  PartialFeatureFlagsSnapshot,
+} from '../src/feature-flags/feature-flags.service';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -26,6 +30,10 @@ async function buildApp(): Promise<INestApplication<App>> {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   await app.init();
   return app;
+}
+
+function featureFlagsBody(res: request.Response): PartialFeatureFlagsSnapshot {
+  return res.body as PartialFeatureFlagsSnapshot;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,8 +62,31 @@ describe('FeatureFlagsController (e2e)', () => {
       .get('/v1/feature-flags')
       .expect(200)
       .expect((res) => {
-        expect(res.body).toHaveProperty('newSubscriptionFlow');
-        expect(res.body).toHaveProperty('cryptoPayments');
+        const body = featureFlagsBody(res);
+        expect(body).toHaveProperty('newSubscriptionFlow');
+        expect(body).toHaveProperty('cryptoPayments');
+      });
+  });
+
+  it('rejects unknown feature flag names in the names query', () => {
+    return request(app.getHttpServer())
+      .get('/v1/feature-flags')
+      .query({ names: 'bookmarks,notAFlag' })
+      .expect(400);
+  });
+
+  it('returns only requested feature flags when names are valid', () => {
+    process.env.FEATURE_CRYPTO_PAYMENTS = 'true';
+
+    return request(app.getHttpServer())
+      .get('/v1/feature-flags')
+      .query({ names: 'bookmarks,cryptoPayments' })
+      .expect(200)
+      .expect((res) => {
+        expect(featureFlagsBody(res)).toEqual({
+          bookmarks: false,
+          cryptoPayments: true,
+        });
       });
   });
 
@@ -67,8 +98,9 @@ describe('FeatureFlagsController (e2e)', () => {
       .get('/v1/feature-flags')
       .expect(200)
       .expect((res) => {
-        expect(res.body.newSubscriptionFlow).toBe(false);
-        expect(res.body.cryptoPayments).toBe(false);
+        const body = featureFlagsBody(res);
+        expect(body.newSubscriptionFlow).toBe(false);
+        expect(body.cryptoPayments).toBe(false);
       });
   });
 
@@ -79,8 +111,9 @@ describe('FeatureFlagsController (e2e)', () => {
       .get('/v1/feature-flags')
       .expect(200)
       .expect((res) => {
-        expect(res.body.newSubscriptionFlow).toBe(true);
-        expect(res.body.cryptoPayments).toBe(false);
+        const body = featureFlagsBody(res);
+        expect(body.newSubscriptionFlow).toBe(true);
+        expect(body.cryptoPayments).toBe(false);
       });
   });
 
@@ -91,8 +124,9 @@ describe('FeatureFlagsController (e2e)', () => {
       .get('/v1/feature-flags')
       .expect(200)
       .expect((res) => {
-        expect(res.body.newSubscriptionFlow).toBe(false);
-        expect(res.body.cryptoPayments).toBe(true);
+        const body = featureFlagsBody(res);
+        expect(body.newSubscriptionFlow).toBe(false);
+        expect(body.cryptoPayments).toBe(true);
       });
   });
 
@@ -104,19 +138,20 @@ describe('FeatureFlagsController (e2e)', () => {
       .get('/v1/feature-flags')
       .expect(200)
       .expect((res) => {
-        expect(res.body.newSubscriptionFlow).toBe(true);
-        expect(res.body.cryptoPayments).toBe(true);
+        const body = featureFlagsBody(res);
+        expect(body.newSubscriptionFlow).toBe(true);
+        expect(body.cryptoPayments).toBe(true);
       });
   });
 
   it('treats an invalid env value as false (fail-closed)', () => {
-    process.env.FEATURE_NEW_SUBSCRIPTION_FLOW = 'yes'; // not "true"
+    process.env.FEATURE_NEW_SUBSCRIPTION_FLOW = 'enabled'; // not a supported boolean-like value
 
     return request(app.getHttpServer())
       .get('/v1/feature-flags')
       .expect(200)
       .expect((res) => {
-        expect(res.body.newSubscriptionFlow).toBe(false);
+        expect(featureFlagsBody(res).newSubscriptionFlow).toBe(false);
       });
   });
 });
@@ -127,7 +162,6 @@ describe('FeatureFlagsController (e2e)', () => {
 
 describe('FeatureFlagGuard', () => {
   let guard: FeatureFlagGuard;
-  let service: FeatureFlagsService;
   let reflector: Reflector;
 
   beforeEach(async () => {
@@ -136,7 +170,6 @@ describe('FeatureFlagGuard', () => {
     }).compile();
 
     guard = module.get(FeatureFlagGuard);
-    service = module.get(FeatureFlagsService);
     reflector = module.get(Reflector);
   });
 
@@ -145,13 +178,13 @@ describe('FeatureFlagGuard', () => {
     delete process.env.FEATURE_CRYPTO_PAYMENTS;
   });
 
-  const makeContext = (flag: string | undefined) => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(flag as string);
+  const makeContext = (flag: string | undefined): ExecutionContext => {
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(flag);
 
     return {
       getHandler: () => ({}),
       getClass: () => ({}),
-    } as any;
+    } as ExecutionContext;
   };
 
   it('allows access when no flag is required', () => {

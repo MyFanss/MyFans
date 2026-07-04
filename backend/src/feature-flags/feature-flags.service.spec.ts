@@ -70,4 +70,14 @@ describe('FeatureFlagsService', () => {
       sorobanPoller: true,
     });
   });
+
+  it('returns only requested feature flags when names are provided', () => {
+    process.env.FEATURE_FLAG_BOOKMARKS = 'true';
+    process.env.FEATURE_CRYPTO_PAYMENTS = 'true';
+
+    expect(service.getFlags(['bookmarks', 'cryptoPayments'])).toEqual({
+      bookmarks: true,
+      cryptoPayments: true,
+    });
+  });
 });

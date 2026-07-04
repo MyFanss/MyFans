@@ -21,6 +21,10 @@ const FEATURE_FLAG_ENV_KEYS = {
 
 export type FeatureFlagName = keyof typeof FEATURE_FLAG_ENV_KEYS;
 export type FeatureFlagsSnapshot = Record<FeatureFlagName, boolean>;
+export type PartialFeatureFlagsSnapshot = Partial<FeatureFlagsSnapshot>;
+export const FEATURE_FLAG_NAMES = Object.keys(
+  FEATURE_FLAG_ENV_KEYS,
+) as FeatureFlagName[];
 
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
   if (!value) {
@@ -79,5 +83,20 @@ export class FeatureFlagsService {
       referralCodes: this.isReferralCodesEnabled(),
       sorobanPoller: this.isSorobanPollerEnabled(),
     };
+  }
+
+  getFlags(names?: FeatureFlagName[]): PartialFeatureFlagsSnapshot {
+    const allFlags = this.getAllFlags();
+    if (!names?.length) {
+      return allFlags;
+    }
+
+    return [...new Set(names)].reduce<PartialFeatureFlagsSnapshot>(
+      (selected, name) => {
+        selected[name] = allFlags[name];
+        return selected;
+      },
+      {},
+    );
   }
 }
