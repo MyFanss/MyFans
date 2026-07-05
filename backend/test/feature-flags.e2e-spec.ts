@@ -1,15 +1,19 @@
 import {
+  ExecutionContext,
   INestApplication,
   ValidationPipe,
   VersioningType,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
-import request from 'supertest';
+import request, { type Response } from 'supertest';
 import { App } from 'supertest/types';
 import { FeatureFlagsModule } from '../src/feature-flags/feature-flags.module';
 import { FeatureFlagGuard } from '../src/feature-flags/feature-flag.guard';
-import { FeatureFlagsService } from '../src/feature-flags/feature-flags.service';
+import {
+  FeatureFlagsService,
+  type FeatureFlagsSnapshot,
+} from '../src/feature-flags/feature-flags.service';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -26,6 +30,11 @@ async function buildApp(): Promise<INestApplication<App>> {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   await app.init();
   return app;
+}
+
+function featureFlagsBody(res: Response): FeatureFlagsSnapshot {
+  const body = res.body as unknown;
+  return body as FeatureFlagsSnapshot;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,17 +54,42 @@ describe('FeatureFlagsController (e2e)', () => {
 
   afterEach(() => {
     // Clean up env overrides so tests are isolated
+    delete process.env.FEATURE_FLAG_BOOKMARKS;
+    delete process.env.NEXT_PUBLIC_FLAG_BOOKMARKS;
+    delete process.env.FEATURE_FLAG_EARNINGS_WITHDRAWALS;
+    delete process.env.NEXT_PUBLIC_FLAG_EARNINGS_WITHDRAWALS;
+    delete process.env.FEATURE_FLAG_EARNINGS_FEE_TRANSPARENCY;
+    delete process.env.NEXT_PUBLIC_FLAG_EARNINGS_FEE_TRANSPARENCY;
     delete process.env.FEATURE_NEW_SUBSCRIPTION_FLOW;
+    delete process.env.FEATURE_FLAG_NEW_SUBSCRIPTION_FLOW;
     delete process.env.FEATURE_CRYPTO_PAYMENTS;
+    delete process.env.FEATURE_FLAG_CRYPTO_PAYMENTS;
+    delete process.env.FEATURE_REFERRAL_CODES;
+    delete process.env.FEATURE_SOROBAN_POLLER;
   });
 
-  it('GET /v1/feature-flags returns 200 with a flags object', () => {
+  it('GET /v1/feature-flags returns the complete primary endpoint snapshot', () => {
+    process.env.FEATURE_FLAG_BOOKMARKS = 'true';
+    process.env.FEATURE_FLAG_EARNINGS_WITHDRAWALS = 'false';
+    process.env.FEATURE_FLAG_EARNINGS_FEE_TRANSPARENCY = '1';
+    process.env.FEATURE_NEW_SUBSCRIPTION_FLOW = 'true';
+    process.env.FEATURE_CRYPTO_PAYMENTS = 'off';
+    process.env.FEATURE_REFERRAL_CODES = 'yes';
+    process.env.FEATURE_SOROBAN_POLLER = 'false';
+
     return request(app.getHttpServer())
       .get('/v1/feature-flags')
       .expect(200)
       .expect((res) => {
-        expect(res.body).toHaveProperty('newSubscriptionFlow');
-        expect(res.body).toHaveProperty('cryptoPayments');
+        expect(featureFlagsBody(res)).toEqual({
+          bookmarks: true,
+          earnings_withdrawals: false,
+          earnings_fee_transparency: true,
+          newSubscriptionFlow: true,
+          cryptoPayments: false,
+          referralCodes: true,
+          sorobanPoller: false,
+        });
       });
   });
 
@@ -67,8 +101,9 @@ describe('FeatureFlagsController (e2e)', () => {
       .get('/v1/feature-flags')
       .expect(200)
       .expect((res) => {
-        expect(res.body.newSubscriptionFlow).toBe(false);
-        expect(res.body.cryptoPayments).toBe(false);
+        const body = featureFlagsBody(res);
+        expect(body.newSubscriptionFlow).toBe(false);
+        expect(body.cryptoPayments).toBe(false);
       });
   });
 
@@ -79,8 +114,9 @@ describe('FeatureFlagsController (e2e)', () => {
       .get('/v1/feature-flags')
       .expect(200)
       .expect((res) => {
-        expect(res.body.newSubscriptionFlow).toBe(true);
-        expect(res.body.cryptoPayments).toBe(false);
+        const body = featureFlagsBody(res);
+        expect(body.newSubscriptionFlow).toBe(true);
+        expect(body.cryptoPayments).toBe(false);
       });
   });
 
@@ -91,8 +127,9 @@ describe('FeatureFlagsController (e2e)', () => {
       .get('/v1/feature-flags')
       .expect(200)
       .expect((res) => {
-        expect(res.body.newSubscriptionFlow).toBe(false);
-        expect(res.body.cryptoPayments).toBe(true);
+        const body = featureFlagsBody(res);
+        expect(body.newSubscriptionFlow).toBe(false);
+        expect(body.cryptoPayments).toBe(true);
       });
   });
 
@@ -104,19 +141,20 @@ describe('FeatureFlagsController (e2e)', () => {
       .get('/v1/feature-flags')
       .expect(200)
       .expect((res) => {
-        expect(res.body.newSubscriptionFlow).toBe(true);
-        expect(res.body.cryptoPayments).toBe(true);
+        const body = featureFlagsBody(res);
+        expect(body.newSubscriptionFlow).toBe(true);
+        expect(body.cryptoPayments).toBe(true);
       });
   });
 
   it('treats an invalid env value as false (fail-closed)', () => {
-    process.env.FEATURE_NEW_SUBSCRIPTION_FLOW = 'yes'; // not "true"
+    process.env.FEATURE_NEW_SUBSCRIPTION_FLOW = 'definitely';
 
     return request(app.getHttpServer())
       .get('/v1/feature-flags')
       .expect(200)
       .expect((res) => {
-        expect(res.body.newSubscriptionFlow).toBe(false);
+        expect(featureFlagsBody(res).newSubscriptionFlow).toBe(false);
       });
   });
 });
@@ -127,7 +165,6 @@ describe('FeatureFlagsController (e2e)', () => {
 
 describe('FeatureFlagGuard', () => {
   let guard: FeatureFlagGuard;
-  let service: FeatureFlagsService;
   let reflector: Reflector;
 
   beforeEach(async () => {
@@ -136,7 +173,6 @@ describe('FeatureFlagGuard', () => {
     }).compile();
 
     guard = module.get(FeatureFlagGuard);
-    service = module.get(FeatureFlagsService);
     reflector = module.get(Reflector);
   });
 
@@ -145,13 +181,13 @@ describe('FeatureFlagGuard', () => {
     delete process.env.FEATURE_CRYPTO_PAYMENTS;
   });
 
-  const makeContext = (flag: string | undefined) => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(flag as string);
+  const makeContext = (flag: string | undefined): ExecutionContext => {
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(flag);
 
     return {
       getHandler: () => ({}),
       getClass: () => ({}),
-    } as any;
+    } as unknown as ExecutionContext;
   };
 
   it('allows access when no flag is required', () => {
