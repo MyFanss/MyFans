@@ -12,13 +12,10 @@ import {
   ParseUUIDPipe,
   UseInterceptors,
   ClassSerializerInterceptor,
+  UseGuards,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiParam,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 import { UsersService } from './users.service';
 import { CreateUserDto } from './create-user.dto';
@@ -28,18 +25,25 @@ import { UserProfileDto } from './user-profile.dto';
 import { PaginatedUsersResponseDto } from './paginated-users-response.dto';
 
 @ApiTags('Users')
+@UseGuards(ThrottlerGuard)
 @Controller({ path: 'users', version: '1' })
 @UseInterceptors(ClassSerializerInterceptor)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) { }
+  constructor(private readonly usersService: UsersService) {}
 
   // POST /users
   @Post()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new user' })
-  @ApiResponse({ status: 201, description: 'User created', type: UserProfileDto })
+  @ApiResponse({
+    status: 201,
+    description: 'User created',
+    type: UserProfileDto,
+  })
   @ApiResponse({ status: 409, description: 'Email or username already in use' })
   @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 429, description: 'Too many requests (5 per minute)' })
   create(@Body() dto: CreateUserDto): Promise<UserProfileDto> {
     return this.usersService.create(dto);
   }
@@ -62,7 +66,11 @@ export class UsersController {
   @Get(':id')
   @ApiOperation({ summary: 'Get a single user by ID' })
   @ApiParam({ name: 'id', description: 'User UUID' })
-  @ApiResponse({ status: 200, description: 'User profile', type: UserProfileDto })
+  @ApiResponse({
+    status: 200,
+    description: 'User profile',
+    type: UserProfileDto,
+  })
   @ApiResponse({ status: 404, description: 'User not found' })
   findOne(@Param('id', ParseUUIDPipe) id: string): Promise<UserProfileDto> {
     return this.usersService.findOne(id);
@@ -70,11 +78,17 @@ export class UsersController {
 
   // PATCH /users/:id
   @Patch(':id')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Update a user' })
   @ApiParam({ name: 'id', description: 'User UUID' })
-  @ApiResponse({ status: 200, description: 'Updated user profile', type: UserProfileDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Updated user profile',
+    type: UserProfileDto,
+  })
   @ApiResponse({ status: 404, description: 'User not found' })
   @ApiResponse({ status: 409, description: 'Email or username already in use' })
+  @ApiResponse({ status: 429, description: 'Too many requests (5 per minute)' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateUserDto,
@@ -84,11 +98,13 @@ export class UsersController {
 
   // DELETE /users/:id
   @Delete(':id')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Soft-delete a user' })
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiResponse({ status: 204, description: 'User deleted' })
   @ApiResponse({ status: 404, description: 'User not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests (5 per minute)' })
   remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.usersService.remove(id);
   }

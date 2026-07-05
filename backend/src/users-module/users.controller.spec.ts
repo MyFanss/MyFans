@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './create-user.dto';
@@ -30,6 +31,9 @@ describe('UsersController', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
+      imports: [
+        ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 100 }]),
+      ],
       controllers: [UsersController],
       providers: [{ provide: UsersService, useValue: mockService }],
     }).compile();
@@ -66,7 +70,13 @@ describe('UsersController', () => {
   describe('findAll', () => {
     it('should return paginated users', async () => {
       const pagination: PaginationDto = { page: 1, limit: 10 };
-      const expected = { data: [mockProfile()], total: 1, page: 1, limit: 10, totalPages: 1 };
+      const expected = {
+        data: [mockProfile()],
+        total: 1,
+        page: 1,
+        limit: 10,
+        totalPages: 1,
+      };
       mockService.findAll.mockResolvedValue(expected);
 
       const result = await controller.findAll(pagination);
@@ -90,7 +100,10 @@ describe('UsersController', () => {
   describe('update', () => {
     it('should update and return the user', async () => {
       const dto: UpdateUserDto = { firstName: 'Jane' };
-      mockService.update.mockResolvedValue({ ...mockProfile(), firstName: 'Jane' });
+      mockService.update.mockResolvedValue({
+        ...mockProfile(),
+        firstName: 'Jane',
+      });
 
       const result = await controller.update('uuid-1', dto);
 
