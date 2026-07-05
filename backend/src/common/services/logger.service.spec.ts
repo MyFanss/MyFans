@@ -101,6 +101,48 @@ describe('LoggerService – structured log fields standard', () => {
     expect(meta[LOG_FIELDS.USER_ID]).toBe('GUSER');
   });
 
+  it.each([
+    ['warn', 'warn'],
+    ['debug', 'debug'],
+    ['verbose', 'verbose'],
+  ] as const)(
+    '%s() emits the message with context metadata',
+    (method, loggerMethod) => {
+      service[method]('happy path', 'LoggingCtx');
+
+      expect(winstonLogger[loggerMethod]).toHaveBeenCalledWith(
+        'happy path',
+        expect.objectContaining({
+          [LOG_FIELDS.CONTEXT]: 'LoggingCtx',
+          [LOG_FIELDS.CORRELATION_ID]: 'corr-123',
+          [LOG_FIELDS.REQUEST_ID]: 'req-456',
+        }),
+      );
+    },
+  );
+
+  it.each(['info', 'warn', 'error', 'debug'] as const)(
+    'logStructured() forwards %s level with message and context metadata',
+    (level) => {
+      service.logStructured(
+        level,
+        'structured happy path',
+        undefined,
+        'StructuredCtx',
+      );
+
+      expect(winstonLogger.log).toHaveBeenCalledWith(
+        level,
+        'structured happy path',
+        expect.objectContaining({
+          [LOG_FIELDS.CONTEXT]: 'StructuredCtx',
+          [LOG_FIELDS.CORRELATION_ID]: 'corr-123',
+          [LOG_FIELDS.REQUEST_ID]: 'req-456',
+        }),
+      );
+    },
+  );
+
   it('LOG_FIELDS.SERVICE constant equals expected service name', () => {
     expect(SERVICE_NAME).toBe('myfans-backend');
   });
