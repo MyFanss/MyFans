@@ -270,6 +270,7 @@
 * **frontend:** fan onboarding quickstart with wallet and first sub flow ([ebb5b86](https://github.com/MyFanss/MyFans/commit/ebb5b864f077d3eeebcaca4e3affbb5f67f79ce2))
 * **frontend:** fix appearance.test.tsx and add theme e2e tests ([52788e2](https://github.com/MyFanss/MyFans/commit/52788e23ef47474b480d83d4875094e8e4bad32e)), closes [#24](https://github.com/MyFanss/MyFans/issues/24)
 * **frontend:** persist wallet/subscription state for e2e critical flow ([ad944bd](https://github.com/MyFanss/MyFans/commit/ad944bd992753f3a00f0e82cad13ee072b92dff4))
+* **frontend:** replace mock viewer subscription status on creator pages ([#1360](https://github.com/MyFanss/MyFans/issues/1360)) ([562c7bd](https://github.com/MyFanss/MyFans/commit/562c7bd7438e6105cfacacc51d0d66fe09dd98da))
 * **frontend:** show offline banner when RPC or network is unavailable ([11a4a2c](https://github.com/MyFanss/MyFans/commit/11a4a2cb54b8fbd36d089358a3b36744cd9eaba6))
 * **frontend:** standardize error copy with actionable recovery steps ([53e8b4f](https://github.com/MyFanss/MyFans/commit/53e8b4fbb0721d7df0eea13702de2b1c878d81ed))
 * **frontend:** wire subscriptions history and payments to backend ([#1359](https://github.com/MyFanss/MyFans/issues/1359)) ([10f6bab](https://github.com/MyFanss/MyFans/commit/10f6baba78c3af20a87c3cea2c87f8c5a5b992ee))
