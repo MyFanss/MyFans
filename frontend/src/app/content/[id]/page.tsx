@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { GatedContentViewer, ContentType } from '@/components/GatedContentViewer';
 import { SubscriptionStatusBadge } from '@/components/subscription/SubscriptionStatusBadge';
 import {
-  getMockViewerSubscriptionStatus,
   getSubscriptionStatusCopy,
   isSubscriptionActive,
   type SubscriptionStatus,
@@ -79,17 +78,12 @@ export default function ContentPage({ params }: PageProps) {
     return (
       persistedById ??
       persistedByUsername ??
-      getMockViewerSubscriptionStatus(mockContentData.creator.username) ??
       'expired'
     );
   });
-  const [hasWalletSession, setHasWalletSession] = useState(false);
+  const [hasWalletSession] = useState(() => typeof window !== 'undefined' && !!getWalletSession());
   const isSubscribed = isSubscriptionActive(subscriptionStatus);
   const subscriptionCopy = getSubscriptionStatusCopy(subscriptionStatus);
-
-  useEffect(() => {
-    setHasWalletSession(!!getWalletSession());
-  }, []);
 
   const handleSubscribe = () => {
     if (!getWalletSession()) {

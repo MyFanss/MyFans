@@ -45,7 +45,39 @@ const creator: CreatorProfile = {
 };
 
 describe('CreatorHero', () => {
-  it('shows the viewer subscription badge and helper copy on creator profiles', () => {
+  it('shows the active subscription badge and helper copy', () => {
+    render(
+      <CreatorHero
+        creator={creator}
+        viewerSubscriptionStatus="active"
+      />,
+    );
+
+    expect(
+      screen.getByRole('status', { name: 'Subscription status: active' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Your subscription is active and gated content is unlocked.'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the expired subscription badge and helper copy', () => {
+    render(
+      <CreatorHero
+        creator={creator}
+        viewerSubscriptionStatus="expired"
+      />,
+    );
+
+    expect(
+      screen.getByRole('status', { name: 'Subscription status: expired' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Your access has expired. Renew to unlock subscriber-only posts again.'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the viewer subscription badge and helper copy for cancelled status', () => {
     render(
       <CreatorHero
         creator={creator}
@@ -61,7 +93,7 @@ describe('CreatorHero', () => {
     ).toBeInTheDocument();
   });
 
-  it('does not render a subscription badge when the viewer has no creator status', () => {
+  it('does not render a subscription badge when the viewer has no creator status (logged out)', () => {
     render(<CreatorHero creator={creator} viewerSubscriptionStatus={null} />);
 
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
