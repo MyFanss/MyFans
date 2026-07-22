@@ -126,11 +126,11 @@ describe('HealthController', () => {
                 version: '0.0.1',
                 subsystems: {
                     database: { status: 'up' as const, latencyMs: 5 },
-                    redis: { status: 'down' as const, error: 'Redis not configured' },
+                    redis: { status: 'up' as const, latencyMs: 2 },
                     sorobanRpc: { status: 'up' as const, timestamp: new Date().toISOString() },
                     sorobanContract: { status: 'up' as const, timestamp: new Date().toISOString() },
                 },
-                summary: { total: 4, up: 3, degraded: 0, down: 1 },
+                summary: { total: 4, up: 4, degraded: 0, down: 0 },
             };
             mockHealthService.getAggregatedHealth.mockResolvedValue(health);
 
@@ -149,11 +149,11 @@ describe('HealthController', () => {
                 version: '0.0.1',
                 subsystems: {
                     database: { status: 'up' as const, latencyMs: 5 },
-                    redis: { status: 'down' as const, error: 'Redis not configured' },
+                    redis: { status: 'up' as const, latencyMs: 2 },
                     sorobanRpc: { status: 'degraded' as const, timestamp: new Date().toISOString() },
                     sorobanContract: { status: 'up' as const, timestamp: new Date().toISOString() },
                 },
-                summary: { total: 4, up: 2, degraded: 1, down: 1 },
+                summary: { total: 4, up: 3, degraded: 1, down: 0 },
             };
             mockHealthService.getAggregatedHealth.mockResolvedValue(health);
 
@@ -171,11 +171,11 @@ describe('HealthController', () => {
                 version: '0.0.1',
                 subsystems: {
                     database: { status: 'down' as const, latencyMs: 0, error: 'DB unreachable' },
-                    redis: { status: 'down' as const, error: 'Redis not configured' },
+                    redis: { status: 'up' as const, latencyMs: 2 },
                     sorobanRpc: { status: 'up' as const, timestamp: new Date().toISOString() },
                     sorobanContract: { status: 'up' as const, timestamp: new Date().toISOString() },
                 },
-                summary: { total: 4, up: 2, degraded: 0, down: 2 },
+                summary: { total: 4, up: 3, degraded: 0, down: 1 },
             };
             mockHealthService.getAggregatedHealth.mockResolvedValue(health);
 
@@ -219,23 +219,34 @@ describe('HealthController', () => {
     });
 
     describe('getRedisHealth', () => {
-        it('returns 503 when Redis is not configured', async () => {
-            mockHealthService.checkRedis.mockResolvedValue({ status: 'down', error: 'Redis not configured' });
-
-            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
-            await controller.getRedisHealth(res);
-
-            expect(res.status).toHaveBeenCalledWith(503);
-            expect(res.json).toHaveBeenCalledWith({ status: 'down', error: 'Redis not configured' });
-        });
-
-        it('returns 200 when Redis is up', async () => {
-            mockHealthService.checkRedis.mockResolvedValue({ status: 'up' });
+        it('returns 200 when Redis is not configured (optional subsystem)', async () => {
+            mockHealthService.checkRedis.mockResolvedValue({ status: 'not_configured' });
 
             const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
             await controller.getRedisHealth(res);
 
             expect(res.status).toHaveBeenCalledWith(200);
+            expect(res.json).toHaveBeenCalledWith({ status: 'not_configured' });
+        });
+
+        it('returns 200 with latency when Redis is up', async () => {
+            mockHealthService.checkRedis.mockResolvedValue({ status: 'up', latencyMs: 3 });
+
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+            await controller.getRedisHealth(res);
+
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(res.json).toHaveBeenCalledWith({ status: 'up', latencyMs: 3 });
+        });
+
+        it('returns 503 when a configured Redis is down', async () => {
+            mockHealthService.checkRedis.mockResolvedValue({ status: 'down', error: 'connect ECONNREFUSED' });
+
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+            await controller.getRedisHealth(res);
+
+            expect(res.status).toHaveBeenCalledWith(503);
+            expect(res.json).toHaveBeenCalledWith({ status: 'down', error: 'connect ECONNREFUSED' });
         });
     });
 
