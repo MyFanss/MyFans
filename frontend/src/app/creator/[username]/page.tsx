@@ -11,7 +11,6 @@ import {
   getCurrencySymbol,
   type CreatorProfile,
 } from '@/lib/creator-profile';
-import { getMockViewerSubscriptionStatus } from '@/lib/subscription-status';
 import { createCreatorMetadata } from '@/lib/metadata';
 import { CreatorHero } from '@/components/creator/CreatorHero';
 import { PlanCard } from '@/components/cards';
@@ -62,7 +61,6 @@ export default async function CreatorProfilePage({ params }: PageProps) {
   if (!creator) {
     notFound();
   }
-  const viewerSubscriptionStatus = getMockViewerSubscriptionStatus(username);
 
   /**
    * Critical-path data fetched in parallel.
@@ -76,10 +74,7 @@ export default async function CreatorProfilePage({ params }: PageProps) {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <CreatorHero
-          creator={creator}
-          viewerSubscriptionStatus={viewerSubscriptionStatus}
-        />
+        <CreatorHero creator={creator} />
         <main className="max-w-5xl mx-auto px-4 py-8 sm:px-6">
           {/* Plans — critical path, rendered immediately */}
           <section className="mb-10" aria-labelledby="plans-heading">
