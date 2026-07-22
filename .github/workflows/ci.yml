@@ -92,6 +92,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    env:
+      # Production contracts that must build to wasm32-unknown-unknown.
+      # Mirrors contract/scripts/snapshot-abi.sh PACKAGES.
+      PROD_PACKAGES: >-
+        myfans-token
+        creator-registry
+        creator-deposits
+        creator-earnings
+        subscription
+        content-access
+        content-likes
+        earnings
+        treasury
+
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
@@ -114,44 +128,45 @@ jobs:
 
       # Verify wasm release build independently from cargo test, which uses the host target.
       # cargo test compiles for the native architecture, while the wasm build targets wasm32-unknown-unknown.
-      # This step ensures the contract compiles correctly for deployment to Soroban.
-      - name: Build wasm release for earnings contract
-        run: cargo build --release --target wasm32-unknown-unknown -p earnings
-        working-directory: contract
-
-      - name: Verify earnings.wasm artifact exists
-        run: test -f target/wasm32-unknown-unknown/release/earnings.wasm
-        working-directory: contract
-
-      # Verifies the test-consumer WASM builds cleanly — cargo test uses the host target and does not catch wasm-only build errors.
-      - name: Build wasm release for test-consumer contract
-        run: cargo build --release --target wasm32-unknown-unknown -p test-consumer
-        working-directory: contract
-
-      - name: Verify test-consumer.wasm artifact exists
-        run: test -f target/wasm32-unknown-unknown/release/test_consumer.wasm
-        working-directory: contract
-
-      - name: Verify creator-registry wasm
+      # This step ensures all production contracts compile correctly for deployment to Soroban.
+      # Package list mirrors contract/scripts/snapshot-abi.sh PACKAGES.
+      - name: Build all production contracts to wasm
         run: |
-          wasm_path="target/wasm32-unknown-unknown/release/creator_registry.wasm"
-          test -s "$wasm_path"
-          magic="$(xxd -p -l 4 "$wasm_path" 2>/dev/null || od -A n -N 4 -t x1 "$wasm_path" | tr -d ' ')"
-          test "$magic" = "0061736d"
+          for pkg in $PROD_PACKAGES; do
+            echo "::group::Building $pkg"
+            cargo build --release --target wasm32-unknown-unknown -p "$pkg"
+            echo "::endgroup::"
+          done
         working-directory: contract
 
-      - name: Build wasm release for myfans-lib
-        run: cargo build --release --target wasm32-unknown-unknown -p myfans-lib
-        working-directory: contract
-
-      - name: Verify myfans_lib.wasm artifact exists
-        run: test -f target/wasm32-unknown-unknown/release/myfans_lib.wasm
-        working-directory: contract
-
-      - name: Verify myfans_lib wasm
+      - name: Verify WASM artifacts (magic bytes + non-empty)
         run: |
-          wasm_path="target/wasm32-unknown-unknown/release/myfans_lib.wasm"
-          test -s "$wasm_path"
-          magic="$(xxd -p -l 4 "$wasm_path" 2>/dev/null || od -A n -N 4 -t x1 "$wasm_path" | tr -d ' ')"
-          test "$magic" = "0061736d"
+          FAILED=0
+          for pkg in $PROD_PACKAGES; do
+            wasm_name="${pkg//-/_}.wasm"
+            wasm_path="target/wasm32-unknown-unknown/release/$wasm_name"
+            echo "::group::Verifying $pkg → $wasm_name"
+
+            if [[ ! -s "$wasm_path" ]]; then
+              echo "::error::WASM artifact not found or empty: $wasm_path"
+              FAILED=1
+              echo "::endgroup::"
+              continue
+            fi
+
+            magic="$(xxd -p -l 4 "$wasm_path" 2>/dev/null || od -A n -N 4 -t x1 "$wasm_path" | tr -d ' ')"
+            if [[ "$magic" != "0061736d" ]]; then
+              echo "::error::Invalid WASM magic bytes for $wasm_path (got: $magic)"
+              FAILED=1
+            else
+              echo "✅ $pkg verified ($wasm_name, $(du -h "$wasm_path" | cut -f1))"
+            fi
+            echo "::endgroup::"
+          done
+
+          if [[ "$FAILED" -ne 0 ]]; then
+            echo "::error::One or more WASM artifacts failed verification"
+            exit 1
+          fi
+          echo "::notice::All production WASM artifacts verified successfully"
         working-directory: contract
