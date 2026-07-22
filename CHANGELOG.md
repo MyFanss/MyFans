@@ -272,6 +272,7 @@
 * **frontend:** persist wallet/subscription state for e2e critical flow ([ad944bd](https://github.com/MyFanss/MyFans/commit/ad944bd992753f3a00f0e82cad13ee072b92dff4))
 * **frontend:** show offline banner when RPC or network is unavailable ([11a4a2c](https://github.com/MyFanss/MyFans/commit/11a4a2cb54b8fbd36d089358a3b36744cd9eaba6))
 * **frontend:** standardize error copy with actionable recovery steps ([53e8b4f](https://github.com/MyFanss/MyFans/commit/53e8b4fbb0721d7df0eea13702de2b1c878d81ed))
+* **frontend:** wire subscriptions history and payments to backend ([#1359](https://github.com/MyFanss/MyFans/issues/1359)) ([10f6bab](https://github.com/MyFanss/MyFans/commit/10f6baba78c3af20a87c3cea2c87f8c5a5b992ee))
 * **games:** add pagination and limit query support ([4d06881](https://github.com/MyFanss/MyFans/commit/4d06881649619b64065e0afd40cd1c3ab7409aa1))
 * harden backend secret management ([#350](https://github.com/MyFanss/MyFans/issues/350)) ([4cc8a96](https://github.com/MyFanss/MyFans/commit/4cc8a9662faa27a06a9c3ead0a9b4f6e5d437c26))
 * Health check for Soroban RPC ([5f189be](https://github.com/MyFanss/MyFans/commit/5f189be70eec41873edeb0fcb666bec2fd10d283))
