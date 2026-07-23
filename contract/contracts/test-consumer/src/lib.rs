@@ -6,12 +6,14 @@ use soroban_sdk::{contract, contractimpl, Env, Address, Symbol};
 #[derive(Clone, Copy)]
 pub enum DataKey {
     Admin = 0,
+    Paused = 1,
 }
 
 impl DataKey {
     pub fn to_symbol(&self) -> Symbol {
         match self {
             DataKey::Admin => Symbol::short("admin"),
+            DataKey::Paused => Symbol::short("paused"),
         }
     }
 }
@@ -56,28 +58,23 @@ impl TestConsumer {
     }
 
     /// Set the paused status. Only the admin can call this.
-    /// 
+    ///
     /// Requires the caller to be the admin. Fails with NotAuthorized
     /// if the caller is not the admin.
     pub fn set_paused(env: Env, paused: bool) -> Result<(), MyfansError> {
         let storage = env.storage().instance();
-        
+
         // Get admin
         let admin = storage
             .get::<_, Address>(&DataKey::Admin.to_symbol())
             .ok_or(MyfansError::NotInitialized)?;
-        
-        // Get current caller
-        let caller = env.invoker();
-        
-        // Check authorization
-        if caller != admin {
-            return Err(MyfansError::NotAuthorized);
-        }
-        
+
+        // Require admin authorization
+        admin.require_auth();
+
         // Set paused status
         storage.set(&DataKey::Paused.to_symbol(), &paused);
-        
+
         Ok(())
     }
 
