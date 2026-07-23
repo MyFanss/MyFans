@@ -3,12 +3,14 @@ import { INestApplication } from '@nestjs/common';
 import { WebhookController } from './webhook.controller';
 import { WebhookService } from './webhook.service';
 import { WebhookAuditService } from './webhook-audit.service';
+import { WebhookEventProcessorService } from './webhook-event-processor.service';
 import { UserRole } from '../common/enums/user-role.enum';
 
 describe('WebhookController', () => {
   let controller: WebhookController;
   let webhookService: WebhookService;
   let auditService: WebhookAuditService;
+  let processorService: WebhookEventProcessorService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -33,20 +35,61 @@ describe('WebhookController', () => {
             logExpirePrevious: jest.fn().mockResolvedValue(undefined),
           },
         },
+        {
+          provide: WebhookEventProcessorService,
+          useValue: {
+            processEvent: jest.fn().mockResolvedValue({
+              processed: true,
+              eventId: 'evt-123',
+              eventType: 'subscription.created',
+            }),
+          },
+        },
       ],
     }).compile();
 
     controller = module.get<WebhookController>(WebhookController);
     webhookService = module.get<WebhookService>(WebhookService);
     auditService = module.get<WebhookAuditService>(WebhookAuditService);
+    processorService = module.get<WebhookEventProcessorService>(
+      WebhookEventProcessorService,
+    );
   });
 
   describe('receive', () => {
-    it('returns received: true', () => {
-      const payload = { event: 'test.event', data: {} };
-      const result = controller.receive(payload);
+    it('processes webhook event and returns processing result', async () => {
+      const payload = {
+        id: 'evt-123',
+        type: 'subscription.created',
+        timestamp: Date.now(),
+        data: { fan: 'fan-addr', creator: 'creator-addr', planId: 1, expiry: 1234567890 },
+      };
 
-      expect(result).toEqual({ received: true, payload });
+      const result = await controller.receive(payload);
+
+      expect(processorService.processEvent).toHaveBeenCalledWith(payload);
+      expect(result).toEqual({
+        received: true,
+        processed: true,
+        eventId: 'evt-123',
+        eventType: 'subscription.created',
+      });
+    });
+
+    it('handles processing errors gracefully', async () => {
+      const payload = { invalid: 'data' };
+      (processorService.processEvent as jest.Mock).mockResolvedValue({
+        processed: false,
+        error: 'Invalid event format',
+      });
+
+      const result = await controller.receive(payload);
+
+      expect(result).toEqual({
+        received: true,
+        processed: false,
+        error: 'Invalid event format',
+      });
     });
   });
 
@@ -117,6 +160,16 @@ describe('WebhookController - Admin Guard Protection', () => {
           useValue: {
             logRotation: jest.fn().mockResolvedValue(undefined),
             logExpirePrevious: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: WebhookEventProcessorService,
+          useValue: {
+            processEvent: jest.fn().mockResolvedValue({
+              processed: true,
+              eventId: 'evt-123',
+              eventType: 'subscription.created',
+            }),
           },
         },
       ],

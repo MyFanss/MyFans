@@ -9,6 +9,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { WebhookGuard } from './webhook.guard';
 import { WebhookService } from './webhook.service';
 import { WebhookAuditService } from './webhook-audit.service';
+import { WebhookEventProcessorService } from './webhook-event-processor.service';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth-module/guards/roles.guard';
 import { Roles } from '../auth-module/decorators/roles.decorator';
@@ -21,17 +22,22 @@ export class WebhookController {
   constructor(
     private readonly webhookService: WebhookService,
     private readonly auditService: WebhookAuditService,
+    private readonly processorService: WebhookEventProcessorService,
   ) {}
 
-  /** Receive an incoming signed webhook event. */
+  /** Receive an incoming signed webhook event and dispatch for processing. */
   @Post()
   @HttpCode(200)
   @UseGuards(WebhookGuard)
   @ApiOperation({ summary: 'Receive a signed webhook event' })
-  @ApiResponse({ status: 200, description: 'Event received' })
+  @ApiResponse({ status: 200, description: 'Event received and queued for processing' })
   @ApiResponse({ status: 401, description: 'Invalid webhook signature' })
-  receive(@Body() body: unknown) {
-    return { received: true, payload: body };
+  async receive(@Body() body: unknown) {
+    const result = await this.processorService.processEvent(body);
+    return {
+      received: true,
+      ...result,
+    };
   }
 
   /**
