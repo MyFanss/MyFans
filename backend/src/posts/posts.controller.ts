@@ -13,14 +13,30 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiResponse, ApiTags, ApiParam, ApiBody } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags, ApiParam, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { PostsService } from './posts.service';
 import { PostDto, CreatePostDto, UpdatePostDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
 
+/**
+ * PostsController
+ *
+ * Handles CRUD operations for posts. All mutating endpoints are protected
+ * by JwtAuthGuard and require a valid Bearer token. The authenticated user's
+ * identity (extracted from the JWT via @CurrentUser) is used as the author
+ * for creates and as the owner identifier for updates and soft-deletes.
+ *
+ * @Controller posts
+ * @version 1
+ * @tags posts
+ * @security BearerAuth
+ */
 @ApiTags('posts')
-@UseGuards(ThrottlerGuard)
+@UseGuards(JwtAuthGuard, ThrottlerGuard)
+@ApiBearerAuth()
 @UseInterceptors(ClassSerializerInterceptor)
 @Controller({ path: 'posts', version: '1' })
 export class PostsController {
@@ -41,6 +57,11 @@ export class PostsController {
     schema: { example: { statusCode: 400, message: 'Invalid post parameters' } },
   })
   @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+    schema: { example: { statusCode: 401, message: 'Unauthorized' } },
+  })
+  @ApiResponse({
     status: 429,
     description: 'Too many requests',
     schema: { example: { statusCode: 429, message: 'Too many requests' } },
@@ -50,10 +71,11 @@ export class PostsController {
     description: 'Internal server error',
     schema: { example: { statusCode: 500, message: 'Internal server error' } },
   })
-  async create(@Body() dto: CreatePostDto): Promise<PostDto> {
-    // TODO: Get author ID from auth token/session
-    const authorId = 'temp-author-id';
-    return this.postsService.create(authorId, dto);
+  async create(
+    @Body() dto: CreatePostDto,
+    @CurrentUser() user: { userId: string },
+  ): Promise<PostDto> {
+    return this.postsService.create(user.userId, dto);
   }
 
   @Get()
@@ -175,6 +197,11 @@ export class PostsController {
     schema: { example: { statusCode: 400, message: 'Invalid post parameters' } },
   })
   @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+    schema: { example: { statusCode: 401, message: 'Unauthorized' } },
+  })
+  @ApiResponse({
     status: 404,
     description: 'Post not found',
     schema: { example: { statusCode: 404, message: 'Post with ID {id} not found' } },
@@ -192,8 +219,9 @@ export class PostsController {
   async update(
     @Param('id') id: string,
     @Body() dto: UpdatePostDto,
+    @CurrentUser() user: { userId: string },
   ): Promise<PostDto> {
-    return this.postsService.update(id, dto);
+    return this.postsService.update(id, dto, user.userId);
   }
 
   @Delete(':id')
@@ -205,6 +233,11 @@ export class PostsController {
     description: 'Post ID',
   })
   @ApiResponse({ status: 204, description: 'Post soft-deleted successfully' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+    schema: { example: { statusCode: 401, message: 'Unauthorized' } },
+  })
   @ApiResponse({
     status: 404,
     description: 'Post not found or already deleted',
@@ -222,8 +255,8 @@ export class PostsController {
   })
   async remove(
     @Param('id') id: string,
-    @Query('deletedBy') deletedBy?: string,
+    @CurrentUser() user: { userId: string },
   ): Promise<void> {
-    return this.postsService.softDelete(id, deletedBy ?? 'unknown');
+    return this.postsService.softDelete(id, user.userId);
   }
 }
