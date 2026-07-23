@@ -1792,3 +1792,68 @@ fn test_cancel_paused_returns_typed_error() {
         Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
     );
 }
+
+// ── create_plan parameter validation ─────────────────────────────────────────
+
+/// create_plan rejects a zero amount with a typed InvalidPlanParams error.
+#[test]
+fn test_create_plan_rejects_zero_amount() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+
+    let result = client.try_create_plan(&creator, &token.address, &0, &30);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidPlanParams as u32,
+        )))
+    );
+}
+
+/// create_plan rejects a negative amount with a typed InvalidPlanParams error.
+#[test]
+fn test_create_plan_rejects_negative_amount() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+
+    let result = client.try_create_plan(&creator, &token.address, &-1, &30);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidPlanParams as u32,
+        )))
+    );
+}
+
+/// create_plan rejects a zero interval_days with a typed InvalidPlanParams error.
+#[test]
+fn test_create_plan_rejects_zero_interval_days() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+
+    let result = client.try_create_plan(&creator, &token.address, &1000, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidPlanParams as u32,
+        )))
+    );
+}
+
+/// A valid plan (positive amount, non-zero interval_days) still succeeds.
+#[test]
+fn test_create_plan_accepts_valid_params() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    assert_eq!(plan_id, 1);
+}

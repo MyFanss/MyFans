@@ -69,6 +69,7 @@ impl DataKey {
 /// | 8 | `InvalidTokenAddress` |
 /// | 9 | `InvalidPrice` |
 /// | 10 | `PlanNotFound` |
+/// | 11 | `InvalidPlanParams` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -92,6 +93,8 @@ pub enum Error {
     InvalidPrice = 9,
     /// Code 10 – plan ID does not exist; never created or out of range.
     PlanNotFound = 10,
+    /// Code 11 – plan `amount` must be strictly positive and `interval_days` non-zero.
+    InvalidPlanParams = 11,
 }
 
 /// Stellar "null" account (GAAA...WHF) — not a valid fee recipient.
@@ -180,6 +183,9 @@ impl MyfansContract {
             .unwrap_or(false);
         if paused {
             panic_with_error!(&env, Error::Paused);
+        }
+        if amount <= 0 || interval_days == 0 {
+            panic_with_error!(&env, Error::InvalidPlanParams);
         }
 
         let count: u32 = env
