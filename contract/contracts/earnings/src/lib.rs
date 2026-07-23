@@ -20,11 +20,14 @@ enum DataKey {
 /// | Code | Variant |
 /// |------|---------|
 /// | 1 | `AlreadyInitialized` |
+/// | 2 | `NotInitialized` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
     /// Code 1 – contract was already initialized.
     AlreadyInitialized = 1,
+    /// Code 2 – admin key not present; contract was never initialized.
+    NotInitialized = 2,
 }
 
 #[contract]
@@ -42,7 +45,10 @@ impl Earnings {
     }
 
     pub fn admin(env: Env) -> Address {
-        env.storage().instance().get(&DataKey::Admin).unwrap()
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
     }
 
     pub fn record(env: Env, creator: Address, amount: i128) {
