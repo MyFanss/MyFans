@@ -141,6 +141,27 @@ fn test_get_earnings_defaults_to_zero() {
     assert_eq!(client.get_earnings(&creator), 0);
 }
 
+/// record() reverts with a typed Overflow error instead of silently wrapping
+/// when current + amount would exceed i128::MAX.
+#[test]
+fn test_record_overflow_reverts_typed() {
+    let env = Env::default();
+    let (_admin, creator, client) = setup(&env);
+
+    client.record(&creator, &i128::MAX);
+
+    let result = client.try_record(&creator, &1);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Overflow as u32)))
+    );
+    assert_eq!(
+        client.get_earnings(&creator),
+        i128::MAX,
+        "a rejected overflow must not change the recorded balance"
+    );
+}
+
 // ── #297 – withdrawal feature ─────────────────────────────────────────────────
 
 /// Valid withdrawal reduces the recorded balance by the withdrawn amount.
