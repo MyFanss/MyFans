@@ -78,6 +78,14 @@ export class PostsController {
     return this.postsService.create(user.userId, dto);
   }
 
+  /**
+   * Retrieves a paginated list of all published posts.
+   * This endpoint is public (no JWT required).
+   * Use query parameters to control pagination (page and limit).
+   *
+   * @param pagination - Pagination parameters (page, limit)
+   * @returns Paginated response containing PostDto array
+   */
   @Get()
   @ApiOperation({
     summary: 'List all posts (paginated)',
