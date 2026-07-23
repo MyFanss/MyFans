@@ -128,6 +128,8 @@ pub struct MyfansContract;
 impl MyfansContract {
     /// Initialize the subscription contract once.
     ///
+    /// Requires `admin` to authorize the call.
+    ///
     /// Validates:
     /// * `fee_bps` must be ≤ 10000 (100%).
     /// * `token` must be a valid non-null address.
@@ -143,6 +145,7 @@ impl MyfansContract {
         if env.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
+        admin.require_auth();
         require_valid_fee_recipient(&env, &fee_recipient);
         require_valid_fee_bps(&env, fee_bps);
         require_valid_token_address(&env, &token);

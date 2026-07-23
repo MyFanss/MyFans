@@ -65,6 +65,8 @@ pub fn init(
 
 One-time contract initialization. Stores admin, fee configuration, token address, and base subscription price.
 
+**Requires `admin` authorization.**
+
 **Panics** with `AlreadyInitialized` if called again, `InvalidFeeBps` if `fee_bps > 10_000`,
 `InvalidTokenAddress` if `token` is the Stellar null address, or `InvalidPrice` if `price <= 0`.
 
