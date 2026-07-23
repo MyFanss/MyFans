@@ -1,70 +1,79 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { NotFoundException } from '@nestjs/common';
 import { ConversationsController } from './conversations.controller';
 import { ConversationsService } from './conversations.service';
-import { ConversationDto, MessageDto, CreateConversationDto, SendMessageDto } from './dto';
+import {
+  ConversationDto,
+  MessageDto,
+  CreateConversationDto,
+  SendMessageDto,
+} from './dto';
 import { PaginatedResponseDto } from '../common/dto';
 
-const makeConversationDto = (overrides: Partial<ConversationDto> = {}): ConversationDto =>
-  ({
-    id: 'conv-1',
-    participant1Id: 'temp-user-id',
-    participant2Id: 'user-2',
-    lastMessageId: null,
-    createdAt: new Date('2026-01-01T00:00:00Z'),
-    updatedAt: new Date('2026-01-01T00:00:00Z'),
-    ...overrides,
-  }) as ConversationDto;
+const makeConversationDto = (
+  overrides: Partial<ConversationDto> = {},
+): ConversationDto => ({
+  id: 'conv-1',
+  participant1Id: 'temp-user-id',
+  participant2Id: 'user-2',
+  lastMessageId: null,
+  createdAt: new Date('2026-01-01T00:00:00Z'),
+  updatedAt: new Date('2026-01-01T00:00:00Z'),
+  ...overrides,
+});
 
-const makeMessageDto = (overrides: Partial<MessageDto> = {}): MessageDto =>
-  ({
-    id: 'msg-1',
-    conversationId: 'conv-1',
-    senderId: 'temp-user-id',
-    content: 'Hello!',
-    isRead: false,
-    createdAt: new Date('2026-01-01T00:00:00Z'),
-    ...overrides,
-  }) as MessageDto;
+const makeMessageDto = (overrides: Partial<MessageDto> = {}): MessageDto => ({
+  id: 'msg-1',
+  conversationId: 'conv-1',
+  senderId: 'temp-user-id',
+  content: 'Hello!',
+  isRead: false,
+  createdAt: new Date('2026-01-01T00:00:00Z'),
+  ...overrides,
+});
 
 const makePaginatedConversations = (
   data: ConversationDto[],
   overrides?: Partial<PaginatedResponseDto<ConversationDto>>,
-): PaginatedResponseDto<ConversationDto> =>
-  ({
-    data,
-    total: data.length,
-    page: 1,
-    limit: 20,
-    totalPages: 1,
-    hasMore: false,
-    nextCursor: null,
-    cursor: null,
-    ...overrides,
-  }) as PaginatedResponseDto<ConversationDto>;
+): PaginatedResponseDto<ConversationDto> => ({
+  data,
+  total: data.length,
+  page: 1,
+  limit: 20,
+  totalPages: 1,
+  hasMore: false,
+  nextCursor: null,
+  cursor: null,
+  ...overrides,
+});
 
 const makePaginatedMessages = (
   data: MessageDto[],
   overrides?: Partial<PaginatedResponseDto<MessageDto>>,
-): PaginatedResponseDto<MessageDto> =>
-  ({
-    data,
-    total: data.length,
-    page: 1,
-    limit: 20,
-    totalPages: 1,
-    hasMore: false,
-    nextCursor: null,
-    cursor: null,
-    ...overrides,
-  }) as PaginatedResponseDto<MessageDto>;
+): PaginatedResponseDto<MessageDto> => ({
+  data,
+  total: data.length,
+  page: 1,
+  limit: 20,
+  totalPages: 1,
+  hasMore: false,
+  nextCursor: null,
+  cursor: null,
+  ...overrides,
+});
 
 describe('ConversationsController', () => {
   let controller: ConversationsController;
   let service: jest.Mocked<
     Pick<
       ConversationsService,
-      'create' | 'findAll' | 'findOne' | 'getMessages' | 'sendMessage' | 'remove'
+      | 'create'
+      | 'findAll'
+      | 'findOne'
+      | 'getMessages'
+      | 'sendMessage'
+      | 'remove'
     >
   >;
 
@@ -79,6 +88,9 @@ describe('ConversationsController', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [
+        ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 10 }]),
+      ],
       controllers: [ConversationsController],
       providers: [{ provide: ConversationsService, useValue: service }],
     }).compile();
@@ -104,7 +116,10 @@ describe('ConversationsController', () => {
 
     it('returns created conversation with id', async () => {
       const dto: CreateConversationDto = { participant2Id: 'user-99' };
-      const result = makeConversationDto({ id: 'new-conv-id', participant2Id: 'user-99' });
+      const result = makeConversationDto({
+        id: 'new-conv-id',
+        participant2Id: 'user-99',
+      });
       service.create.mockResolvedValue(result);
 
       const actual = await controller.create(dto);
@@ -190,7 +205,9 @@ describe('ConversationsController', () => {
         new NotFoundException('Conversation with id "missing" not found'),
       );
 
-      await expect(controller.findOne('missing')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.findOne('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('propagates service errors', async () => {
@@ -210,7 +227,11 @@ describe('ConversationsController', () => {
 
       await controller.getMessages('conv-1', pagination);
 
-      expect(service.getMessages).toHaveBeenCalledWith('temp-user-id', 'conv-1', pagination);
+      expect(service.getMessages).toHaveBeenCalledWith(
+        'temp-user-id',
+        'conv-1',
+        pagination,
+      );
     });
 
     it('returns paginated messages for the conversation', async () => {
@@ -257,7 +278,11 @@ describe('ConversationsController', () => {
 
       await controller.sendMessage('conv-1', dto);
 
-      expect(service.sendMessage).toHaveBeenCalledWith('temp-user-id', 'conv-1', dto);
+      expect(service.sendMessage).toHaveBeenCalledWith(
+        'temp-user-id',
+        'conv-1',
+        dto,
+      );
     });
 
     it('returns the sent message', async () => {
@@ -286,7 +311,9 @@ describe('ConversationsController', () => {
       const dto: SendMessageDto = { content: 'Hi' };
       service.sendMessage.mockRejectedValue(new Error('DB error'));
 
-      await expect(controller.sendMessage('conv-1', dto)).rejects.toThrow('DB error');
+      await expect(controller.sendMessage('conv-1', dto)).rejects.toThrow(
+        'DB error',
+      );
     });
   });
 
@@ -314,7 +341,9 @@ describe('ConversationsController', () => {
         new NotFoundException('Conversation with id "missing" not found'),
       );
 
-      await expect(controller.remove('missing')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.remove('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('propagates service errors', async () => {

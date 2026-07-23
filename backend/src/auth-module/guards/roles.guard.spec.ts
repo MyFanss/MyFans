@@ -8,7 +8,9 @@ describe('RolesGuard', () => {
   let reflectorMock: jest.Mocked<Reflector>;
 
   beforeEach(() => {
-    reflectorMock = { getAllAndOverride: jest.fn() } as any;
+    reflectorMock = {
+      getAllAndOverride: jest.fn(),
+    } as unknown as jest.Mocked<Reflector>;
     guard = new RolesGuard(reflectorMock);
   });
 
@@ -24,20 +26,44 @@ describe('RolesGuard', () => {
 
   it('should allow access if user has required role', () => {
     reflectorMock.getAllAndOverride.mockReturnValue([UserRole.ADMIN]);
-    const ctx = { 
+    const ctx = {
       getHandler: jest.fn(),
       getClass: jest.fn(),
-      switchToHttp: () => ({ getRequest: () => ({ user: { role: UserRole.ADMIN } }) }) 
+      switchToHttp: () => ({
+        getRequest: () => ({ user: { role: UserRole.ADMIN } }),
+      }),
+    } as unknown as ExecutionContext;
+    expect(guard.canActivate(ctx)).toBe(true);
+  });
+
+  it('should deny access if the request carries no authenticated user', () => {
+    reflectorMock.getAllAndOverride.mockReturnValue([UserRole.ADMIN]);
+    const ctx = {
+      getHandler: jest.fn(),
+      getClass: jest.fn(),
+      switchToHttp: () => ({ getRequest: () => ({}) }),
+    } as unknown as ExecutionContext;
+    expect(guard.canActivate(ctx)).toBe(false);
+  });
+
+  it('should allow access if the roles metadata is an empty list', () => {
+    reflectorMock.getAllAndOverride.mockReturnValue([]);
+    const ctx = {
+      getHandler: jest.fn(),
+      getClass: jest.fn(),
+      switchToHttp: () => ({ getRequest: () => ({}) }),
     } as unknown as ExecutionContext;
     expect(guard.canActivate(ctx)).toBe(true);
   });
 
   it('should deny access if user lacks required role', () => {
     reflectorMock.getAllAndOverride.mockReturnValue([UserRole.ADMIN]);
-    const ctx = { 
+    const ctx = {
       getHandler: jest.fn(),
       getClass: jest.fn(),
-      switchToHttp: () => ({ getRequest: () => ({ user: { role: UserRole.USER } }) }) 
+      switchToHttp: () => ({
+        getRequest: () => ({ user: { role: UserRole.USER } }),
+      }),
     } as unknown as ExecutionContext;
     expect(guard.canActivate(ctx)).toBe(false);
   });

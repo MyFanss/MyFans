@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { CreatorsService } from './creators.service';
@@ -10,6 +18,7 @@ import { PublicCreatorDto } from './dto/public-creator.dto';
 import { DashboardQueryDto } from './dto/creator-dashboard.dto';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('creators')
 @UseGuards(JwtAuthGuard, ThrottlerGuard)
@@ -21,6 +30,7 @@ export class CreatorsController {
   ) {}
 
   @Get()
+  @Public()
   @ApiOperation({
     summary: 'Search creators by display name or username',
     description:
@@ -55,7 +65,9 @@ export class CreatorsController {
   @ApiResponse({
     status: 400,
     description: 'Invalid query parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid query parameters' } },
+    schema: {
+      example: { statusCode: 400, message: 'Invalid query parameters' },
+    },
   })
   @ApiResponse({
     status: 500,
@@ -69,7 +81,10 @@ export class CreatorsController {
   }
 
   @Get('list')
-  @ApiOperation({ summary: 'List all creator plans, optionally merged with on-chain state' })
+  @Public()
+  @ApiOperation({
+    summary: 'List all creator plans, optionally merged with on-chain state',
+  })
   @ApiResponse({
     status: 200,
     description: 'Array of plans with optional chain sync status',
@@ -98,6 +113,7 @@ export class CreatorsController {
   }
 
   @Get('plans')
+  @Public()
   @ApiOperation({ summary: 'List all plans (paginated)' })
   @ApiResponse({
     status: 200,
@@ -107,7 +123,9 @@ export class CreatorsController {
   @ApiResponse({
     status: 400,
     description: 'Invalid pagination parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid pagination parameters' } },
+    schema: {
+      example: { statusCode: 400, message: 'Invalid pagination parameters' },
+    },
   })
   @ApiResponse({
     status: 500,
@@ -121,6 +139,7 @@ export class CreatorsController {
   }
 
   @Get(':address/plans')
+  @Public()
   @ApiOperation({ summary: 'List creator plans (paginated)' })
   @ApiResponse({
     status: 200,
@@ -130,7 +149,9 @@ export class CreatorsController {
   @ApiResponse({
     status: 400,
     description: 'Invalid pagination parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid pagination parameters' } },
+    schema: {
+      example: { statusCode: 400, message: 'Invalid pagination parameters' },
+    },
   })
   @ApiResponse({
     status: 500,

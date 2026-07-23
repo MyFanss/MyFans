@@ -1,12 +1,18 @@
 import { ExecutionContext } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerGuard } from './throttler.guard';
-import { ThrottlerModule } from '@nestjs/throttler';
+import {
+  ThrottlerModule,
+  ThrottlerGuard as NestThrottlerGuard,
+} from '@nestjs/throttler';
 
 describe('ThrottlerGuard', () => {
   let guard: ThrottlerGuard;
 
-  const mockExecutionContext = (url: string, method: string = 'GET'): ExecutionContext => {
+  const mockExecutionContext = (
+    url: string,
+    method: string = 'GET',
+  ): ExecutionContext => {
     const mockRequest = {
       url,
       method,
@@ -17,8 +23,8 @@ describe('ThrottlerGuard', () => {
       switchToHttp: () => ({
         getRequest: () => mockRequest,
       }),
-      getHandler: () => (() => {}) as any,
-      getClass: () => (() => {}) as any,
+      getHandler: () => () => {},
+      getClass: () => () => {},
     } as unknown as ExecutionContext;
   };
 
@@ -34,67 +40,55 @@ describe('ThrottlerGuard', () => {
       providers: [ThrottlerGuard],
     }).compile();
 
+    // init() (not just compile()) so the base guard's onModuleInit runs and
+    // populates its throttler config.
+    await module.init();
+
     guard = module.get<ThrottlerGuard>(ThrottlerGuard);
   });
 
   describe('Health Check Exemption', () => {
-    it('should exempt /health endpoint', async () => {
-      const context = mockExecutionContext('/health');
-      const result = await guard.canActivate(context);
-      expect(result).toBe(true);
+    // Only the cheap liveness probe is exempt. The expensive sub-checks are
+    // deliberately throttled so scanning probes cannot exhaust resources.
+    let superCanActivate: jest.SpyInstance;
+
+    beforeEach(() => {
+      superCanActivate = jest
+        .spyOn(NestThrottlerGuard.prototype, 'canActivate')
+        .mockResolvedValue(true);
     });
 
-    it('should exempt /v1/health endpoint', async () => {
-      const context = mockExecutionContext('/v1/health');
-      const result = await guard.canActivate(context);
-      expect(result).toBe(true);
+    afterEach(() => {
+      superCanActivate.mockRestore();
     });
 
-    it('should exempt /health/db endpoint', async () => {
-      const context = mockExecutionContext('/health/db');
-      const result = await guard.canActivate(context);
-      expect(result).toBe(true);
-    });
+    it.each(['/health', '/v1/health'])(
+      'exempts %s without consulting the throttler',
+      async (url) => {
+        await expect(
+          guard.canActivate(mockExecutionContext(url)),
+        ).resolves.toBe(true);
+        expect(superCanActivate).not.toHaveBeenCalled();
+      },
+    );
 
-    it('should exempt /v1/health/db endpoint', async () => {
-      const context = mockExecutionContext('/v1/health/db');
-      const result = await guard.canActivate(context);
-      expect(result).toBe(true);
-    });
-
-    it('should exempt /health/redis endpoint', async () => {
-      const context = mockExecutionContext('/health/redis');
-      const result = await guard.canActivate(context);
-      expect(result).toBe(true);
-    });
-
-    it('should exempt /v1/health/soroban endpoint', async () => {
-      const context = mockExecutionContext('/v1/health/soroban');
-      const result = await guard.canActivate(context);
-      expect(result).toBe(true);
-    });
-
-    it('should exempt /health/queue-metrics endpoint', async () => {
-      const context = mockExecutionContext('/health/queue-metrics');
-      const result = await guard.canActivate(context);
-      expect(result).toBe(true);
-    });
-
-    it('should exempt /v1/health/queue-metrics endpoint', async () => {
-      const context = mockExecutionContext('/v1/health/queue-metrics');
-      const result = await guard.canActivate(context);
-      expect(result).toBe(true);
-    });
-
-    it('should exempt /v1/health/soroban-contract endpoint', async () => {
-      const context = mockExecutionContext('/v1/health/soroban-contract');
-      const result = await guard.canActivate(context);
-      expect(result).toBe(true);
+    it.each([
+      '/health/db',
+      '/v1/health/db',
+      '/health/redis',
+      '/v1/health/soroban',
+      '/health/queue-metrics',
+      '/v1/health/queue-metrics',
+      '/v1/health/soroban-contract',
+    ])('throttles %s like any other route', async (url) => {
+      await guard.canActivate(mockExecutionContext(url));
+      expect(superCanActivate).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('Guard Interface', () => {
     it('should implement CanActivate interface', () => {
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(guard.canActivate).toBeDefined();
       expect(typeof guard.canActivate).toBe('function');
     });

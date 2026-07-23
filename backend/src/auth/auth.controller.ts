@@ -24,8 +24,7 @@ import { AuthService } from './auth.service';
 import { WalletAuthService } from './wallet-auth.service';
 import { RequestChallengeDto, VerifyChallengeDto } from './wallet-auth.dto';
 import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
-import { PublicGuard } from '../auth-module/guards/public.guard';
-import { IS_PUBLIC_KEY } from '../common/decorators/public.decorator';
+import { Public } from '../common/decorators/public.decorator';
 import { AuthExceptionFilter } from './filters/auth-exception.filter';
 import { LoginBodyDto } from './dto/login-body.dto';
 import {
@@ -44,6 +43,7 @@ const X_NETWORK_HEADER = {
 } as const;
 
 @ApiTags('auth')
+@Public()
 @UseGuards(ThrottlerGuard)
 @UseFilters(new AuthExceptionFilter())
 @Controller({ path: 'auth', version: '1' })
@@ -76,9 +76,21 @@ export class AuthController {
   @ApiOperation({ summary: 'Authenticate with a Stellar wallet address' })
   @ApiHeader(X_NETWORK_HEADER)
   @ApiBody({ type: LoginBodyDto })
-  @ApiResponse({ status: 201, description: 'Session created', type: SessionResponseDto })
-  @ApiResponse({ status: 400, description: 'Invalid Stellar address or network mismatch', type: AuthErrorResponseDto })
-  @ApiResponse({ status: 429, description: 'Too many requests', type: AuthErrorResponseDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Session created',
+    type: SessionResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid Stellar address or network mismatch',
+    type: AuthErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many requests',
+    type: AuthErrorResponseDto,
+  })
   async login(
     @Body() body: { address?: string },
     @Headers('x-network') requestNetwork?: string,
@@ -99,12 +111,27 @@ export class AuthController {
     message: 'Use POST /v1/auth/login instead. Removal date: 2026-01-01.',
   })
   @UseInterceptors(new DeprecationInterceptor(new Reflector()))
-  @ApiOperation({ summary: '[Deprecated] Register with a Stellar wallet address', deprecated: true })
+  @ApiOperation({
+    summary: '[Deprecated] Register with a Stellar wallet address',
+    deprecated: true,
+  })
   @ApiHeader(X_NETWORK_HEADER)
   @ApiBody({ type: LoginBodyDto })
-  @ApiResponse({ status: 201, description: 'Session created', type: SessionResponseDto })
-  @ApiResponse({ status: 400, description: 'Invalid Stellar address or network mismatch', type: AuthErrorResponseDto })
-  @ApiResponse({ status: 429, description: 'Too many requests', type: AuthErrorResponseDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Session created',
+    type: SessionResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid Stellar address or network mismatch',
+    type: AuthErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many requests',
+    type: AuthErrorResponseDto,
+  })
   async register(
     @Body() body: { address?: string },
     @Headers('x-network') requestNetwork?: string,
@@ -122,12 +149,25 @@ export class AuthController {
   @Throttle({ auth: { limit: 5, ttl: 60000 } })
   @ApiOperation({
     summary: 'Request a sign-in challenge for a Stellar wallet',
-    description: 'Returns a one-time nonce the wallet must sign. The challenge expires after 5 minutes.',
+    description:
+      'Returns a one-time nonce the wallet must sign. The challenge expires after 5 minutes.',
   })
   @ApiHeader(X_NETWORK_HEADER)
-  @ApiResponse({ status: 200, description: 'Nonce and expiry returned', type: ChallengeResponseDto })
-  @ApiResponse({ status: 400, description: 'Invalid Stellar address or network mismatch', type: AuthErrorResponseDto })
-  @ApiResponse({ status: 429, description: 'Too many requests', type: AuthErrorResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Nonce and expiry returned',
+    type: ChallengeResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid Stellar address or network mismatch',
+    type: AuthErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many requests',
+    type: AuthErrorResponseDto,
+  })
   async requestChallenge(
     @Body() dto: RequestChallengeDto,
     @Headers('x-network') requestNetwork?: string,
@@ -144,13 +184,30 @@ export class AuthController {
   @Throttle({ auth: { limit: 5, ttl: 60000 } })
   @ApiOperation({
     summary: 'Verify wallet signature and receive JWT',
-    description: 'Validates the Ed25519 signature against the previously issued nonce and returns a Bearer token on success.',
+    description:
+      'Validates the Ed25519 signature against the previously issued nonce and returns a Bearer token on success.',
   })
   @ApiHeader(X_NETWORK_HEADER)
-  @ApiResponse({ status: 200, description: 'JWT access token', type: TokenResponseDto })
-  @ApiResponse({ status: 400, description: 'Invalid Stellar address or signature', type: AuthErrorResponseDto })
-  @ApiResponse({ status: 401, description: 'Expired or replayed challenge', type: AuthErrorResponseDto })
-  @ApiResponse({ status: 429, description: 'Too many requests', type: AuthErrorResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'JWT access token',
+    type: TokenResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid Stellar address or signature',
+    type: AuthErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Expired or replayed challenge',
+    type: AuthErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many requests',
+    type: AuthErrorResponseDto,
+  })
   async verifyChallenge(
     @Body() dto: VerifyChallengeDto,
     @Headers('x-network') requestNetwork?: string,

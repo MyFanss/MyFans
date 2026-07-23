@@ -85,7 +85,11 @@ export default function SubscriptionsPage() {
         }
       } catch (err) {
         console.error(err);
-        showError('NETWORK_ERROR', 'Failed to load subscription history');
+        showError('NETWORK_ERROR', {
+          message: 'Couldn’t load subscription history',
+          description:
+            'Refresh the page. If it still fails, check your internet and that the app backend is running.',
+        });
       } finally {
         if (mounted) setIsHistoryLoading(false);
       }
@@ -118,7 +122,11 @@ export default function SubscriptionsPage() {
         }
       } catch (err) {
         console.error(err);
-        showError('NETWORK_ERROR', 'Failed to load payment history');
+        showError('NETWORK_ERROR', {
+          message: 'Couldn’t load payment history',
+          description:
+            'Refresh the page. If it still fails, check your internet and that the app backend is running.',
+        });
       } finally {
         if (mounted) setIsPaymentsLoading(false);
       }
