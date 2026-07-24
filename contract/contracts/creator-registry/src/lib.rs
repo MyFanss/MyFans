@@ -10,6 +10,15 @@ use soroban_sdk::token::Client;
 /// Minimum number of ledgers between registrations per caller (anti-spam).
 const DEFAULT_RATE_LIMIT: u32 = 10;
 
+/// TTL policy for persistent Creator registry keys (`DataKey::Creator` and
+/// `DataKey::CreatorIdOwner`): once a key's remaining TTL drops below this
+/// many ledgers, it is refreshed back up to `CREATOR_TTL_EXTEND_TO`. Applied
+/// on every write (registration) and successful read (lookup) so long-lived
+/// registrations are never evicted by archival.
+const CREATOR_TTL_THRESHOLD: u32 = 10_000;
+/// See [`CREATOR_TTL_THRESHOLD`].
+const CREATOR_TTL_EXTEND_TO: u32 = 100_000;
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
@@ -18,6 +27,9 @@ pub enum DataKey {
     // Canonical storage name: `registration_ledger`.
     // Keep the legacy `LastRegLedger` variant to preserve deployed key serialization.
     LastRegLedger(Address),
+    // Reverse mapping: maps creator_id -> owner address, enforcing a globally
+    // unique creator_id across all registered addresses.
+    CreatorIdOwner(u64),
 
     RateLimit,
     SpamFee,
@@ -46,6 +58,7 @@ impl DataKey {
 /// | 5 | `AlreadyRegistered` |
 /// | 6 | `NotRegistered` |
 /// | 7 | `InvalidAmount` |
+/// | 8 | `CreatorIdTaken` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -63,6 +76,8 @@ pub enum Error {
     NotRegistered = 6,
     /// Code 7 – spam fee amount is negative.
     InvalidAmount = 7,
+    /// Code 8 – creator_id is already owned by a different creator address.
+    CreatorIdTaken = 8,
 }
 
 /// -------- Events --------
@@ -116,6 +131,9 @@ impl CreatorRegistryContract {
         if env.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
+
+        admin.require_auth();
+
         env.storage().instance().set(&DataKey::Admin, &admin);
 
         env.storage()
@@ -195,18 +213,15 @@ impl CreatorRegistryContract {
             panic_with_error!(&env, Error::AlreadyRegistered);
         }
 
-        env.storage().persistent().set(&last_key, &current);
-        env.storage().persistent().set(&key, &creator_id);
+        // creator_address is not yet registered (checked above), so any existing
+        // owner of creator_id here is necessarily a different address.
+        let id_owner_key = DataKey::CreatorIdOwner(creator_id);
+        if env.storage().persistent().has(&id_owner_key) {
+            panic_with_error!(&env, Error::CreatorIdTaken);
+        }
 
-        env.events().publish(
-            (Symbol::new(&env, CREATOR_REGISTERED_EVENT),),
-            CreatorRegisteredEvent {
-                caller: caller.clone(),
-                creator: creator_address.clone(),
-                creator_id,
-            },
-        );
-
+        // Charge the spam fee before persisting registration so a failed
+        // transfer never leaves a registered-but-unpaid creator.
         let fee: i128 = env.storage().instance().get(&DataKey::SpamFee).unwrap_or(0);
 
         if fee > 0 {
@@ -221,6 +236,24 @@ impl CreatorRegistryContract {
             // transfer fee from caller to contract if fee is set
             token_client.transfer(&caller, &env.current_contract_address(), &fee);
         }
+
+        env.storage().persistent().set(&last_key, &current);
+        env.storage().persistent().set(&key, &creator_id);
+        env.storage()
+            .persistent()
+            .set(&id_owner_key, &creator_address);
+
+        extend_creator_ttl(&env, &key);
+        extend_creator_ttl(&env, &id_owner_key);
+
+        env.events().publish(
+            (Symbol::new(&env, CREATOR_REGISTERED_EVENT),),
+            CreatorRegisteredEvent {
+                caller: caller.clone(),
+                creator: creator_address.clone(),
+                creator_id,
+            },
+        );
     }
 
     /// Unregister a creator (admin only).
@@ -230,11 +263,16 @@ impl CreatorRegistryContract {
         admin.require_auth();
 
         let key = DataKey::Creator(creator_address.clone());
-        if !env.storage().persistent().has(&key) {
-            panic_with_error!(&env, Error::NotRegistered);
-        }
+        let creator_id: u64 = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotRegistered));
 
         env.storage().persistent().remove(&key);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::CreatorIdOwner(creator_id));
 
         env.events().publish(
             (Symbol::new(&env, CREATOR_UNREGISTERED_EVENT),),
@@ -257,7 +295,12 @@ impl CreatorRegistryContract {
 
     /// Look up a creator_id by their registered address
     pub fn get_creator_id(env: Env, address: Address) -> Option<u64> {
-        env.storage().persistent().get(&DataKey::Creator(address))
+        let key = DataKey::Creator(address);
+        let creator_id = env.storage().persistent().get(&key);
+        if creator_id.is_some() {
+            extend_creator_ttl(&env, &key);
+        }
+        creator_id
     }
     // Internal helper to enforce authorization of admin or creator
     fn get_admin(env: &Env) -> Address {
@@ -266,6 +309,13 @@ impl CreatorRegistryContract {
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
     }
+}
+
+/// Refresh a persistent Creator-registry key's TTL. See [`CREATOR_TTL_THRESHOLD`].
+fn extend_creator_ttl(env: &Env, key: &DataKey) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, CREATOR_TTL_THRESHOLD, CREATOR_TTL_EXTEND_TO);
 }
 
 #[cfg(test)]
