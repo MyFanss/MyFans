@@ -390,6 +390,7 @@
 * **wallet:** return actionable errors on network mismatch ([636713c](https://github.com/MyFanss/MyFans/commit/636713ca0c498926b269040d5a542a82c2528d7c))
 * wasm build size ([8ace45b](https://github.com/MyFanss/MyFans/commit/8ace45bb3216bbde6b0af7d575dc3a5a763ab3a7))
 * webhook secret rotation with active + previous secret and cutoff strategy ([a8b248d](https://github.com/MyFanss/MyFans/commit/a8b248d13583d838fa57f01e138c54c309b36aeb))
+* wire JWT identity on social write controllers ([2b11c66](https://github.com/MyFanss/MyFans/commit/2b11c66e7e17ec70bb5626d6ed5e58bd38652ee8)), closes [#JWT-wiring](https://github.com/MyFanss/MyFans/issues/JWT-wiring)
 
 
 ### Performance Improvements
