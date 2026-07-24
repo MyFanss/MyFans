@@ -1,4 +1,4 @@
-# 0.1.0 (2026-07-22)
+# 0.1.0 (2026-07-24)
 
 
 ### Bug Fixes
@@ -37,6 +37,7 @@
 * **ci:** add wasm build verification step for content-likes in CI deploy script ([#928](https://github.com/MyFanss/MyFans/issues/928)) ([936add6](https://github.com/MyFanss/MyFans/commit/936add66cb0accdb7c763db9567d898251ade091))
 * **ci:** add wasm build verification step for creator-deposits ([#938](https://github.com/MyFanss/MyFans/issues/938)) ([c745891](https://github.com/MyFanss/MyFans/commit/c7458914e08403ef7a316cd67b1cbecce2b71f1e))
 * **ci:** fallback to npm install when package-lock.json is missing ([ffd2546](https://github.com/MyFanss/MyFans/commit/ffd2546ab52b87499680b3d821a59e42a08ee5c8))
+* **ci:** repair backend test suite, backend build, and frontend build ([293f3b5](https://github.com/MyFanss/MyFans/commit/293f3b5fc28dd712aefdd50712a4afa67ef87689))
 * **ci:** resolve backend build/test regressions on subscription service ([7694f21](https://github.com/MyFanss/MyFans/commit/7694f217534a2e487c11dba3855c0c957bc1171a))
 * **ci:** switch frontend to npm ci and sync backend lockfile overrides ([116eb10](https://github.com/MyFanss/MyFans/commit/116eb1073a2101c5368d492bd4ed8a0f97ab1953))
 * clean up corrupted dashboard files ([42f3b4f](https://github.com/MyFanss/MyFans/commit/42f3b4fe02535a1cacec39c32be401705249b5b3))
@@ -52,6 +53,8 @@
 * **creator-deposits:** add integration test via test-consumer ([#937](https://github.com/MyFanss/MyFans/issues/937)) ([9b657c7](https://github.com/MyFanss/MyFans/commit/9b657c72668b0fcd1ea72a5c284db30a6bab7a3a))
 * **creator-deposits:** validate error codes and replace unwrap with typed errors ([#935](https://github.com/MyFanss/MyFans/issues/935)) ([da99f23](https://github.com/MyFanss/MyFans/commit/da99f238d04f7510adfa3b522ac538450444bf75))
 * **dashboard:** creator dashboard mobile audit ([#629](https://github.com/MyFanss/MyFans/issues/629)) ([a521531](https://github.com/MyFanss/MyFans/commit/a521531481f42944c1e34f9550a6ecdede1b6fb9))
+* **earnings:** guard record() against i128 overflow with checked_add ([27ee7ad](https://github.com/MyFanss/MyFans/commit/27ee7ad0d456b4703ec3f02bdda1805ad97facf7)), closes [#1375](https://github.com/MyFanss/MyFans/issues/1375)
+* **earnings:** replace admin() unwrap with typed NotInitialized error ([430fb61](https://github.com/MyFanss/MyFans/commit/430fb61eb06dfe6675875557ea582a93dae05ef7)), closes [#1374](https://github.com/MyFanss/MyFans/issues/1374)
 * failed workflows in backend ([6099ba1](https://github.com/MyFanss/MyFans/commit/6099ba18114809460b6cdbdcf4fd6e16425e87e4))
 * failed workflows in backend and contracts ([0ffb81c](https://github.com/MyFanss/MyFans/commit/0ffb81c2ccf3c6beaf0ff9472e2b3bfe13d20a4e))
 * failed workflows in backend and contracts and add audit.toml in contracts folder ([32861ad](https://github.com/MyFanss/MyFans/commit/32861ad155d13b7770533b731956c34588169750))
@@ -74,10 +77,12 @@
 * implement issue resolution ([9966e1a](https://github.com/MyFanss/MyFans/commit/9966e1a97d935bd73d137422d2e03e15bc35b191))
 * implement issue resolution ([e799082](https://github.com/MyFanss/MyFans/commit/e799082298d7206e52cffe64e136ac9741596c0c))
 * initialize useRef with undefined to satisfy TS ([6be4aa4](https://github.com/MyFanss/MyFans/commit/6be4aa4439cdf2d5f91923468827599076e0f364))
+* **likes:** enforce premium subscription gate on likes ([4e63760](https://github.com/MyFanss/MyFans/commit/4e637605c8ec5f798597eba1e47fe49161f4f150))
 * make backend CLI checks pass for issue [#211](https://github.com/MyFanss/MyFans/issues/211) ([a1884ce](https://github.com/MyFanss/MyFans/commit/a1884cefc886c0a578578f4e5c7a271f517a4abc))
 * merge conflicts ([1de5e12](https://github.com/MyFanss/MyFans/commit/1de5e1284184ab4fc035b09efdd3756b193a19b6))
 * merge issues ([dc4d47c](https://github.com/MyFanss/MyFans/commit/dc4d47cb5ad9108bd6119041e1ed6c9270f360e5))
 * minimatch issue ([56db84a](https://github.com/MyFanss/MyFans/commit/56db84a1c0909e0561d912ee73b1903c6fa897c7))
+* **myfans-contract:** guard init against re-initialization and add typed plan not found error ([51a2837](https://github.com/MyFanss/MyFans/commit/51a283709209683ce4c24c5f4e7e9549e335df87)), closes [#1404](https://github.com/MyFanss/MyFans/issues/1404)
 * **myfans-lib:** add #[repr(u32)] to stabilize error discriminants (fix [#975](https://github.com/MyFanss/MyFans/issues/975)) ([cad82fe](https://github.com/MyFanss/MyFans/commit/cad82feaaedc42815097070fda29215ffafdea63))
 * **pagination:** standardize utils in comments, posts, users services ([2da1e6b](https://github.com/MyFanss/MyFans/commit/2da1e6b8516d9d487ae0b3796a5409645601f3fd)), closes [#364](https://github.com/MyFanss/MyFans/issues/364)
 * **posts,comments:** rate limiting, consistent errors, service unit tests ([b48cca2](https://github.com/MyFanss/MyFans/commit/b48cca279079473301a6203d1dc4e04685e3fefd)), closes [#999](https://github.com/MyFanss/MyFans/issues/999) [#1003](https://github.com/MyFanss/MyFans/issues/1003) [#1005](https://github.com/MyFanss/MyFans/issues/1005) [#1007](https://github.com/MyFanss/MyFans/issues/1007) [#1005](https://github.com/MyFanss/MyFans/issues/1005) [#1003](https://github.com/MyFanss/MyFans/issues/1003) [#999](https://github.com/MyFanss/MyFans/issues/999) [#1007](https://github.com/MyFanss/MyFans/issues/1007) [999/#1007](https://github.com/MyFanss/MyFans/issues/1007)
@@ -100,10 +105,13 @@
 * return consistent error shape on creators and posts module failures ([#995](https://github.com/MyFanss/MyFans/issues/995)) ([2147319](https://github.com/MyFanss/MyFans/commit/2147319977f6a48dc204ac8e122d663b253c5528))
 * **security:** fix CORS duplicate origin key bug and add per-environment host allowlist tests ([d6feee9](https://github.com/MyFanss/MyFans/commit/d6feee93af56cd1a9fe173491d10ccdf9062588f))
 * **security:** remediate frontend high-severity npm audit vulnerabilities ([93a35a1](https://github.com/MyFanss/MyFans/commit/93a35a1ab77c679b0cd5976d86eb90e60df66719)), closes [hi#severity](https://github.com/hi/issues/severity)
+* **subscription:** require admin auth on init ([d50266d](https://github.com/MyFanss/MyFans/commit/d50266df9e36e1deb0101d06d46da85b1841ab93)), closes [#1376](https://github.com/MyFanss/MyFans/issues/1376)
 * **subscriptions:** return consistent error shape on failure ([e22c967](https://github.com/MyFanss/MyFans/commit/e22c9679446207b3e25a85029665df67b9f68aff))
 * **subscriptions:** return consistent error shape on failure ([74ba625](https://github.com/MyFanss/MyFans/commit/74ba6259f04da649de791c70be6ddb4a893c2ece))
+* **subscription:** validate create_plan amount and interval_days ([f3c4981](https://github.com/MyFanss/MyFans/commit/f3c4981192f90ae05245423b7c7370496ace8c15)), closes [#1377](https://github.com/MyFanss/MyFans/issues/1377)
 * **subscription:** validate error codes, optimize gas, add integration tests, verify wasm CI ([#895](https://github.com/MyFanss/MyFans/issues/895) [#896](https://github.com/MyFanss/MyFans/issues/896) [#897](https://github.com/MyFanss/MyFans/issues/897) [#898](https://github.com/MyFanss/MyFans/issues/898)) ([0ab1336](https://github.com/MyFanss/MyFans/commit/0ab13369ee87aa193d3ea8e7fca69f56bec28119))
 * test errors ([d48694f](https://github.com/MyFanss/MyFans/commit/d48694f2a32b5021c29fdd817add9a17a6331df0))
+* **test-consumer:** add DataKey::Paused variant and require_auth on set_paused ([af8bc34](https://github.com/MyFanss/MyFans/commit/af8bc344296908c44805a05cb84580b0336a5b33)), closes [#1405](https://github.com/MyFanss/MyFans/issues/1405)
 * **test:** add CreatorDashboardService mock to creators controller spec ([70db6a7](https://github.com/MyFanss/MyFans/commit/70db6a7694ad813fcd10fd0041ee62cbe7134e0c))
 * **tests:** resolve all failing test suite dependency errors ([e7bb906](https://github.com/MyFanss/MyFans/commit/e7bb90679d7a49bd2c701b2dae89ccb58b1225ea))
 * **treasury:** add gas benchmark tests and hot path optimization notes ([#906](https://github.com/MyFanss/MyFans/issues/906)) ([dcd7e4a](https://github.com/MyFanss/MyFans/commit/dcd7e4a654ffc35baafe6482b9d4dc41b93c634b))
@@ -277,6 +285,7 @@
 * **games:** add pagination and limit query support ([4d06881](https://github.com/MyFanss/MyFans/commit/4d06881649619b64065e0afd40cd1c3ab7409aa1))
 * harden backend secret management ([#350](https://github.com/MyFanss/MyFans/issues/350)) ([4cc8a96](https://github.com/MyFanss/MyFans/commit/4cc8a9662faa27a06a9c3ead0a9b4f6e5d437c26))
 * Health check for Soroban RPC ([5f189be](https://github.com/MyFanss/MyFans/commit/5f189be70eec41873edeb0fcb666bec2fd10d283))
+* **health:** implement Redis PING health probe ([9d0eed2](https://github.com/MyFanss/MyFans/commit/9d0eed2ddfd2d3363de7399228d93e2b31904ac5)), closes [#1356](https://github.com/MyFanss/MyFans/issues/1356)
 * **idempotency:** document TTL & harden collision behavior ([770024e](https://github.com/MyFanss/MyFans/commit/770024e7281b58bbf4f3ebb9884fd4ef3f7017c2))
 * implement authentication module with registration, login, and JWT strategy ([60927f9](https://github.com/MyFanss/MyFans/commit/60927f934e2dfb20a648285be82d4408dd12965b))
 * implement Backend API SLA metrics instrumentation ([e8201bd](https://github.com/MyFanss/MyFans/commit/e8201bd36db8a011ce0bad4b0d29dc62d8728642))
@@ -363,6 +372,7 @@
 * standardize API error response format across all endpoints ([#340](https://github.com/MyFanss/MyFans/issues/340)) ([51c928b](https://github.com/MyFanss/MyFans/commit/51c928b468547cfe9df5dc578bfcb3bbfdfa8b64))
 * standardize deployed contract env vars with backward-compatible aliases ([e976fe2](https://github.com/MyFanss/MyFans/commit/e976fe2ecad5435e46e6e0ae1b9a39e6ae2ae7b8))
 * Subscription List Filter by Status & Sorting ([cc37385](https://github.com/MyFanss/MyFans/commit/cc37385e6ff45abe89b46f4fea01fe1086ba085b))
+* **subscription, treasury:** adopt myfans-lib require_authorized helper ([9ce16de](https://github.com/MyFanss/MyFans/commit/9ce16decac9402c65390189e012b6bb671644e8d)), closes [#1402](https://github.com/MyFanss/MyFans/issues/1402)
 * **subscription:** add unauthorized caller revert tests ([#891](https://github.com/MyFanss/MyFans/issues/891)) ([4d174d9](https://github.com/MyFanss/MyFans/commit/4d174d9141df9bc7615c048b9717cebd10c77405))
 * **subscription:** add unauthorized caller revert tests ([#891](https://github.com/MyFanss/MyFans/issues/891)) ([7bef01e](https://github.com/MyFanss/MyFans/commit/7bef01ef3602014f2266963125dde0653bc27ad1))
 * **subscription:** add unit tests for initialize and admin paths ([#890](https://github.com/MyFanss/MyFans/issues/890)) ([3aad4b5](https://github.com/MyFanss/MyFans/commit/3aad4b549aad2b2161ee03a8b3aa68ee49d9249c))
@@ -388,6 +398,7 @@
 * **wallet:** return actionable errors on network mismatch ([636713c](https://github.com/MyFanss/MyFans/commit/636713ca0c498926b269040d5a542a82c2528d7c))
 * wasm build size ([8ace45b](https://github.com/MyFanss/MyFans/commit/8ace45bb3216bbde6b0af7d575dc3a5a763ab3a7))
 * webhook secret rotation with active + previous secret and cutoff strategy ([a8b248d](https://github.com/MyFanss/MyFans/commit/a8b248d13583d838fa57f01e138c54c309b36aeb))
+* wire JWT identity on social write controllers ([2b11c66](https://github.com/MyFanss/MyFans/commit/2b11c66e7e17ec70bb5626d6ed5e58bd38652ee8)), closes [#JWT-wiring](https://github.com/MyFanss/MyFans/issues/JWT-wiring)
 
 
 ### Performance Improvements

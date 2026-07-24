@@ -115,6 +115,32 @@ fn test_init_rejects_non_positive_price() {
     );
 }
 
+/// init() requires the supplied admin to authorize the call; a rejected
+/// attempt leaves the contract uninitialized, allowing a later valid init.
+#[test]
+fn test_init_requires_admin_auth_without_persisting_state() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let token_address = env.register_stellar_asset_contract_v2(admin.clone());
+    let token_client = token::Client::new(&env, &token_address.address());
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+    let fee_recipient = Address::generate(&env);
+
+    let empty: &[SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+    assert!(
+        client
+            .try_init(&admin, &500u32, &fee_recipient, &token_client.address, &1000i128)
+            .is_err(),
+        "init must require admin auth"
+    );
+
+    env.mock_all_auths();
+    client.init(&admin, &500u32, &fee_recipient, &token_client.address, &1000i128);
+    assert_eq!(client.admin(), admin);
+}
+
 #[test]
 fn test_init_succeeds_sets_admin_and_configuration() {
     let (env, client, admin, token, _token_admin) = setup_test();
@@ -1791,4 +1817,69 @@ fn test_cancel_paused_returns_typed_error() {
         result,
         Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
     );
+}
+
+// ── create_plan parameter validation ─────────────────────────────────────────
+
+/// create_plan rejects a zero amount with a typed InvalidPlanParams error.
+#[test]
+fn test_create_plan_rejects_zero_amount() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+
+    let result = client.try_create_plan(&creator, &token.address, &0, &30);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidPlanParams as u32,
+        )))
+    );
+}
+
+/// create_plan rejects a negative amount with a typed InvalidPlanParams error.
+#[test]
+fn test_create_plan_rejects_negative_amount() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+
+    let result = client.try_create_plan(&creator, &token.address, &-1, &30);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidPlanParams as u32,
+        )))
+    );
+}
+
+/// create_plan rejects a zero interval_days with a typed InvalidPlanParams error.
+#[test]
+fn test_create_plan_rejects_zero_interval_days() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+
+    let result = client.try_create_plan(&creator, &token.address, &1000, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidPlanParams as u32,
+        )))
+    );
+}
+
+/// A valid plan (positive amount, non-zero interval_days) still succeeds.
+#[test]
+fn test_create_plan_accepts_valid_params() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    assert_eq!(plan_id, 1);
 }

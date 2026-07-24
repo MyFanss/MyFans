@@ -1,20 +1,17 @@
+import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
 import {
-  Body,
-  Controller,
-  HttpCode,
-  Post,
-  UseGuards,
-} from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { WebhookGuard } from './webhook.guard';
 import { WebhookService } from './webhook.service';
-import { WebhookAuditService } from './webhook-audit.service';
-import { WebhookEventProcessorService } from './webhook-event-processor.service';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth-module/guards/roles.guard';
 import { Roles } from '../auth-module/decorators/roles.decorator';
-import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
+import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('webhook')
 @Controller({ path: 'webhook', version: '1' })
@@ -25,8 +22,12 @@ export class WebhookController {
     private readonly processorService: WebhookEventProcessorService,
   ) {}
 
-  /** Receive an incoming signed webhook event and dispatch for processing. */
+  /**
+   * Receive an incoming signed webhook event.
+   * Authenticated by the payload signature (WebhookGuard), not by a JWT.
+   */
   @Post()
+  @Public()
   @HttpCode(200)
   @UseGuards(WebhookGuard)
   @ApiOperation({ summary: 'Receive a signed webhook event' })
@@ -41,21 +42,19 @@ export class WebhookController {
   }
 
   /**
-   * Rotate the active signing secret (admin only).
+   * Rotate the active signing secret. Admin-only.
    * Body: { newSecret: string; cutoffMs?: number }
    */
   @Post('rotate')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
   @ApiOperation({ summary: '[Admin] Rotate the webhook signing secret' })
   @ApiResponse({ status: 200, description: 'Secret rotated' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden — admin role required' })
-  async rotate(
-    @Body() body: { newSecret: string; cutoffMs?: number },
-    @CurrentUser() user: { id: string },
-  ) {
+  @ApiResponse({ status: 401, description: 'Missing or invalid access token' })
+  @ApiResponse({ status: 403, description: 'Caller is not an admin' })
+  rotate(@Body() body: { newSecret: string; cutoffMs?: number }) {
     this.webhookService.rotate(body.newSecret, body.cutoffMs);
     await this.auditService.logRotation(user.id, body.cutoffMs);
     const state = this.webhookService.getState();
@@ -66,16 +65,19 @@ export class WebhookController {
     };
   }
 
-  /** Immediately expire the previous secret (admin only). */
+  /** Immediately expire the previous secret (manual cutoff). Admin-only. */
   @Post('expire-previous')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: '[Admin] Expire the previous webhook signing secret' })
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: '[Admin] Expire the previous webhook signing secret',
+  })
   @ApiResponse({ status: 200, description: 'Previous secret expired' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden — admin role required' })
-  async expirePrevious(@CurrentUser() user: { id: string }) {
+  @ApiResponse({ status: 401, description: 'Missing or invalid access token' })
+  @ApiResponse({ status: 403, description: 'Caller is not an admin' })
+  expirePrevious() {
     this.webhookService.expirePrevious();
     await this.auditService.logExpirePrevious(user.id);
     return { expired: true };

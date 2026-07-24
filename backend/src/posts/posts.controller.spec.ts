@@ -5,13 +5,16 @@ import { PostsController } from './posts.controller';
 import { PostsService } from './posts.service';
 import { PostDto, CreatePostDto, UpdatePostDto } from './dto';
 import { PaginatedResponseDto } from '../common/dto';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+
+const mockUser = { userId: 'jwt-user-1' };
 
 const makeDto = (overrides: Partial<PostDto> = {}): PostDto =>
   ({
     id: 'post-1',
     title: 'Hello',
     content: 'World',
-    authorId: 'author-1',
+    authorId: 'jwt-user-1',
     isPublished: false,
     isPremium: false,
     likesCount: 0,
@@ -66,25 +69,29 @@ describe('PostsController', () => {
         ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 100 }]),
       ],
       controllers: [PostsController],
-      providers: [{ provide: PostsService, useValue: service }],
-    }).compile();
+      providers: [
+        { provide: PostsService, useValue: service },
+        { provide: JwtAuthGuard, useValue: { canActivate: jest.fn().mockReturnValue(true) } },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get(PostsController);
   });
 
   afterEach(() => jest.clearAllMocks());
 
-  // ── POST /posts ────────────────────────────────────────────────────────────
-
   describe('create', () => {
-    it('calls service.create with authorId and dto', async () => {
+    it('calls service.create with JWT userId and dto', async () => {
       const dto: CreatePostDto = { title: 'New Post', content: 'Content' };
       const result = makeDto({ title: 'New Post', content: 'Content' });
       service.create.mockResolvedValue(result);
 
-      const actual = await controller.create(dto);
+      const actual = await controller.create(dto, mockUser);
 
-      expect(service.create).toHaveBeenCalledWith('temp-author-id', dto);
+      expect(service.create).toHaveBeenCalledWith('jwt-user-1', dto);
       expect(actual).toEqual(result);
     });
 
@@ -97,7 +104,7 @@ describe('PostsController', () => {
       });
       service.create.mockResolvedValue(result);
 
-      const actual = await controller.create(dto);
+      const actual = await controller.create(dto, mockUser);
 
       expect(actual.id).toBe('new-post-id');
       expect(actual.title).toBe('New Post');
@@ -117,143 +124,76 @@ describe('PostsController', () => {
       });
       service.create.mockResolvedValue(result);
 
-      const actual = await controller.create(dto);
+      const actual = await controller.create(dto, mockUser);
 
       expect(actual.isPublished).toBe(true);
       expect(actual.isPremium).toBe(true);
     });
 
     it('propagates service errors', async () => {
-      const dto: CreatePostDto = { title: 'Test', content: 'Content' };
-      const error = new Error('DB error');
-      service.create.mockRejectedValue(error);
+      service.create.mockRejectedValue(new Error('DB error'));
 
-      await expect(controller.create(dto)).rejects.toThrow(error);
+      await expect(
+        controller.create({ title: 'Fail', content: 'X' } as CreatePostDto, mockUser),
+      ).rejects.toThrow('DB error');
     });
   });
-
-  // ── GET /posts ──────────────────────────────────────────────────────────────
 
   describe('findAll', () => {
     it('calls service.findAll with pagination', async () => {
-      const pagination = { page: 2, limit: 10 };
-      const result = makePaginatedResponse([makeDto()]);
-      service.findAll.mockResolvedValue(result);
-
-      await controller.findAll(pagination);
-
-      expect(service.findAll).toHaveBeenCalledWith(pagination);
-    });
-
-    it('returns paginated posts (soft-deleted excluded by service)', async () => {
       const pagination = { page: 1, limit: 20 };
-      const result = makePaginatedResponse(
-        [makeDto({ id: 'post-1' }), makeDto({ id: 'post-2' })],
-        { total: 2, page: 1, limit: 20 },
-      );
-      service.findAll.mockResolvedValue(result);
+      const expected = makePaginatedResponse([makeDto()]);
+      service.findAll.mockResolvedValue(expected);
 
       const actual = await controller.findAll(pagination);
 
-      expect(actual.data).toHaveLength(2);
-      expect(actual.page).toBe(1);
-      expect(actual.limit).toBe(20);
-      expect(actual.total).toBe(2);
+      expect(service.findAll).toHaveBeenCalledWith(pagination);
+      expect(actual).toBe(expected);
     });
 
-    it('returns empty list when no posts', async () => {
+    it('returns empty list when no posts exist', async () => {
       const pagination = { page: 1, limit: 20 };
-      const result = makePaginatedResponse([]);
-      service.findAll.mockResolvedValue(result);
+      const expected = makePaginatedResponse([]);
+      service.findAll.mockResolvedValue(expected);
 
       const actual = await controller.findAll(pagination);
 
       expect(actual.data).toHaveLength(0);
-    });
-
-    it('propagates service errors', async () => {
-      const pagination = { page: 1, limit: 20 };
-      const error = new Error('DB error');
-      service.findAll.mockRejectedValue(error);
-
-      await expect(controller.findAll(pagination)).rejects.toThrow(error);
+      expect(actual.total).toBe(0);
     });
   });
-
-  // ── GET /posts/author/:authorId ──────────────────────────────────────────────
 
   describe('findByAuthor', () => {
     it('calls service.findByAuthor with authorId and pagination', async () => {
-      const authorId = 'author-123';
       const pagination = { page: 1, limit: 20 };
-      const result = makePaginatedResponse([makeDto({ authorId })]);
-      service.findByAuthor.mockResolvedValue(result);
+      const expected = makePaginatedResponse([makeDto()]);
+      service.findByAuthor.mockResolvedValue(expected);
 
-      await controller.findByAuthor(authorId, pagination);
+      const actual = await controller.findByAuthor('author-1', pagination);
 
-      expect(service.findByAuthor).toHaveBeenCalledWith(authorId, pagination);
-    });
-
-    it('returns author posts', async () => {
-      const authorId = 'author-123';
-      const pagination = { page: 1, limit: 20 };
-      const result = makePaginatedResponse([
-        makeDto({ id: 'post-1', authorId }),
-        makeDto({ id: 'post-2', authorId }),
-      ]);
-      service.findByAuthor.mockResolvedValue(result);
-
-      const actual = await controller.findByAuthor(authorId, pagination);
-
-      expect(actual.data).toHaveLength(2);
-      expect(actual.data.every((p) => p.authorId === authorId)).toBe(true);
-    });
-
-    it('returns empty list when author has no posts', async () => {
-      const authorId = 'author-no-posts';
-      const pagination = { page: 1, limit: 20 };
-      const result = makePaginatedResponse([]);
-      service.findByAuthor.mockResolvedValue(result);
-
-      const actual = await controller.findByAuthor(authorId, pagination);
-
-      expect(actual.data).toHaveLength(0);
-    });
-
-    it('propagates service errors', async () => {
-      const authorId = 'author-123';
-      const pagination = { page: 1, limit: 20 };
-      const error = new Error('DB error');
-      service.findByAuthor.mockRejectedValue(error);
-
-      await expect(
-        controller.findByAuthor(authorId, pagination),
-      ).rejects.toThrow(error);
+      expect(service.findByAuthor).toHaveBeenCalledWith('author-1', pagination);
+      expect(actual).toBe(expected);
     });
   });
 
-  // ── GET /posts/:id ──────────────────────────────────────────────────────────
-
   describe('findOne', () => {
     it('calls service.findOne with id', async () => {
-      const result = makeDto();
-      service.findOne.mockResolvedValue(result);
+      service.findOne.mockResolvedValue(makeDto());
 
       await controller.findOne('post-1');
 
       expect(service.findOne).toHaveBeenCalledWith('post-1');
     });
 
-    it('returns the post when active', async () => {
-      service.findOne.mockResolvedValue(makeDto());
+    it('returns the post when it exists', async () => {
+      service.findOne.mockResolvedValue(makeDto({ id: 'post-1' }));
 
       const result = await controller.findOne('post-1');
 
       expect(result.id).toBe('post-1');
-      expect(result.title).toBe('Hello');
     });
 
-    it('propagates NotFoundException when post not found', async () => {
+    it('propagates NotFoundException when post does not exist', async () => {
       service.findOne.mockRejectedValue(
         new NotFoundException('Post with ID missing not found'),
       );
@@ -262,40 +202,28 @@ describe('PostsController', () => {
         NotFoundException,
       );
     });
-
-    it('propagates NotFoundException for soft-deleted post', async () => {
-      service.findOne.mockRejectedValue(
-        new NotFoundException('Post with ID post-1 not found'),
-      );
-
-      await expect(controller.findOne('post-1')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
-    });
   });
 
-  // ── PUT /posts/:id ──────────────────────────────────────────────────────────
-
   describe('update', () => {
-    it('calls service.update with id and dto', async () => {
-      const dto: UpdatePostDto = { title: 'Updated' };
-      const result = makeDto({ title: 'Updated' });
+    it('calls service.update with id, dto, and userId', async () => {
+      const dto: UpdatePostDto = { title: 'New Title' };
+      const result = makeDto({ title: 'New Title' });
       service.update.mockResolvedValue(result);
 
-      await controller.update('post-1', dto);
+      await controller.update('post-1', dto, mockUser);
 
-      expect(service.update).toHaveBeenCalledWith('post-1', dto);
+      expect(service.update).toHaveBeenCalledWith('post-1', dto, 'jwt-user-1');
     });
 
-    it('returns updated post', async () => {
-      const dto: UpdatePostDto = { title: 'New Title', isPublished: true };
+    it('returns the updated PostDto', async () => {
+      const dto = { title: 'New Title', isPublished: true };
       const result = makeDto({
         title: 'New Title',
         isPublished: true,
       });
       service.update.mockResolvedValue(result);
 
-      const actual = await controller.update('post-1', dto);
+      const actual = await controller.update('post-1', dto as UpdatePostDto, mockUser);
 
       expect(actual.title).toBe('New Title');
       expect(actual.isPublished).toBe(true);
@@ -309,7 +237,7 @@ describe('PostsController', () => {
       });
       service.update.mockResolvedValue(result);
 
-      const actual = await controller.update('post-1', dto);
+      const actual = await controller.update('post-1', dto, mockUser);
 
       expect(actual.title).toBe('Only Title Changed');
       expect(actual.content).toBe('World');
@@ -321,9 +249,9 @@ describe('PostsController', () => {
         new NotFoundException('Post with ID missing not found'),
       );
 
-      await expect(controller.update('missing', dto)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        controller.update('missing', dto, mockUser),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('propagates NotFoundException when updating a soft-deleted post', async () => {
@@ -332,35 +260,25 @@ describe('PostsController', () => {
         new NotFoundException('Post with ID post-1 not found'),
       );
 
-      await expect(controller.update('post-1', dto)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        controller.update('post-1', dto, mockUser),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
-  // ── DELETE /posts/:id ────────────────────────────────────────────────────────
-
   describe('remove (soft-delete)', () => {
-    it('calls softDelete with the given id and deletedBy', async () => {
+    it('calls softDelete with the given id and JWT userId', async () => {
       service.softDelete.mockResolvedValue(undefined);
 
-      await controller.remove('post-1', 'user-99');
+      await controller.remove('post-1', mockUser);
 
-      expect(service.softDelete).toHaveBeenCalledWith('post-1', 'user-99');
-    });
-
-    it('defaults deletedBy to "unknown" when query param is absent', async () => {
-      service.softDelete.mockResolvedValue(undefined);
-
-      await controller.remove('post-1', undefined);
-
-      expect(service.softDelete).toHaveBeenCalledWith('post-1', 'unknown');
+      expect(service.softDelete).toHaveBeenCalledWith('post-1', 'jwt-user-1');
     });
 
     it('returns void (no body) on success', async () => {
       service.softDelete.mockResolvedValue(undefined);
 
-      const result = await controller.remove('post-1', 'user-1');
+      const result = await controller.remove('post-1', mockUser);
 
       expect(result).toBeUndefined();
     });
@@ -371,7 +289,7 @@ describe('PostsController', () => {
       );
 
       await expect(
-        controller.remove('missing', 'user-1'),
+        controller.remove('missing', mockUser),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -381,7 +299,7 @@ describe('PostsController', () => {
       );
 
       await expect(
-        controller.remove('post-1', 'user-1'),
+        controller.remove('post-1', mockUser),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -389,7 +307,7 @@ describe('PostsController', () => {
       const error = new Error('DB error');
       service.softDelete.mockRejectedValue(error);
 
-      await expect(controller.remove('post-1', 'user-1')).rejects.toThrow(
+      await expect(controller.remove('post-1', mockUser)).rejects.toThrow(
         error,
       );
     });

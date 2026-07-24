@@ -35,11 +35,25 @@ export class PublicCreatorDto {
   })
   bio: string | null;
 
+  @ApiProperty({
+    description: 'Whether the creator is verified',
+    example: false,
+  })
+  is_verified: boolean;
+
+  @ApiProperty({
+    description: 'Number of followers',
+    example: 0,
+  })
+  followers_count: number;
+
   constructor(user: User, creator?: Creator) {
     this.id = user.id;
     this.display_name = user.display_name;
     this.username = user.username;
     this.avatar_url = user.avatar_url;
     this.bio = creator?.bio ?? null;
+    this.is_verified = creator?.is_verified ?? false;
+    this.followers_count = creator?.followers_count ?? 0;
   }
 }

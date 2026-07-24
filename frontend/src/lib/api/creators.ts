@@ -1,6 +1,7 @@
 /**
  * Creators search API client.
  */
+import type { CreatorProfile } from '@/lib/creator-profile';
 
 export interface PublicCreator {
   id: string;
@@ -8,6 +9,8 @@ export interface PublicCreator {
   username: string;
   avatar_url: string | null;
   bio: string | null;
+  is_verified: boolean;
+  followers_count: number;
 }
 
 export interface CreatorsSearchResult {
@@ -37,4 +40,45 @@ export async function searchCreators(params: {
     throw new Error((err as { message?: string }).message ?? `Request failed: ${res.status}`);
   }
   return res.json() as Promise<CreatorsSearchResult>;
+}
+
+/**
+ * Fetch a single public creator profile by exact username.
+ * Returns null when no creator matches (caller should 404).
+ */
+export async function getCreatorProfile(username: string): Promise<PublicCreator | null> {
+  const res = await fetch(`${API_BASE}/creators/username/${encodeURIComponent(username)}`, {
+    credentials: 'include',
+  });
+  if (res.status === 404) {
+    return null;
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message ?? `Request failed: ${res.status}`);
+  }
+  return res.json() as Promise<PublicCreator>;
+}
+
+/**
+ * Map an API creator record to the CreatorProfile shape used by the
+ * discovery grid and the profile page's hero/header components.
+ *
+ * The backend doesn't yet track subscriber count, subscription price,
+ * categories, location, or social links for a creator, so those fall
+ * back to sensible empty defaults rather than fabricated data.
+ */
+export function publicCreatorToProfile(c: PublicCreator): CreatorProfile {
+  return {
+    id: c.id,
+    username: c.username,
+    displayName: c.display_name,
+    bio: c.bio ?? '',
+    avatarUrl: c.avatar_url ?? undefined,
+    subscriberCount: c.followers_count,
+    subscriptionPrice: 0,
+    isVerified: c.is_verified,
+    categories: [],
+    socialLinks: [],
+  };
 }

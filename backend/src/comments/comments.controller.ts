@@ -14,15 +14,30 @@ import {
   UseGuards,
   UseFilters,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiBody, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiBody, ApiResponse, ApiTags, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { CommentsService } from './comments.service';
 import { CommentDto, CreateCommentDto, UpdateCommentDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 import { CommentsExceptionFilter } from './filters/comments-exception.filter';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
 
+/**
+ * CommentsController
+ *
+ * Handles CRUD operations for comments. All mutating endpoints require
+ * JWT authentication (JwtAuthGuard) and use the authenticated user's ID
+ * as the author for creates and as the owner for updates and deletes.
+ *
+ * @Controller comments
+ * @version 1
+ * @tags comments
+ * @security BearerAuth
+ */
 @ApiTags('comments')
-@UseGuards(ThrottlerGuard)
+@UseGuards(JwtAuthGuard, ThrottlerGuard)
+@ApiBearerAuth()
 @UseFilters(new CommentsExceptionFilter())
 @UseInterceptors(ClassSerializerInterceptor)
 @Controller({ path: 'comments', version: '1' })
@@ -44,6 +59,11 @@ export class CommentsController {
     schema: { example: { statusCode: 400, message: 'Invalid comment parameters' } },
   })
   @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+    schema: { example: { statusCode: 401, message: 'Unauthorized' } },
+  })
+  @ApiResponse({
     status: 429,
     description: 'Too many requests',
     schema: { example: { statusCode: 429, message: 'Too many requests' } },
@@ -53,12 +73,21 @@ export class CommentsController {
     description: 'Internal server error',
     schema: { example: { statusCode: 500, message: 'Internal server error' } },
   })
-  async create(@Body() dto: CreateCommentDto): Promise<CommentDto> {
-    // TODO: Get author ID from auth token/session
-    const authorId = 'temp-author-id';
-    return this.commentsService.create(authorId, dto);
+  async create(
+    @Body() dto: CreateCommentDto,
+    @CurrentUser() user: { userId: string },
+  ): Promise<CommentDto> {
+    return this.commentsService.create(user.userId, dto);
   }
 
+  /**
+   * Retrieves a paginated list of all comments across all posts.
+   * This endpoint is public (no JWT required).
+   * Use query parameters to control pagination (page and limit).
+   *
+   * @param pagination - Pagination parameters (page, limit)
+   * @returns Paginated response containing CommentDto array
+   */
   @Get()
   @ApiOperation({
     summary: 'List all comments (paginated)',
@@ -150,6 +179,11 @@ export class CommentsController {
     schema: { example: { statusCode: 400, message: 'Invalid comment parameters' } },
   })
   @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+    schema: { example: { statusCode: 401, message: 'Unauthorized' } },
+  })
+  @ApiResponse({
     status: 404,
     description: 'Comment not found',
     schema: { example: { statusCode: 404, message: 'Comment with id "id" not found' } },
@@ -164,8 +198,12 @@ export class CommentsController {
     description: 'Internal server error',
     schema: { example: { statusCode: 500, message: 'Internal server error' } },
   })
-  async update(@Param('id') id: string, @Body() dto: UpdateCommentDto): Promise<CommentDto> {
-    return this.commentsService.update(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateCommentDto,
+    @CurrentUser() user: { userId: string },
+  ): Promise<CommentDto> {
+    return this.commentsService.update(id, dto, user.userId);
   }
 
   @Delete(':id')
@@ -175,6 +213,11 @@ export class CommentsController {
   @ApiParam({ name: 'id', description: 'Comment ID' })
   @ApiResponse({ status: 204, description: 'Comment deleted successfully' })
   @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+    schema: { example: { statusCode: 401, message: 'Unauthorized' } },
+  })
+  @ApiResponse({
     status: 404,
     description: 'Comment not found',
     schema: { example: { statusCode: 404, message: 'Comment with id "id" not found' } },
@@ -189,7 +232,10 @@ export class CommentsController {
     description: 'Internal server error',
     schema: { example: { statusCode: 500, message: 'Internal server error' } },
   })
-  async remove(@Param('id') id: string): Promise<void> {
-    return this.commentsService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser() user: { userId: string },
+  ): Promise<void> {
+    return this.commentsService.remove(id, user.userId);
   }
 }

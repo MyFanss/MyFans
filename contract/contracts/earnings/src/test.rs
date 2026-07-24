@@ -78,6 +78,23 @@ fn test_init_requires_admin_auth_without_persisting_state() {
     assert_eq!(client.admin(), admin);
 }
 
+/// Calling admin() before init() returns a typed NotInitialized error instead
+/// of panicking on an unwrap of empty storage.
+#[test]
+fn test_admin_returns_not_initialized_before_init() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Earnings);
+    let client = EarningsClient::new(&env, &contract_id);
+
+    let result = client.try_admin();
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::NotInitialized as u32,
+        )))
+    );
+}
+
 // ── #319 – non-admin record reverts ──────────────────────────────────────────
 
 /// Non-admin caller (no admin auth) must not be able to record earnings.
@@ -139,6 +156,27 @@ fn test_get_earnings_defaults_to_zero() {
     let (_admin, creator, client) = setup(&env);
 
     assert_eq!(client.get_earnings(&creator), 0);
+}
+
+/// record() reverts with a typed Overflow error instead of silently wrapping
+/// when current + amount would exceed i128::MAX.
+#[test]
+fn test_record_overflow_reverts_typed() {
+    let env = Env::default();
+    let (_admin, creator, client) = setup(&env);
+
+    client.record(&creator, &i128::MAX);
+
+    let result = client.try_record(&creator, &1);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Overflow as u32)))
+    );
+    assert_eq!(
+        client.get_earnings(&creator),
+        i128::MAX,
+        "a rejected overflow must not change the recorded balance"
+    );
 }
 
 // ── #297 – withdrawal feature ─────────────────────────────────────────────────

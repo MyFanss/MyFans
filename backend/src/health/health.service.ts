@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import * as net from 'net';
+import * as tls from 'tls';
 import { DataSource } from 'typeorm';
 import { SorobanRpcService, SorobanHealthStatus } from '../common/services/soroban-rpc.service';
 import { QueueMetricsService, QueueSnapshot } from '../common/services/queue-metrics.service';
@@ -6,6 +8,19 @@ import { QueueMetricsService, QueueSnapshot } from '../common/services/queue-met
 export interface HealthCheckResult {
     status: 'up' | 'down' | 'degraded';
     timestamp: string;
+}
+
+/**
+ * Result of the Redis PING probe.
+ *
+ * Redis is an optional cache/session store. When no connection is configured
+ * the probe reports `not_configured` rather than `down`, so an absent Redis
+ * does not drag the aggregate health to `degraded`.
+ */
+export interface RedisHealthStatus {
+    status: 'up' | 'down' | 'not_configured';
+    latencyMs?: number;
+    error?: string;
 }
 
 export interface DetailedHealthCheckResult extends HealthCheckResult {
@@ -23,7 +38,8 @@ export interface AggregatedHealthResult {
   version: string;
   subsystems: {
     database: { status: 'up' | 'down' | 'degraded'; latencyMs?: number; error?: string };
-    redis: { status: 'up' | 'down' | 'degraded'; latencyMs?: number; error?: string };
+    // Omitted entirely when Redis is not configured (optional subsystem).
+    redis?: RedisHealthStatus;
     sorobanRpc: SorobanHealthStatus;
     sorobanContract: SorobanHealthStatus;
   };
@@ -39,6 +55,9 @@ const START_TIME = Date.now();
 
 @Injectable()
 export class HealthService {
+  /** Upper bound for connecting to Redis and awaiting the PING reply. */
+  private static readonly REDIS_PING_TIMEOUT_MS = 2000;
+
   constructor(
     private dataSource: DataSource,
     private sorobanRpcService: SorobanRpcService,
@@ -103,12 +122,16 @@ export class HealthService {
       this.checkSorobanContract(),
     ]);
 
+    // An unconfigured Redis is skipped so it neither counts toward the summary
+    // nor degrades the aggregate status.
+    const redisConfigured = redisHealth.status !== 'not_configured';
+
     const subsystems = [
       dbHealth.status,
-      redisHealth.status,
+      ...(redisConfigured ? [redisHealth.status] : []),
       rpcHealth.status,
       contractHealth.status,
-    ] as const;
+    ];
 
     const summary = {
       total: subsystems.length,
@@ -132,7 +155,7 @@ export class HealthService {
       version: process.env.npm_package_version ?? 'unknown',
       subsystems: {
         database: dbHealth,
-        redis: redisHealth,
+        ...(redisConfigured ? { redis: redisHealth } : {}),
         sorobanRpc: rpcHealth,
         sorobanContract: contractHealth,
       },
@@ -165,11 +188,137 @@ export class HealthService {
     }
   }
 
-  async checkRedis(): Promise<{ status: 'up' | 'down' | 'degraded'; latencyMs?: number; error?: string }> {
-    // Redis is not yet wired — return a stable 'down' so the aggregator can
-    // include it in the summary without crashing. When Redis is configured,
-    // replace this stub with a real PING check.
-    return { status: 'down', error: 'Redis not configured' };
+  /**
+   * Latency-measured Redis PING probe.
+   *
+   * - Connection is read from `REDIS_URL`, falling back to `REDIS_HOST` /
+   *   `REDIS_PORT` (the pair used by docker-compose).
+   * - When nothing is configured the probe returns `not_configured` and does
+   *   not open a socket.
+   * - A configured but unreachable Redis (bad URL, refused connection, PING
+   *   timeout) returns `down` with the error message.
+   */
+  async checkRedis(): Promise<RedisHealthStatus> {
+    const url = this.getRedisUrl();
+    if (!url) {
+      return { status: 'not_configured' };
+    }
+
+    const start = Date.now();
+    try {
+      await this.pingRedis(url, HealthService.REDIS_PING_TIMEOUT_MS);
+      return { status: 'up', latencyMs: Date.now() - start };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return { status: 'down', latencyMs: Date.now() - start, error: msg };
+    }
+  }
+
+  /**
+   * Resolve the Redis connection string. Prefers `REDIS_URL`; falls back to
+   * building one from `REDIS_HOST` / `REDIS_PORT`. Returns `undefined` when
+   * Redis is not configured.
+   */
+  private getRedisUrl(): string | undefined {
+    const url = process.env.REDIS_URL?.trim();
+    if (url) return url;
+
+    const host = process.env.REDIS_HOST?.trim();
+    if (host) {
+      const port = process.env.REDIS_PORT?.trim() || '6379';
+      return `redis://${host}:${port}`;
+    }
+    return undefined;
+  }
+
+  /**
+   * Send a single Redis PING over a short-lived socket and resolve when the
+   * server replies `+PONG`. Uses only Node built-ins (`net` / `tls`) so the
+   * health probe adds no runtime dependency.
+   *
+   * Supports `redis://` and `rediss://` (TLS), and `AUTH` when the URL carries
+   * a username / password. The socket is always torn down. Extracted as a
+   * protected method so tests can stub it.
+   *
+   * @throws when the URL is invalid, the connection fails, the reply is not
+   *   `+PONG`, or the probe exceeds `timeoutMs`.
+   */
+  protected pingRedis(url: string, timeoutMs: number): Promise<void> {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return Promise.reject(new Error(`Invalid Redis URL: ${url}`));
+    }
+
+    const useTls = parsed.protocol === 'rediss:';
+    const host = parsed.hostname;
+    const port = parsed.port ? Number(parsed.port) : 6379;
+    const password = parsed.password ? decodeURIComponent(parsed.password) : undefined;
+    const username = parsed.username ? decodeURIComponent(parsed.username) : undefined;
+
+    return new Promise<void>((resolve, reject) => {
+      const socket = useTls
+        ? tls.connect({ host, port, servername: host })
+        : net.createConnection({ host, port });
+
+      let settled = false;
+      let buffer = '';
+      // When a password is present we AUTH first, then PING.
+      let awaitingAuth = password !== undefined;
+
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        socket.removeAllListeners();
+        socket.destroy();
+        if (error) reject(error);
+        else resolve();
+      };
+
+      socket.setTimeout(timeoutMs, () =>
+        finish(new Error(`Redis PING timed out after ${timeoutMs}ms`)),
+      );
+      socket.on('error', finish);
+
+      const onConnect = () => {
+        if (password !== undefined) {
+          const authCmd =
+            username !== undefined
+              ? `AUTH ${username} ${password}\r\n`
+              : `AUTH ${password}\r\n`;
+          socket.write(authCmd);
+        } else {
+          socket.write('PING\r\n');
+        }
+      };
+      socket.once(useTls ? 'secureConnect' : 'connect', onConnect);
+
+      socket.on('data', (chunk: Buffer) => {
+        buffer += chunk.toString('utf8');
+        const eol = buffer.indexOf('\r\n');
+        if (eol === -1) return; // wait for a complete reply line
+
+        const line = buffer.slice(0, eol);
+        // RESP error reply, e.g. "-NOAUTH Authentication required".
+        if (line.startsWith('-')) {
+          finish(new Error(line.slice(1)));
+          return;
+        }
+        if (awaitingAuth) {
+          // AUTH acknowledged (+OK); reset and send the PING.
+          awaitingAuth = false;
+          buffer = '';
+          socket.write('PING\r\n');
+          return;
+        }
+        if (line.startsWith('+PONG')) {
+          finish();
+        } else {
+          finish(new Error(`Unexpected PING reply: ${line}`));
+        }
+      });
+    });
   }
 
   async checkSorobanRpc(): Promise<SorobanHealthStatus> {

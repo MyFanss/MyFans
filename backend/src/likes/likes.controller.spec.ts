@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { NotFoundException } from '@nestjs/common';
 import { LikesController } from './likes.controller';
 import { LikesService } from './likes.service';
@@ -10,23 +11,34 @@ const mockUser = { userId: 'user-1' };
 describe('LikesController', () => {
   let controller: LikesController;
   let service: jest.Mocked<
-    Pick<LikesService, 'addLike' | 'removeLike' | 'getLikesCount' | 'hasUserLiked'>
+    Pick<
+      LikesService,
+      'addLike' | 'removeLike' | 'getLikesCount' | 'hasUserLiked'
+    >
   >;
 
   beforeEach(async () => {
     service = {
-      addLike: jest.fn().mockResolvedValue({ status: 201, message: 'Like added successfully' }),
+      addLike: jest
+        .fn()
+        .mockResolvedValue({ status: 201, message: 'Like added successfully' }),
       removeLike: jest.fn().mockResolvedValue(undefined),
       getLikesCount: jest.fn().mockResolvedValue(42),
       hasUserLiked: jest.fn().mockResolvedValue(true),
     };
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [
+        ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 10 }]),
+      ],
       controllers: [LikesController],
       providers: [
         { provide: LikesService, useValue: service },
         Reflector,
-        { provide: JwtAuthGuard, useValue: { canActivate: jest.fn().mockReturnValue(true) } },
+        {
+          provide: JwtAuthGuard,
+          useValue: { canActivate: jest.fn().mockReturnValue(true) },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -49,7 +61,10 @@ describe('LikesController', () => {
     });
 
     it('returns idempotent response when post already liked', async () => {
-      service.addLike.mockResolvedValue({ status: 200, message: 'Post already liked' });
+      service.addLike.mockResolvedValue({
+        status: 200,
+        message: 'Post already liked',
+      });
 
       const result = await controller.likePost('post-1', mockUser);
 
@@ -61,9 +76,13 @@ describe('LikesController', () => {
     });
 
     it('propagates NotFoundException when post does not exist', async () => {
-      service.addLike.mockRejectedValue(new NotFoundException('Post not found'));
+      service.addLike.mockRejectedValue(
+        new NotFoundException('Post not found'),
+      );
 
-      await expect(controller.likePost('bad-post', mockUser)).rejects.toThrow(NotFoundException);
+      await expect(controller.likePost('bad-post', mockUser)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -76,15 +95,23 @@ describe('LikesController', () => {
     });
 
     it('propagates NotFoundException when like does not exist', async () => {
-      service.removeLike.mockRejectedValue(new NotFoundException('Like not found'));
+      service.removeLike.mockRejectedValue(
+        new NotFoundException('Like not found'),
+      );
 
-      await expect(controller.unlikePost('post-1', mockUser)).rejects.toThrow(NotFoundException);
+      await expect(controller.unlikePost('post-1', mockUser)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('propagates NotFoundException when post does not exist', async () => {
-      service.removeLike.mockRejectedValue(new NotFoundException('Post not found'));
+      service.removeLike.mockRejectedValue(
+        new NotFoundException('Post not found'),
+      );
 
-      await expect(controller.unlikePost('bad-post', mockUser)).rejects.toThrow(NotFoundException);
+      await expect(controller.unlikePost('bad-post', mockUser)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

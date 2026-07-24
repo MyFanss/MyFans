@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { UnauthorizedException } from '@nestjs/common';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { SubscriptionsController } from './subscriptions.controller';
@@ -8,10 +9,7 @@ import { SubscriptionStatus } from './entities/subscription-index.entity';
 import { Reflector } from '@nestjs/core';
 import { FeatureFlagGuard } from '../feature-flags/feature-flag.guard';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
-import {
-  FanBearerGuard,
-  RequestWithFan,
-} from './guards/fan-bearer.guard';
+import { FanBearerGuard, RequestWithFan } from './guards/fan-bearer.guard';
 import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 
 describe('SubscriptionsController', () => {
@@ -19,7 +17,10 @@ describe('SubscriptionsController', () => {
   let service: jest.Mocked<
     Pick<
       SubscriptionsService,
-      'getFanCreatorSubscriptionState' | 'listCreatorSubscribers' | 'listSubscriptions' | 'getFanDashboardSummary'
+      | 'getFanCreatorSubscriptionState'
+      | 'listCreatorSubscribers'
+      | 'listSubscriptions'
+      | 'getFanDashboardSummary'
     >
   >;
 
@@ -74,6 +75,9 @@ describe('SubscriptionsController', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [
+        ThrottlerModule.forRoot([{ name: 'short', ttl: 60000, limit: 10 }]),
+      ],
       controllers: [SubscriptionsController],
       providers: [
         { provide: SubscriptionsService, useValue: service },
@@ -176,7 +180,11 @@ describe('SubscriptionsController', () => {
     const req = { fanAddress: fan } as RequestWithFan;
     await controller.getFanDashboard(req, {});
 
-    expect(service.getFanDashboardSummary).toHaveBeenCalledWith(fan, undefined, undefined);
+    expect(service.getFanDashboardSummary).toHaveBeenCalledWith(
+      fan,
+      undefined,
+      undefined,
+    );
   });
 });
 
@@ -221,7 +229,9 @@ describe('ListSubscriptionsQueryDto – status validation', () => {
     const errors = await validateDto({ fan: 'GFAN', sort: 'invalid' });
     const sortErrors = errors.filter((e) => e.property === 'sort');
     expect(sortErrors).toHaveLength(1);
-    expect(Object.values(sortErrors[0].constraints ?? {})[0]).toMatch(/created, expiry/);
+    expect(Object.values(sortErrors[0].constraints ?? {})[0]).toMatch(
+      /created, expiry/,
+    );
   });
 
   it('passes when sort is omitted', async () => {
@@ -232,17 +242,34 @@ describe('ListSubscriptionsQueryDto – status validation', () => {
 
 describe('SubscriptionsController – listSubscriptions', () => {
   let controller: SubscriptionsController;
-  let service: jest.Mocked<Pick<SubscriptionsService, 'listSubscriptions' | 'getFanCreatorSubscriptionState'>>;
+  let service: jest.Mocked<
+    Pick<
+      SubscriptionsService,
+      'listSubscriptions' | 'getFanCreatorSubscriptionState'
+    >
+  >;
 
   const fan = `G${'A'.repeat(55)}`;
 
   beforeEach(async () => {
     service = {
-      listSubscriptions: jest.fn().mockReturnValue({ data: [], total: 0, page: 1, limit: 20, totalPages: 0, hasMore: false, nextCursor: null, cursor: null }),
+      listSubscriptions: jest.fn().mockReturnValue({
+        data: [],
+        total: 0,
+        page: 1,
+        limit: 20,
+        totalPages: 0,
+        hasMore: false,
+        nextCursor: null,
+        cursor: null,
+      }),
       getFanCreatorSubscriptionState: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [
+        ThrottlerModule.forRoot([{ name: 'short', ttl: 60000, limit: 10 }]),
+      ],
       controllers: [SubscriptionsController],
       providers: [
         { provide: SubscriptionsService, useValue: service },
@@ -260,7 +287,12 @@ describe('SubscriptionsController – listSubscriptions', () => {
   });
 
   it('passes typed SubscriptionStatus.ACTIVE to service', () => {
-    const query: ListSubscriptionsQueryDto = { fan, status: SubscriptionStatus.ACTIVE, cursor: undefined, limit: 20 };
+    const query: ListSubscriptionsQueryDto = {
+      fan,
+      status: SubscriptionStatus.ACTIVE,
+      cursor: undefined,
+      limit: 20,
+    };
     controller.listSubscriptions(query);
     expect(service.listSubscriptions).toHaveBeenCalledWith(
       fan,
@@ -272,7 +304,12 @@ describe('SubscriptionsController – listSubscriptions', () => {
   });
 
   it('passes typed SubscriptionStatus.EXPIRED to service', () => {
-    const query: ListSubscriptionsQueryDto = { fan, status: SubscriptionStatus.EXPIRED, cursor: undefined, limit: 20 };
+    const query: ListSubscriptionsQueryDto = {
+      fan,
+      status: SubscriptionStatus.EXPIRED,
+      cursor: undefined,
+      limit: 20,
+    };
     controller.listSubscriptions(query);
     expect(service.listSubscriptions).toHaveBeenCalledWith(
       fan,
@@ -284,7 +321,12 @@ describe('SubscriptionsController – listSubscriptions', () => {
   });
 
   it('passes sort=created to service', () => {
-    const query: ListSubscriptionsQueryDto = { fan, sort: 'created', cursor: undefined, limit: 20 };
+    const query: ListSubscriptionsQueryDto = {
+      fan,
+      sort: 'created',
+      cursor: undefined,
+      limit: 20,
+    };
     controller.listSubscriptions(query);
     expect(service.listSubscriptions).toHaveBeenCalledWith(
       fan,
@@ -296,7 +338,12 @@ describe('SubscriptionsController – listSubscriptions', () => {
   });
 
   it('passes sort=expiry to service', () => {
-    const query: ListSubscriptionsQueryDto = { fan, sort: 'expiry', cursor: undefined, limit: 20 };
+    const query: ListSubscriptionsQueryDto = {
+      fan,
+      sort: 'expiry',
+      cursor: undefined,
+      limit: 20,
+    };
     controller.listSubscriptions(query);
     expect(service.listSubscriptions).toHaveBeenCalledWith(
       fan,
@@ -308,7 +355,11 @@ describe('SubscriptionsController – listSubscriptions', () => {
   });
 
   it('passes cursor to service', () => {
-    const query: ListSubscriptionsQueryDto = { fan, cursor: 'some-cursor', limit: 10 };
+    const query: ListSubscriptionsQueryDto = {
+      fan,
+      cursor: 'some-cursor',
+      limit: 10,
+    };
     controller.listSubscriptions(query);
     expect(service.listSubscriptions).toHaveBeenCalledWith(
       fan,
@@ -320,7 +371,11 @@ describe('SubscriptionsController – listSubscriptions', () => {
   });
 
   it('passes undefined status when omitted', () => {
-    const query: ListSubscriptionsQueryDto = { fan, cursor: undefined, limit: 20 };
+    const query: ListSubscriptionsQueryDto = {
+      fan,
+      cursor: undefined,
+      limit: 20,
+    };
     controller.listSubscriptions(query);
     expect(service.listSubscriptions).toHaveBeenCalledWith(
       fan,
