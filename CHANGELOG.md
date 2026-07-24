@@ -249,6 +249,7 @@
 * creator registry - spam fee or rate limit ([26e1188](https://github.com/MyFanss/MyFans/commit/26e118824c85453f2657990129f695d4f3e31bb2))
 * creator registry contract enhancements ([dbebbc3](https://github.com/MyFanss/MyFans/commit/dbebbc3daa66af8b9ba4f21d76e29c3876f4ee92))
 * **creator-earnings:** emit event on withdraw ([#850](https://github.com/MyFanss/MyFans/issues/850)) ([95e59c2](https://github.com/MyFanss/MyFans/commit/95e59c28ad066095ce8910d9834fb4a3d59b3a76))
+* **creator-earnings:** expose admin and token getter views ([da29ed4](https://github.com/MyFanss/MyFans/commit/da29ed44b221d27a25ffbf3e16df8ce4c5488bab)), closes [#1398](https://github.com/MyFanss/MyFans/issues/1398)
 * **creator-registry:** add rate limit or fee for registration ([#852](https://github.com/MyFanss/MyFans/issues/852)) ([a06902c](https://github.com/MyFanss/MyFans/commit/a06902ca0dcadcf3dfe750aadf678c3d26fe09d4))
 * **creators:** add search by display name or handle ([#856](https://github.com/MyFanss/MyFans/issues/856)) ([a35feeb](https://github.com/MyFanss/MyFans/commit/a35feeb6c282199408f1c6d776ff27f1413fc865))
 * **dashboard:** improve mobile and tablet responsiveness for creator dashboard ([1480ca0](https://github.com/MyFanss/MyFans/commit/1480ca03f72d12a3cc2e12aea088c2cff9cc3f22))
@@ -404,6 +405,7 @@
 * wasm build size ([8ace45b](https://github.com/MyFanss/MyFans/commit/8ace45bb3216bbde6b0af7d575dc3a5a763ab3a7))
 * webhook secret rotation with active + previous secret and cutoff strategy ([a8b248d](https://github.com/MyFanss/MyFans/commit/a8b248d13583d838fa57f01e138c54c309b36aeb))
 * wire JWT identity on social write controllers ([2b11c66](https://github.com/MyFanss/MyFans/commit/2b11c66e7e17ec70bb5626d6ed5e58bd38652ee8)), closes [#JWT-wiring](https://github.com/MyFanss/MyFans/issues/JWT-wiring)
+* wire myfans-lib require_authorized into production contracts ([0c812c4](https://github.com/MyFanss/MyFans/commit/0c812c4f6e2ca107acb677cbd6e2c43c61675a61)), closes [#1402](https://github.com/MyFanss/MyFans/issues/1402)
 
 
 ### Performance Improvements
