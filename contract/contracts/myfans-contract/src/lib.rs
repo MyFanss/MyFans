@@ -55,6 +55,8 @@ pub enum DataKey {
 /// | 4 | `Paused` |
 /// | 5 | `SubscriptionDoesNotExist` |
 /// | 6 | `AdminNotInitialized` |
+/// | 7 | `AlreadyInitialized` |
+/// | 8 | `PlanNotFound` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -70,6 +72,10 @@ pub enum Error {
     SubscriptionDoesNotExist = 5,
     /// Code 6 – admin key not present; contract was never initialized.
     AdminNotInitialized = 6,
+    /// Code 7 – contract is already initialized.
+    AlreadyInitialized = 7,
+    /// Code 8 – plan with specified ID does not exist.
+    PlanNotFound = 8,
 }
 
 pub mod events;
@@ -81,6 +87,11 @@ pub struct MyfansContract;
 #[contractimpl]
 impl MyfansContract {
     pub fn init(env: Env, admin: Address, fee_bps: u32, fee_recipient: Address) {
+        // Check if already initialized
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic_with_error!(&env, Error::AlreadyInitialized);
+        }
+
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         env.storage()
@@ -222,7 +233,7 @@ impl MyfansContract {
             .storage()
             .instance()
             .get(&DataKey::Plan(plan_id))
-            .unwrap();
+            .unwrap_or_else(|| panic_with_error!(&env, Error::PlanNotFound));
         let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
         let fee_recipient: Address = env
             .storage()
