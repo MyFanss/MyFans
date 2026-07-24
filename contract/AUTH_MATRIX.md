@@ -43,7 +43,7 @@ Contracts covered here (deployed by `contract/scripts/deploy.sh`):
 
 | Method | Required signer(s) | Valid invocation example | Invalid invocation example |
 | --- | --- | --- | --- |
-| `initialize(env, admin)` | `none` | Any caller initializes contract with `admin`. | Re-initialization attempt after already initialized. |
+| `initialize(env, admin)` | `admin` | `admin` signs and initializes the contract once. | Attempt to initialize without `admin`'s signature. |
 | `register_creator(env, caller, creator_address, creator_id)` | `caller`, and `caller` must be `admin` or `creator_address` | `admin` signs and registers a creator. | Random address signs as `caller` and tries to register another creator. |
 | `get_creator_id(env, address)` | `none` | Any caller reads creator ID mapping. | Expecting signer/auth to be required for read. |
 
