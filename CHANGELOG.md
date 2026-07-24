@@ -74,6 +74,7 @@
 * implement issue resolution ([9966e1a](https://github.com/MyFanss/MyFans/commit/9966e1a97d935bd73d137422d2e03e15bc35b191))
 * implement issue resolution ([e799082](https://github.com/MyFanss/MyFans/commit/e799082298d7206e52cffe64e136ac9741596c0c))
 * initialize useRef with undefined to satisfy TS ([6be4aa4](https://github.com/MyFanss/MyFans/commit/6be4aa4439cdf2d5f91923468827599076e0f364))
+* **likes:** enforce premium subscription gate on likes ([4e63760](https://github.com/MyFanss/MyFans/commit/4e637605c8ec5f798597eba1e47fe49161f4f150))
 * make backend CLI checks pass for issue [#211](https://github.com/MyFanss/MyFans/issues/211) ([a1884ce](https://github.com/MyFanss/MyFans/commit/a1884cefc886c0a578578f4e5c7a271f517a4abc))
 * merge conflicts ([1de5e12](https://github.com/MyFanss/MyFans/commit/1de5e1284184ab4fc035b09efdd3756b193a19b6))
 * merge issues ([dc4d47c](https://github.com/MyFanss/MyFans/commit/dc4d47cb5ad9108bd6119041e1ed6c9270f360e5))
