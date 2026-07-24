@@ -155,6 +155,22 @@ impl CreatorEarnings {
         );
     }
 
+    /// Get admin address (view function)
+    pub fn admin(env: Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)
+    }
+
+    /// Get token address (view function)
+    pub fn token(env: Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Token)
+            .ok_or(Error::NotInitialized)
+    }
+
     /// Get creator balance
     pub fn balance(env: Env, creator: Address) -> i128 {
         env.storage()
