@@ -1,4 +1,4 @@
-# 0.1.0 (2026-07-22)
+# 0.1.0 (2026-07-24)
 
 
 ### Bug Fixes
@@ -277,6 +277,7 @@
 * **games:** add pagination and limit query support ([4d06881](https://github.com/MyFanss/MyFans/commit/4d06881649619b64065e0afd40cd1c3ab7409aa1))
 * harden backend secret management ([#350](https://github.com/MyFanss/MyFans/issues/350)) ([4cc8a96](https://github.com/MyFanss/MyFans/commit/4cc8a9662faa27a06a9c3ead0a9b4f6e5d437c26))
 * Health check for Soroban RPC ([5f189be](https://github.com/MyFanss/MyFans/commit/5f189be70eec41873edeb0fcb666bec2fd10d283))
+* **health:** implement Redis PING health probe ([9d0eed2](https://github.com/MyFanss/MyFans/commit/9d0eed2ddfd2d3363de7399228d93e2b31904ac5)), closes [#1356](https://github.com/MyFanss/MyFans/issues/1356)
 * **idempotency:** document TTL & harden collision behavior ([770024e](https://github.com/MyFanss/MyFans/commit/770024e7281b58bbf4f3ebb9884fd4ef3f7017c2))
 * implement authentication module with registration, login, and JWT strategy ([60927f9](https://github.com/MyFanss/MyFans/commit/60927f934e2dfb20a648285be82d4408dd12965b))
 * implement Backend API SLA metrics instrumentation ([e8201bd](https://github.com/MyFanss/MyFans/commit/e8201bd36db8a011ce0bad4b0d29dc62d8728642))
