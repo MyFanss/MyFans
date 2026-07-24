@@ -15,12 +15,13 @@ mod cases {
         let id = env.register_contract(None, MyFansToken);
         let client = MyFansTokenClient::new(env, &id);
         let admin = Address::generate(env);
-        client.initialize(
+        let _ = client.initialize(
             &admin,
             &String::from_str(env, "MyFans Token"),
             &String::from_str(env, "MFAN"),
             &7,
             &0,
+            &admin,
         );
         (client, admin)
     }
