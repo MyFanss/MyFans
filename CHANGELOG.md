@@ -107,6 +107,7 @@
 * **subscription:** require admin auth on init ([d50266d](https://github.com/MyFanss/MyFans/commit/d50266df9e36e1deb0101d06d46da85b1841ab93)), closes [#1376](https://github.com/MyFanss/MyFans/issues/1376)
 * **subscriptions:** return consistent error shape on failure ([e22c967](https://github.com/MyFanss/MyFans/commit/e22c9679446207b3e25a85029665df67b9f68aff))
 * **subscriptions:** return consistent error shape on failure ([74ba625](https://github.com/MyFanss/MyFans/commit/74ba6259f04da649de791c70be6ddb4a893c2ece))
+* **subscription:** validate create_plan amount and interval_days ([f3c4981](https://github.com/MyFanss/MyFans/commit/f3c4981192f90ae05245423b7c7370496ace8c15)), closes [#1377](https://github.com/MyFanss/MyFans/issues/1377)
 * **subscription:** validate error codes, optimize gas, add integration tests, verify wasm CI ([#895](https://github.com/MyFanss/MyFans/issues/895) [#896](https://github.com/MyFanss/MyFans/issues/896) [#897](https://github.com/MyFanss/MyFans/issues/897) [#898](https://github.com/MyFanss/MyFans/issues/898)) ([0ab1336](https://github.com/MyFanss/MyFans/commit/0ab13369ee87aa193d3ea8e7fca69f56bec28119))
 * test errors ([d48694f](https://github.com/MyFanss/MyFans/commit/d48694f2a32b5021c29fdd817add9a17a6331df0))
 * **test:** add CreatorDashboardService mock to creators controller spec ([70db6a7](https://github.com/MyFanss/MyFans/commit/70db6a7694ad813fcd10fd0041ee62cbe7134e0c))
