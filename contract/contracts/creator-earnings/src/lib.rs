@@ -4,6 +4,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
     Symbol,
 };
+use myfans_lib::auth as myfans_auth;
 
 #[contracttype]
 pub enum DataKey {
@@ -232,6 +233,8 @@ impl CreatorEarnings {
             return;
         }
 
+        // Emit unauthorized event using myfans-lib helper
+        myfans_auth::emit_unauthorized_caller_event(env, caller, &Symbol::new(env, "deposit"));
         panic_with_error!(env, Error::NotAuthorized);
     }
 }
