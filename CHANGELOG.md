@@ -94,6 +94,7 @@
 * resolve backend build errors and failing creator service tests ([51d34a8](https://github.com/MyFanss/MyFans/commit/51d34a82e7802fb1ea86bf87bef51db934ec8f12))
 * resolve build errors with proper line endings ([ac4c565](https://github.com/MyFanss/MyFans/commit/ac4c565f98f517c15473f3ae24ae593abc1d48b0))
 * resolve CI failures in backend, frontend, and E2E tests ([372318e](https://github.com/MyFanss/MyFans/commit/372318e48129f47c12a087f4b6fbea478d29bf96))
+* resolve contract issues [#1378](https://github.com/MyFanss/MyFans/issues/1378), [#1379](https://github.com/MyFanss/MyFans/issues/1379), [#1380](https://github.com/MyFanss/MyFans/issues/1380), [#1381](https://github.com/MyFanss/MyFans/issues/1381) ([ea3f4db](https://github.com/MyFanss/MyFans/commit/ea3f4dbfe10ece8bfa248434a697b964ba132d3b))
 * resolve issues [#594](https://github.com/MyFanss/MyFans/issues/594) [#596](https://github.com/MyFanss/MyFans/issues/596) [#578](https://github.com/MyFanss/MyFans/issues/578) [#729](https://github.com/MyFanss/MyFans/issues/729) ([67aec02](https://github.com/MyFanss/MyFans/commit/67aec022657712286f37fa63d62d35320cc1f09f))
 * resolve Jest UUID module parsing issues ([2961a16](https://github.com/MyFanss/MyFans/commit/2961a16985bbee6bf49263676ae033219de5c9d4))
 * resolve merge conflicts in dashboard files ([06b8a1b](https://github.com/MyFanss/MyFans/commit/06b8a1ba1dba00cb9b8c15fac4f0602f142fe48f))
