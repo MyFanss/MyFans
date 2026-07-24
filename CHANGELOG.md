@@ -53,6 +53,7 @@
 * **creator-deposits:** add integration test via test-consumer ([#937](https://github.com/MyFanss/MyFans/issues/937)) ([9b657c7](https://github.com/MyFanss/MyFans/commit/9b657c72668b0fcd1ea72a5c284db30a6bab7a3a))
 * **creator-deposits:** validate error codes and replace unwrap with typed errors ([#935](https://github.com/MyFanss/MyFans/issues/935)) ([da99f23](https://github.com/MyFanss/MyFans/commit/da99f238d04f7510adfa3b522ac538450444bf75))
 * **dashboard:** creator dashboard mobile audit ([#629](https://github.com/MyFanss/MyFans/issues/629)) ([a521531](https://github.com/MyFanss/MyFans/commit/a521531481f42944c1e34f9550a6ecdede1b6fb9))
+* **earnings:** guard record() against i128 overflow with checked_add ([27ee7ad](https://github.com/MyFanss/MyFans/commit/27ee7ad0d456b4703ec3f02bdda1805ad97facf7)), closes [#1375](https://github.com/MyFanss/MyFans/issues/1375)
 * **earnings:** replace admin() unwrap with typed NotInitialized error ([430fb61](https://github.com/MyFanss/MyFans/commit/430fb61eb06dfe6675875557ea582a93dae05ef7)), closes [#1374](https://github.com/MyFanss/MyFans/issues/1374)
 * failed workflows in backend ([6099ba1](https://github.com/MyFanss/MyFans/commit/6099ba18114809460b6cdbdcf4fd6e16425e87e4))
 * failed workflows in backend and contracts ([0ffb81c](https://github.com/MyFanss/MyFans/commit/0ffb81c2ccf3c6beaf0ff9472e2b3bfe13d20a4e))
