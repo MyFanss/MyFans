@@ -52,6 +52,8 @@ pub enum Error {
     PlatformFeeNotInitialized = 4,
     /// Code 5 – platform treasury not set; contract init was incomplete.
     PlatformTreasuryNotInitialized = 5,
+    /// Code 6 – contract was already initialized; re-initialization is not allowed.
+    AlreadyInitialized = 6,
 }
 
 #[contract]
@@ -60,6 +62,10 @@ pub struct CreatorDeposits;
 #[contractimpl]
 impl CreatorDeposits {
     pub fn init(env: Env, admin: Address, platform_fee_bps: u32, platform_treasury: Address) {
+        admin.require_auth();
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic_with_error!(&env, Error::AlreadyInitialized);
+        }
         if platform_fee_bps >= 10000 {
             panic_with_error!(&env, Error::InvalidFeeBps);
         }
@@ -195,7 +201,7 @@ mod test {
         token::StellarAssetClient,
         vec,
         xdr::{ScAddress, SorobanAuthorizationEntry},
-        Env, IntoVal, Symbol, TryFromVal, TryIntoVal,
+        Env, Error as SorobanError, IntoVal, Symbol, TryFromVal, TryIntoVal,
     };
 
     const EMPTY_AUTHS: &[SorobanAuthorizationEntry] = &[];
@@ -729,25 +735,41 @@ mod test {
     }
 
     #[test]
-    fn test_idempotent_init_multiple_events() {
+    fn test_reinitialization_rejected() {
         let (env, admin, treasury, _, _) = setup();
         let contract_id = env.register_contract(None, CreatorDeposits);
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         env.mock_all_auths();
         client.init(&admin, &500, &treasury);
-        client.init(&admin, &1000, &treasury);
 
-        let events = env.events().all();
-        let init_count = events
-            .iter()
-            .filter(|e| {
-                e.1.first().is_some_and(|t| {
-                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, TOPIC_INITIALIZED))
-                })
-            })
-            .count();
-        assert_eq!(init_count, 2);
+        // Second init should fail with AlreadyInitialized
+        let result = client.try_init(&admin, &1000, &treasury);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::AlreadyInitialized as u32,
+            )))
+        );
+    }
+
+    #[test]
+    fn test_init_requires_admin_auth() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let treasury = Address::generate(&env);
+
+        // Strip all auth so that require_auth() fails
+        env.set_auths(&[]);
+
+        let result = client.try_init(&admin, &500, &treasury);
+        assert!(
+            result.is_err(),
+            "init() must reject when admin does not authorize"
+        );
     }
 
     // ── Issue #934: Snapshot / restore consistency test ─────────────
