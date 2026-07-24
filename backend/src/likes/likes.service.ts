@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Like } from './entities/like.entity';
 import { PostsService } from '../posts/posts.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 export interface PaginatedLikesResult {
   data: Like[];
@@ -22,6 +23,7 @@ export class LikesService {
     @InjectRepository(Like)
     private readonly likesRepository: Repository<Like>,
     private readonly postsService: PostsService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   /**
@@ -123,14 +125,19 @@ export class LikesService {
     authorId: string,
     isPremium: boolean,
   ): Promise<void> {
-    // For premium posts, we would check subscription
-    // This is a placeholder for the subscription check
-    // In a real implementation, you would check:
-    // if (isPremium && !this.subscriptionsService.isSubscriber(userId, authorId)) {
-    //   throw new ForbiddenException('You must subscribe to like this premium post');
-    // }
+    if (!isPremium) {
+      return;
+    }
 
-    // For now, allow all users to like posts
-    // The subscription check can be added when premium posts are implemented
+    const subscribed = await this.subscriptionsService.isSubscriber(
+      userId,
+      authorId,
+    );
+
+    if (!subscribed) {
+      throw new ForbiddenException(
+        'An active subscription to this creator is required to like this premium post',
+      );
+    }
   }
 }
