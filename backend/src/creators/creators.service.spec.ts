@@ -17,9 +17,13 @@ describe('CreatorsService', () => {
   let errorSpy: jest.SpyInstance;
 
   beforeEach(async () => {
-    debugSpy = jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
+    debugSpy = jest
+      .spyOn(Logger.prototype, 'debug')
+      .mockImplementation(() => {});
     warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
-    errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    errorSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => {});
     // Create mock query builder
     mockQueryBuilder = {
       createQueryBuilder: jest.fn().mockReturnThis(),
@@ -218,7 +222,11 @@ describe('CreatorsService', () => {
 
     describe('search query alias', () => {
       it('should filter when only search param is provided', async () => {
-        const searchDto: SearchCreatorsDto = { search: 'bob', page: 1, limit: 10 };
+        const searchDto: SearchCreatorsDto = {
+          search: 'bob',
+          page: 1,
+          limit: 10,
+        };
         const mockUsers: User[] = [createMockUser('1', 'bob123', 'Bob Smith')];
 
         (mockQueryBuilder.getCount as jest.Mock).mockResolvedValue(1);
@@ -302,7 +310,11 @@ describe('CreatorsService', () => {
 
     describe('pagination', () => {
       it('should apply cursor filter for the second page', async () => {
-        const searchDto: SearchCreatorsDto = { q: '', cursor: 'user10', limit: 10 };
+        const searchDto: SearchCreatorsDto = {
+          q: '',
+          cursor: 'user10',
+          limit: 10,
+        };
         const mockUsers: User[] = [createMockUser('11', 'user11', 'User 11')];
 
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
@@ -359,7 +371,11 @@ describe('CreatorsService', () => {
       });
 
       it('should return empty data for stale cursor beyond results', async () => {
-        const searchDto: SearchCreatorsDto = { q: '', cursor: 'zzzzz', limit: 10 };
+        const searchDto: SearchCreatorsDto = {
+          q: '',
+          cursor: 'zzzzz',
+          limit: 10,
+        };
 
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
           entities: [],
@@ -452,7 +468,11 @@ describe('CreatorsService', () => {
 
     describe('stale cursor returns empty data', () => {
       it('should return empty data when cursor is beyond available results', async () => {
-        const searchDto: SearchCreatorsDto = { q: '', cursor: 'zzzzz', limit: 10 };
+        const searchDto: SearchCreatorsDto = {
+          q: '',
+          cursor: 'zzzzz',
+          limit: 10,
+        };
 
         (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
           entities: [],
@@ -465,6 +485,67 @@ describe('CreatorsService', () => {
         expect(result.nextCursor).toBeNull();
         expect(result.hasMore).toBe(false);
       });
+    });
+  });
+
+  describe('getCreatorByUsername', () => {
+    it('should return the public profile for an exact username match', async () => {
+      const mockUser = createMockUser('1', 'jane', 'Jane Doe');
+      (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
+        entities: [mockUser],
+        raw: [
+          {
+            creator_bio: 'Digital artist',
+            creator_is_verified: true,
+            creator_followers_count: 42,
+          },
+        ],
+      });
+
+      const result = await service.getCreatorByUsername('jane');
+
+      expect(result).not.toBeNull();
+      expect(result?.username).toBe('jane');
+      expect(result?.bio).toBe('Digital artist');
+      expect(result?.is_verified).toBe(true);
+      expect(result?.followers_count).toBe(42);
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'LOWER(user.username) = :username',
+        { username: 'jane' },
+      );
+    });
+
+    it('should match case-insensitively', async () => {
+      const mockUser = createMockUser('1', 'jane', 'Jane Doe');
+      (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
+        entities: [mockUser],
+        raw: [
+          {
+            creator_bio: null,
+            creator_is_verified: false,
+            creator_followers_count: 0,
+          },
+        ],
+      });
+
+      const result = await service.getCreatorByUsername('JANE');
+
+      expect(result?.username).toBe('jane');
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'LOWER(user.username) = :username',
+        { username: 'jane' },
+      );
+    });
+
+    it('should return null when no creator matches the username', async () => {
+      (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
+        entities: [],
+        raw: [],
+      });
+
+      const result = await service.getCreatorByUsername('nobody');
+
+      expect(result).toBeNull();
     });
   });
 
@@ -483,7 +564,7 @@ describe('CreatorsService', () => {
     });
 
     it('should publish PlanCreatedEvent when EventBus is wired', () => {
-      const publish = jest.fn();
+      const publish = jest.fn<void, [{ constructor: { name: string } }]>();
       const module = Test.createTestingModule({
         providers: [
           CreatorsService,
@@ -502,7 +583,8 @@ describe('CreatorsService', () => {
         svc.createPlan('creator1', 'XLM', '50', 7);
 
         expect(publish).toHaveBeenCalledTimes(1);
-        expect(publish.mock.calls[0][0].constructor.name).toBe('PlanCreatedEvent');
+        const publishedEvent = publish.mock.calls[0][0];
+        expect(publishedEvent.constructor.name).toBe('PlanCreatedEvent');
       });
     });
   });
@@ -807,7 +889,10 @@ describe('CreatorsService', () => {
 
     it('findAllPlans ignores invalid cursor and logs debug', () => {
       service.createPlan('a', 'USDC', '1', 30);
-      service.findAllPlans({ cursor: 'not-a-number', limit: 10 } as PaginationDto);
+      service.findAllPlans({
+        cursor: 'not-a-number',
+        limit: 10,
+      } as PaginationDto);
       expect(debugSpy).toHaveBeenCalledWith(
         'Ignoring invalid plans pagination cursor "not-a-number"',
       );

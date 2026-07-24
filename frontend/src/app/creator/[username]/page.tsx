@@ -3,19 +3,20 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
-  getAllCreators,
-  getCreatorByUsername,
   getCreatorPlans,
-  getPreviewContent,
-  getPosts,
   getCurrencySymbol,
   type CreatorProfile,
 } from '@/lib/creator-profile';
+import { searchCreators, getCreatorProfile, publicCreatorToProfile } from '@/lib/api/creators';
+import { getPublishedPostsByAuthor } from '@/lib/api/posts';
 import { createCreatorMetadata } from '@/lib/metadata';
 import { CreatorHero } from '@/components/creator/CreatorHero';
 import { PlanCard } from '@/components/cards';
 import { ContentCard } from '@/components/cards';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+
+const PREVIEW_COUNT = 3;
+const POSTS_LIMIT = 20;
 
 /**
  * ISR: Regenerate creator pages at most once per minute.
@@ -24,12 +25,19 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 export const revalidate = 60;
 
 /**
- * Pre-render all known creator pages at build time (SSG).
- * Eliminates cold SSR for every visitor.
+ * Pre-render known creator pages at build time (SSG). Any username not
+ * covered here still resolves correctly through the ISR fallback above —
+ * this just avoids a cold SSR for the most common cases. If the backend
+ * is unreachable at build time we skip SSG entirely rather than fail the
+ * build; every profile still renders on first request.
  */
 export async function generateStaticParams() {
-  const creators = getAllCreators();
-  return creators.map((c) => ({ username: c.username }));
+  try {
+    const result = await searchCreators({ limit: 100 });
+    return result.data.map((c) => ({ username: c.username }));
+  } catch {
+    return [];
+  }
 }
 
 interface PageProps {
@@ -38,9 +46,9 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { username } = await params;
-  const creator = getCreatorByUsername(username);
-  
-  if (!creator) {
+  const apiCreator = await getCreatorProfile(username);
+
+  if (!apiCreator) {
     return {
       title: 'Creator Not Found | MyFans',
       description: 'The creator you are looking for does not exist or has been removed.',
@@ -51,16 +59,21 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   }
 
+  const creator = publicCreatorToProfile(apiCreator);
+  // Plans are still mock data — the backend has no marketing-tier/pricing
+  // model yet (see MyFanss/MyFans#1358 for tracking). Everything else on
+  // this page (identity, posts) is real.
   const plans = await getCreatorPlans(username);
   return createCreatorMetadata(creator, plans, getCurrencySymbol);
 }
 
 export default async function CreatorProfilePage({ params }: PageProps) {
   const { username } = await params;
-  const creator = getCreatorByUsername(username);
-  if (!creator) {
+  const apiCreator = await getCreatorProfile(username);
+  if (!apiCreator) {
     notFound();
   }
+  const creator = publicCreatorToProfile(apiCreator);
 
   /**
    * Critical-path data fetched in parallel.
@@ -68,7 +81,7 @@ export default async function CreatorProfilePage({ params }: PageProps) {
    */
   const [plans, previewContent] = await Promise.all([
     getCreatorPlans(username),
-    getPreviewContent(username),
+    getPublishedPostsByAuthor(apiCreator.id, { limit: PREVIEW_COUNT }),
   ]);
 
   return (
@@ -136,7 +149,7 @@ export default async function CreatorProfilePage({ params }: PageProps) {
               Posts
             </h2>
             <Suspense fallback={<PostsSkeleton />}>
-              <PostsSection username={username} creator={creator} />
+              <PostsSection authorId={apiCreator.id} creator={creator} />
             </Suspense>
           </section>
         </main>
@@ -147,13 +160,13 @@ export default async function CreatorProfilePage({ params }: PageProps) {
 
 /** Async server component — streams independently of the critical path */
 async function PostsSection({
-  username,
+  authorId,
   creator,
 }: {
-  username: string;
+  authorId: string;
   creator: CreatorProfile;
 }) {
-  const posts = await getPosts(username);
+  const posts = await getPublishedPostsByAuthor(authorId, { limit: POSTS_LIMIT });
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {posts.map((post) => (

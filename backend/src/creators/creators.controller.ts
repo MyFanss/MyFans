@@ -6,6 +6,7 @@ import {
   Param,
   Query,
   UseGuards,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
@@ -80,8 +81,38 @@ export class CreatorsController {
     return this.creatorsService.searchCreators(searchDto);
   }
 
+  @Get('username/:username')
+  @ApiOperation({
+    summary: 'Get a single public creator profile by exact username',
+    description:
+      'Used by the creator profile page. Returns 404 when the username does not belong to a creator.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Public creator profile',
+    type: PublicCreatorDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Creator not found',
+    schema: { example: { statusCode: 404, message: 'Creator not found' } },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+    schema: { example: { statusCode: 500, message: 'Internal server error' } },
+  })
+  async getCreatorByUsername(
+    @Param('username') username: string,
+  ): Promise<PublicCreatorDto> {
+    const creator = await this.creatorsService.getCreatorByUsername(username);
+    if (!creator) {
+      throw new NotFoundException('Creator not found');
+    }
+    return creator;
+  }
+
   @Get('list')
-  @Public()
   @ApiOperation({
     summary: 'List all creator plans, optionally merged with on-chain state',
   })

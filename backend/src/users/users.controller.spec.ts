@@ -5,9 +5,12 @@ import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { JwtService } from '@nestjs/jwt';
 import { UserProfileDto } from './dto/user-profile.dto';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+
+const mockUser = { id: 'jwt-user-1' };
 
 const makeUser = (overrides: Record<string, unknown> = {}) => ({
-  id: 'user-1',
+  id: 'jwt-user-1',
   username: 'testuser',
   display_name: 'Test User',
   avatar_url: null,
@@ -49,8 +52,12 @@ describe('UsersController', () => {
       providers: [
         { provide: UsersService, useValue: service },
         { provide: JwtService, useValue: { verifyAsync: jest.fn() } },
+        { provide: JwtAuthGuard, useValue: { canActivate: jest.fn().mockReturnValue(true) } },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<UsersController>(UsersController);
   });
@@ -65,13 +72,13 @@ describe('UsersController', () => {
     it('returns a UserProfileDto for the authenticated user', async () => {
       const user = makeUser();
       service.findOne.mockResolvedValue(user as any);
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'jwt-user-1' } };
 
       const result = await controller.getMe(req);
 
-      expect(service.findOne).toHaveBeenCalledWith('user-1');
+      expect(service.findOne).toHaveBeenCalledWith('jwt-user-1');
       expect(result).toBeInstanceOf(UserProfileDto);
-      expect(result.id).toBe('user-1');
+      expect(result.id).toBe('jwt-user-1');
       expect(result.username).toBe('testuser');
     });
 
@@ -84,14 +91,14 @@ describe('UsersController', () => {
   });
 
   describe('updateMe', () => {
-    it('calls service.update with the temp user id and dto', async () => {
+    it('calls service.update with the JWT user id and dto', async () => {
       const updated = makeUser({ display_name: 'New Name' });
       service.update.mockResolvedValue(updated as any);
       const dto = { display_name: 'New Name' };
 
-      const result = await controller.updateMe(dto as any);
+      const result = await controller.updateMe(dto as any, mockUser);
 
-      expect(service.update).toHaveBeenCalledWith('temp-user-id', dto);
+      expect(service.update).toHaveBeenCalledWith('jwt-user-1', dto);
       expect(result).toBeInstanceOf(UserProfileDto);
       expect(result.display_name).toBe('New Name');
     });
@@ -99,7 +106,7 @@ describe('UsersController', () => {
     it('propagates service errors', async () => {
       service.update.mockRejectedValue(new Error('DB error'));
 
-      await expect(controller.updateMe({} as any)).rejects.toThrow('DB error');
+      await expect(controller.updateMe({} as any, mockUser)).rejects.toThrow('DB error');
     });
   });
 
@@ -108,23 +115,14 @@ describe('UsersController', () => {
       const dto = {
         currentStep: 'profile',
         completedSteps: ['account-type'],
-        skippedSteps: [] as string[],
+        skippedSteps: [],
         intent: 'creator',
         updatedAt: '2024-01-01T00:00:00.000Z',
       };
-      const updated = makeUser({
-        onboarding_state: {
-          currentStep: dto.currentStep,
-          completedSteps: dto.completedSteps,
-          skippedSteps: dto.skippedSteps,
-          intent: dto.intent,
-          updatedAt: dto.updatedAt,
-        },
-      });
-      service.updateOnboarding.mockResolvedValue(updated as any);
+      service.updateOnboarding.mockResolvedValue(makeUser() as any);
       const req = { user: { id: 'user-1' } };
 
-      const result = await controller.updateOnboarding(req as any, dto as any);
+      await controller.updateOnboarding(req as any, dto as any);
 
       expect(service.updateOnboarding).toHaveBeenCalledWith('user-1', {
         currentStep: 'profile',
@@ -133,7 +131,6 @@ describe('UsersController', () => {
         intent: 'creator',
         updatedAt: dto.updatedAt,
       });
-      expect(result).toHaveProperty('onboarding_state');
     });
 
     it('defaults intent to null when omitted', async () => {

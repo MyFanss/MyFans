@@ -75,13 +75,13 @@ describe('ConversationsController – rate limiting', () => {
   });
 
   it('write endpoints still delegate to service when within rate limit', async () => {
-    await controller.create({ participant2Id: 'user-2' });
+    await controller.create({ participant2Id: 'user-2' }, { userId: 'jwt-user-1' });
     expect(mockService.create).toHaveBeenCalled();
 
-    await controller.sendMessage('conv-1', { content: 'hi' });
+    await controller.sendMessage('conv-1', { content: 'hi' }, { userId: 'jwt-user-1' });
     expect(mockService.sendMessage).toHaveBeenCalled();
 
-    await controller.remove('conv-1');
+    await controller.remove('conv-1', { userId: 'jwt-user-1' });
     expect(mockService.remove).toHaveBeenCalled();
   });
 });

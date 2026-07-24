@@ -1,9 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { LikesService } from './likes.service';
 import { Like } from './entities/like.entity';
 import { PostsService } from '../posts/posts.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 const mockPost = {
   id: 'post-1',
@@ -35,26 +36,31 @@ describe('LikesService – happy path', () => {
   let likes: Like[];
 
   const mockRepo = {
-    findOne: jest.fn(async ({ where }: { where: Partial<Like> }) =>
-      likes.find(
-        (l) =>
-          (!where.userId || l.userId === where.userId) &&
-          (!where.postId || l.postId === where.postId),
-      ) ?? null,
+    findOne: jest.fn(({ where }: { where: Partial<Like> }) =>
+      Promise.resolve(
+        likes.find(
+          (l) =>
+            (!where.userId || l.userId === where.userId) &&
+            (!where.postId || l.postId === where.postId),
+        ) ?? null,
+      ),
     ),
     create: jest.fn((data: Partial<Like>) => makeLike(data)),
-    save: jest.fn(async (like: Like) => {
+    save: jest.fn((like: Like) => {
       likes.push(like);
-      return like;
+      return Promise.resolve(like);
     }),
-    remove: jest.fn(async (like: Like) => {
+    remove: jest.fn((like: Like) => {
       likes = likes.filter((l) => l.id !== like.id);
+      return Promise.resolve();
     }),
-    count: jest.fn(async ({ where }: { where: Partial<Like> }) =>
-      likes.filter((l) => !where.postId || l.postId === where.postId).length,
+    count: jest.fn(({ where }: { where: Partial<Like> }) =>
+      Promise.resolve(
+        likes.filter((l) => !where.postId || l.postId === where.postId).length,
+      ),
     ),
     findAndCount: jest.fn(
-      async ({
+      ({
         where,
         skip = 0,
         take = likes.length,
@@ -66,13 +72,20 @@ describe('LikesService – happy path', () => {
         const filtered = likes.filter(
           (l) => !where?.postId || l.postId === where.postId,
         );
-        return [filtered.slice(skip, skip + take), filtered.length];
+        return Promise.resolve([
+          filtered.slice(skip, skip + take),
+          filtered.length,
+        ]);
       },
     ),
   };
 
   const mockPostsService = {
-    findOne: jest.fn(async () => mockPost),
+    findOne: jest.fn(() => Promise.resolve(mockPost)),
+  };
+
+  const mockSubscriptionsService = {
+    isSubscriber: jest.fn(() => Promise.resolve(true)),
   };
 
   beforeEach(async () => {
@@ -84,6 +97,7 @@ describe('LikesService – happy path', () => {
         LikesService,
         { provide: getRepositoryToken(Like), useValue: mockRepo },
         { provide: PostsService, useValue: mockPostsService },
+        { provide: SubscriptionsService, useValue: mockSubscriptionsService },
       ],
     }).compile();
 
@@ -96,7 +110,10 @@ describe('LikesService – happy path', () => {
 
       expect(result.status).toBe(201);
       expect(result.message).toBe('Like added successfully');
-      expect(mockRepo.create).toHaveBeenCalledWith({ userId: 'user-1', postId: 'post-1' });
+      expect(mockRepo.create).toHaveBeenCalledWith({
+        userId: 'user-1',
+        postId: 'post-1',
+      });
       expect(mockRepo.save).toHaveBeenCalled();
     });
 
@@ -125,6 +142,44 @@ describe('LikesService – happy path', () => {
         NotFoundException,
       );
     });
+
+    it('allows liking a free post without checking subscription status', async () => {
+      const result = await service.addLike('post-1', 'user-1');
+
+      expect(result.status).toBe(201);
+      expect(mockSubscriptionsService.isSubscriber).not.toHaveBeenCalled();
+    });
+
+    it('allows liking a premium post when the user has an active subscription', async () => {
+      mockPostsService.findOne.mockResolvedValueOnce({
+        ...mockPost,
+        isPremium: true,
+      });
+      mockSubscriptionsService.isSubscriber.mockResolvedValueOnce(true);
+
+      const result = await service.addLike('post-1', 'user-1');
+
+      expect(result.status).toBe(201);
+      expect(mockSubscriptionsService.isSubscriber).toHaveBeenCalledWith(
+        'user-1',
+        'author-1',
+      );
+      expect(mockRepo.save).toHaveBeenCalled();
+    });
+
+    it('throws ForbiddenException when liking a premium post without an active subscription', async () => {
+      mockPostsService.findOne.mockResolvedValueOnce({
+        ...mockPost,
+        isPremium: true,
+      });
+      mockSubscriptionsService.isSubscriber.mockResolvedValueOnce(false);
+
+      await expect(service.addLike('post-1', 'user-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockRepo.create).not.toHaveBeenCalled();
+      expect(mockRepo.save).not.toHaveBeenCalled();
+    });
   });
 
   describe('removeLike', () => {
@@ -137,9 +192,9 @@ describe('LikesService – happy path', () => {
     });
 
     it('throws NotFoundException when like does not exist', async () => {
-      await expect(service.removeLike('post-1', 'user-no-like')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.removeLike('post-1', 'user-no-like'),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('verifies the post exists before removing', async () => {
@@ -209,7 +264,9 @@ describe('LikesService – happy path', () => {
 
     it('returns paginated likes for a post', async () => {
       for (let i = 1; i <= 3; i++) {
-        likes.push(makeLike({ id: `like-${i}`, userId: `user-${i}`, postId: 'post-1' }));
+        likes.push(
+          makeLike({ id: `like-${i}`, userId: `user-${i}`, postId: 'post-1' }),
+        );
       }
 
       const result = await service.getLikesByPost('post-1', 1, 2);
@@ -223,7 +280,9 @@ describe('LikesService – happy path', () => {
 
     it('returns last page with hasMore=false', async () => {
       for (let i = 1; i <= 3; i++) {
-        likes.push(makeLike({ id: `like-${i}`, userId: `user-${i}`, postId: 'post-1' }));
+        likes.push(
+          makeLike({ id: `like-${i}`, userId: `user-${i}`, postId: 'post-1' }),
+        );
       }
 
       const result = await service.getLikesByPost('post-1', 2, 2);
