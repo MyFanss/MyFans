@@ -78,6 +78,23 @@ fn test_init_requires_admin_auth_without_persisting_state() {
     assert_eq!(client.admin(), admin);
 }
 
+/// Calling admin() before init() returns a typed NotInitialized error instead
+/// of panicking on an unwrap of empty storage.
+#[test]
+fn test_admin_returns_not_initialized_before_init() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Earnings);
+    let client = EarningsClient::new(&env, &contract_id);
+
+    let result = client.try_admin();
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::NotInitialized as u32,
+        )))
+    );
+}
+
 // ── #319 – non-admin record reverts ──────────────────────────────────────────
 
 /// Non-admin caller (no admin auth) must not be able to record earnings.
