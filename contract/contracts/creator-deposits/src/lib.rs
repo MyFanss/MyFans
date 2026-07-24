@@ -37,6 +37,7 @@ pub struct CreatorDeposits;
 #[contractimpl]
 impl CreatorDeposits {
     pub fn init(env: Env, admin: Address, platform_fee_bps: u32, platform_treasury: Address) {
+        admin.require_auth();
         if platform_fee_bps >= 10000 {
             panic_with_error!(&env, Error::InvalidFeeBps);
         }
@@ -378,6 +379,20 @@ mod test {
         let contract_id = env.register_contract(None, CreatorDeposits);
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "init",
+                args: vec![
+                    &env,
+                    admin.clone().into_val(&env),
+                    0_u32.into_val(&env),
+                    treasury.clone().into_val(&env),
+                ],
+                sub_invokes: &[],
+            },
+        }]);
         client.init(&admin, &0, &treasury);
 
         let deposit_amount = 1000_i128;
@@ -406,5 +421,202 @@ mod test {
         assert!(result.is_err(), "expected unauthorized withdraw to revert");
 
         assert_eq!(client.get_balance(&creator), starting_balance);
+    }
+
+    // ── AUTH_MATRIX mock_auths coverage (no mock_all_auths) ──────────────────
+
+    /// init – admin signs: authorized init succeeds.
+    #[test]
+    fn auth_init_authorized_succeeds() {
+        let (env, admin, treasury, _, _) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "init",
+                args: vec![
+                    &env,
+                    admin.clone().into_val(&env),
+                    500_u32.into_val(&env),
+                    treasury.clone().into_val(&env),
+                ],
+                sub_invokes: &[],
+            },
+        }]);
+        client.init(&admin, &500, &treasury);
+        assert_eq!(client.get_platform_fee(), 500);
+    }
+
+    /// init – no auth: unauthorized init reverts.
+    #[test]
+    fn auth_init_unauthorized_reverts() {
+        let (env, admin, treasury, _, _) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+        env.set_auths(EMPTY_AUTHS);
+        assert!(client.try_init(&admin, &500, &treasury).is_err(),
+            "init must fail without admin auth");
+    }
+
+    /// deposit – creator signs: authorized deposit succeeds.
+    #[test]
+    fn auth_deposit_authorized_succeeds() {
+        let (env, admin, treasury, creator, token) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "init",
+                args: vec![
+                    &env,
+                    admin.clone().into_val(&env),
+                    0_u32.into_val(&env),
+                    treasury.clone().into_val(&env),
+                ],
+                sub_invokes: &[],
+            },
+        }]);
+        client.init(&admin, &0, &treasury);
+        env.mock_auths(&[MockAuth {
+            address: &creator,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "deposit",
+                args: vec![
+                    &env,
+                    creator.clone().into_val(&env),
+                    token.clone().into_val(&env),
+                    1000_i128.into_val(&env),
+                ],
+                sub_invokes: &[],
+            },
+        }]);
+        client.deposit(&creator, &token, &1000);
+        assert_eq!(client.get_balance(&creator), 1000);
+    }
+
+    /// deposit – no auth: unauthorized deposit reverts.
+    #[test]
+    fn auth_deposit_unauthorized_reverts() {
+        let (env, admin, treasury, creator, token) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "init",
+                args: vec![
+                    &env,
+                    admin.clone().into_val(&env),
+                    0_u32.into_val(&env),
+                    treasury.clone().into_val(&env),
+                ],
+                sub_invokes: &[],
+            },
+        }]);
+        client.init(&admin, &0, &treasury);
+        env.set_auths(EMPTY_AUTHS);
+        assert!(client.try_deposit(&creator, &token, &1000).is_err(),
+            "deposit must fail without creator auth");
+    }
+
+    /// withdraw – creator signs: authorized withdraw succeeds.
+    #[test]
+    fn auth_withdraw_authorized_succeeds() {
+        let (env, admin, treasury, creator, token) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "init",
+                args: vec![
+                    &env,
+                    admin.clone().into_val(&env),
+                    0_u32.into_val(&env),
+                    treasury.clone().into_val(&env),
+                ],
+                sub_invokes: &[],
+            },
+        }]);
+        client.init(&admin, &0, &treasury);
+        env.mock_auths(&[MockAuth {
+            address: &creator,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "deposit",
+                args: vec![
+                    &env,
+                    creator.clone().into_val(&env),
+                    token.clone().into_val(&env),
+                    500_i128.into_val(&env),
+                ],
+                sub_invokes: &[],
+            },
+        }]);
+        client.deposit(&creator, &token, &500);
+        env.mock_auths(&[MockAuth {
+            address: &creator,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "withdraw",
+                args: vec![
+                    &env,
+                    creator.clone().into_val(&env),
+                    token.clone().into_val(&env),
+                    200_i128.into_val(&env),
+                ],
+                sub_invokes: &[],
+            },
+        }]);
+        client.withdraw(&creator, &token, &200);
+        assert_eq!(client.get_balance(&creator), 300);
+    }
+
+    /// withdraw – no auth: unauthorized withdraw reverts.
+    #[test]
+    fn auth_withdraw_unauthorized_reverts() {
+        let (env, admin, treasury, creator, token) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "init",
+                args: vec![
+                    &env,
+                    admin.clone().into_val(&env),
+                    0_u32.into_val(&env),
+                    treasury.clone().into_val(&env),
+                ],
+                sub_invokes: &[],
+            },
+        }]);
+        client.init(&admin, &0, &treasury);
+        env.mock_auths(&[MockAuth {
+            address: &creator,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "deposit",
+                args: vec![
+                    &env,
+                    creator.clone().into_val(&env),
+                    token.clone().into_val(&env),
+                    500_i128.into_val(&env),
+                ],
+                sub_invokes: &[],
+            },
+        }]);
+        client.deposit(&creator, &token, &500);
+        env.set_auths(EMPTY_AUTHS);
+        assert!(client.try_withdraw(&creator, &token, &200).is_err(),
+            "withdraw must fail without creator auth");
     }
 }
