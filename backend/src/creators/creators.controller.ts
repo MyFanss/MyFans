@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  NotFoundException,
+} from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { CreatorsService } from './creators.service';
@@ -55,7 +64,9 @@ export class CreatorsController {
   @ApiResponse({
     status: 400,
     description: 'Invalid query parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid query parameters' } },
+    schema: {
+      example: { statusCode: 400, message: 'Invalid query parameters' },
+    },
   })
   @ApiResponse({
     status: 500,
@@ -68,8 +79,41 @@ export class CreatorsController {
     return this.creatorsService.searchCreators(searchDto);
   }
 
+  @Get('username/:username')
+  @ApiOperation({
+    summary: 'Get a single public creator profile by exact username',
+    description:
+      'Used by the creator profile page. Returns 404 when the username does not belong to a creator.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Public creator profile',
+    type: PublicCreatorDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Creator not found',
+    schema: { example: { statusCode: 404, message: 'Creator not found' } },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+    schema: { example: { statusCode: 500, message: 'Internal server error' } },
+  })
+  async getCreatorByUsername(
+    @Param('username') username: string,
+  ): Promise<PublicCreatorDto> {
+    const creator = await this.creatorsService.getCreatorByUsername(username);
+    if (!creator) {
+      throw new NotFoundException('Creator not found');
+    }
+    return creator;
+  }
+
   @Get('list')
-  @ApiOperation({ summary: 'List all creator plans, optionally merged with on-chain state' })
+  @ApiOperation({
+    summary: 'List all creator plans, optionally merged with on-chain state',
+  })
   @ApiResponse({
     status: 200,
     description: 'Array of plans with optional chain sync status',
@@ -107,7 +151,9 @@ export class CreatorsController {
   @ApiResponse({
     status: 400,
     description: 'Invalid pagination parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid pagination parameters' } },
+    schema: {
+      example: { statusCode: 400, message: 'Invalid pagination parameters' },
+    },
   })
   @ApiResponse({
     status: 500,
@@ -130,7 +176,9 @@ export class CreatorsController {
   @ApiResponse({
     status: 400,
     description: 'Invalid pagination parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid pagination parameters' } },
+    schema: {
+      example: { statusCode: 400, message: 'Invalid pagination parameters' },
+    },
   })
   @ApiResponse({
     status: 500,
