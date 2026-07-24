@@ -1,8 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { NotFoundException } from '@nestjs/common';
 import { ConversationsController } from './conversations.controller';
 import { ConversationsService } from './conversations.service';
-import { ConversationDto, MessageDto, CreateConversationDto, SendMessageDto } from './dto';
+import {
+  ConversationDto,
+  MessageDto,
+  CreateConversationDto,
+  SendMessageDto,
+} from './dto';
 import { PaginatedResponseDto } from '../common/dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 
@@ -33,41 +39,44 @@ const makeMessageDto = (overrides: Partial<MessageDto> = {}): MessageDto =>
 const makePaginatedConversations = (
   data: ConversationDto[],
   overrides?: Partial<PaginatedResponseDto<ConversationDto>>,
-): PaginatedResponseDto<ConversationDto> =>
-  ({
-    data,
-    total: data.length,
-    page: 1,
-    limit: 20,
-    totalPages: 1,
-    hasMore: false,
-    nextCursor: null,
-    cursor: null,
-    ...overrides,
-  }) as PaginatedResponseDto<ConversationDto>;
+): PaginatedResponseDto<ConversationDto> => ({
+  data,
+  total: data.length,
+  page: 1,
+  limit: 20,
+  totalPages: 1,
+  hasMore: false,
+  nextCursor: null,
+  cursor: null,
+  ...overrides,
+});
 
 const makePaginatedMessages = (
   data: MessageDto[],
   overrides?: Partial<PaginatedResponseDto<MessageDto>>,
-): PaginatedResponseDto<MessageDto> =>
-  ({
-    data,
-    total: data.length,
-    page: 1,
-    limit: 20,
-    totalPages: 1,
-    hasMore: false,
-    nextCursor: null,
-    cursor: null,
-    ...overrides,
-  }) as PaginatedResponseDto<MessageDto>;
+): PaginatedResponseDto<MessageDto> => ({
+  data,
+  total: data.length,
+  page: 1,
+  limit: 20,
+  totalPages: 1,
+  hasMore: false,
+  nextCursor: null,
+  cursor: null,
+  ...overrides,
+});
 
 describe('ConversationsController', () => {
   let controller: ConversationsController;
   let service: jest.Mocked<
     Pick<
       ConversationsService,
-      'create' | 'findAll' | 'findOne' | 'getMessages' | 'sendMessage' | 'remove'
+      | 'create'
+      | 'findAll'
+      | 'findOne'
+      | 'getMessages'
+      | 'sendMessage'
+      | 'remove'
     >
   >;
 
@@ -82,6 +91,9 @@ describe('ConversationsController', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [
+        ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 10 }]),
+      ],
       controllers: [ConversationsController],
       providers: [
         { provide: ConversationsService, useValue: service },
@@ -111,7 +123,10 @@ describe('ConversationsController', () => {
 
     it('returns created conversation with id', async () => {
       const dto: CreateConversationDto = { participant2Id: 'user-99' };
-      const result = makeConversationDto({ id: 'new-conv-id', participant2Id: 'user-99' });
+      const result = makeConversationDto({
+        id: 'new-conv-id',
+        participant2Id: 'user-99',
+      });
       service.create.mockResolvedValue(result);
 
       const actual = await controller.create(dto, mockUser);

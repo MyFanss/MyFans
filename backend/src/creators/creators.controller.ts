@@ -19,6 +19,7 @@ import { PublicCreatorDto } from './dto/public-creator.dto';
 import { DashboardQueryDto } from './dto/creator-dashboard.dto';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('creators')
 @UseGuards(JwtAuthGuard, ThrottlerGuard)
@@ -30,6 +31,7 @@ export class CreatorsController {
   ) {}
 
   @Get()
+  @Public()
   @ApiOperation({
     summary: 'Search creators by display name or username',
     description:
@@ -142,6 +144,7 @@ export class CreatorsController {
   }
 
   @Get('plans')
+  @Public()
   @ApiOperation({ summary: 'List all plans (paginated)' })
   @ApiResponse({
     status: 200,
@@ -167,6 +170,7 @@ export class CreatorsController {
   }
 
   @Get(':address/plans')
+  @Public()
   @ApiOperation({ summary: 'List creator plans (paginated)' })
   @ApiResponse({
     status: 200,

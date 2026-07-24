@@ -1,41 +1,30 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import {
   THROTTLER_LIMIT,
   THROTTLER_TTL,
 } from '@nestjs/throttler/dist/throttler.constants';
-import { DECORATORS } from '@nestjs/swagger/dist/constants';
 import { SocialLinksDto } from './social-links.dto';
+import {
+  SocialLinksResponseDto,
+  SocialLinksListItemDto,
+} from './user-profile.dto';
 import { SocialLinkController } from './social-links.controller';
 import { SocialLinksService } from './social-links.service';
 import { PaginatedResponseDto } from '../common/dto';
-import { SocialLinksListItem } from './social-links.service';
 
-// ─── shared mock ────────────────────────────────────────────────────────────
+// Decorator metadata lives on the unbound prototype methods, so reading it
+// back is exactly what these specs are meant to do.
+/* eslint-disable @typescript-eslint/unbound-method */
 
-const mockPaginatedResult: PaginatedResponseDto<SocialLinksListItem> = {
-  data: [],
-  cursor: null,
-  limit: 20,
-  nextCursor: null,
-  hasMore: false,
-  total: 0,
-  page: 1,
-  totalPages: 0,
-};
-
-const mockSocialLinksService = {
-  extractUpdatePayload: jest
-    .fn()
-    .mockImplementation((dto: SocialLinksDto) => dto),
-  createSocialLinks: jest
-    .fn()
-    .mockImplementation((dto: SocialLinksDto) => dto),
-  updateSocialLinks: jest
-    .fn()
-    .mockImplementation((_id: string, dto: SocialLinksDto) => dto),
-  listSocialLinks: jest.fn().mockReturnValue(mockPaginatedResult),
-};
+// @nestjs/swagger does not expose its constants as a public subpath, so mirror
+// the metadata keys the decorators write to.
+const DECORATORS = {
+  API_OPERATION: 'swagger/apiOperation',
+  API_RESPONSE: 'swagger/apiResponse',
+  API_TAGS: 'swagger/apiUseTags',
+  API_EXTRA_MODELS: 'swagger/apiExtraModels',
+} as const;
 
 describe('SocialLinkController', () => {
   let controller: SocialLinkController;
@@ -73,59 +62,39 @@ describe('SocialLinkController', () => {
 
     it('configures create with the expected throttling policy', () => {
       const createHandler = SocialLinkController.prototype.create;
-      const limit = Reflect.getMetadata(THROTTLER_LIMIT + 'default', createHandler);
-      const ttl = Reflect.getMetadata(THROTTLER_TTL + 'default', createHandler);
+      const limit = Reflect.getMetadata(
+        THROTTLER_LIMIT + 'default',
+        createHandler,
+      ) as unknown;
+      const ttl = Reflect.getMetadata(
+        THROTTLER_TTL + 'default',
+        createHandler,
+      ) as unknown;
       expect(limit).toBe(5);
       expect(ttl).toBe(60000);
     });
 
     it('configures update with the expected throttling policy', () => {
       const updateHandler = SocialLinkController.prototype.update;
-      const limit = Reflect.getMetadata(THROTTLER_LIMIT + 'default', updateHandler);
-      const ttl = Reflect.getMetadata(THROTTLER_TTL + 'default', updateHandler);
+      const limit = Reflect.getMetadata(
+        THROTTLER_LIMIT + 'default',
+        updateHandler,
+      ) as unknown;
+      const ttl = Reflect.getMetadata(
+        THROTTLER_TTL + 'default',
+        updateHandler,
+      ) as unknown;
       expect(limit).toBe(5);
       expect(ttl).toBe(60000);
     });
 
     it('list (read endpoint) has no @Throttle metadata', () => {
       const listHandler = SocialLinkController.prototype.list;
-      const limit = Reflect.getMetadata(THROTTLER_LIMIT + 'default', listHandler);
+      const limit = Reflect.getMetadata(
+        THROTTLER_LIMIT + 'default',
+        listHandler,
+      ) as unknown;
       expect(limit).toBeUndefined();
-    });
-  });
-
-  it('configures create with the expected throttling policy', () => {
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const createHandler = controller.create;
-    const limit: unknown = Reflect.getMetadata(THROTTLER_LIMIT + 'default', createHandler);
-    const ttl: unknown = Reflect.getMetadata(THROTTLER_TTL + 'default', createHandler);
-
-    it('update has @ApiResponse for 404', () => {
-      const meta = Reflect.getMetadata(
-        'swagger/apiResponse',
-        SocialLinkController.prototype.update,
-      );
-      expect(meta?.['404']).toBeDefined();
-    });
-  });
-
-  it('configures update with the expected throttling policy', () => {
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const updateHandler = controller.update;
-    const limit: unknown = Reflect.getMetadata(THROTTLER_LIMIT + 'default', updateHandler);
-    const ttl: unknown = Reflect.getMetadata(THROTTLER_TTL + 'default', updateHandler);
-
-      controller.list(pagination);
-
-      expect(mockSocialLinksService.listSocialLinks).toHaveBeenCalledWith(pagination);
-    });
-
-    it('propagates errors thrown by the service', () => {
-      mockSocialLinksService.listSocialLinks.mockImplementationOnce(() => {
-        throw new BadRequestException('Invalid pagination');
-      });
-
-      expect(() => controller.list({ page: -1, limit: 0 })).toThrow(BadRequestException);
     });
   });
 
@@ -137,7 +106,9 @@ describe('SocialLinkController', () => {
 
       const result = controller.create(dto);
 
-      expect(mockSocialLinksService.createSocialLinks).toHaveBeenCalledWith(dto);
+      expect(mockSocialLinksService.createSocialLinks).toHaveBeenCalledWith(
+        dto,
+      );
       expect(result).toBe(payload);
     });
   });
@@ -150,7 +121,10 @@ describe('SocialLinkController', () => {
 
       const result = controller.update('user-123', dto);
 
-      expect(mockSocialLinksService.updateSocialLinks).toHaveBeenCalledWith('user-123', dto);
+      expect(mockSocialLinksService.updateSocialLinks).toHaveBeenCalledWith(
+        'user-123',
+        dto,
+      );
       expect(result).toBe(payload);
     });
   });
@@ -158,13 +132,31 @@ describe('SocialLinkController', () => {
   describe('list', () => {
     it('delegates to listSocialLinks with pagination params and returns its result', () => {
       const pagination = { page: 1, limit: 10 };
-      const response = { data: [], page: 1, limit: 10, total: 0, hasMore: false };
+      const response = {
+        data: [],
+        page: 1,
+        limit: 10,
+        total: 0,
+        hasMore: false,
+      };
       mockSocialLinksService.listSocialLinks.mockReturnValue(response);
 
-      const result = controller.list(pagination as any);
+      const result = controller.list(pagination);
 
-      expect(mockSocialLinksService.listSocialLinks).toHaveBeenCalledWith(pagination);
+      expect(mockSocialLinksService.listSocialLinks).toHaveBeenCalledWith(
+        pagination,
+      );
       expect(result).toBe(response);
+    });
+
+    it('propagates errors thrown by the service', () => {
+      mockSocialLinksService.listSocialLinks.mockImplementationOnce(() => {
+        throw new BadRequestException('Invalid pagination');
+      });
+
+      expect(() => controller.list({ page: -1, limit: 0 } as any)).toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -175,12 +167,22 @@ describe('SocialLinkController', () => {
     // { '200': { description: '...', type: Foo }, '400': { ... } }
     function getResponsesForMethod(
       methodName: 'list' | 'create' | 'update',
-    ): Array<{ status: number; description: string; type?: unknown; schema?: unknown }> {
+    ): Array<{
+      status: number;
+      description: string;
+      type?: unknown;
+      schema?: unknown;
+    }> {
       const proto = SocialLinkController.prototype as Record<string, unknown>;
       const meta = Reflect.getMetadata(
         DECORATORS.API_RESPONSE,
         proto[methodName],
-      ) as Record<string, { description: string; type?: unknown; schema?: unknown }> | undefined;
+      ) as
+        | Record<
+            string,
+            { description: string; type?: unknown; schema?: unknown }
+          >
+        | undefined;
       if (!meta) return [];
       return Object.entries(meta).map(([statusKey, entry]) => ({
         status: Number(statusKey),

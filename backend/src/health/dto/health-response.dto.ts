@@ -113,7 +113,6 @@ export class AggregatedHealthDto extends HealthStatusDto {
 }
 
 export class QueueSnapshotDto {
-  @ApiProperty({ type: Object, additionalProperties: { type: 'number' } })
   [key: string]: unknown;
 }
 
@@ -121,6 +120,8 @@ export class QueueMetricsDto {
   @ApiProperty({ example: '2024-01-01T00:00:00.000Z' })
   timestamp: string;
 
-  @ApiProperty({ type: QueueSnapshotDto })
+  // Open-ended map of queue name -> depth. The shape is described here because
+  // an index signature cannot carry its own @ApiProperty decorator.
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'number' } })
   queues: QueueSnapshotDto;
 }

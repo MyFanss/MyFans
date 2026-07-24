@@ -11,15 +11,21 @@ import {
   QueueMetricsDto,
 } from './dto/health-response.dto';
 import { HealthQueryDto } from './dto/health-query.dto';
+import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('health')
+@Public()
 @Controller({ path: 'health', version: '1' })
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
   @Get()
   @ApiOperation({ summary: 'Basic health check' })
-  @ApiResponse({ status: 200, description: 'Service is healthy', type: HealthStatusDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Service is healthy',
+    type: HealthStatusDto,
+  })
   getHealth() {
     return this.healthService.getHealth();
   }
@@ -74,8 +80,16 @@ export class HealthController {
   @Get('db')
   @Throttle({ medium: { limit: 50, ttl: 60000 } })
   @ApiOperation({ summary: 'Database health check' })
-  @ApiResponse({ status: 200, description: 'Database is healthy', type: SubsystemStatusDto })
-  @ApiResponse({ status: 503, description: 'Database is down', type: SubsystemStatusDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Database is healthy',
+    type: SubsystemStatusDto,
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Database is down',
+    type: SubsystemStatusDto,
+  })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   async getDbHealth(@Res() res: Response) {
     const health = await this.healthService.checkDatabase();
@@ -86,8 +100,16 @@ export class HealthController {
   @Get('redis')
   @Throttle({ medium: { limit: 50, ttl: 60000 } })
   @ApiOperation({ summary: 'Redis health check' })
-  @ApiResponse({ status: 200, description: 'Redis is healthy', type: SubsystemStatusDto })
-  @ApiResponse({ status: 503, description: 'Redis is down', type: SubsystemStatusDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Redis is healthy',
+    type: SubsystemStatusDto,
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Redis is down',
+    type: SubsystemStatusDto,
+  })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   async getRedisHealth(@Res() res: Response) {
     const health = await this.healthService.checkRedis();
@@ -98,8 +120,16 @@ export class HealthController {
   @Get('soroban')
   @Throttle({ medium: { limit: 50, ttl: 60000 } })
   @ApiOperation({ summary: 'Soroban RPC health check' })
-  @ApiResponse({ status: 200, description: 'Soroban RPC is healthy or degraded', type: DetailedHealthStatusDto })
-  @ApiResponse({ status: 503, description: 'Soroban RPC is down', type: DetailedHealthStatusDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Soroban RPC is healthy or degraded',
+    type: DetailedHealthStatusDto,
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Soroban RPC is down',
+    type: DetailedHealthStatusDto,
+  })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   async getSorobanHealth(@Res() res: Response) {
     const health = await this.healthService.checkSorobanRpc();
@@ -110,8 +140,16 @@ export class HealthController {
   @Get('soroban-contract')
   @Throttle({ medium: { limit: 50, ttl: 60000 } })
   @ApiOperation({ summary: 'Soroban contract health check' })
-  @ApiResponse({ status: 200, description: 'Soroban contract is healthy or degraded', type: DetailedHealthStatusDto })
-  @ApiResponse({ status: 503, description: 'Soroban contract is down', type: DetailedHealthStatusDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Soroban contract is healthy or degraded',
+    type: DetailedHealthStatusDto,
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Soroban contract is down',
+    type: DetailedHealthStatusDto,
+  })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   async getSorobanContractHealth(@Res() res: Response) {
     const health = await this.healthService.checkSorobanContract();
@@ -122,14 +160,20 @@ export class HealthController {
   @Get('queue-metrics')
   @Throttle({ medium: { limit: 50, ttl: 60000 } })
   @ApiOperation({ summary: 'Worker queue performance metrics' })
-  @ApiResponse({ status: 200, description: 'Queue metrics snapshot', type: QueueMetricsDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Queue metrics snapshot',
+    type: QueueMetricsDto,
+  })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   getQueueMetrics() {
     return this.healthService.getQueueMetrics();
   }
 
   @Get('checks')
-  @ApiOperation({ summary: 'Paginated list of available health check endpoints' })
+  @ApiOperation({
+    summary: 'Paginated list of available health check endpoints',
+  })
   @ApiResponse({ status: 200, description: 'Paginated health check list' })
   @ApiResponse({ status: 400, description: 'Invalid pagination parameters' })
   getHealthChecks(@Query() query: HealthQueryDto) {
