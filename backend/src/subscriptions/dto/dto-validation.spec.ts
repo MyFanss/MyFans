@@ -78,7 +78,10 @@ describe('ListCreatorSubscribersQueryDto – invalid input', () => {
   });
 
   it('fails when status is not active or expired', async () => {
-    const errors = await validateDto({ creator: 'GCREATOR', status: 'pending' });
+    const errors = await validateDto({
+      creator: 'GCREATOR',
+      status: 'pending',
+    });
     expect(errors.some((e) => e.property === 'status')).toBe(true);
   });
 
@@ -140,57 +143,112 @@ describe('SubscriptionIndexerEventDto – invalid input', () => {
   }
 
   it('fails when event is missing', async () => {
-    const errors = await validateDto({ userId: 'GFAN', creatorId: 'GCREATOR', planId: 1 });
+    const errors = await validateDto({
+      userId: 'GFAN',
+      creatorId: 'GCREATOR',
+      planId: 1,
+    });
     expect(errors.some((e) => e.property === 'event')).toBe(true);
   });
 
   it('fails when event is invalid value', async () => {
-    const errors = await validateDto({ event: 'created', userId: 'GFAN', creatorId: 'GCREATOR', planId: 1 });
+    const errors = await validateDto({
+      event: 'created',
+      userId: 'GFAN',
+      creatorId: 'GCREATOR',
+      planId: 1,
+    });
     expect(errors.some((e) => e.property === 'event')).toBe(true);
   });
 
   it('fails when userId is missing', async () => {
-    const errors = await validateDto({ event: 'renewed', creatorId: 'GCREATOR', planId: 1 });
+    const errors = await validateDto({
+      event: 'renewed',
+      creatorId: 'GCREATOR',
+      planId: 1,
+    });
     expect(errors.some((e) => e.property === 'userId')).toBe(true);
   });
 
   it('fails when creatorId is missing', async () => {
-    const errors = await validateDto({ event: 'renewed', userId: 'GFAN', planId: 1 });
+    const errors = await validateDto({
+      event: 'renewed',
+      userId: 'GFAN',
+      planId: 1,
+    });
     expect(errors.some((e) => e.property === 'creatorId')).toBe(true);
   });
 
   it('fails when planId is missing', async () => {
-    const errors = await validateDto({ event: 'renewed', userId: 'GFAN', creatorId: 'GCREATOR' });
+    const errors = await validateDto({
+      event: 'renewed',
+      userId: 'GFAN',
+      creatorId: 'GCREATOR',
+    });
     expect(errors.some((e) => e.property === 'planId')).toBe(true);
   });
 
   it('fails when planId is zero', async () => {
-    const errors = await validateDto({ event: 'renewed', userId: 'GFAN', creatorId: 'GCREATOR', planId: 0 });
+    const errors = await validateDto({
+      event: 'renewed',
+      userId: 'GFAN',
+      creatorId: 'GCREATOR',
+      planId: 0,
+    });
     expect(errors.some((e) => e.property === 'planId')).toBe(true);
   });
 
   it('fails when planId is negative', async () => {
-    const errors = await validateDto({ event: 'renewed', userId: 'GFAN', creatorId: 'GCREATOR', planId: -1 });
+    const errors = await validateDto({
+      event: 'renewed',
+      userId: 'GFAN',
+      creatorId: 'GCREATOR',
+      planId: -1,
+    });
     expect(errors.some((e) => e.property === 'planId')).toBe(true);
   });
 
   it('fails when expiry is negative', async () => {
-    const errors = await validateDto({ event: 'renewed', userId: 'GFAN', creatorId: 'GCREATOR', planId: 1, expiry: -100 });
+    const errors = await validateDto({
+      event: 'renewed',
+      userId: 'GFAN',
+      creatorId: 'GCREATOR',
+      planId: 1,
+      expiry: -100,
+    });
     expect(errors.some((e) => e.property === 'expiry')).toBe(true);
   });
 
   it('fails when cancelledAt is negative', async () => {
-    const errors = await validateDto({ event: 'cancelled', userId: 'GFAN', creatorId: 'GCREATOR', planId: 1, cancelledAt: -1 });
+    const errors = await validateDto({
+      event: 'cancelled',
+      userId: 'GFAN',
+      creatorId: 'GCREATOR',
+      planId: 1,
+      cancelledAt: -1,
+    });
     expect(errors.some((e) => e.property === 'cancelledAt')).toBe(true);
   });
 
   it('passes for valid renewed event', async () => {
-    const errors = await validateDto({ event: 'renewed', userId: 'GFAN', creatorId: 'GCREATOR', planId: 1, expiry: 1700000000 });
+    const errors = await validateDto({
+      event: 'renewed',
+      userId: 'GFAN',
+      creatorId: 'GCREATOR',
+      planId: 1,
+      expiry: 1700000000,
+    });
     expect(errors).toHaveLength(0);
   });
 
   it('passes for valid cancelled event', async () => {
-    const errors = await validateDto({ event: 'cancelled', userId: 'GFAN', creatorId: 'GCREATOR', planId: 1, cancelledAt: 1700000000 });
+    const errors = await validateDto({
+      event: 'cancelled',
+      userId: 'GFAN',
+      creatorId: 'GCREATOR',
+      planId: 1,
+      cancelledAt: 1700000000,
+    });
     expect(errors).toHaveLength(0);
   });
 });
@@ -201,8 +259,9 @@ describe('SetSpendingCapDto – invalid input', () => {
     return validate(dto);
   }
 
+  // 'weekly' | 'monthly' | 'total' are the valid CapPeriod values.
   it('fails when period is invalid', async () => {
-    const errors = await validateDto({ period: 'weekly' });
+    const errors = await validateDto({ period: 'daily' });
     expect(errors.some((e) => e.property === 'period')).toBe(true);
   });
 

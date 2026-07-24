@@ -23,7 +23,17 @@ describe('Health (e2e)', () => {
   };
   const mockQueueMetrics = { snapshot: jest.fn().mockReturnValue({}) };
 
+  const REDIS_ENV_KEYS = ['REDIS_URL', 'REDIS_HOST', 'REDIS_PORT'];
+  let savedRedisEnv: Record<string, string | undefined>;
+
   beforeEach(async () => {
+    // Keep the Redis probe unconfigured so these tests never open a socket.
+    savedRedisEnv = {};
+    for (const key of REDIS_ENV_KEYS) {
+      savedRedisEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [HealthController],
       providers: [
@@ -42,6 +52,13 @@ describe('Health (e2e)', () => {
 
   afterEach(async () => {
     await app.close();
+    for (const key of REDIS_ENV_KEYS) {
+      if (savedRedisEnv[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = savedRedisEnv[key];
+      }
+    }
   });
 
   describe('GET /v1/health', () => {
@@ -63,6 +80,32 @@ describe('Health (e2e)', () => {
           expect(new Date(res.body.timestamp as string).toISOString()).toBe(
             res.body.timestamp,
           );
+        });
+    });
+  });
+
+  describe('GET /v1/health/redis', () => {
+    it('returns 200 and not_configured when Redis is unset', () => {
+      return request(app.getHttpServer())
+        .get('/v1/health/redis')
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.status).toBe('not_configured');
+        });
+    });
+  });
+
+  describe('GET /v1/health/aggregate', () => {
+    it('reports up and omits Redis when it is unconfigured', () => {
+      return request(app.getHttpServer())
+        .get('/v1/health/aggregate')
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.status).toBe('up');
+          // Redis is skipped entirely, so it is absent and does not count.
+          expect(res.body.subsystems.redis).toBeUndefined();
+          expect(res.body.summary.total).toBe(3);
+          expect(res.body.summary.down).toBe(0);
         });
     });
   });

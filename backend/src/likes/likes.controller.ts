@@ -36,17 +36,32 @@ export class LikesController {
   @ApiResponse({
     status: 201,
     description: 'Like added successfully',
-    schema: { example: { message: 'Like added successfully', postId: 'uuid', liked: true } },
+    schema: {
+      example: {
+        message: 'Like added successfully',
+        postId: 'uuid',
+        liked: true,
+      },
+    },
   })
   @ApiResponse({
     status: 200,
     description: 'Post already liked (idempotent)',
-    schema: { example: { message: 'Post already liked', postId: 'uuid', liked: true } },
+    schema: {
+      example: { message: 'Post already liked', postId: 'uuid', liked: true },
+    },
   })
   @ApiResponse({
     status: 403,
-    description: 'Forbidden',
-    schema: { example: { statusCode: 403, message: 'Forbidden' } },
+    description:
+      'Forbidden — an active subscription to the post creator is required to like this premium post',
+    schema: {
+      example: {
+        statusCode: 403,
+        message:
+          'An active subscription to this creator is required to like this premium post',
+      },
+    },
   })
   @ApiResponse({
     status: 404,

@@ -31,7 +31,6 @@ import { UserRole } from '../common/enums/user-role.enum';
 @ApiTags('moderation')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
 @Controller({ path: 'moderation', version: '1' })
 export class ModerationController {
   constructor(
@@ -45,14 +44,16 @@ export class ModerationController {
   @ApiOperation({ summary: 'Report content for moderation' })
   @ApiResponse({ status: 201, description: 'Flag created' })
   @ApiResponse({ status: 409, description: 'Already flagged' })
-  createFlag(@Request() req, @Body() dto: CreateFlagDto) {
+  createFlag(
+    @Request() req: { user: { id: string } },
+    @Body() dto: CreateFlagDto,
+  ) {
     return this.moderationService.createFlag(req.user.id, dto);
   }
 
   // ── Admin endpoints ───────────────────────────────────────────────────
 
   @Get('flags')
-  @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[Admin] List all moderation flags' })
   @ApiResponse({ status: 200, description: 'Paginated flags list' })
@@ -61,7 +62,6 @@ export class ModerationController {
   }
 
   @Get('flags/:id')
-  @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[Admin] Get a single moderation flag' })
   @ApiResponse({ status: 200, description: 'Flag details' })
@@ -71,13 +71,12 @@ export class ModerationController {
   }
 
   @Patch('flags/:id/review')
-  @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '[Admin] Review / update a moderation flag' })
   @ApiResponse({ status: 200, description: 'Flag updated' })
   reviewFlag(
-    @Request() req,
+    @Request() req: { user: { id: string } },
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ReviewFlagDto,
   ) {
@@ -85,7 +84,6 @@ export class ModerationController {
   }
 
   @Get('flags/:id/audit')
-  @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[Admin] Get audit trail for a flag' })
   @ApiResponse({ status: 200, description: 'Audit log entries' })
@@ -96,7 +94,6 @@ export class ModerationController {
   // ── SLA metrics ───────────────────────────────────────────────────────
 
   @Get('sla')
-  @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiOperation({
     summary: '[Admin] Moderation queue SLA metrics',

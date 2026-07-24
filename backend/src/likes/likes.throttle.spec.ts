@@ -5,11 +5,17 @@ import { LikesController } from './likes.controller';
 import { LikesService } from './likes.service';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 
+// Decorator metadata lives on the unbound prototype methods, so reading it
+// back is exactly what these specs are meant to do.
+/* eslint-disable @typescript-eslint/unbound-method */
+
 describe('LikesController – rate limiting', () => {
   let controller: LikesController;
 
   const mockLikesService = {
-    addLike: jest.fn().mockResolvedValue({ status: 201, message: 'Like added successfully' }),
+    addLike: jest
+      .fn()
+      .mockResolvedValue({ status: 201, message: 'Like added successfully' }),
     removeLike: jest.fn().mockResolvedValue(undefined),
     getLikesCount: jest.fn().mockResolvedValue(0),
     hasUserLiked: jest.fn().mockResolvedValue(false),
@@ -34,36 +40,39 @@ describe('LikesController – rate limiting', () => {
   });
 
   it('should have ThrottlerGuard applied at controller level', () => {
-    const guards = Reflect.getMetadata('__guards__', LikesController);
+    const guards = Reflect.getMetadata(
+      '__guards__',
+      LikesController,
+    ) as unknown[];
     expect(guards).toBeDefined();
     expect(guards.some((g: unknown) => g === ThrottlerGuard)).toBe(true);
   });
 
   it('should have throttle metadata on likePost', () => {
     const metadata = Reflect.getMetadata(
-      'THROTTLER:LIMIT',
+      'THROTTLER:LIMITdefault',
       LikesController.prototype.likePost,
-    );
+    ) as unknown;
     expect(metadata).toBeDefined();
   });
 
   it('should have throttle metadata on unlikePost', () => {
     const metadata = Reflect.getMetadata(
-      'THROTTLER:LIMIT',
+      'THROTTLER:LIMITdefault',
       LikesController.prototype.unlikePost,
-    );
+    ) as unknown;
     expect(metadata).toBeDefined();
   });
 
   it('GET endpoints do not have per-route throttle metadata', () => {
     const countMeta = Reflect.getMetadata(
-      'THROTTLER:LIMIT',
+      'THROTTLER:LIMITdefault',
       LikesController.prototype.getLikesCount,
-    );
+    ) as unknown;
     const statusMeta = Reflect.getMetadata(
-      'THROTTLER:LIMIT',
+      'THROTTLER:LIMITdefault',
       LikesController.prototype.getLikeStatus,
-    );
+    ) as unknown;
     expect(countMeta).toBeUndefined();
     expect(statusMeta).toBeUndefined();
   });
