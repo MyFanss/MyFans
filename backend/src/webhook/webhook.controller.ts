@@ -16,7 +16,11 @@ import { Public } from '../common/decorators/public.decorator';
 @ApiTags('webhook')
 @Controller({ path: 'webhook', version: '1' })
 export class WebhookController {
-  constructor(private readonly webhookService: WebhookService) {}
+  constructor(
+    private readonly webhookService: WebhookService,
+    private readonly auditService: WebhookAuditService,
+    private readonly processorService: WebhookEventProcessorService,
+  ) {}
 
   /**
    * Receive an incoming signed webhook event.
@@ -27,10 +31,14 @@ export class WebhookController {
   @HttpCode(200)
   @UseGuards(WebhookGuard)
   @ApiOperation({ summary: 'Receive a signed webhook event' })
-  @ApiResponse({ status: 200, description: 'Event received' })
+  @ApiResponse({ status: 200, description: 'Event received and queued for processing' })
   @ApiResponse({ status: 401, description: 'Invalid webhook signature' })
-  receive(@Body() body: unknown) {
-    return { received: true, payload: body };
+  async receive(@Body() body: unknown) {
+    const result = await this.processorService.processEvent(body);
+    return {
+      received: true,
+      ...result,
+    };
   }
 
   /**
@@ -48,6 +56,7 @@ export class WebhookController {
   @ApiResponse({ status: 403, description: 'Caller is not an admin' })
   rotate(@Body() body: { newSecret: string; cutoffMs?: number }) {
     this.webhookService.rotate(body.newSecret, body.cutoffMs);
+    await this.auditService.logRotation(user.id, body.cutoffMs);
     const state = this.webhookService.getState();
     return {
       rotated: true,
@@ -70,6 +79,7 @@ export class WebhookController {
   @ApiResponse({ status: 403, description: 'Caller is not an admin' })
   expirePrevious() {
     this.webhookService.expirePrevious();
+    await this.auditService.logExpirePrevious(user.id);
     return { expired: true };
   }
 }

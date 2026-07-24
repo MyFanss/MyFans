@@ -16,6 +16,10 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery }
 import { NotificationsService } from './notifications.service';
 import { CreateNotificationDto, MarkReadDto } from './dto/notification.dto';
 import { AuthGuard } from 'src/utils/auth.guard';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth-module/guards/roles.guard';
+import { Roles } from '../auth-module/decorators/roles.decorator';
+import { UserRole } from '../common/enums/user-role.enum';
 
 @ApiTags('notifications')
 @ApiBearerAuth()
@@ -52,8 +56,12 @@ export class NotificationsController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a notification' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Create a notification for a user' })
   @ApiResponse({ status: 201, description: 'Notification created' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden — admin role required' })
   create(@Body() dto: CreateNotificationDto) {
     return this.notificationsService.create(dto);
   }

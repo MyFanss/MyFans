@@ -1,4 +1,8 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, UnauthorizedException } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MetricsController, MetricsAlert } from './metrics.controller';
+import { MetricsGuard } from './metrics.guard';
 import { HttpMetricsService } from '../common/services/http-metrics.service';
 import { RpcMetricsService } from '../common/services/rpc-metrics.service';
 import { ModerationSlaService } from '../moderation/moderation-sla.service';
@@ -136,5 +140,125 @@ describe('MetricsController', () => {
     expect(output).toContain('backend_http_request_errors_total{method="POST",route="/v1/auth/login",code="5xx"} 1');
     expect(output).toContain('backend_soroban_rpc_calls_total{method="getHealth",outcome="success"} 1');
     expect(output).toContain('backend_soroban_rpc_duration_seconds_total{method="getHealth"} 0.1');
+  });
+});
+
+describe('MetricsController with Guard Protection', () => {
+  let app: INestApplication;
+  let configService: ConfigService;
+
+  beforeEach(async () => {
+    const mockHttpMetrics = {
+      snapshot: jest.fn(),
+    } as unknown as HttpMetricsService;
+
+    const mockRpcMetrics = {
+      snapshot: jest.fn(),
+    } as unknown as RpcMetricsService;
+
+    const mockModerationSla = {
+      snapshot: jest.fn().mockResolvedValue({
+        collectedAt: '2026-05-31T00:00:00.000Z',
+        openCount: 0,
+        byStatus: [],
+      }),
+    } as unknown as ModerationSlaService;
+
+    mockHttpMetrics.snapshot.mockReturnValue({
+      collectedAt: '2026-05-31T00:00:00.000Z',
+      totalRequests: 1,
+      endpoints: [],
+    });
+
+    mockRpcMetrics.snapshot.mockReturnValue({
+      collectedAt: '2026-05-31T00:00:00.000Z',
+      totalCalls: 1,
+      endpoints: [],
+    });
+
+    const module: TestingModule = await Test.createTestingModule({
+      imports: [ConfigModule.forRoot()],
+      controllers: [MetricsController],
+      providers: [
+        {
+          provide: HttpMetricsService,
+          useValue: mockHttpMetrics,
+        },
+        {
+          provide: RpcMetricsService,
+          useValue: mockRpcMetrics,
+        },
+        {
+          provide: ModerationSlaService,
+          useValue: mockModerationSla,
+        },
+        MetricsGuard,
+      ],
+    }).compile();
+
+    app = module.createNestApplication();
+    configService = module.get<ConfigService>(ConfigService);
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('returns 401 for /v1/metrics without Authorization header', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/metrics',
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('returns 401 for /v1/metrics with invalid token', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/metrics',
+      headers: { authorization: 'Bearer invalid-token' },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('returns 200 for /v1/metrics with valid scrape token', async () => {
+    jest.spyOn(configService, 'get').mockReturnValue('valid-token');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/metrics',
+      headers: { authorization: 'Bearer valid-token' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.text);
+    expect(body).toHaveProperty('collectedAt');
+  });
+
+  it('returns 401 for /v1/metrics/prometheus without Authorization header', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/metrics/prometheus',
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('returns 200 for /v1/metrics/prometheus with valid scrape token', async () => {
+    jest.spyOn(configService, 'get').mockReturnValue('valid-token');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/metrics/prometheus',
+      headers: { authorization: 'Bearer valid-token' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe(
+      'text/plain; version=0.0.4',
+    );
   });
 });
