@@ -37,6 +37,7 @@
 * **ci:** add wasm build verification step for content-likes in CI deploy script ([#928](https://github.com/MyFanss/MyFans/issues/928)) ([936add6](https://github.com/MyFanss/MyFans/commit/936add66cb0accdb7c763db9567d898251ade091))
 * **ci:** add wasm build verification step for creator-deposits ([#938](https://github.com/MyFanss/MyFans/issues/938)) ([c745891](https://github.com/MyFanss/MyFans/commit/c7458914e08403ef7a316cd67b1cbecce2b71f1e))
 * **ci:** fallback to npm install when package-lock.json is missing ([ffd2546](https://github.com/MyFanss/MyFans/commit/ffd2546ab52b87499680b3d821a59e42a08ee5c8))
+* **ci:** repair backend test suite, backend build, and frontend build ([293f3b5](https://github.com/MyFanss/MyFans/commit/293f3b5fc28dd712aefdd50712a4afa67ef87689))
 * **ci:** resolve backend build/test regressions on subscription service ([7694f21](https://github.com/MyFanss/MyFans/commit/7694f217534a2e487c11dba3855c0c957bc1171a))
 * **ci:** switch frontend to npm ci and sync backend lockfile overrides ([116eb10](https://github.com/MyFanss/MyFans/commit/116eb1073a2101c5368d492bd4ed8a0f97ab1953))
 * clean up corrupted dashboard files ([42f3b4f](https://github.com/MyFanss/MyFans/commit/42f3b4fe02535a1cacec39c32be401705249b5b3))
