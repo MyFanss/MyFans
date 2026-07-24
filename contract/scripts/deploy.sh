@@ -169,6 +169,7 @@ PACKAGES=(
   "subscription"
   "content-access"
   "earnings"
+  "creator-earnings"
 )
 
 for package in "${PACKAGES[@]}"; do
@@ -220,10 +221,12 @@ if [[ "$DRY_RUN" == "true" ]]; then
 fi
 
 # ── Post-build WASM verification (Issue #888) ─────────────────────────────────
-# Always verify myfans-token wasm after build, even outside dry-run, so a
-# corrupted or missing artifact is caught before any on-chain deployment.
-echo "[deploy] verifying myfans-token WASM artifact"
-verify_wasm "myfans-token"
+# Always verify all built WASM artifacts after build, even outside dry-run, so
+# a corrupted or missing artifact is caught before any on-chain deployment.
+echo "[deploy] verifying WASM artifacts"
+for package in "${PACKAGES[@]}"; do
+  verify_wasm "$package"
+done
 
 deploy_contract() {
   local package="$1"

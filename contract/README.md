@@ -8,6 +8,10 @@ Use [`AUTH_MATRIX.md`](./AUTH_MATRIX.md) for method-by-method signer requirement
 
 When any contract interface or auth rule changes, update `AUTH_MATRIX.md` in the same PR.
 
+## Deploy runbook
+
+For step-by-step deploy, verification, and rollback procedures see [`docs/CONTRACT_DEPLOY_RUNBOOK.md`](docs/CONTRACT_DEPLOY_RUNBOOK.md).
+
 ## Contract Interface Documentation
 
 See comprehensive method docs (args, auth, examples, events): [docs/interfaces/](docs/interfaces/)

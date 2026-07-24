@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 import { BaseCard, BaseCardProps } from './BaseCard';
 import Image from 'next/image';

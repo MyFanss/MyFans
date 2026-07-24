@@ -17,10 +17,11 @@ pub fn unlock_content(
     buyer: Address,
     creator: Address,
     content_id: u64,
-    price: i128,
+    expiry_ledger: u64,
 )
 ```
-Buyer authorizes and pays to unlock content. Idempotent: duplicate unlocks are no-ops.
+Buyer authorizes and pays to unlock content. The price is read from contract storage via `get_content_price`.
+`expiry_ledger` sets when the purchase expires (use `u64::MAX` for a non-expiring purchase). Idempotent: duplicate unlocks are no-ops.
 
 #### has_access
 ```rust

@@ -146,14 +146,12 @@ describe('FeatureFlagGuard', () => {
   });
 
   const makeContext = (flag: string | undefined) => {
-    jest
-      .spyOn(reflector, 'getAllAndOverride')
-      .mockReturnValue(flag as string);
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(flag as string);
 
     return {
       getHandler: () => ({}),
       getClass: () => ({}),
-    } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    } as any;
   };
 
   it('allows access when no flag is required', () => {

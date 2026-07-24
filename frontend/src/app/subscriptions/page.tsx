@@ -3,8 +3,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  MOCK_HISTORY,
-  MOCK_PAYMENTS,
   type ActiveSubscription,
   type SubscriptionHistoryItem,
   type PaymentRecord,
@@ -20,6 +18,9 @@ import { cancelSubscriptionOnSoroban } from '@/lib/stellar';
 export default function SubscriptionsPage() {
   const { showInfo, showSuccess, showError, showLoading, dismiss } = useToast();
   const [activeList, setActiveList] = useState<ActiveSubscription[]>([]);
+  const [historyList, setHistoryList] = useState<SubscriptionHistoryItem[]>([]);
+  const [paymentsList, setPaymentsList] = useState<PaymentRecord[]>([]);
+
   const [statusFilter, setStatusFilter] = useState('active');
   const [sortOption, setSortOption] = useState('expiry');
   const [cancelTarget, setCancelTarget] = useState<ActiveSubscription | null>(null);
@@ -28,6 +29,8 @@ export default function SubscriptionsPage() {
   const [isRenewing, setIsRenewing] = useState(false);
   const [renewingId, setRenewingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(true);
+  const [isPaymentsLoading, setIsPaymentsLoading] = useState(true);
   const cancelModalRef = useRef<HTMLDivElement>(null);
   const renewModalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -55,7 +58,82 @@ export default function SubscriptionsPage() {
     };
     fetchSubscriptions();
     return () => { mounted = false; };
-  }, [showError, sortOption, statusFilter]);
+  }, [sortOption, statusFilter]);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchHistory = async () => {
+      setIsHistoryLoading(true);
+      try {
+        const res = await fetch(`/api/v1/subscriptions/me/list?status=cancelled`);
+        if (!res.ok) throw new Error('Failed to fetch history');
+        const data = await res.json();
+        if (mounted) {
+          const items = Array.isArray(data) ? data : (data.data ?? []);
+          const normalized: SubscriptionHistoryItem[] = items.map((item: Record<string, unknown>) => ({
+            id: String(item.id ?? ''),
+            creatorName: String(item.creatorName ?? item.creator ?? 'Creator'),
+            creatorUsername: String(item.creatorUsername ?? ''),
+            planName: String(item.planName ?? 'Subscription'),
+            price: typeof item.price === 'number' ? item.price : parseFloat(String(item.price || '0')),
+            currency: String(item.currency ?? 'XLM'),
+            startedAt: String(item.startedAt ?? item.createdAt ?? new Date().toISOString()),
+            endedAt: String(item.endedAt ?? item.currentPeriodEnd ?? new Date().toISOString()),
+            cancelReason: item.cancelReason ? String(item.cancelReason) : undefined,
+          }));
+          setHistoryList(normalized);
+        }
+      } catch (err) {
+        console.error(err);
+        showError('NETWORK_ERROR', {
+          message: 'Couldn’t load subscription history',
+          description:
+            'Refresh the page. If it still fails, check your internet and that the app backend is running.',
+        });
+      } finally {
+        if (mounted) setIsHistoryLoading(false);
+      }
+    };
+    fetchHistory();
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchPayments = async () => {
+      setIsPaymentsLoading(true);
+      try {
+        const res = await fetch(`/api/v1/analytics/payments`);
+        if (!res.ok) throw new Error('Failed to fetch payments');
+        const data = await res.json();
+        if (mounted) {
+          const items = Array.isArray(data) ? data : (data.data ?? []);
+          const normalized: PaymentRecord[] = items.map((item: Record<string, unknown>) => ({
+            id: String(item.id ?? ''),
+            date: String(item.date ?? item.paidAt ?? item.createdAt ?? new Date().toISOString()),
+            creatorName: String(item.creatorName ?? item.creator ?? 'Creator'),
+            planName: String(item.planName ?? 'Subscription'),
+            amount: typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || '0')),
+            currency: String(item.currency ?? item.asset ?? 'XLM'),
+            status: (item.status as PaymentRecord['status']) || 'completed',
+            description: item.description ? String(item.description) : undefined,
+          }));
+          setPaymentsList(normalized);
+        }
+      } catch (err) {
+        console.error(err);
+        showError('NETWORK_ERROR', {
+          message: 'Couldn’t load payment history',
+          description:
+            'Refresh the page. If it still fails, check your internet and that the app backend is running.',
+        });
+      } finally {
+        if (mounted) setIsPaymentsLoading(false);
+      }
+    };
+    fetchPayments();
+    return () => { mounted = false; };
+  }, []);
 
   // Modal focus management and keyboard handling
   useEffect(() => {
@@ -63,8 +141,6 @@ export default function SubscriptionsPage() {
     if (!target) return;
 
     // Prevent background scroll
-    const originalOverflow = document.body.style.overflow;
-    const originalPaddingRight = document.body.style.paddingRight;
     const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
 
     document.body.style.overflow = 'hidden';
@@ -111,7 +187,7 @@ export default function SubscriptionsPage() {
         lastElement.focus();
       } else if (!event.shiftKey && document.activeElement === lastElement) {
         event.preventDefault();
-        firstElement.focus();
+        lastElement.focus();
       }
     };
 
@@ -133,11 +209,12 @@ export default function SubscriptionsPage() {
     const loadingToastId = showLoading(`Cancelling ${cancelTarget.creatorName}...`);
     try {
       // Derive fan address from connected wallet; fall back to demo address
-      const fanAddress =
-        typeof window !== 'undefined' &&
-        (window as any).freighter
-          ? await (window as any).freighter.getPublicKey().catch(() => 'fan_demo_address')
-          : 'fan_demo_address';
+      const freighter = typeof window !== 'undefined'
+        ? (window as unknown as { freighter?: { getPublicKey: () => Promise<string> } }).freighter
+        : undefined;
+      const fanAddress = freighter
+        ? await freighter.getPublicKey().catch(() => 'fan_demo_address')
+        : 'fan_demo_address';
 
       await cancelSubscriptionOnSoroban({
         fanAddress,
@@ -318,14 +395,20 @@ export default function SubscriptionsPage() {
           <h2 id="history-heading" className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
             Subscription history
           </h2>
-          {MOCK_HISTORY.length === 0 ? (
+          {isHistoryLoading ? (
+            <div className="space-y-3">
+              {[...Array(2)].map((_, i) => (
+                <HistoryCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : historyList.length === 0 ? (
             <EmptyState
               title="No subscription history"
               description="Cancelled subscriptions will appear here."
             />
           ) : (
             <ul className="space-y-3">
-              {MOCK_HISTORY.map((item) => (
+              {historyList.map((item) => (
                 <HistoryCard
                   key={item.id}
                   item={item}
@@ -342,14 +425,20 @@ export default function SubscriptionsPage() {
           <h2 id="payments-heading" className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
             Payment history
           </h2>
-          {MOCK_PAYMENTS.length === 0 ? (
+          {isPaymentsLoading ? (
+            <div className="space-y-3">
+              {[...Array(2)].map((_, i) => (
+                <HistoryCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : paymentsList.length === 0 ? (
             <EmptyState
               title="No payments yet"
               description="Payment records will appear here when you subscribe to creators."
             />
           ) : (
             <ul className="space-y-3">
-              {MOCK_PAYMENTS.map((payment) => (
+              {paymentsList.map((payment) => (
                 <PaymentCard key={payment.id} payment={payment} />
               ))}
             </ul>

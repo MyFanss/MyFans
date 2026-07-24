@@ -13,7 +13,7 @@ import {
   SortOption,
 } from "@/lib/creator-profile";
 import { FeatureFlag } from "@/lib/feature-flags";
-import { searchCreators, PublicCreator } from "@/lib/api/creators";
+import { searchCreators, publicCreatorToProfile } from "@/lib/api/creators";
 import { usePrefetchCreatorRoute } from "@/hooks/usePrefetchCreatorRoute";
 import { CreatorCardSkeleton } from "@/components/ui/CreatorCardSkeleton";
 
@@ -22,22 +22,6 @@ const INITIAL_LOAD = 12;
 const LOAD_MORE_COUNT = 8;
 
 const USE_API = process.env.NEXT_PUBLIC_USE_CREATORS_API === "true";
-
-/** Map API result to the shape CreatorCard expects */
-function apiCreatorToProfile(c: PublicCreator): CreatorProfile {
-  return {
-    id: c.id,
-    username: c.username,
-    displayName: c.display_name,
-    bio: c.bio ?? "",
-    avatarUrl: c.avatar_url ?? undefined,
-    subscriberCount: 0,
-    subscriptionPrice: 0,
-    isVerified: false,
-    categories: [],
-    socialLinks: [],
-  };
-}
 
 function DiscoverContentInner() {
   const router = useRouter();
@@ -110,7 +94,7 @@ function DiscoverContentInner() {
             limit: INITIAL_LOAD,
           });
           if (!cancelled) {
-            setDisplayedCreators(result.data.map(apiCreatorToProfile));
+            setDisplayedCreators(result.data.map(publicCreatorToProfile));
             setTotal(result.data.length);
             setHasMore(result.hasMore);
             setNextCursor(result.nextCursor);
@@ -157,7 +141,7 @@ function DiscoverContentInner() {
           cursor: nextCursor ?? undefined,
           limit: LOAD_MORE_COUNT,
         });
-        setDisplayedCreators((prev) => [...prev, ...result.data.map(apiCreatorToProfile)]);
+        setDisplayedCreators((prev) => [...prev, ...result.data.map(publicCreatorToProfile)]);
         setHasMore(result.hasMore);
         setNextCursor(result.nextCursor);
       } catch {

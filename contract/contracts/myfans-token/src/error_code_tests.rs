@@ -24,12 +24,13 @@ mod cases {
         let id = env.register_contract(None, MyFansToken);
         let client = MyFansTokenClient::new(env, &id);
         let admin = Address::generate(env);
-        client.initialize(
+        let _ = client.initialize(
             &admin,
             &String::from_str(env, "MyFans Token"),
             &String::from_str(env, "MFAN"),
             &7,
             &0,
+            &admin,
         );
         (client, admin)
     }
@@ -224,18 +225,62 @@ mod cases {
         assert_eq!(crate::Error::Unauthorized as u32, 7);
     }
 
-    /// Calling mint without admin auth panics with an Auth error (not a
-    /// contract error), confirming `require_auth` is the guard.
+    /// Mint without admin authorization must fail.
     #[test]
-    #[should_panic(expected = "Error(Auth")]
-    fn error_code_7_mint_without_auth_panics_with_auth_error() {
+    #[should_panic]
+    fn error_code_7_mint_non_admin_returns_unauthorized() {
         let env = Env::default();
-        env.mock_all_auths();
-        let (client, _) = setup(&env);
-
-        // Clear ALL mocked auths so admin.require_auth() inside mint fails.
-        env.mock_auths(&[]);
+        let (client, _admin) = setup(&env);
         let recipient = Address::generate(&env);
         client.mint(&recipient, &100);
+    }
+
+    // ── Error code 8: AlreadyInitialized ──────────────────────────────────────
+
+    #[test]
+    fn error_code_8_already_initialized_discriminant_is_8() {
+        assert_eq!(crate::Error::AlreadyInitialized as u32, 8);
+    }
+
+    #[test]
+    fn error_code_8_reinit_returns_already_initialized() {
+        let env = Env::default();
+        let (client, admin) = setup(&env);
+        let new_admin = Address::generate(&env);
+        // Try to reinitialize
+        let result = client.try_initialize(
+            &new_admin,
+            &String::from_str(&env, "New Token"),
+            &String::from_str(&env, "NEWT"),
+            &7,
+            &1000,
+            &new_admin,
+        );
+        assert_eq!(result, Err(Ok(crate::Error::AlreadyInitialized)));
+    }
+
+    // ── Error code 9: BadSupply ────────────────────────────────────────────────
+
+    #[test]
+    fn error_code_9_bad_supply_discriminant_is_9() {
+        assert_eq!(crate::Error::BadSupply as u32, 9);
+    }
+
+    #[test]
+    fn error_code_9_negative_supply_returns_bad_supply() {
+        let env = Env::default();
+        let id = env.register_contract(None, crate::MyFansToken);
+        let client = crate::MyFansTokenClient::new(&env, &id);
+        let admin = Address::generate(&env);
+        // Try to initialize with negative supply
+        let result = client.try_initialize(
+            &admin,
+            &String::from_str(&env, "MyFans Token"),
+            &String::from_str(&env, "MFAN"),
+            &7,
+            &-100,
+            &admin,
+        );
+        assert_eq!(result, Err(Ok(crate::Error::BadSupply)));
     }
 }

@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Unified CLI for the MyFans monorepo.
+#
+# Usage:
+#   ./scripts/myfans <command> [args...]
+#   npm run <script>          # via root package.json
+#
+# Commands:
+#   install       Install dependencies in backend, frontend, and contract
+#   build         Build all packages (contract → backend → frontend)
+#   build:backend Build NestJS backend
+#   build:frontend Build Next.js frontend
+#   build:contract Build Soroban contracts (release + wasm)
+#   dev:backend   Start backend in watch mode
+#   dev:frontend  Start frontend dev server
+#   test          Run all test suites
+#   test:backend  Run backend Jest tests
+#   test:frontend Run frontend Vitest tests
+#   test:contract Run Rust contract tests
+#   lint          Lint backend and frontend
+#   check         lint + test + build (full CI-style verification)
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+usage() {
+  sed -n '4,22p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+run_npm() {
+  npm --prefix "$ROOT_DIR" run "$@"
+}
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  ''|-h|--help|help)
+    usage
+    ;;
+  install|install:all)
+    run_npm install:all
+    ;;
+  build)
+    run_npm build
+    ;;
+  build:backend)
+    run_npm build:backend
+    ;;
+  build:frontend)
+    run_npm build:frontend
+    ;;
+  build:contract)
+    run_npm build:contract
+    ;;
+  dev:backend)
+    run_npm dev:backend
+    ;;
+  dev:frontend)
+    run_npm dev:frontend
+    ;;
+  test)
+    run_npm test
+    ;;
+  test:backend)
+    run_npm test:backend
+    ;;
+  test:frontend)
+    run_npm test:frontend
+    ;;
+  test:contract)
+    run_npm test:contract
+    ;;
+  lint)
+    run_npm lint
+    ;;
+  check)
+    run_npm check
+    ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    echo "" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

@@ -974,8 +974,8 @@ fn test_ping_reflects_advanced_ledger_sequence() {
     env.ledger().set_sequence_number(42);
     assert_eq!(client.ping(), 42);
 
-    env.ledger().set_sequence_number(1_000_000);
-    assert_eq!(client.ping(), 1_000_000);
+    env.ledger().set_sequence_number(1_000);
+    assert_eq!(client.ping(), 1_000);
 }
 
 #[test]

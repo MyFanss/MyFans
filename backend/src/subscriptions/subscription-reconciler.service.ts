@@ -62,7 +62,7 @@ export class SubscriptionReconcilerService {
           url: 'subscription-reconciler',
           ip: 'internal',
         },
-        () => this.reconcile(dryRun).then(resolve, reject),
+        () => this.reconcile(dryRun).then(() => resolve(), reject),
       ),
     );
   }

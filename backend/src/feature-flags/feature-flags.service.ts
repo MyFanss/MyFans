@@ -15,14 +15,12 @@ const FEATURE_FLAG_ENV_KEYS = {
     'FEATURE_FLAG_NEW_SUBSCRIPTION_FLOW',
   ],
   cryptoPayments: ['FEATURE_CRYPTO_PAYMENTS', 'FEATURE_FLAG_CRYPTO_PAYMENTS'],
+  referralCodes: ['FEATURE_REFERRAL_CODES'],
+  sorobanPoller: ['FEATURE_SOROBAN_POLLER'],
 } as const;
 
 export type FeatureFlagName = keyof typeof FEATURE_FLAG_ENV_KEYS;
-export type FrontendFeatureFlagName =
-  | 'bookmarks'
-  | 'earnings_withdrawals'
-  | 'earnings_fee_transparency';
-export type FeatureFlagsSnapshot = Record<FrontendFeatureFlagName, boolean>;
+export type FeatureFlagsSnapshot = Record<FeatureFlagName, boolean>;
 
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
   if (!value) {
@@ -62,23 +60,20 @@ export class FeatureFlagsService {
     return this.isEnabled('cryptoPayments');
   }
 
-  getAllFlags(): { flags: FeatureFlagsSnapshot } {
-    return {
-      flags: {
-        bookmarks: this.isEnabled('bookmarks'),
-        earnings_withdrawals: this.isEnabled('earnings_withdrawals'),
-        earnings_fee_transparency: this.isEnabled('earnings_fee_transparency'),
-      },
   isReferralCodesEnabled(): boolean {
-    return process.env.FEATURE_REFERRAL_CODES === 'true';
+    return this.isEnabled('referralCodes');
   }
 
   isSorobanPollerEnabled(): boolean {
-    return process.env.FEATURE_SOROBAN_POLLER !== 'false';
+    const parsed = parseBooleanEnv(process.env.FEATURE_SOROBAN_POLLER);
+    return parsed === undefined ? true : parsed;
   }
 
-  getAllFlags() {
+  getAllFlags(): FeatureFlagsSnapshot {
     return {
+      bookmarks: this.isEnabled('bookmarks'),
+      earnings_withdrawals: this.isEnabled('earnings_withdrawals'),
+      earnings_fee_transparency: this.isEnabled('earnings_fee_transparency'),
       newSubscriptionFlow: this.isNewSubscriptionFlowEnabled(),
       cryptoPayments: this.isCryptoPaymentsEnabled(),
       referralCodes: this.isReferralCodesEnabled(),

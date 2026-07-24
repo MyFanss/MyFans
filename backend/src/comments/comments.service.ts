@@ -5,7 +5,6 @@ import { plainToInstance } from 'class-transformer';
 import { Comment } from './entities/comment.entity';
 import { CommentDto, CreateCommentDto, UpdateCommentDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
-import { createPaginatedResponse } from '../common/utils/pagination.util';
 
 @Injectable()
 export class CommentsService {
@@ -37,9 +36,11 @@ export class CommentsService {
       order: { createdAt: 'DESC' },
     });
 
-    return createPaginatedResponse(
-      [comments.map((c) => this.toDto(c)), total],
-      pagination,
+    return new PaginatedResponseDto(
+      comments.map((c) => this.toDto(c)),
+      total,
+      page,
+      limit,
     );
   }
 
@@ -54,9 +55,11 @@ export class CommentsService {
       order: { createdAt: 'DESC' },
     });
 
-    return createPaginatedResponse(
-      [comments.map((c) => this.toDto(c)), total],
-      pagination,
+    return new PaginatedResponseDto(
+      comments.map((c) => this.toDto(c)),
+      total,
+      page,
+      limit,
     );
   }
 

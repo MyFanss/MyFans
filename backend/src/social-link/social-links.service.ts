@@ -1,12 +1,22 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 import { SocialLinksDto } from './social-links.dto';
-import { SocialLinksResponseDto } from './user-profile.dto';
+import { SocialLinksResponseDto, SocialLinksListItemDto } from './user-profile.dto';
 import {
   isAllowedDomain,
   getAllowedDomains,
   isDomainAllowlistEnabled,
   getUrlHostname,
 } from './social-links.validator';
+
+type SocialLinksPayload = Partial<{
+  websiteUrl: string | null;
+  twitterHandle: string | null;
+  instagramHandle: string | null;
+  otherLink: string | null;
+}>;
+
+export type SocialLinksListItem = SocialLinksListItemDto;
 
 /**
  * SocialLinksService
@@ -20,6 +30,9 @@ import {
  */
 @Injectable()
 export class SocialLinksService {
+  private readonly records = new Map<string, SocialLinksListItem>();
+  private nextId = 1;
+
   /**
    * Validates that all URL-type social link fields in the DTO belong
    * to an allowed domain. Throws BadRequestException otherwise.
@@ -56,23 +69,71 @@ export class SocialLinksService {
    * Picks only social link fields from a DTO and returns a partial entity update object.
    * Rejects disallowed domains before building the payload.
    */
-  extractUpdatePayload(dto: SocialLinksDto): Partial<{
-    websiteUrl: string | null;
-    twitterHandle: string | null;
-    instagramHandle: string | null;
-    otherLink: string | null;
-  }> {
+  extractUpdatePayload(dto: SocialLinksDto): SocialLinksPayload {
     // Service-layer domain allowlist guard
     this.validateDomainAllowlist(dto);
 
     const payload: Record<string, string | null> = {};
 
     if ('websiteUrl' in dto) payload.websiteUrl = dto.websiteUrl ?? null;
-    if ('twitterHandle' in dto) payload.twitterHandle = dto.twitterHandle ?? null;
-    if ('instagramHandle' in dto) payload.instagramHandle = dto.instagramHandle ?? null;
+    if ('twitterHandle' in dto)
+      payload.twitterHandle = dto.twitterHandle ?? null;
+    if ('instagramHandle' in dto)
+      payload.instagramHandle = dto.instagramHandle ?? null;
     if ('otherLink' in dto) payload.otherLink = dto.otherLink ?? null;
 
     return payload;
+  }
+
+  createSocialLinks(dto: SocialLinksDto): SocialLinksPayload {
+    const payload = this.extractUpdatePayload(dto);
+    const id = String(this.nextId++);
+    this.records.set(id, {
+      id,
+      ...this.toResponseDto(payload),
+    });
+
+    return payload;
+  }
+
+  updateSocialLinks(id: string, dto: SocialLinksDto): SocialLinksPayload {
+    const payload = this.extractUpdatePayload(dto);
+    const current = this.records.get(id) ?? {
+      id,
+      websiteUrl: null,
+      twitterHandle: null,
+      instagramHandle: null,
+      otherLink: null,
+    };
+
+    this.records.set(id, {
+      ...current,
+      ...payload,
+    });
+
+    return payload;
+  }
+
+  listSocialLinks(
+    pagination: PaginationDto = {},
+  ): PaginatedResponseDto<SocialLinksListItem> {
+    const page =
+      Number.isInteger(pagination.page) &&
+      pagination.page &&
+      pagination.page > 0
+        ? pagination.page
+        : 1;
+    const limit =
+      Number.isInteger(pagination.limit) &&
+      pagination.limit &&
+      pagination.limit > 0
+        ? Math.min(pagination.limit, 100)
+        : 20;
+    const skip = (page - 1) * limit;
+    const allRecords = Array.from(this.records.values());
+    const data = allRecords.slice(skip, skip + limit);
+
+    return new PaginatedResponseDto(data, allRecords.length, page, limit);
   }
 
   /**

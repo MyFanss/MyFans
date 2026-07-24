@@ -7,6 +7,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Like } from './entities/like.entity';
 import { PostsService } from '../posts/posts.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+
+export interface PaginatedLikesResult {
+  data: Like[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
 
 @Injectable()
 export class LikesService {
@@ -14,6 +23,7 @@ export class LikesService {
     @InjectRepository(Like)
     private readonly likesRepository: Repository<Like>,
     private readonly postsService: PostsService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   /**
@@ -77,6 +87,24 @@ export class LikesService {
   }
 
   /**
+   * Get paginated list of likes for a post
+   */
+  async getLikesByPost(
+    postId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<PaginatedLikesResult> {
+    const skip = (page - 1) * limit;
+    const [data, total] = await this.likesRepository.findAndCount({
+      where: { postId },
+      order: { createdAt: 'DESC' },
+      skip,
+      take: limit,
+    });
+    return { data, total, page, limit, hasMore: page * limit < total };
+  }
+
+  /**
    * Check if user has liked a post
    */
   async hasUserLiked(postId: string, userId: string): Promise<boolean> {
@@ -97,14 +125,19 @@ export class LikesService {
     authorId: string,
     isPremium: boolean,
   ): Promise<void> {
-    // For premium posts, we would check subscription
-    // This is a placeholder for the subscription check
-    // In a real implementation, you would check:
-    // if (isPremium && !this.subscriptionsService.isSubscriber(userId, authorId)) {
-    //   throw new ForbiddenException('You must subscribe to like this premium post');
-    // }
+    if (!isPremium) {
+      return;
+    }
 
-    // For now, allow all users to like posts
-    // The subscription check can be added when premium posts are implemented
+    const subscribed = await this.subscriptionsService.isSubscriber(
+      userId,
+      authorId,
+    );
+
+    if (!subscribed) {
+      throw new ForbiddenException(
+        'An active subscription to this creator is required to like this premium post',
+      );
+    }
   }
 }

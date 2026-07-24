@@ -12,17 +12,22 @@ enum DataKey {
 
 /// Per-contract error codes for the **earnings** contract.
 ///
-/// These discriminants are stable and form part of the public client API.
-/// Do **not** renumber existing variants; add new ones at the end.
+/// Numbering scheme: error codes must be non-zero u32 values, and each variant
+/// must have a unique discriminant. These discriminants are stable and form part
+/// of the public client API. Do **not** renumber existing variants; add new ones
+/// at the end with the next available code.
 ///
 /// | Code | Variant |
 /// |------|---------|
 /// | 1 | `AlreadyInitialized` |
+/// | 2 | `NotInitialized` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
     /// Code 1 – contract was already initialized.
     AlreadyInitialized = 1,
+    /// Code 2 – admin key not present; contract was never initialized.
+    NotInitialized = 2,
 }
 
 #[contract]
@@ -40,21 +45,23 @@ impl Earnings {
     }
 
     pub fn admin(env: Env) -> Address {
-        env.storage().instance().get(&DataKey::Admin).unwrap()
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
     }
 
     pub fn record(env: Env, creator: Address, amount: i128) {
         let admin = Self::admin(env.clone());
         admin.require_auth();
 
-        let current: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::Earnings(creator.clone()))
-            .unwrap_or(0);
-        env.storage()
-            .instance()
-            .set(&DataKey::Earnings(creator), &(current + amount));
+        // GAS: Cache the DataKey to minimize cloning of creator address.
+        let earnings_key = DataKey::Earnings(creator.clone());
+        let current: i128 = env.storage().instance().get(&earnings_key).unwrap_or(0);
+        let updated = current
+            .checked_add(amount)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::Overflow));
+        env.storage().instance().set(&earnings_key, &updated);
     }
 
     pub fn get_earnings(env: Env, creator: Address) -> i128 {
@@ -72,11 +79,9 @@ impl Earnings {
     pub fn withdraw(env: Env, creator: Address, amount: i128) {
         creator.require_auth();
 
-        let current: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::Earnings(creator.clone()))
-            .unwrap_or(0);
+        // GAS: Cache the DataKey to avoid cloning creator twice.
+        let earnings_key = DataKey::Earnings(creator.clone());
+        let current: i128 = env.storage().instance().get(&earnings_key).unwrap_or(0);
 
         if amount > current {
             panic!("insufficient balance");
@@ -84,12 +89,14 @@ impl Earnings {
 
         env.storage()
             .instance()
-            .set(&DataKey::Earnings(creator.clone()), &(current - amount));
+            .set(&earnings_key, &(current - amount));
 
         env.events()
             .publish((Symbol::new(&env, "withdraw"), creator), amount);
     }
 }
 
+#[cfg(test)]
+mod property_tests;
 #[cfg(test)]
 mod test;

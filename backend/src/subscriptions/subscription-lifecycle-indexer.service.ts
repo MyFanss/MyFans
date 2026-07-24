@@ -50,7 +50,7 @@ export class SubscriptionLifecycleIndexerService {
       await this.indexRepo.updateStatus(fan, creator, SubscriptionStatus.CANCELLED);
       this.eventBus.publish(
         new SubscriptionCancelledEvent(
-          event.subscriptionId,
+          event.subscriptionId ?? fan,
           fan,
           creator,
           event.planId,
@@ -64,7 +64,7 @@ export class SubscriptionLifecycleIndexerService {
     if (event.event === 'renewal_failed') {
       this.eventBus.publish(
         new SubscriptionRenewalFailedEvent(
-          event.subscriptionId,
+          event.subscriptionId ?? fan,
           fan,
           creator,
           event.planId,

@@ -4,7 +4,7 @@ use soroban_sdk::{
     token::{StellarAssetClient, TokenClient},
     vec,
     xdr::SorobanAuthorizationEntry,
-    Address, Env, Error as SorobanError, IntoVal,
+    Address, Env, Error as SorobanError, IntoVal, Symbol, TryIntoVal,
 };
 
 fn create_token_contract<'a>(

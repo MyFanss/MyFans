@@ -349,6 +349,235 @@ describe('SubscriptionsService', () => {
     );
   });
 
+  describe('happy path', () => {
+    const fan = 'GFANHAPPY1111111111111111111111111111111111111111111111111';
+    const creator = 'GAAAAAAAAAAAAAAA';
+
+    it('addSubscription creates and returns a subscription entity', async () => {
+      const expiry = Math.floor(Date.now() / 1000) + 3600;
+      const result = await service.addSubscription(fan, creator, 1, expiry);
+
+      expect(result).toMatchObject({ fan, creator, planId: 1, expiryUnix: expiry, status: SubscriptionStatus.ACTIVE });
+      expect(repo.upsertManual).toHaveBeenCalledWith(expect.objectContaining({ fan, creator, planId: 1, expiryUnix: expiry }));
+    });
+
+    it('addSubscription publishes SubscriptionCreatedEvent', async () => {
+      const handler = jest.fn();
+      eventBus.subscribe('subscription.created', handler);
+
+      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 3600);
+
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({ type: 'subscription.created', fan, creator }));
+    });
+
+    it('addSubscription sets status to expired when expiry is in the past', async () => {
+      const pastExpiry = Math.floor(Date.now() / 1000) - 3600;
+      const result = await service.addSubscription(fan, creator, 1, pastExpiry);
+
+      expect(result.status).toBe(SubscriptionStatus.EXPIRED);
+    });
+
+    it('renewSubscription updates expiry and returns entity', async () => {
+      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 60);
+      const result = await service.renewSubscription(fan, creator, 1);
+
+      expect(result).toMatchObject({ fan, creator, planId: 1, status: SubscriptionStatus.ACTIVE });
+      expect(result.expiryUnix).toBeGreaterThan(Math.floor(Date.now() / 1000));
+    });
+
+    it('renewSubscription accepts explicit expiry', async () => {
+      const explicitExpiry = Math.floor(Date.now() / 1000) + 86400;
+      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 60);
+      const result = await service.renewSubscription(fan, creator, 1, explicitExpiry);
+
+      expect(result.expiryUnix).toBe(explicitExpiry);
+    });
+
+    it('renewSubscription throws when plan does not belong to creator', async () => {
+      await expect(service.renewSubscription(fan, 'GOTHER_CREATOR_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', 1))
+        .rejects.toThrow('Plan does not belong to the specified creator');
+    });
+
+    it('isSubscriber returns true for active subscription', async () => {
+      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 3600);
+      const result = await service.isSubscriber(fan, creator);
+      expect(result).toBe(true);
+    });
+
+    it('isSubscriber returns false when no subscription exists', async () => {
+      const result = await service.isSubscriber(fan, creator);
+      expect(result).toBe(false);
+    });
+
+    it('getSubscription returns the subscription entity', async () => {
+      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 3600);
+      const result = await service.getSubscription(fan, creator);
+
+      expect(result).not.toBeNull();
+      expect(result!.fan).toBe(fan);
+      expect(result!.creator).toBe(creator);
+    });
+
+    it('getSubscription returns null when none exists', async () => {
+      const result = await service.getSubscription(fan, creator);
+      expect(result).toBeNull();
+    });
+
+    it('cancelSubscription returns success result', async () => {
+      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 3600);
+      const result = await service.cancelSubscription(fan, creator);
+
+      expect(result).toMatchObject({ success: true, fan, creator, status: SubscriptionStatus.CANCELLED });
+      expect(result.cancelledAt).toBeDefined();
+    });
+
+    it('cancelSubscription throws NotFoundException when subscription does not exist', async () => {
+      await expect(service.cancelSubscription(fan, creator)).rejects.toThrow('Subscription not found');
+    });
+
+    it('expireSubscription updates status to expired', async () => {
+      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 3600);
+      await service.expireSubscription(fan, creator);
+
+      expect(repo.updateStatus).toHaveBeenCalledWith(fan, creator, SubscriptionStatus.EXPIRED);
+    });
+
+    it('createCheckout creates a pending checkout session', () => {
+      const checkout = service.createCheckout(fan, creator, 1);
+
+      expect(checkout).toMatchObject({
+        fanAddress: fan,
+        creatorAddress: creator,
+        planId: 1,
+        assetCode: 'XLM',
+        status: 'pending',
+      });
+      expect(checkout.id).toBeDefined();
+      expect(parseFloat(checkout.amount)).toBeGreaterThan(0);
+      expect(parseFloat(checkout.fee)).toBeGreaterThan(0);
+    });
+
+    it('createCheckout throws when plan not found', () => {
+      expect(() => service.createCheckout(fan, creator, 999)).toThrow('Plan not found');
+    });
+
+    it('getCheckout retrieves an existing checkout', () => {
+      const checkout = service.createCheckout(fan, creator, 1);
+      const retrieved = service.getCheckout(checkout.id);
+
+      expect(retrieved.id).toBe(checkout.id);
+      expect(retrieved.fanAddress).toBe(fan);
+    });
+
+    it('getCheckout throws when checkout not found', () => {
+      expect(() => service.getCheckout('nonexistent')).toThrow('Checkout not found');
+    });
+
+    it('confirmSubscription creates new subscription and returns success', async () => {
+      const checkout = service.createCheckout(fan, creator, 1);
+      const result = await service.confirmSubscription(checkout.id, 'tx-hash-123');
+
+      expect(result).toMatchObject({ success: true, status: 'completed', txHash: 'tx-hash-123', lifecycleEvent: 'created' });
+      expect(result.subscriptionId).toBeDefined();
+    });
+
+    it('getPlanSummary returns plan details', () => {
+      const summary = service.getPlanSummary(1);
+
+      expect(summary).toMatchObject({ id: 1, creatorAddress: 'GAAAAAAAAAAAAAAA', assetCode: 'XLM' });
+      expect(summary.amount).toBe('10');
+      expect(summary.intervalDays).toBe(30);
+    });
+
+    it('getPlanSummary throws for non-existent plan', () => {
+      expect(() => service.getPlanSummary(999)).toThrow('Plan not found');
+    });
+
+    it('getPriceBreakdown returns price components', () => {
+      const checkout = service.createCheckout(fan, creator, 1);
+      const breakdown = service.getPriceBreakdown(checkout.id);
+
+      expect(breakdown).toMatchObject({ currency: 'XLM' });
+      expect(parseFloat(breakdown.subtotal)).toBeGreaterThan(0);
+      expect(parseFloat(breakdown.platformFee)).toBeGreaterThan(0);
+      expect(parseFloat(breakdown.total)).toBeGreaterThan(0);
+    });
+
+    it('validateBalance returns valid for sufficient balance', () => {
+      const result = service.validateBalance(fan, 'XLM', '10');
+      expect(result).toMatchObject({ valid: true });
+    });
+
+    it('validateBalance returns invalid with shortfall for insufficient balance', () => {
+      const result = service.validateBalance(fan, 'XLM', '2000');
+      expect(result.valid).toBe(false);
+      expect(result.shortfall).toBeDefined();
+    });
+
+    it('getWalletStatus returns balances for supported assets', () => {
+      const wallet = service.getWalletStatus(fan);
+
+      expect(wallet.address).toBe(fan);
+      expect(wallet.isConnected).toBe(true);
+      expect(wallet.balances.length).toBeGreaterThanOrEqual(2);
+      expect(wallet.balances.find((b) => b.code === 'XLM')).toBeDefined();
+    });
+
+    it('getTransactionPreview returns preview for checkout', () => {
+      const checkout = service.createCheckout(fan, creator, 1);
+      const preview = service.getTransactionPreview(checkout.id);
+
+      expect(preview).toMatchObject({ checkoutId: checkout.id, from: fan, to: creator });
+      expect(parseFloat(preview.amount)).toBeGreaterThan(0);
+    });
+
+    it('failCheckout marks checkout as failed', () => {
+      const checkout = service.createCheckout(fan, creator, 1);
+      const result = service.failCheckout(checkout.id, 'network error');
+
+      expect(result).toMatchObject({ success: false, status: 'failed', error: 'network error' });
+    });
+
+    it('failCheckout marks checkout as rejected when isRejected is true', () => {
+      const checkout = service.createCheckout(fan, creator, 1);
+      const result = service.failCheckout(checkout.id, 'user rejected', true);
+
+      expect(result).toMatchObject({ success: false, status: 'rejected' });
+    });
+
+    it('assertNetworkMatch does nothing when network is undefined', () => {
+      expect(() => service.assertNetworkMatch(undefined)).not.toThrow();
+    });
+
+    it('assertNetworkMatch throws for mismatched network', () => {
+      expect(() => service.assertNetworkMatch('mainnet')).toThrow();
+    });
+
+    it('getFanDashboardSummary returns dashboard with pagination', async () => {
+      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 3600);
+      const result = await service.getFanDashboardSummary(fan, 1, 20);
+
+      expect(result.fan).toBe(fan);
+      expect(result.totalActive).toBeGreaterThanOrEqual(1);
+      expect(result.subscriptions).toBeInstanceOf(Array);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
+    });
+
+    it('getCompletedPayments returns completed checkouts', async () => {
+      const checkout = service.createCheckout(fan, creator, 1);
+      await service.confirmSubscription(checkout.id, 'tx-pay');
+
+      const payments = service.getCompletedPayments();
+      expect(payments.some((p) => p.txHash === 'tx-pay')).toBe(true);
+    });
+
+    it('getAllSubscriptionsInternal delegates to repository', async () => {
+      await service.getAllSubscriptionsInternal();
+      expect(repo.findAllForReconciler).toHaveBeenCalled();
+    });
+  });
+
   it('publishes a cancelled event when subscription is cancelled', async () => {
     const handler = jest.fn();
     eventBus.subscribe('subscription.cancelled', handler);

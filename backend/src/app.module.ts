@@ -8,7 +8,6 @@ import { OpenAPIController } from './common/openapi-publish.controller';
 import { ThrottlerGuard } from './auth/throttler.guard';
 import { JwtAuthGuard } from './auth-module/guards/jwt-auth.guard';
 import { RolesGuard } from './auth-module/guards/roles.guard';
-import { PublicGuard } from './auth-module/guards/public.guard';
 import { LoggingModule } from './common/logging.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
@@ -43,10 +42,10 @@ const IDEMPOTENCY_ROUTES = [
 @Module({
   imports: [
     ThrottlerModule.forRoot([
-      { name: 'auth',   ttl: 60000, limit: 5   },
-      { name: 'short',  ttl: 60000, limit: 10  },
-      { name: 'medium', ttl: 60000, limit: 50  },
-      { name: 'long',   ttl: 60000, limit: 100 },
+      { name: 'auth', ttl: 60000, limit: 5 },
+      { name: 'short', ttl: 60000, limit: 10 },
+      { name: 'medium', ttl: 60000, limit: 50 },
+      { name: 'long', ttl: 60000, limit: 100 },
     ]),
     LoggingModule,
     MetricsModule,
@@ -65,9 +64,10 @@ const IDEMPOTENCY_ROUTES = [
   providers: [
     AppService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // JwtAuthGuard authenticates every route unless it opts out with @Public();
+    // RolesGuard then enforces @Roles() on the routes that declare one.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
-    { provide: APP_GUARD, useClass: PublicGuard },
     RequestContextService,
     {
       provide: APP_FILTER,

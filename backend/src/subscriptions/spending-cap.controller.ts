@@ -16,9 +16,10 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { FanBearerGuard, RequestWithFan } from '../guards/fan-bearer.guard';
-import { SpendingCapService } from '../services/spending-cap.service';
-import { SetSpendingCapDto, SpendingCapResponseDto } from '../dto/spending-cap.dto';
+import { FanBearerGuard } from './guards/fan-bearer.guard';
+import type { RequestWithFan } from './guards/fan-bearer.guard';
+import { SpendingCapService } from './services/spending-cap.service';
+import { SetSpendingCapDto, SpendingCapResponseDto } from './dto/spending-cap.dto';
 
 @ApiTags('subscriptions')
 @Controller({ path: 'subscriptions/me/spending-cap', version: '1' })

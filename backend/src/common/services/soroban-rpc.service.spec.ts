@@ -17,11 +17,15 @@ import { SorobanRpcService } from './soroban-rpc.service';
  * Build a SorobanRpcService whose internal `rpc.Server` is replaced with a
  * lightweight mock so no real network calls are made.
  */
-function makeService(serverOverrides: Record<string, jest.Mock> = {}): SorobanRpcService {
-  const svc = new SorobanRpcService();
+function makeService(
+  serverOverrides: Record<string, jest.Mock> = {},
+  rpcMetrics?: { record: jest.Mock },
+): SorobanRpcService {
+  const svc = new SorobanRpcService(rpcMetrics as any);
   (svc as any).server = {
     getHealth: jest.fn().mockResolvedValue({ status: 'healthy', ledger: 1000 }),
     getLedgerEntries: jest.fn().mockResolvedValue({ entries: [] }),
+    getEvents: jest.fn().mockResolvedValue({ events: [], latestLedger: 1000 }),
     ...serverOverrides,
   };
   // Speed up retries in tests
@@ -171,9 +175,10 @@ describe('SorobanRpcService – checkKnownContract', () => {
 
   it('returns status=down after all retries fail on contract read', async () => {
     process.env.SOROBAN_HEALTH_CHECK_CONTRACT = VALID_CONTRACT_ID;
-    const svc = makeService({
-      getLedgerEntries: jest.fn().mockRejectedValue(new Error('contract read timeout')),
-    });
+    const svc = makeService();
+    jest
+      .spyOn(svc, 'readContractUInt32')
+      .mockRejectedValue(new Error('contract read timeout'));
 
     const result = await svc.checkKnownContract();
 
@@ -185,12 +190,13 @@ describe('SorobanRpcService – checkKnownContract', () => {
   it('returns status=degraded when first contract read fails but retry succeeds', async () => {
     process.env.SOROBAN_HEALTH_CHECK_CONTRACT = VALID_CONTRACT_ID;
     let callCount = 0;
-    const svc = makeService({
-      getLedgerEntries: jest.fn().mockImplementation(() => {
-        callCount++;
-        if (callCount === 1) return Promise.reject(new Error('network blip'));
-        return Promise.resolve({ entries: [] });
-      }),
+    const svc = makeService();
+    jest.spyOn(svc, 'readContractUInt32').mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.reject(new Error('network blip'));
+      }
+      return Promise.resolve(0);
     });
 
     const result = await svc.checkKnownContract();

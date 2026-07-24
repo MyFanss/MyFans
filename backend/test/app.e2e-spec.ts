@@ -29,8 +29,6 @@ describe('AppController (e2e)', () => {
   });
 
   it('unversioned / (GET) returns 404 when versioning is enabled', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(404);
+    return request(app.getHttpServer()).get('/').expect(404);
   });
 });

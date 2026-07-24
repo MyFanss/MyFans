@@ -11,41 +11,91 @@ import {
   ClassSerializerInterceptor,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags, ApiParam, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { PostsService } from './posts.service';
 import { PostDto, CreatePostDto, UpdatePostDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
 
+/**
+ * PostsController
+ *
+ * Handles CRUD operations for posts. All mutating endpoints are protected
+ * by JwtAuthGuard and require a valid Bearer token. The authenticated user's
+ * identity (extracted from the JWT via @CurrentUser) is used as the author
+ * for creates and as the owner identifier for updates and soft-deletes.
+ *
+ * @Controller posts
+ * @version 1
+ * @tags posts
+ * @security BearerAuth
+ */
 @ApiTags('posts')
-@Controller({ path: 'posts', version: '1' })
+@UseGuards(JwtAuthGuard, ThrottlerGuard)
+@ApiBearerAuth()
 @UseInterceptors(ClassSerializerInterceptor)
+@Controller({ path: 'posts', version: '1' })
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
   @Post()
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Create a new post' })
+  @ApiBody({ type: CreatePostDto })
   @ApiResponse({
     status: 201,
     description: 'Post created successfully',
     type: PostDto,
   })
-  async create(@Body() dto: CreatePostDto): Promise<PostDto> {
-    // TODO: Get author ID from auth token/session
-    const authorId = 'temp-author-id';
-    return this.postsService.create(authorId, dto);
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid post parameters',
+    schema: { example: { statusCode: 400, message: 'Invalid post parameters' } },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+    schema: { example: { statusCode: 401, message: 'Unauthorized' } },
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many requests',
+    schema: { example: { statusCode: 429, message: 'Too many requests' } },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+    schema: { example: { statusCode: 500, message: 'Internal server error' } },
+  })
+  async create(
+    @Body() dto: CreatePostDto,
+    @CurrentUser() user: { userId: string },
+  ): Promise<PostDto> {
+    return this.postsService.create(user.userId, dto);
   }
 
+  /**
+   * Retrieves a paginated list of all published posts.
+   * This endpoint is public (no JWT required).
+   * Use query parameters to control pagination (page and limit).
+   *
+   * @param pagination - Pagination parameters (page, limit)
+   * @returns Paginated response containing PostDto array
+   */
   @Get()
   @ApiOperation({
     summary: 'List all posts (paginated)',
     description:
-      'Cursor-paginated post list. Pass `cursor` and `limit`; responses include `data`, `limit`, `nextCursor`, and `hasMore`.',
+      'Page-paginated post list. Pass `page` and `limit`; responses include `data`, `total`, `page`, and `limit`.',
   })
   @ApiQuery({
-    name: 'cursor',
+    name: 'page',
     required: false,
-    description: 'Pagination cursor (`nextCursor` from the previous page)',
+    description: 'Page number (default 1)',
   })
   @ApiQuery({
     name: 'limit',
@@ -54,7 +104,18 @@ export class PostsController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Cursor-paginated posts list (`data`, `limit`, `nextCursor`, `hasMore`)',
+    description: 'Page-paginated posts list',
+    type: PaginatedResponseDto<PostDto>,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid pagination parameters',
+    schema: { example: { statusCode: 400, message: 'Invalid pagination parameters' } },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+    schema: { example: { statusCode: 500, message: 'Internal server error' } },
   })
   async findAll(
     @Query() pagination: PaginationDto,
@@ -66,12 +127,16 @@ export class PostsController {
   @ApiOperation({
     summary: 'List posts by author (paginated)',
     description:
-      'Cursor-paginated author posts. Pass `cursor` and `limit`; responses include `data`, `limit`, `nextCursor`, and `hasMore`.',
+      'Page-paginated author posts. Pass `page` and `limit`; responses include `data`, `total`, `page`, and `limit`.',
+  })
+  @ApiParam({
+    name: 'authorId',
+    description: 'Author user ID',
   })
   @ApiQuery({
-    name: 'cursor',
+    name: 'page',
     required: false,
-    description: 'Pagination cursor (`nextCursor` from the previous page)',
+    description: 'Page number (default 1)',
   })
   @ApiQuery({
     name: 'limit',
@@ -80,8 +145,18 @@ export class PostsController {
   })
   @ApiResponse({
     status: 200,
-    description:
-      'Cursor-paginated author posts list (`data`, `limit`, `nextCursor`, `hasMore`)',
+    description: 'Page-paginated author posts list',
+    type: PaginatedResponseDto<PostDto>,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid pagination parameters',
+    schema: { example: { statusCode: 400, message: 'Invalid pagination parameters' } },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+    schema: { example: { statusCode: 500, message: 'Internal server error' } },
   })
   async findByAuthor(
     @Param('authorId') authorId: string,
@@ -92,34 +167,104 @@ export class PostsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a post by ID' })
+  @ApiParam({
+    name: 'id',
+    description: 'Post ID',
+  })
   @ApiResponse({ status: 200, description: 'Post details', type: PostDto })
+  @ApiResponse({
+    status: 404,
+    description: 'Post not found',
+    schema: { example: { statusCode: 404, message: 'Post with ID {id} not found' } },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+    schema: { example: { statusCode: 500, message: 'Internal server error' } },
+  })
   async findOne(@Param('id') id: string): Promise<PostDto> {
     return this.postsService.findOne(id);
   }
 
   @Put(':id')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Update a post' })
+  @ApiParam({
+    name: 'id',
+    description: 'Post ID',
+  })
+  @ApiBody({ type: UpdatePostDto })
   @ApiResponse({
     status: 200,
     description: 'Post updated successfully',
     type: PostDto,
   })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid post parameters',
+    schema: { example: { statusCode: 400, message: 'Invalid post parameters' } },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+    schema: { example: { statusCode: 401, message: 'Unauthorized' } },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Post not found',
+    schema: { example: { statusCode: 404, message: 'Post with ID {id} not found' } },
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many requests',
+    schema: { example: { statusCode: 429, message: 'Too many requests' } },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+    schema: { example: { statusCode: 500, message: 'Internal server error' } },
+  })
   async update(
     @Param('id') id: string,
     @Body() dto: UpdatePostDto,
+    @CurrentUser() user: { userId: string },
   ): Promise<PostDto> {
-    return this.postsService.update(id, dto);
+    return this.postsService.update(id, dto, user.userId);
   }
 
   @Delete(':id')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Soft-delete a post (sets deletedAt / deletedBy)' })
+  @ApiParam({
+    name: 'id',
+    description: 'Post ID',
+  })
   @ApiResponse({ status: 204, description: 'Post soft-deleted successfully' })
-  @ApiResponse({ status: 404, description: 'Post not found or already deleted' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+    schema: { example: { statusCode: 401, message: 'Unauthorized' } },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Post not found or already deleted',
+    schema: { example: { statusCode: 404, message: 'Post with ID {id} not found' } },
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many requests',
+    schema: { example: { statusCode: 429, message: 'Too many requests' } },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+    schema: { example: { statusCode: 500, message: 'Internal server error' } },
+  })
   async remove(
     @Param('id') id: string,
-    @Query('deletedBy') deletedBy?: string,
+    @CurrentUser() user: { userId: string },
   ): Promise<void> {
-    return this.postsService.softDelete(id, deletedBy ?? 'unknown');
+    return this.postsService.softDelete(id, user.userId);
   }
 }
