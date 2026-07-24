@@ -115,6 +115,32 @@ fn test_init_rejects_non_positive_price() {
     );
 }
 
+/// init() requires the supplied admin to authorize the call; a rejected
+/// attempt leaves the contract uninitialized, allowing a later valid init.
+#[test]
+fn test_init_requires_admin_auth_without_persisting_state() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let token_address = env.register_stellar_asset_contract_v2(admin.clone());
+    let token_client = token::Client::new(&env, &token_address.address());
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+    let fee_recipient = Address::generate(&env);
+
+    let empty: &[SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+    assert!(
+        client
+            .try_init(&admin, &500u32, &fee_recipient, &token_client.address, &1000i128)
+            .is_err(),
+        "init must require admin auth"
+    );
+
+    env.mock_all_auths();
+    client.init(&admin, &500u32, &fee_recipient, &token_client.address, &1000i128);
+    assert_eq!(client.admin(), admin);
+}
+
 #[test]
 fn test_init_succeeds_sets_admin_and_configuration() {
     let (env, client, admin, token, _token_admin) = setup_test();
