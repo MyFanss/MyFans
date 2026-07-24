@@ -82,18 +82,18 @@ describe('CommentsController – rate limiting', () => {
 
   it('write endpoints delegate to service when within rate limit', async () => {
     mockService.create.mockResolvedValue({} as any);
-    await controller.create({ content: 'Hello', postId: 'post-1' });
-    expect(mockService.create).toHaveBeenCalledWith('temp-author-id', {
+    await controller.create({ content: 'Hello', postId: 'post-1' }, { userId: 'jwt-user-1' });
+    expect(mockService.create).toHaveBeenCalledWith('jwt-user-1', {
       content: 'Hello',
       postId: 'post-1',
     });
 
     mockService.update.mockResolvedValue({} as any);
-    await controller.update('comment-1', { content: 'Updated' });
-    expect(mockService.update).toHaveBeenCalledWith('comment-1', { content: 'Updated' });
+    await controller.update('comment-1', { content: 'Updated' }, { userId: 'jwt-user-1' });
+    expect(mockService.update).toHaveBeenCalledWith('comment-1', { content: 'Updated' }, 'jwt-user-1');
 
     mockService.remove.mockResolvedValue(undefined);
-    await controller.remove('comment-1');
-    expect(mockService.remove).toHaveBeenCalledWith('comment-1');
+    await controller.remove('comment-1', { userId: 'jwt-user-1' });
+    expect(mockService.remove).toHaveBeenCalledWith('comment-1', 'jwt-user-1');
   });
 });
