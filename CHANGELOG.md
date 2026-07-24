@@ -393,6 +393,7 @@
 * **subscriptions:** track worst-case simulation resource fees ([bc60859](https://github.com/MyFanss/MyFans/commit/bc60859f713b928c27bae13c1ca43ab3b3319f63))
 * **test-consumer:** add admin authorization with unauthorized caller tests ([b939826](https://github.com/MyFanss/MyFans/commit/b93982696ed600f3e7c1d759d61a73a50158ef0d)), closes [#981](https://github.com/MyFanss/MyFans/issues/981)
 * **test-consumer:** add initialize and admin functions with unit tests ([f77f377](https://github.com/MyFanss/MyFans/commit/f77f3771f57b1c19fc11720700bda5bccbe100ae)), closes [#980](https://github.com/MyFanss/MyFans/issues/980)
+* **token:** typed errors and mint initial_supply on initialize ([f868f16](https://github.com/MyFanss/MyFans/commit/f868f16c5be5bebbe29eebb61c3e7bdabb1c772d)), closes [#1399](https://github.com/MyFanss/MyFans/issues/1399) [#1401](https://github.com/MyFanss/MyFans/issues/1401)
 * treasury deposit event ([d474a33](https://github.com/MyFanss/MyFans/commit/d474a3395761d872b51735bf3d783ac9246d3c35))
 * Treasury-min-balance guard ([5e0bcf1](https://github.com/MyFanss/MyFans/commit/5e0bcf1a114cf65c4f232375fbdb43e40089f427))
 * **treasury:** add minimum balance or emergency pause protection ([#851](https://github.com/MyFanss/MyFans/issues/851)) ([81cfbfc](https://github.com/MyFanss/MyFans/commit/81cfbfc570c50ca3a047c726cc41cb87ea839de5))
