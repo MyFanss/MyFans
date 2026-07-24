@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Headers,
@@ -15,6 +14,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { WalletAuthService } from './wallet-auth.service';
 import { RequestChallengeDto, VerifyChallengeDto } from './wallet-auth.dto';
+import { WalletAddressDto } from './wallet-address.dto';
 import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
 import { PublicGuard } from '../auth-module/guards/public.guard';
 import { IS_PUBLIC_KEY } from '../common/decorators/public.decorator';
@@ -51,15 +51,11 @@ export class AuthController {
   @ApiResponse({ status: 201, description: 'Session created' })
   @ApiResponse({ status: 400, description: 'Invalid Stellar address' })
   async login(
-    @Body() body: { address?: string },
+    @Body() body: WalletAddressDto,
     @Headers('x-network') requestNetwork?: string,
   ) {
     this.assertNetworkMatch(requestNetwork);
-    const address = body.address ?? '';
-    if (!this.authService.validateStellarAddress(address)) {
-      throw new BadRequestException('Invalid Stellar address');
-    }
-    return this.authService.createSession(body.address!);
+    return this.authService.createSession(body.address);
   }
 
   @Post('register')
@@ -74,15 +70,11 @@ export class AuthController {
   @ApiResponse({ status: 201, description: 'Session created' })
   @ApiResponse({ status: 400, description: 'Invalid Stellar address' })
   async register(
-    @Body() body: { address?: string },
+    @Body() body: WalletAddressDto,
     @Headers('x-network') requestNetwork?: string,
   ) {
     this.assertNetworkMatch(requestNetwork);
-    const address = body.address ?? '';
-    if (!this.authService.validateStellarAddress(address)) {
-      throw new BadRequestException('Invalid Stellar address');
-    }
-    return this.authService.createSession(body.address!);
+    return this.authService.createSession(body.address);
   }
 
   /**
