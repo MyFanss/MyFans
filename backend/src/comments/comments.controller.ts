@@ -80,6 +80,14 @@ export class CommentsController {
     return this.commentsService.create(user.userId, dto);
   }
 
+  /**
+   * Retrieves a paginated list of all comments across all posts.
+   * This endpoint is public (no JWT required).
+   * Use query parameters to control pagination (page and limit).
+   *
+   * @param pagination - Pagination parameters (page, limit)
+   * @returns Paginated response containing CommentDto array
+   */
   @Get()
   @ApiOperation({
     summary: 'List all comments (paginated)',
