@@ -110,6 +110,7 @@
 * **subscription:** validate create_plan amount and interval_days ([f3c4981](https://github.com/MyFanss/MyFans/commit/f3c4981192f90ae05245423b7c7370496ace8c15)), closes [#1377](https://github.com/MyFanss/MyFans/issues/1377)
 * **subscription:** validate error codes, optimize gas, add integration tests, verify wasm CI ([#895](https://github.com/MyFanss/MyFans/issues/895) [#896](https://github.com/MyFanss/MyFans/issues/896) [#897](https://github.com/MyFanss/MyFans/issues/897) [#898](https://github.com/MyFanss/MyFans/issues/898)) ([0ab1336](https://github.com/MyFanss/MyFans/commit/0ab13369ee87aa193d3ea8e7fca69f56bec28119))
 * test errors ([d48694f](https://github.com/MyFanss/MyFans/commit/d48694f2a32b5021c29fdd817add9a17a6331df0))
+* **test-consumer:** add DataKey::Paused variant and require_auth on set_paused ([af8bc34](https://github.com/MyFanss/MyFans/commit/af8bc344296908c44805a05cb84580b0336a5b33)), closes [#1405](https://github.com/MyFanss/MyFans/issues/1405)
 * **test:** add CreatorDashboardService mock to creators controller spec ([70db6a7](https://github.com/MyFanss/MyFans/commit/70db6a7694ad813fcd10fd0041ee62cbe7134e0c))
 * **tests:** resolve all failing test suite dependency errors ([e7bb906](https://github.com/MyFanss/MyFans/commit/e7bb90679d7a49bd2c701b2dae89ccb58b1225ea))
 * **treasury:** add gas benchmark tests and hot path optimization notes ([#906](https://github.com/MyFanss/MyFans/issues/906)) ([dcd7e4a](https://github.com/MyFanss/MyFans/commit/dcd7e4a654ffc35baafe6482b9d4dc41b93c634b))
