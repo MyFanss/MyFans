@@ -20,8 +20,9 @@ pub fn init(env: Env, admin: Address, platform_fee_bps: u32, platform_treasury: 
 One-time contract setup. Stores the admin address, the platform fee in basis points,
 and the treasury address that receives platform fees.
 
+- Requires `admin` authorization (panics if not authorized).
+- Panics with `AlreadyInitialized` (code 6) if the contract has already been initialized.
 - `platform_fee_bps` must be less than 10 000 (100 %); panics with `InvalidFeeBps` (code 1) otherwise.
-- Requires `admin` authorization.
 - Does **not** emit an event. (No event is defined for initialization.)
 
 ---
@@ -108,6 +109,7 @@ No authorization required.
 | 3 | `AdminNotInitialized` | Admin key not present; contract was never initialized |
 | 4 | `PlatformFeeNotInitialized` | Platform fee not set; contract init was incomplete |
 | 5 | `PlatformTreasuryNotInitialized` | Platform treasury not set; contract init was incomplete |
+| 6 | `AlreadyInitialized` | Contract was already initialized; re-initialization is not allowed |
 
 Error discriminants are stable and form part of the public client API. Do not renumber
 existing variants; add new ones at the end.
@@ -163,6 +165,8 @@ cargo build --package creator-deposits --target wasm32-unknown-unknown --release
 | `test_unauthorized_withdraw_reverts` | Non-creator cannot withdraw; balance unchanged |
 | `test_admin_not_initialized_error` | `AdminNotInitialized` error when calling admin functions before init |
 | `test_deposit_without_init_returns_error` | Deposit fails when contract is not initialized |
+| `test_reinitialization_rejected` | `AlreadyInitialized` error on second `init` call |
+| `test_init_requires_admin_auth` | `init` fails when admin does not authorize |
 
 ---
 
