@@ -3,6 +3,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
     String, Symbol,
 };
+use myfans_lib::auth;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -69,6 +70,7 @@ impl DataKey {
 /// | 8 | `InvalidTokenAddress` |
 /// | 9 | `InvalidPrice` |
 /// | 10 | `PlanNotFound` |
+/// | 11 | `InvalidPlanParams` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -92,6 +94,8 @@ pub enum Error {
     InvalidPrice = 9,
     /// Code 10 – plan ID does not exist; never created or out of range.
     PlanNotFound = 10,
+    /// Code 11 – plan `amount` must be strictly positive and `interval_days` non-zero.
+    InvalidPlanParams = 11,
 }
 
 /// Stellar "null" account (GAAA...WHF) — not a valid fee recipient.
@@ -128,6 +132,8 @@ pub struct MyfansContract;
 impl MyfansContract {
     /// Initialize the subscription contract once.
     ///
+    /// Requires `admin` to authorize the call.
+    ///
     /// Validates:
     /// * `fee_bps` must be ≤ 10000 (100%).
     /// * `token` must be a valid non-null address.
@@ -143,6 +149,7 @@ impl MyfansContract {
         if env.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
+        admin.require_auth();
         require_valid_fee_recipient(&env, &fee_recipient);
         require_valid_fee_bps(&env, fee_bps);
         require_valid_token_address(&env, &token);
@@ -180,6 +187,9 @@ impl MyfansContract {
             .unwrap_or(false);
         if paused {
             panic_with_error!(&env, Error::Paused);
+        }
+        if amount <= 0 || interval_days == 0 {
+            panic_with_error!(&env, Error::InvalidPlanParams);
         }
 
         let count: u32 = env
@@ -479,7 +489,8 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        admin.require_auth();
+        let caller = env.invoker();
+        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "pause"));
 
         env.storage().instance().set(&DataKey::Paused, &true);
         env.events().publish((Symbol::new(&env, "paused"),), admin);
@@ -493,7 +504,8 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        admin.require_auth();
+        let caller = env.invoker();
+        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "unpause"));
 
         env.storage().instance().set(&DataKey::Paused, &false);
         env.events()
@@ -511,7 +523,8 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        admin.require_auth();
+        let caller = env.invoker();
+        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "set_fee_recipient"));
 
         require_valid_fee_recipient(&env, &new_fee_recipient);
 
@@ -544,7 +557,8 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        admin.require_auth();
+        let caller = env.invoker();
+        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "set_fee_bps"));
 
         require_valid_fee_bps(&env, new_fee_bps);
 

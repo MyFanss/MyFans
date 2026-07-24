@@ -717,4 +717,51 @@ fn unauthorized_deposit_reverts_with_not_authorized() {
     );
 }
 
+#[test]
+fn test_admin_view_returns_correct_address() {
+    let env = Env::default();
+    let (admin, _, _, client, _, _) = setup(&env);
+
+    let returned_admin = client.admin().expect("admin view must return Ok");
+    assert_eq!(returned_admin, admin, "admin view must return the stored admin address");
+}
+
+#[test]
+fn test_token_view_returns_correct_address() {
+    let env = Env::default();
+    let (_, _, _, client, _, token_admin_client) = setup(&env);
+
+    let token_addr = token_admin_client.address();
+    let returned_token = client.token().expect("token view must return Ok");
+    assert_eq!(returned_token, token_addr, "token view must return the stored token address");
+}
+
+#[test]
+fn test_admin_view_returns_not_initialized_when_not_initialized() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    let result = client.try_admin();
+    assert_eq!(
+        result,
+        Err(Ok(Error::NotInitialized)),
+        "admin view must return NotInitialized error when contract is not initialized"
+    );
+}
+
+#[test]
+fn test_token_view_returns_not_initialized_when_not_initialized() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    let result = client.try_token();
+    assert_eq!(
+        result,
+        Err(Ok(Error::NotInitialized)),
+        "token view must return NotInitialized error when contract is not initialized"
+    );
+}
+
 // -------- Tests from the original first insertion (issue #940) already covered above --------

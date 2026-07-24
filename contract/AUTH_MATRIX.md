@@ -51,7 +51,7 @@ Contracts covered here (deployed by `contract/scripts/deploy.sh`):
 
 | Method | Required signer(s) | Valid invocation example | Invalid invocation example |
 | --- | --- | --- | --- |
-| `init(env, admin, fee_bps, fee_recipient, token, price)` | `none` | Any caller initializes once with config values. | Re-initialization attempt after already initialized. |
+| `init(env, admin, fee_bps, fee_recipient, token, price)` | `admin` | `admin` signs and initializes once with config values. | Non-admin caller initializes without `admin` signature. |
 | `create_plan(env, creator, asset, amount, interval_days)` | `creator` | `creator` signs and creates a plan. | Non-creator caller submits plan for `creator`. |
 | `subscribe(env, fan, plan_id, _token)` | `fan` | `fan` signs and subscribes to `plan_id`. | Another address tries to subscribe using `fan` as parameter without `fan` auth. |
 | `is_subscriber(env, fan, creator)` | `none` | Any caller checks subscription status. | Expecting signer/auth to be required for read. |

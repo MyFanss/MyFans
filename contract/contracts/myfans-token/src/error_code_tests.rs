@@ -24,12 +24,13 @@ mod cases {
         let id = env.register_contract(None, MyFansToken);
         let client = MyFansTokenClient::new(env, &id);
         let admin = Address::generate(env);
-        client.initialize(
+        let _ = client.initialize(
             &admin,
             &String::from_str(env, "MyFans Token"),
             &String::from_str(env, "MFAN"),
             &7,
             &0,
+            &admin,
         );
         (client, admin)
     }
@@ -232,5 +233,54 @@ mod cases {
         let (client, _admin) = setup(&env);
         let recipient = Address::generate(&env);
         client.mint(&recipient, &100);
+    }
+
+    // ── Error code 8: AlreadyInitialized ──────────────────────────────────────
+
+    #[test]
+    fn error_code_8_already_initialized_discriminant_is_8() {
+        assert_eq!(crate::Error::AlreadyInitialized as u32, 8);
+    }
+
+    #[test]
+    fn error_code_8_reinit_returns_already_initialized() {
+        let env = Env::default();
+        let (client, admin) = setup(&env);
+        let new_admin = Address::generate(&env);
+        // Try to reinitialize
+        let result = client.try_initialize(
+            &new_admin,
+            &String::from_str(&env, "New Token"),
+            &String::from_str(&env, "NEWT"),
+            &7,
+            &1000,
+            &new_admin,
+        );
+        assert_eq!(result, Err(Ok(crate::Error::AlreadyInitialized)));
+    }
+
+    // ── Error code 9: BadSupply ────────────────────────────────────────────────
+
+    #[test]
+    fn error_code_9_bad_supply_discriminant_is_9() {
+        assert_eq!(crate::Error::BadSupply as u32, 9);
+    }
+
+    #[test]
+    fn error_code_9_negative_supply_returns_bad_supply() {
+        let env = Env::default();
+        let id = env.register_contract(None, crate::MyFansToken);
+        let client = crate::MyFansTokenClient::new(&env, &id);
+        let admin = Address::generate(&env);
+        // Try to initialize with negative supply
+        let result = client.try_initialize(
+            &admin,
+            &String::from_str(&env, "MyFans Token"),
+            &String::from_str(&env, "MFAN"),
+            &7,
+            &-100,
+            &admin,
+        );
+        assert_eq!(result, Err(Ok(crate::Error::BadSupply)));
     }
 }

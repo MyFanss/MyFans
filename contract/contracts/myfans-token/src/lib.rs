@@ -32,7 +32,7 @@ pub struct AllowanceData {
     pub expiration_ledger: u32,
 }
 
-/// Token contract errors (codes 1–7 match test expectations)
+/// Token contract errors (codes 1–9 match test expectations)
 /// Per-contract error codes for the **myfans-token** contract.
 ///
 /// These discriminants are stable and form part of the public client API.
@@ -47,6 +47,8 @@ pub struct AllowanceData {
 /// | 5 | `InvalidExpiration` |
 /// | 6 | `NoAllowance` |
 /// | 7 | `Unauthorized` |
+/// | 8 | `AlreadyInitialized` |
+/// | 9 | `BadSupply` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -64,6 +66,10 @@ pub enum Error {
     NoAllowance = 6,
     /// Code 7 – mint: caller is not admin.
     Unauthorized = 7,
+    /// Code 8 – initialize: contract already initialized.
+    AlreadyInitialized = 8,
+    /// Code 9 – initialize: supply must be non-negative.
+    BadSupply = 9,
 }
 
 #[contract]
@@ -95,7 +101,12 @@ impl MyFansToken {
     /// * `name` - Token name (e.g., "MyFans Token")
     /// * `symbol` - Token symbol (e.g., "MFAN")
     /// * `decimals` - Token decimals (typically 7 for Soroban)
-    /// * `initial_supply` - Initial supply (deferred minting to Issue 3)
+    /// * `initial_supply` - Initial supply to mint to recipient
+    /// * `recipient` - Address to receive the initial supply
+    ///
+    /// # Errors
+    /// * [`Error::AlreadyInitialized`] – contract is already initialized.
+    /// * [`Error::BadSupply`] – initial_supply is negative.
     pub fn initialize(
         env: Env,
         admin: Address,
@@ -103,16 +114,17 @@ impl MyFansToken {
         symbol: String,
         decimals: u32,
         initial_supply: i128,
-    ) {
+        recipient: Address,
+    ) -> Result<(), Error> {
         // Prevent accidental re-initialization which could overwrite admin
         // and metadata. Initialization is a one-time operation.
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("contract already initialized");
+            return Err(Error::AlreadyInitialized);
         }
 
         // Validate inputs
         if initial_supply < 0 {
-            panic!("initial_supply must be non-negative");
+            return Err(Error::BadSupply);
         }
 
         // Store admin in persistent storage
@@ -126,7 +138,10 @@ impl MyFansToken {
             .instance()
             .set(&DataKey::TotalSupply, &initial_supply);
 
-        // Note: Actual minting is deferred to Issue 3
+        // Mint initial_supply to recipient
+        if initial_supply > 0 {
+            write_balance(&env, recipient.clone(), initial_supply);
+        }
 
         // Emit an initialization event so indexers can detect contract setup.
         env.events().publish(
@@ -139,6 +154,7 @@ impl MyFansToken {
                 initial_supply,
             ),
         );
+        Ok(())
     }
 
     /// Get the admin address (view function)
