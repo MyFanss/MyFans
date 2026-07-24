@@ -142,6 +142,22 @@ impl Treasury {
         );
     }
 
+    /// #1381: Public view – returns the treasury admin address.
+    ///
+    /// Panics with [`Error::NotInitialized`] if the contract has not been
+    /// initialized yet, giving integrators a typed error instead of a host trap.
+    pub fn admin(env: Env) -> Address {
+        Self::get_admin(&env)
+    }
+
+    /// #1381: Public view – returns the token address accepted by the treasury.
+    ///
+    /// Panics with [`Error::NotInitialized`] if the contract has not been
+    /// initialized yet, giving integrators a typed error instead of a host trap.
+    pub fn token(env: Env) -> Address {
+        Self::get_token(&env)
+    }
+
     // Internal helper functions
     fn get_admin(env: &Env) -> Address {
         env.storage()

@@ -1792,3 +1792,208 @@ fn test_cancel_paused_returns_typed_error() {
         Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
     );
 }
+
+// ── #1378 – subscribe token validation ───────────────────────────────────────
+
+/// subscribe with a token that matches plan.asset succeeds (regression guard).
+#[test]
+fn test_subscribe_matching_token_succeeds() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    // Passing token.address (== plan.asset) must succeed.
+    client.subscribe(&fan, &plan_id, &token.address);
+    assert!(client.is_subscriber(&fan, &creator));
+}
+
+/// subscribe with a token that does NOT match plan.asset is rejected with
+/// Error::InvalidTokenAddress (code 8).
+#[test]
+fn test_subscribe_mismatched_token_rejected() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+
+    // Register a second, different token contract.
+    let other_admin = Address::generate(&env);
+    let other_token_addr = env
+        .register_stellar_asset_contract_v2(other_admin.clone())
+        .address();
+
+    let result = client.try_subscribe(&fan, &plan_id, &other_token_addr);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidTokenAddress as u32,
+        ))),
+        "mismatched token must return InvalidTokenAddress"
+    );
+}
+
+// ── #1379 – cancel guards absence ────────────────────────────────────────────
+
+/// cancel when no subscription exists returns Error::SubscriptionNotFound (code 3).
+#[test]
+fn test_cancel_absent_subscription_returns_not_found() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+
+    let result = client.try_cancel(&fan, &creator, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::SubscriptionNotFound as u32,
+        ))),
+        "cancel with no subscription must return SubscriptionNotFound"
+    );
+}
+
+/// cancel when absent emits NO spurious event.
+#[test]
+fn test_cancel_absent_emits_no_event() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+
+    let _ = client.try_cancel(&fan, &creator, &0);
+
+    let cancelled = env.events().all().iter().any(|e| {
+        e.1.first()
+            .is_some_and(|t| t.try_into_val(&env).ok() == Some(Symbol::new(&env, "cancelled")))
+    });
+    assert!(!cancelled, "no cancelled event must be emitted when absent");
+}
+
+/// cancel after a successful subscribe removes the subscription and succeeds.
+#[test]
+fn test_cancel_existing_subscription_succeeds() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    assert!(client.is_subscriber(&fan, &creator));
+
+    client.cancel(&fan, &creator, &0);
+    assert!(!client.is_subscriber(&fan, &creator));
+}
+
+// ── #1380 – CreatorSubscriptionCount decrements on cancel ───────────────────
+
+/// create_subscription increments counter; cancel decrements it back to zero.
+#[test]
+fn test_cancel_decrements_subscription_count() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
+
+    env.ledger().with_mut(|li| li.sequence_number = 1000);
+    client.create_subscription(&fan, &creator, &17280);
+
+    let count_before: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get(&DataKey::CreatorSubscriptionCount(creator.clone()))
+            .unwrap_or(0)
+    });
+    assert_eq!(count_before, 1, "count must be 1 after one subscription");
+
+    client.cancel(&fan, &creator, &0);
+
+    let count_after: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get(&DataKey::CreatorSubscriptionCount(creator.clone()))
+            .unwrap_or(0)
+    });
+    assert_eq!(count_after, 0, "count must decrement to 0 after cancel");
+}
+
+/// Counter never goes below zero (saturating_sub floor).
+#[test]
+fn test_cancel_count_floor_at_zero() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
+
+    // Use plan-based subscribe (does NOT increment CreatorSubscriptionCount).
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    // Count starts at 0 (plan subscribe doesn't increment it).
+    let count_before: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get(&DataKey::CreatorSubscriptionCount(creator.clone()))
+            .unwrap_or(0)
+    });
+    assert_eq!(count_before, 0, "plan subscribe must not touch the counter");
+
+    // Cancel — counter must saturate at 0, not wrap.
+    client.cancel(&fan, &creator, &0);
+
+    let count_after: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get(&DataKey::CreatorSubscriptionCount(creator.clone()))
+            .unwrap_or(0)
+    });
+    assert_eq!(count_after, 0, "counter must never underflow below zero");
+}
+
+/// Two fans subscribe; one cancels — counter goes from 2 to 1.
+#[test]
+fn test_cancel_decrements_count_among_multiple_subscribers() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+    let fan1 = Address::generate(&env);
+    let fan2 = Address::generate(&env);
+    token_admin.mint(&fan1, &5000);
+    token_admin.mint(&fan2, &5000);
+
+    env.ledger().with_mut(|li| li.sequence_number = 1000);
+    client.create_subscription(&fan1, &creator, &17280);
+    client.create_subscription(&fan2, &creator, &17280);
+
+    let count: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get(&DataKey::CreatorSubscriptionCount(creator.clone()))
+            .unwrap_or(0)
+    });
+    assert_eq!(count, 2);
+
+    client.cancel(&fan1, &creator, &0);
+
+    let count_after: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get(&DataKey::CreatorSubscriptionCount(creator.clone()))
+            .unwrap_or(0)
+    });
+    assert_eq!(count_after, 1, "count must be 1 after one of two fans cancels");
+}

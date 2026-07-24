@@ -202,7 +202,7 @@ impl MyfansContract {
         plan_id
     }
 
-    pub fn subscribe(env: Env, fan: Address, plan_id: u32, _token: Address) {
+    pub fn subscribe(env: Env, fan: Address, plan_id: u32, token: Address) {
         fan.require_auth();
         let paused: bool = env
             .storage()
@@ -218,6 +218,13 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Plan(plan_id))
             .unwrap_or_else(|| panic_with_error!(&env, Error::PlanNotFound));
+
+        // #1378: Validate caller-supplied token matches the plan's asset.
+        // Mismatched token is rejected to prevent payment in an unintended asset.
+        if token != plan.asset {
+            panic_with_error!(&env, Error::InvalidTokenAddress);
+        }
+
         let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
         let fee = (plan.amount * fee_bps as i128) / 10000;
         let creator_amount = plan.amount - fee;
@@ -350,6 +357,10 @@ impl MyfansContract {
     /// * `reason` - Reason code for cancellation (e.g. 0 = user-initiated,
     ///   1 = too expensive, 2 = content quality, 3 = switching creator, 4 = other)
     ///
+    /// # Errors
+    /// * [`Error::SubscriptionNotFound`] – no active subscription record exists
+    ///   for the `(fan, creator)` pair.
+    ///
     /// Event: `cancelled` — topics: `(name, fan, creator)` data: `(true, reason)`
     /// Backward-compatible: topics unchanged; data is now a tuple instead of bare `true`.
     pub fn cancel(env: Env, fan: Address, creator: Address, reason: u32) {
@@ -363,9 +374,32 @@ impl MyfansContract {
             panic_with_error!(&env, Error::Paused);
         }
 
+        // #1379: Guard — return SubscriptionNotFound when no subscription exists.
+        // Prevents spurious cancel events and silent no-ops.
+        if !env
+            .storage()
+            .instance()
+            .has(&DataKey::subscription(fan.clone(), creator.clone()))
+        {
+            panic_with_error!(&env, Error::SubscriptionNotFound);
+        }
+
         env.storage()
             .instance()
             .remove(&DataKey::subscription(fan.clone(), creator.clone()));
+
+        // #1380: Decrement CreatorSubscriptionCount, floored at zero.
+        let current_count: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::CreatorSubscriptionCount(creator.clone()))
+            .unwrap_or(0);
+        let new_count = current_count.saturating_sub(1);
+        env.storage().instance().set(
+            &DataKey::CreatorSubscriptionCount(creator.clone()),
+            &new_count,
+        );
+
         // topics: (name, fan, creator)  data: (true, reason)
         env.events().publish(
             (Symbol::new(&env, "cancelled"), fan.clone(), creator),
