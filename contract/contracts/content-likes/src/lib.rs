@@ -36,6 +36,7 @@ pub enum DataKey {
 /// | 1 | `NotLiked` |
 /// | 2 | `AlreadyInitialized` |
 /// | 3 | `CapacityExceeded` |
+/// | 4 | `NotInitialized` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -45,6 +46,8 @@ pub enum Error {
     AlreadyInitialized = 2,
     /// Code 3 – user has reached the maximum number of likes.
     CapacityExceeded = 3,
+    /// Code 4 – contract was never initialized.
+    NotInitialized = 4,
 }
 
 #[contract]
@@ -66,7 +69,7 @@ impl ContentLikes {
         env.storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("contract not initialized")
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
     }
     /// Like a content item (idempotent)
     ///
@@ -274,6 +277,33 @@ impl ContentLikes {
 mod test {
     use super::*;
     use soroban_sdk::{testutils::Address as _, testutils::Events, Error as SorobanError};
+
+    #[test]
+    fn test_admin_not_initialized_returns_typed_error() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let result = client.try_admin();
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::NotInitialized as u32,
+            )))
+        );
+    }
+
+    #[test]
+    fn test_initialize_stores_admin() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        client.initialize(&admin);
+        assert_eq!(client.admin(), admin);
+    }
 
     #[test]
     fn test_like_and_unlike() {

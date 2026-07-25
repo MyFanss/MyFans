@@ -1,5 +1,8 @@
 use crate::{
-    events::{AdminTransferredEvent, ContentPriceSetEvent, MaxPriceClearedEvent, MaxPriceSetEvent},
+    events::{
+        AdminTransferredEvent, ContentPriceSetEvent, InitializedEvent, MaxPriceClearedEvent,
+        MaxPriceSetEvent,
+    },
     ContentAccess, ContentAccessClient,
 };
 use soroban_sdk::{
@@ -32,6 +35,33 @@ fn setup(env: &Env) -> (ContentAccessClient<'_>, Address, Address) {
 
     client.initialize(&admin, &token_address);
     (client, admin, creator)
+}
+
+#[test]
+fn initialize_emits_structured_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.sequence_number = 1000);
+
+    let admin = Address::generate(&env);
+    let token_address = env.register_contract(None, MockToken);
+    let contract_id = env.register_contract(None, ContentAccess);
+    let client = ContentAccessClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &token_address);
+
+    let event = env
+        .events()
+        .all()
+        .iter()
+        .find(|event| {
+            event.1.first().is_some_and(|topic| {
+                topic.try_into_val(&env).ok() == Some(Symbol::new(&env, "initialized"))
+            })
+        })
+        .expect("initialized event");
+    let data: InitializedEvent = event.2.try_into_val(&env).unwrap();
+    assert_eq!(data, InitializedEvent { admin });
 }
 
 #[test]

@@ -309,3 +309,65 @@ fn set_content_price_at_max_is_accepted() {
     client.set_content_price(&creator, &1, &1_000);
     assert_eq!(client.get_content_price(&creator, &1), Some(1_000));
 }
+
+// ── set_paused (admin-gated) ────────────────────────────────────────────────
+
+/// Admin can pause the contract.
+#[test]
+fn set_paused_true_pauses_contract() {
+    let (env, contract_id, admin, token_id) = setup();
+    let client = ContentAccessClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &token_id);
+    let creator = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    client.set_content_price(&creator, &1, &100);
+
+    client.set_paused(&true);
+    let result = client.try_unlock_content(&buyer, &creator, &1, &u64::MAX);
+    assert!(
+        result.is_err(),
+        "unlock_content must fail when contract is paused"
+    );
+}
+
+/// Admin can unpause the contract; unlock_content works again after unpause.
+#[test]
+fn set_paused_false_unpauses_contract() {
+    let (env, contract_id, admin, token_id) = setup();
+    let client = ContentAccessClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &token_id);
+    let creator = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    client.set_content_price(&creator, &1, &100);
+
+    client.set_paused(&true);
+    let result = client.try_unlock_content(&buyer, &creator, &1, &u64::MAX);
+    assert!(result.is_err(), "should fail when paused");
+
+    client.set_paused(&false);
+    let result = client.try_unlock_content(&buyer, &creator, &1, &u64::MAX);
+    assert!(result.is_ok(), "should succeed after unpause");
+}
+
+/// Non-admin cannot call set_paused.
+#[test]
+fn set_paused_rejected_for_non_admin() {
+    let env = Env::default();
+    env.ledger().with_mut(|li| li.sequence_number = 1000);
+    let contract_id = env.register_contract(None, ContentAccess);
+    let token_id = env.register_contract(None, MockToken);
+    let client = ContentAccessClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &token_id);
+
+    env.set_auths(EMPTY_AUTHS);
+    let result = client.try_set_paused(&true);
+    assert!(
+        result.is_err(),
+        "set_paused must fail without admin auth"
+    );
+}

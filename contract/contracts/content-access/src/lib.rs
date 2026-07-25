@@ -2,7 +2,8 @@
 mod events;
 
 use crate::events::{
-    AdminTransferredEvent, ContentPriceSetEvent, MaxPriceClearedEvent, MaxPriceSetEvent,
+    AdminTransferredEvent, ContentPriceSetEvent, InitializedEvent, MaxPriceClearedEvent,
+    MaxPriceSetEvent,
 };
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
@@ -47,6 +48,8 @@ pub enum DataKey {
     ContentPrice(Address, u64),
     /// Optional maximum price cap set by admin
     MaxPrice,
+    /// Whether the contract is paused (emergency stop)
+    Paused,
 }
 
 /// Per-contract error codes for the **content-access** contract.
@@ -61,6 +64,7 @@ pub enum DataKey {
 /// | 3 | `NotInitialized` |
 /// | 4 | `PurchaseExpired` |
 /// | 6 | `NotBuyer` |
+/// | 10 | `Paused` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -80,6 +84,8 @@ pub enum Error {
     PriceExceedsMax = 8,
     /// Code 9 – provided max price is invalid (negative).
     InvalidMaxPrice = 9,
+    /// Code 10 – contract is paused; action not allowed.
+    Paused = 10,
 }
 
 #[contract]
@@ -101,6 +107,13 @@ impl ContentAccess {
         env.storage()
             .instance()
             .set(&DataKey::TokenAddress, &token_address);
+
+        env.events().publish(
+            (Symbol::new(&env, "initialized"),),
+            InitializedEvent {
+                admin: admin.clone(),
+            },
+        );
     }
 
     /// Unlock content for a buyer by transferring payment to creator.
@@ -120,6 +133,9 @@ impl ContentAccess {
         content_id: u64,
         expiry_ledger: u64,
     ) {
+        if env.storage().instance().has(&DataKey::Paused) {
+            panic_with_error!(&env, Error::Paused);
+        }
         buyer.require_auth();
 
         // Cache current ledger sequence once (hot path optimization).
@@ -272,6 +288,25 @@ impl ContentAccess {
         env.storage().instance().get(&DataKey::MaxPrice)
     }
 
+    /// Pause or unpause the contract. Only admin may call this.
+    ///
+    /// When paused, `unlock_content` is blocked (emergency stop).
+    /// Pass `true` to pause, `false` to unpause.
+    pub fn set_paused(env: Env, paused: bool) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+        admin.require_auth();
+
+        if paused {
+            env.storage().instance().set(&DataKey::Paused, &true);
+        } else {
+            env.storage().instance().remove(&DataKey::Paused);
+        }
+    }
+
     /// Set a new admin address. Current admin must authorize.
     pub fn set_admin(env: Env, new_admin: Address) {
         let current_admin: Address = env
@@ -298,6 +333,10 @@ impl ContentAccess {
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
     }
 }
+
+#[cfg(test)]
+#[path = "property_tests.rs"]
+mod property_tests;
 
 mod content_query_test;
 

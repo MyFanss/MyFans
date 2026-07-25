@@ -2,6 +2,12 @@ use soroban_sdk::{contracttype, Address};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InitializedEvent {
+    pub admin: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContentPriceSetEvent {
     pub creator: Address,
     pub content_id: u64,
