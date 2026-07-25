@@ -7,7 +7,6 @@ import {
   Param,
   Query,
   UseGuards,
-  Request,
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
@@ -26,6 +25,7 @@ import { QueryFlagsDto } from './dto/query-flags.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth-module/guards/roles.guard';
 import { Roles } from '../auth-module/decorators/roles.decorator';
+import { CurrentUser, JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 
 @ApiTags('moderation')
@@ -44,8 +44,8 @@ export class ModerationController {
   @ApiOperation({ summary: 'Report content for moderation' })
   @ApiResponse({ status: 201, description: 'Flag created' })
   @ApiResponse({ status: 409, description: 'Already flagged' })
-  createFlag(@Request() req, @Body() dto: CreateFlagDto) {
-    return this.moderationService.createFlag(req.user.id, dto);
+  createFlag(@CurrentUser() user: JwtUserPayload, @Body() dto: CreateFlagDto) {
+    return this.moderationService.createFlag(user.userId, dto);
   }
 
   // ── Admin endpoints ───────────────────────────────────────────────────
@@ -73,11 +73,11 @@ export class ModerationController {
   @ApiOperation({ summary: '[Admin] Review / update a moderation flag' })
   @ApiResponse({ status: 200, description: 'Flag updated' })
   reviewFlag(
-    @Request() req,
+    @CurrentUser() user: JwtUserPayload,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ReviewFlagDto,
   ) {
-    return this.moderationService.reviewFlag(req.user.id, id, dto);
+    return this.moderationService.reviewFlag(user.userId, id, dto);
   }
 
   @Get('flags/:id/audit')

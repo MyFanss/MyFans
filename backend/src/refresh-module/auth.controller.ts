@@ -15,7 +15,7 @@ import {
 } from '@nestjs/swagger';
 import { RefreshTokenService, TokenPair } from './refresh-token.service';
 import { RefreshTokenDto, LogoutDto, TokenResponseDto } from './refresh-token.dto';
-import { JwtAuthGuard } from './jwt-auth.guard';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 
 @ApiTags('auth')
 @Controller({ path: 'auth', version: '1' })

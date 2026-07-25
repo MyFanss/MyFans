@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
-import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException } from '@nestjs/common';
+import { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 
 describe('UsersController', () => {
     let controller: UsersController;
@@ -15,10 +15,6 @@ describe('UsersController', () => {
         remove: jest.fn(),
     };
 
-    const mockJwtService = {
-        verifyAsync: jest.fn(),
-    };
-
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             controllers: [UsersController],
@@ -26,10 +22,6 @@ describe('UsersController', () => {
                 {
                     provide: UsersService,
                     useValue: mockUsersService,
-                },
-                {
-                    provide: JwtService,
-                    useValue: mockJwtService,
                 },
             ],
         }).compile();
@@ -43,30 +35,30 @@ describe('UsersController', () => {
     });
 
     describe('removeMe', () => {
+        const user: JwtUserPayload = { userId: 'user-id', email: 'a@b.com' };
+
         it('should call service.remove if password is valid', async () => {
-            const req = { user: { id: 'user-id' } };
             const dto = { password: 'correct_password' };
             service.validatePassword.mockResolvedValue(true);
             service.remove.mockResolvedValue(undefined);
 
-            await controller.removeMe(req, dto);
+            await controller.removeMe(user, dto);
 
             expect(service.validatePassword).toHaveBeenCalledWith('user-id', 'correct_password');
             expect(service.remove).toHaveBeenCalledWith('user-id');
         });
 
         it('should throw UnauthorizedException if password is invalid', async () => {
-            const req = { user: { id: 'user-id' } };
             const dto = { password: 'wrong_password' };
             service.validatePassword.mockResolvedValue(false);
 
-            await expect(controller.removeMe(req, dto)).rejects.toThrow(UnauthorizedException);
+            await expect(controller.removeMe(user, dto)).rejects.toThrow(UnauthorizedException);
         });
     });
 
     describe('updateOnboarding', () => {
-        it('should call service.updateOnboarding with req.user.id and dto', async () => {
-            const req = { user: { id: 'user-id' } };
+        it('should call service.updateOnboarding with userId and dto', async () => {
+            const user: JwtUserPayload = { userId: 'user-id', email: 'a@b.com' };
             const dto = {
                 currentStep: 'profile',
                 completedSteps: ['account-type'],
@@ -89,7 +81,7 @@ describe('UsersController', () => {
                 },
             });
 
-            const result = await controller.updateOnboarding(req as any, dto as any);
+            const result = await controller.updateOnboarding(user, dto as any);
 
             expect(mockUsersService.updateOnboarding).toHaveBeenCalledWith('user-id', {
                 currentStep: 'profile',
