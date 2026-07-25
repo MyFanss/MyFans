@@ -27,6 +27,8 @@ import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { ReferralModule } from './referral/referral.module';
 import { CsrfModule } from './csrf/csrf.module';
 import { SocialLinksModule } from './social-link/social-links.module';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { EarningsModule } from './earnings/earnings.module';
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
 import { CorrelationExceptionFilter } from './common/filters/correlation-exception.filter';
 import { RequestContextService } from './common/services/request-context.service';
@@ -64,6 +66,8 @@ const IDEMPOTENCY_ROUTES = [
     ReferralModule,
     CsrfModule,
     SocialLinksModule,
+    AnalyticsModule,
+    EarningsModule,
   ],
   controllers: [AppController, OpenAPIController],
   providers: [

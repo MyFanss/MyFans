@@ -9,6 +9,7 @@ describe('HealthController', () => {
         getHealth: jest.fn(),
         getDetailedHealth: jest.fn(),
         getAggregatedHealth: jest.fn(),
+        getReadiness: jest.fn(),
         checkDatabase: jest.fn(),
         checkRedis: jest.fn(),
         checkSorobanRpc: jest.fn(),
@@ -114,6 +115,61 @@ describe('HealthController', () => {
 
             expect(res.status).toHaveBeenCalledWith(200);
             expect(res.json).toHaveBeenCalledWith(health);
+        });
+    });
+
+    describe('getReadiness', () => {
+        it('returns 200 when database is up', async () => {
+            const readiness = {
+                status: 'up' as const,
+                timestamp: new Date().toISOString(),
+                checks: {
+                    database: { status: 'up', latencyMs: 3 },
+                    sorobanRpc: { status: 'up' },
+                },
+            };
+            mockHealthService.getReadiness.mockResolvedValue(readiness);
+
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+            await controller.getReadiness(res);
+
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(res.json).toHaveBeenCalledWith(readiness);
+        });
+
+        it('returns 503 when database is down', async () => {
+            const readiness = {
+                status: 'down' as const,
+                timestamp: new Date().toISOString(),
+                checks: {
+                    database: { status: 'down', error: 'Connection refused' },
+                    sorobanRpc: { status: 'up' },
+                },
+            };
+            mockHealthService.getReadiness.mockResolvedValue(readiness);
+
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+            await controller.getReadiness(res);
+
+            expect(res.status).toHaveBeenCalledWith(503);
+            expect(res.json).toHaveBeenCalledWith(readiness);
+        });
+
+        it('stays ready (200) when only Soroban RPC is down', async () => {
+            const readiness = {
+                status: 'up' as const,
+                timestamp: new Date().toISOString(),
+                checks: {
+                    database: { status: 'up', latencyMs: 2 },
+                    sorobanRpc: { status: 'down', error: 'timeout' },
+                },
+            };
+            mockHealthService.getReadiness.mockResolvedValue(readiness);
+
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+            await controller.getReadiness(res);
+
+            expect(res.status).toHaveBeenCalledWith(200);
         });
     });
 

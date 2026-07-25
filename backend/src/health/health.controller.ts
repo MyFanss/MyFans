@@ -20,14 +20,39 @@ export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Basic health check' })
+  @ApiOperation({
+    summary: 'Liveness probe',
+    description:
+      'Reports whether the process is running and able to handle requests at ' +
+      'all. Intentionally does not probe the database or other subsystems — ' +
+      'use GET /health/ready for that. A dependency outage should not cause ' +
+      'an orchestrator to restart an otherwise-healthy process.',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Service is healthy',
+    description: 'Process is alive',
     type: HealthStatusDto,
   })
   getHealth() {
     return this.healthService.getHealth();
+  }
+
+  @Get('ready')
+  @Throttle({ medium: { limit: 50, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Readiness probe',
+    description:
+      'Reports whether this instance is fit to receive traffic. Probes the ' +
+      'database (mandatory — failure fails readiness) and Soroban RPC ' +
+      '(optional — reported for visibility, does not fail readiness).',
+  })
+  @ApiResponse({ status: 200, description: 'Instance is ready to receive traffic' })
+  @ApiResponse({ status: 503, description: 'Database is unreachable' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  async getReadiness(@Res() res: Response) {
+    const readiness = await this.healthService.getReadiness();
+    const httpStatus = readiness.status === 'down' ? 503 : 200;
+    return res.status(httpStatus).json(readiness);
   }
 
   @Get('detailed')

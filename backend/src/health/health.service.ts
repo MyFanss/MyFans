@@ -31,6 +31,22 @@ export interface DetailedHealthCheckResult extends HealthCheckResult {
     };
 }
 
+/**
+ * Readiness result — unlike liveness (`getHealth`), this actually probes
+ * subsystems. The database is mandatory: a failed DB probe fails readiness
+ * so a load balancer stops routing traffic to this instance. Soroban RPC is
+ * probed for visibility but is optional and never fails readiness on its own,
+ * since the API remains functional for non-chain reads/writes without it.
+ */
+export interface ReadinessResult {
+  status: 'up' | 'down';
+  timestamp: string;
+  checks: {
+    database: { status: 'up' | 'down' | 'degraded'; latencyMs?: number; error?: string };
+    sorobanRpc: SorobanHealthStatus;
+  };
+}
+
 export interface AggregatedHealthResult {
   status: 'up' | 'down' | 'degraded';
   timestamp: string;
@@ -319,6 +335,29 @@ export class HealthService {
         }
       });
     });
+  }
+
+  /**
+   * Readiness probe. Unlike `getHealth()` (liveness — always up while the
+   * process is running), this actually checks whether the instance is fit
+   * to receive traffic: the database must be reachable, or readiness fails.
+   * Soroban RPC is probed and reported for visibility but does not gate
+   * readiness on its own.
+   */
+  async getReadiness(): Promise<ReadinessResult> {
+    const [dbHealth, rpcHealth] = await Promise.all([
+      this.checkDatabaseWithLatency(),
+      this.checkSorobanRpc(),
+    ]);
+
+    return {
+      status: dbHealth.status === 'down' ? 'down' : 'up',
+      timestamp: new Date().toISOString(),
+      checks: {
+        database: dbHealth,
+        sorobanRpc: rpcHealth,
+      },
+    };
   }
 
   async checkSorobanRpc(): Promise<SorobanHealthStatus> {
