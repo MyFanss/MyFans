@@ -183,3 +183,23 @@ fn admin_can_set_max_price_baseline() {
     client.set_max_price(&500);
     assert_eq!(client.get_max_price(), Some(500));
 }
+
+#[test]
+fn set_paused_reverts_for_non_admin_auth() {
+    let env = Env::default();
+    let (client, admin, _token_address) = setup(&env);
+    let rogue = Address::generate(&env);
+
+    mock_rogue_auth(
+        &env,
+        &rogue,
+        &client.address,
+        "set_paused",
+        vec![&env, true.into_val(&env)],
+    );
+
+    assert!(client.try_set_paused(&true).is_err());
+    assert!(!client.is_paused());
+    assert_eq!(client.admin(), admin);
+}
+

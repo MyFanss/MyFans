@@ -2,7 +2,8 @@
 mod events;
 
 use crate::events::{
-    AdminTransferredEvent, ContentPriceSetEvent, MaxPriceClearedEvent, MaxPriceSetEvent,
+    AdminTransferredEvent, ContentPriceSetEvent, InitializedEvent, MaxPriceClearedEvent,
+    MaxPriceSetEvent,
 };
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
@@ -41,6 +42,8 @@ pub enum DataKey {
     Admin,
     /// Token address for payments
     TokenAddress,
+    /// Paused flag (bool)
+    Paused,
     /// Purchase record: (buyer, creator, content_id) -> Purchase
     Access(Address, Address, u64),
     /// Content price: (creator, content_id) -> price  [legacy u64 key]
@@ -61,6 +64,10 @@ pub enum DataKey {
 /// | 3 | `NotInitialized` |
 /// | 4 | `PurchaseExpired` |
 /// | 6 | `NotBuyer` |
+/// | 7 | `InvalidPrice` |
+/// | 8 | `PriceExceedsMax` |
+/// | 9 | `InvalidMaxPrice` |
+/// | 10 | `Paused` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -80,6 +87,8 @@ pub enum Error {
     PriceExceedsMax = 8,
     /// Code 9 – provided max price is invalid (negative).
     InvalidMaxPrice = 9,
+    /// Code 10 – contract is paused; state-changing calls are rejected.
+    Paused = 10,
 }
 
 #[contract]
@@ -101,6 +110,33 @@ impl ContentAccess {
         env.storage()
             .instance()
             .set(&DataKey::TokenAddress, &token_address);
+
+        env.events().publish(
+            (Symbol::new(&env, "initialized"),),
+            InitializedEvent {
+                admin: admin.clone(),
+            },
+        );
+    }
+
+    /// Check if the contract is paused (view function)
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    /// Pause or unpause the contract (admin only).
+    /// When paused, `unlock_content` is blocked.
+    pub fn set_paused(env: Env, paused: bool) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Paused, &paused);
     }
 
     /// Unlock content for a buyer by transferring payment to creator.
@@ -120,6 +156,9 @@ impl ContentAccess {
         content_id: u64,
         expiry_ledger: u64,
     ) {
+        if Self::is_paused(env.clone()) {
+            panic_with_error!(&env, Error::Paused);
+        }
         buyer.require_auth();
 
         // Cache current ledger sequence once (hot path optimization).
@@ -932,3 +971,6 @@ mod unauthorized_tests;
 #[cfg(test)]
 #[path = "tests/init_admin_tests.rs"]
 mod init_admin_tests;
+
+#[cfg(test)]
+mod property_tests;

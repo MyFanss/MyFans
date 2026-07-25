@@ -309,3 +309,68 @@ fn set_content_price_at_max_is_accepted() {
     client.set_content_price(&creator, &1, &1_000);
     assert_eq!(client.get_content_price(&creator, &1), Some(1_000));
 }
+
+// ── Pause / unpause ──────────────────────────────────────────────────────────
+
+/// Admin can pause the contract; is_paused returns true after.
+#[test]
+fn set_paused_pauses_contract() {
+    let (env, contract_id, admin, token_id) = setup();
+    let client = ContentAccessClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &token_id);
+    assert!(!client.is_paused(), "contract must start unpaused");
+
+    client.set_paused(&true);
+    assert!(client.is_paused(), "contract must be paused after set_paused(true)");
+
+    client.set_paused(&false);
+    assert!(!client.is_paused(), "contract must be unpaused after set_paused(false)");
+}
+
+/// unlock_content reverts when contract is paused.
+#[test]
+fn unlock_content_reverts_when_paused() {
+    let (env, contract_id, admin, token_id) = setup();
+    let client = ContentAccessClient::new(&env, &contract_id);
+    let creator = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &token_id);
+    client.set_content_price(&creator, &1, &100);
+
+    // Pause the contract
+    client.set_paused(&true);
+    assert!(client.is_paused());
+
+    // unlock_content should now fail
+    let buyer = Address::generate(&env);
+    let result = client.try_unlock_content(&buyer, &creator, &1, &u64::MAX);
+    assert!(
+        result.is_err(),
+        "unlock_content must fail when contract is paused"
+    );
+}
+
+/// unlock_content works normally after unpausing.
+#[test]
+fn unlock_content_succeeds_after_unpause() {
+    let (env, contract_id, admin, token_id) = setup();
+    let client = ContentAccessClient::new(&env, &contract_id);
+    let creator = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &token_id);
+    client.set_content_price(&creator, &1, &100);
+
+    // Pause then unpause
+    client.set_paused(&true);
+    client.set_paused(&false);
+    assert!(!client.is_paused());
+
+    // unlock_content should succeed again
+    let buyer = Address::generate(&env);
+    client.unlock_content(&buyer, &creator, &1, &u64::MAX);
+    assert!(client.has_access(&buyer, &creator, &1));
+}
+
