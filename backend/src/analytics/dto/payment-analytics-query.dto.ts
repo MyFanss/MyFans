@@ -1,19 +1,36 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsDateString, IsInt, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsDateString,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class PaymentAnalyticsQueryDto {
-  @ApiPropertyOptional({ description: 'Filter by creator Stellar address' })
+  @ApiPropertyOptional({
+    description:
+      'Filter by creator Stellar address. Admins may pass any value or omit it; ' +
+      'non-admins are always scoped to their own aggregates regardless of this value.',
+  })
   @IsOptional()
   @IsString()
   creator?: string;
 
-  @ApiPropertyOptional({ description: 'Start date (ISO 8601)', example: '2025-01-01' })
+  @ApiPropertyOptional({
+    description: 'Start date (ISO 8601)',
+    example: '2025-01-01',
+  })
   @IsOptional()
   @IsDateString()
   from?: string;
 
-  @ApiPropertyOptional({ description: 'End date (ISO 8601)', example: '2025-12-31' })
+  @ApiPropertyOptional({
+    description: 'End date (ISO 8601)',
+    example: '2025-12-31',
+  })
   @IsOptional()
   @IsDateString()
   to?: string;

@@ -14,7 +14,15 @@ import {
   UseGuards,
   UseFilters,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiBody, ApiResponse, ApiTags, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiOperation,
+  ApiParam,
+  ApiBody,
+  ApiResponse,
+  ApiTags,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { CommentsService } from './comments.service';
 import { CommentDto, CreateCommentDto, UpdateCommentDto } from './dto';
@@ -56,7 +64,9 @@ export class CommentsController {
   @ApiResponse({
     status: 400,
     description: 'Invalid comment parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid comment parameters' } },
+    schema: {
+      example: { statusCode: 400, message: 'Invalid comment parameters' },
+    },
   })
   @ApiResponse({
     status: 401,
@@ -94,8 +104,16 @@ export class CommentsController {
     description:
       'Page-paginated comment list. Pass `page` and `limit`; responses include `data`, `total`, `page`, and `limit`.',
   })
-  @ApiQuery({ name: 'page', required: false, description: 'Page number (default 1)' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default 20, max 100)' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: 'Page number (default 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Items per page (default 20, max 100)',
+  })
   @ApiResponse({
     status: 200,
     description: 'Page-paginated comments list',
@@ -104,25 +122,38 @@ export class CommentsController {
   @ApiResponse({
     status: 400,
     description: 'Invalid pagination parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid pagination parameters' } },
+    schema: {
+      example: { statusCode: 400, message: 'Invalid pagination parameters' },
+    },
   })
   @ApiResponse({
     status: 500,
     description: 'Internal server error',
     schema: { example: { statusCode: 500, message: 'Internal server error' } },
   })
-  async findAll(@Query() pagination: PaginationDto): Promise<PaginatedResponseDto<CommentDto>> {
+  async findAll(
+    @Query() pagination: PaginationDto,
+  ): Promise<PaginatedResponseDto<CommentDto>> {
     return this.commentsService.findAll(pagination);
   }
 
   @Get('post/:postId')
   @ApiOperation({
     summary: 'List comments by post (paginated)',
-    description: 'Returns all comments for a given post, ordered by createdAt DESC.',
+    description:
+      'Returns all comments for a given post, ordered by createdAt DESC.',
   })
   @ApiParam({ name: 'postId', description: 'Post ID' })
-  @ApiQuery({ name: 'page', required: false, description: 'Page number (default 1)' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default 20, max 100)' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: 'Page number (default 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Items per page (default 20, max 100)',
+  })
   @ApiResponse({
     status: 200,
     description: 'Paginated post comments list',
@@ -131,7 +162,9 @@ export class CommentsController {
   @ApiResponse({
     status: 400,
     description: 'Invalid pagination parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid pagination parameters' } },
+    schema: {
+      example: { statusCode: 400, message: 'Invalid pagination parameters' },
+    },
   })
   @ApiResponse({
     status: 500,
@@ -148,11 +181,17 @@ export class CommentsController {
   @Get(':id')
   @ApiOperation({ summary: 'Get a comment by ID' })
   @ApiParam({ name: 'id', description: 'Comment ID' })
-  @ApiResponse({ status: 200, description: 'Comment details', type: CommentDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Comment details',
+    type: CommentDto,
+  })
   @ApiResponse({
     status: 404,
     description: 'Comment not found',
-    schema: { example: { statusCode: 404, message: 'Comment with id "id" not found' } },
+    schema: {
+      example: { statusCode: 404, message: 'Comment with id "id" not found' },
+    },
   })
   @ApiResponse({
     status: 500,
@@ -176,7 +215,9 @@ export class CommentsController {
   @ApiResponse({
     status: 400,
     description: 'Invalid comment parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid comment parameters' } },
+    schema: {
+      example: { statusCode: 400, message: 'Invalid comment parameters' },
+    },
   })
   @ApiResponse({
     status: 401,
@@ -184,9 +225,21 @@ export class CommentsController {
     schema: { example: { statusCode: 401, message: 'Unauthorized' } },
   })
   @ApiResponse({
+    status: 403,
+    description: 'Forbidden – caller is not the comment author',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'You do not have permission to update this comment',
+      },
+    },
+  })
+  @ApiResponse({
     status: 404,
     description: 'Comment not found',
-    schema: { example: { statusCode: 404, message: 'Comment with id "id" not found' } },
+    schema: {
+      example: { statusCode: 404, message: 'Comment with id "id" not found' },
+    },
   })
   @ApiResponse({
     status: 429,
@@ -218,9 +271,21 @@ export class CommentsController {
     schema: { example: { statusCode: 401, message: 'Unauthorized' } },
   })
   @ApiResponse({
+    status: 403,
+    description: 'Forbidden – caller is not the comment author',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'You do not have permission to delete this comment',
+      },
+    },
+  })
+  @ApiResponse({
     status: 404,
     description: 'Comment not found',
-    schema: { example: { statusCode: 404, message: 'Comment with id "id" not found' } },
+    schema: {
+      example: { statusCode: 404, message: 'Comment with id "id" not found' },
+    },
   })
   @ApiResponse({
     status: 429,
