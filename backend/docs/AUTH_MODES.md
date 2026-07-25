@@ -1,47 +1,46 @@
-# Auth modes
+# Auth Modes — Stellar Bearer vs. Passport JWT
 
-This backend has multiple overlapping auth implementations that accumulated
-over time. This doc describes what's actually live, what isn't, and how CSRF
-protection interacts with each.
+## Overview
 
-## Live auth modes
+The backend currently has two independent auth mechanisms with no stored
+link between the identities they produce:
 
-1. **Cookie/session clients** (web frontend) — authenticated via
-   `src/auth-module` (canonical `AuthModule`, `JwtAuthGuard`, `RolesGuard`,
-   wired into `AppModule`). These requests are protected by
-   `CsrfMiddleware` (`src/common/middleware/csrf.middleware.ts`) on all
-   state-mutating routes, using a double-submit cookie.
-2. **Bearer clients** (mobile apps, CLI tools, server-to-server callers,
-   and the `Authorization: Bearer <base64(Stellar G-address)>` scheme used
-   by `FanBearerGuard` for subscription routes) — identified purely by an
-   `Authorization` header, which browsers never attach automatically to
-   cross-site requests. `CsrfMiddleware` exempts any request carrying an
-   `Authorization: Bearer ...` header from the double-submit cookie check,
-   since CSRF only threatens auto-attached credentials (cookies).
+| Mode | Guard | Credential | Identity | Used by |
+|------|-------|-----------|----------|---------|
+| Stellar bearer | `FanBearerGuard` | `Authorization: Bearer base64(G-address)` | Stellar address (`req.fanAddress`) | Subscription/fan routes |
+| Passport JWT | `JwtAuthGuard` | `Authorization: Bearer <JWT>`, `sub` = platform user UUID | Platform user (`req.user`) | Social routes (creators, posts, comments, conversations, ...) |
 
-Whether a route requires cookie-session auth, Bearer auth, or a specific
-Bearer sub-scheme (e.g. `FanBearerGuard`'s Stellar-address token) is decided
-per-guard on the controller/route, not by `CsrfMiddleware` — the middleware
-only decides whether the CSRF check itself applies.
+There is no `users` column or table linking a platform user UUID to a
+Stellar wallet address, so a caller authenticated via one mode has no way
+to be resolved into the other mode's identity today.
 
-## Module consolidation (canonical vs. deprecated)
+## Bridge, not unification
 
-Several duplicate module stacks exist. `AppModule` only imports the
-canonical ones; the rest are dead code at the module-wiring level, though a
-few individual files inside the deprecated directories are still consumed
-directly by canonical code and must not be deleted without tracing their
-importers first.
+`HybridFanAuthGuard` (`src/subscriptions/guards/hybrid-fan-auth.guard.ts`)
+accepts *either* credential type on the same endpoint and normalizes the
+result onto the request:
 
-| Concern | Canonical (live) | Deprecated (dead as a module) | Still-live exception inside the deprecated dir |
-| --- | --- | --- | --- |
-| Auth module | `src/auth-module` | `src/auth` (wallet-challenge flow) | `src/auth/throttler.guard.ts` — wired into `AppModule` as the global `APP_GUARD` rate limiter |
-| Auth module | `src/auth-module` | `src/refresh-module` (JWT + refresh-token flow, own `AuthController`/`JwtStrategy`) | `refresh-token.entity.ts` — referenced by `users-module/user.entity.ts`'s relation, though neither is registered with the live TypeORM connection |
-| Users module | `src/users` (imported by `auth-module/auth.module.ts`) | `src/users-module` (own `UsersController`/`UsersService`/`User` entity) | `user-profile.dto.ts` / `paginated-users-response.dto.ts` — re-exported through `src/common/dto/index.ts` and consumed by ~20 live files across the app |
+- Stellar bearer → `req.fanAddress` set, `req.authMode = 'stellar-bearer'`
+- Passport JWT → `req.user` set, `req.authMode = 'jwt'`
 
-Each deprecated module's entrypoint (`auth.module.ts` / `users.module.ts`)
-carries a `@deprecated` header comment pointing back here. None of these
-directories were deleted as part of this consolidation pass — the DTO/entity
-cross-references above make blind deletion unsafe without a full
-compile+test pass to verify every importer. Follow-up work should migrate
-the still-live DTO/entity usages onto their canonical (`src/users`)
-equivalents, then delete the deprecated directories outright.
+Handlers that require a resolved Stellar address (e.g. subscription/chain
+checks, spending caps) must check `req.authMode === 'stellar-bearer'`
+explicitly and reject otherwise — the guard authenticates the request, it
+does not fabricate a Stellar address for a JWT-authenticated user. See
+`SpendingCapController`'s `requireFanAddress` helper for the pattern.
+
+## Where this applies today
+
+`HybridFanAuthGuard` is wired into `SpendingCapController`. The main
+`SubscriptionsController` checkout/lifecycle routes remain on
+`FanBearerGuard` only, since they are payment-critical and a broader swap
+needs its own verification pass.
+
+## Future work: true unification
+
+Unifying the two identities (one platform user ↔ one or more linked
+Stellar addresses) requires a wallet-linking feature: a table associating
+`users.id` with verified Stellar addresses, plus a flow for a
+JWT-authenticated user to prove ownership of an address (e.g. a signed
+challenge, same pattern as `src/auth/wallet-auth.service.ts`). That is out
+of scope for this bridge.

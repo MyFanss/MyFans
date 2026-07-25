@@ -11,6 +11,7 @@ import { CreateReferralTables1745000000000 } from './referral/1745000000000-Crea
 import { AddDigestColumnsToNotifications1745100000000 } from './notifications/1745100000000-AddDigestColumnsToNotifications';
 import { AddOnboardingStateToUsers1745200000000 } from './users/1745200000000-AddOnboardingStateToUsers';
 import { AddRoleToUsers1747000000000 } from './users/1747000000000-AddRoleToUsers';
+import { CreateSocialLinksTable1748000000000 } from './social-link/1748000000000-CreateSocialLinksTable';
 
 export const migrationDataSource = new DataSource({
   type: 'postgres',
@@ -31,5 +32,6 @@ export const migrationDataSource = new DataSource({
     AddDigestColumnsToNotifications1745100000000,
     AddOnboardingStateToUsers1745200000000,
     AddRoleToUsers1747000000000,
+    CreateSocialLinksTable1748000000000,
   ],
 });

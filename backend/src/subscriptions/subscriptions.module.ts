@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ConfigModule } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggingModule } from '../common/logging.module';
 import { EventsModule } from '../events/events.module';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
@@ -16,6 +17,7 @@ import { SubscriptionChainSyncService } from './services/subscription-chain-sync
 import { SpendingCapService } from './services/spending-cap.service';
 import { SUBSCRIPTION_EVENT_PUBLISHER } from './events';
 import { FanBearerGuard } from './guards/fan-bearer.guard';
+import { HybridFanAuthGuard } from './guards/hybrid-fan-auth.guard';
 import { GatedContentGuard } from './gated-content.guard';
 import { FeatureFlagGuard } from '../feature-flags/feature-flag.guard';
 import { SubscriptionCacheService } from './subscription-cache.service';
@@ -36,6 +38,13 @@ import { StellarService } from '../common/stellar.service';
     EventsModule,
     LoggingModule,
     FeatureFlagsModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get('JWT_SECRET'),
+      }),
+      inject: [ConfigService],
+    }),
   ],
   controllers: [SubscriptionsController, SpendingCapController, SubscriptionLifecycleIndexerController],
   providers: [
@@ -50,6 +59,7 @@ import { StellarService } from '../common/stellar.service';
     SubscriptionCacheService,
     GatedContentGuard,
     FanBearerGuard,
+    HybridFanAuthGuard,
     FeatureFlagGuard,
     SubscriptionLifecycleIndexerService,
     StellarService,
