@@ -47,6 +47,9 @@ pub mod content_access {
 /// Error codes for the **content-likes** contract.
 pub mod content_likes {
     pub const NOT_LIKED: u32 = 1;
+    pub const ALREADY_INITIALIZED: u32 = 2;
+    pub const CAPACITY_EXCEEDED: u32 = 3;
+    pub const NOT_INITIALIZED: u32 = 4;
 }
 
 /// Error codes for the **creator-registry** contract.
