@@ -1,14 +1,13 @@
 import type { NextConfig } from "next";
 import withBundleAnalyzer from "@next/bundle-analyzer";
 import { getRemoteImagePatterns } from "./src/lib/image-remote-patterns";
+import { getApiBaseUrl } from "./src/lib/api/base-url";
 
 const isProd = process.env.NODE_ENV === 'production';
 
 // Helper to generate CSP
 function getCSP() {
-  const apiHost = process.env.NEXT_PUBLIC_API_URL 
-    ? new URL(process.env.NEXT_PUBLIC_API_URL).host 
-    : 'localhost:3001';
+  const apiHost = new URL(getApiBaseUrl()).host;
 
   const stellarHosts = [
     '*.stellar.org',

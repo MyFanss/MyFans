@@ -9,11 +9,12 @@ import type {
 } from '@/types';
 import { retryWithBackoff, getAuthHeaders, handleApiError, shouldRetry } from '@/lib/api-utils';
 import { getCsrfToken, invalidateCsrfToken } from '@/lib/csrf';
+import { getApiBaseUrl } from '@/lib/api/base-url';
 import type { AppError } from '@/types';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+const API_BASE = getApiBaseUrl();
 
 class ApiClient {
   async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
