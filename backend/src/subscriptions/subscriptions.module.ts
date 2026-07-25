@@ -25,8 +25,10 @@ import { SubscriptionChainReaderService } from './subscription-chain-reader.serv
 import { SubscriptionsController } from './subscriptions.controller';
 import { SpendingCapController } from './spending-cap.controller';
 import { SubscriptionsService } from './subscriptions.service';
-import { RPC_BALANCE_ADAPTER, MockRpcAdapter } from './rpc-adapter';
+import { RPC_BALANCE_ADAPTER, MockRpcAdapter, HorizonRpcAdapter } from './rpc-adapter';
 import { LedgerClockService } from './ledger-clock.service';
+import { LoggingSubscriptionEventPublisher } from './subscription-event-publisher.service';
+import { StellarService } from '../common/stellar.service';
 
 @Module({
   imports: [
@@ -60,9 +62,21 @@ import { LedgerClockService } from './ledger-clock.service';
     HybridFanAuthGuard,
     FeatureFlagGuard,
     SubscriptionLifecycleIndexerService,
+    StellarService,
+    MockRpcAdapter,
+    HorizonRpcAdapter,
+    {
+      provide: RPC_BALANCE_ADAPTER,
+      useFactory: (mock: MockRpcAdapter, real: HorizonRpcAdapter) =>
+        process.env.SUBSCRIPTIONS_USE_MOCK_RPC === 'true' ||
+        process.env.NODE_ENV === 'test'
+          ? mock
+          : real,
+      inject: [MockRpcAdapter, HorizonRpcAdapter],
+    },
     {
       provide: SUBSCRIPTION_EVENT_PUBLISHER,
-      useValue: { emit: () => undefined },
+      useClass: LoggingSubscriptionEventPublisher,
     },
   ],
   exports: [SubscriptionsService, SubscriptionLifecycleIndexerService, SubscriptionIndexRepository, SubscriptionChainSyncService],
