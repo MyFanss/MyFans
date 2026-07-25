@@ -18,7 +18,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
+import { CurrentUser, JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 import { PaginatedResponseDto, PaginationDto } from '../common/dto';
 import { ContentService } from './content.service';
@@ -36,7 +36,7 @@ export class ContentController {
   @ApiOperation({ summary: 'Create content metadata' })
   @ApiResponse({ status: 201, type: ContentResponseDto })
   create(
-    @CurrentUser() user: { userId: string },
+    @CurrentUser() user: JwtUserPayload,
     @Body() dto: CreateContentDto,
   ): Promise<ContentMetadata> {
     return this.contentService.create(user.userId, dto);
@@ -77,7 +77,7 @@ export class ContentController {
   @ApiResponse({ status: 403, description: 'Forbidden – not the owner' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: { userId: string },
+    @CurrentUser() user: JwtUserPayload,
     @Body() dto: UpdateContentDto,
   ): Promise<ContentMetadata> {
     return this.contentService.update(id, user.userId, dto);
@@ -92,7 +92,7 @@ export class ContentController {
   @ApiResponse({ status: 403, description: 'Forbidden – not the owner' })
   remove(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: { userId: string },
+    @CurrentUser() user: JwtUserPayload,
   ): Promise<void> {
     return this.contentService.remove(id, user.userId);
   }

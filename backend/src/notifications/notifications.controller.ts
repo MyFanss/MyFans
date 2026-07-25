@@ -7,7 +7,6 @@ import {
   Body,
   Param,
   Query,
-  Req,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -24,7 +23,7 @@ import { UserRole } from '../common/enums/user-role.enum';
 @ApiTags('notifications')
 @ApiBearerAuth()
 @Controller({ path: 'notifications', version: '1' })
-@UseGuards(AuthGuard)
+@UseGuards(JwtAuthGuard)
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
@@ -32,18 +31,15 @@ export class NotificationsController {
   @ApiOperation({ summary: 'List notifications for the current user' })
   @ApiQuery({ name: 'unread_only', required: false, type: Boolean })
   @ApiResponse({ status: 200, description: 'Notifications list' })
-  findAll(@Req() req, @Query('unread_only') unreadOnly?: string) {
-    return this.notificationsService.findAllForUser(
-      req.user.id,
-      unreadOnly === 'true',
-    );
+  findAll(@CurrentUser() user: JwtUserPayload, @Query('unread_only') unreadOnly?: string) {
+    return this.notificationsService.findAllForUser(user.userId, unreadOnly === 'true');
   }
 
   @Get('unread-count')
   @ApiOperation({ summary: 'Get unread notification count for the current user' })
   @ApiResponse({ status: 200, description: 'Unread count', schema: { example: { count: 5 } } })
-  getUnreadCount(@Req() req) {
-    return this.notificationsService.getUnreadCount(req.user.id);
+  getUnreadCount(@CurrentUser() user: JwtUserPayload) {
+    return this.notificationsService.getUnreadCount(user.userId);
   }
 
   @Get(':id')
@@ -51,8 +47,8 @@ export class NotificationsController {
   @ApiParam({ name: 'id', description: 'Notification ID' })
   @ApiResponse({ status: 200, description: 'Notification details' })
   @ApiResponse({ status: 404, description: 'Notification not found' })
-  findOne(@Req() req, @Param('id') id: string) {
-    return this.notificationsService.findOne(id, req.user.id);
+  findOne(@CurrentUser() user: JwtUserPayload, @Param('id') id: string) {
+    return this.notificationsService.findOne(id, user.userId);
   }
 
   @Post()
@@ -69,8 +65,8 @@ export class NotificationsController {
   @Patch('mark-all-read')
   @ApiOperation({ summary: 'Mark all notifications as read' })
   @ApiResponse({ status: 200, description: 'All notifications marked as read' })
-  markAllRead(@Req() req) {
-    return this.notificationsService.markAllRead(req.user.id);
+  markAllRead(@CurrentUser() user: JwtUserPayload) {
+    return this.notificationsService.markAllRead(user.userId);
   }
 
   @Patch(':id/read')
@@ -78,11 +74,11 @@ export class NotificationsController {
   @ApiParam({ name: 'id', description: 'Notification ID' })
   @ApiResponse({ status: 200, description: 'Notification marked as read' })
   markRead(
-    @Req() req,
+    @CurrentUser() user: JwtUserPayload,
     @Param('id') id: string,
     @Body() dto: MarkReadDto,
   ) {
-    return this.notificationsService.markRead(id, req.user.id, dto);
+    return this.notificationsService.markRead(id, user.userId, dto);
   }
 
   @Delete(':id')
@@ -91,7 +87,7 @@ export class NotificationsController {
   @ApiParam({ name: 'id', description: 'Notification ID' })
   @ApiResponse({ status: 204, description: 'Notification deleted' })
   @ApiResponse({ status: 404, description: 'Notification not found' })
-  remove(@Req() req, @Param('id') id: string) {
-    return this.notificationsService.remove(id, req.user.id);
+  remove(@CurrentUser() user: JwtUserPayload, @Param('id') id: string) {
+    return this.notificationsService.remove(id, user.userId);
   }
 }
