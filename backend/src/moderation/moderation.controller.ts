@@ -31,7 +31,6 @@ import { UserRole } from '../common/enums/user-role.enum';
 @ApiTags('moderation')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
 @Controller({ path: 'moderation', version: '1' })
 export class ModerationController {
   constructor(
@@ -52,7 +51,6 @@ export class ModerationController {
   // ── Admin endpoints ───────────────────────────────────────────────────
 
   @Get('flags')
-  @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[Admin] List all moderation flags' })
   @ApiResponse({ status: 200, description: 'Paginated flags list' })
@@ -61,7 +59,6 @@ export class ModerationController {
   }
 
   @Get('flags/:id')
-  @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[Admin] Get a single moderation flag' })
   @ApiResponse({ status: 200, description: 'Flag details' })
@@ -71,7 +68,6 @@ export class ModerationController {
   }
 
   @Patch('flags/:id/review')
-  @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '[Admin] Review / update a moderation flag' })
@@ -85,7 +81,6 @@ export class ModerationController {
   }
 
   @Get('flags/:id/audit')
-  @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[Admin] Get audit trail for a flag' })
   @ApiResponse({ status: 200, description: 'Audit log entries' })
@@ -96,7 +91,6 @@ export class ModerationController {
   // ── SLA metrics ───────────────────────────────────────────────────────
 
   @Get('sla')
-  @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiOperation({
     summary: '[Admin] Moderation queue SLA metrics',
