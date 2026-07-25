@@ -13,7 +13,15 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiResponse, ApiTags, ApiParam, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+  ApiParam,
+  ApiBody,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { PostsService } from './posts.service';
 import { PostDto, CreatePostDto, UpdatePostDto } from './dto';
@@ -54,7 +62,9 @@ export class PostsController {
   @ApiResponse({
     status: 400,
     description: 'Invalid post parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid post parameters' } },
+    schema: {
+      example: { statusCode: 400, message: 'Invalid post parameters' },
+    },
   })
   @ApiResponse({
     status: 401,
@@ -110,7 +120,9 @@ export class PostsController {
   @ApiResponse({
     status: 400,
     description: 'Invalid pagination parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid pagination parameters' } },
+    schema: {
+      example: { statusCode: 400, message: 'Invalid pagination parameters' },
+    },
   })
   @ApiResponse({
     status: 500,
@@ -151,7 +163,9 @@ export class PostsController {
   @ApiResponse({
     status: 400,
     description: 'Invalid pagination parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid pagination parameters' } },
+    schema: {
+      example: { statusCode: 400, message: 'Invalid pagination parameters' },
+    },
   })
   @ApiResponse({
     status: 500,
@@ -175,7 +189,9 @@ export class PostsController {
   @ApiResponse({
     status: 404,
     description: 'Post not found',
-    schema: { example: { statusCode: 404, message: 'Post with ID {id} not found' } },
+    schema: {
+      example: { statusCode: 404, message: 'Post with ID {id} not found' },
+    },
   })
   @ApiResponse({
     status: 500,
@@ -202,7 +218,9 @@ export class PostsController {
   @ApiResponse({
     status: 400,
     description: 'Invalid post parameters',
-    schema: { example: { statusCode: 400, message: 'Invalid post parameters' } },
+    schema: {
+      example: { statusCode: 400, message: 'Invalid post parameters' },
+    },
   })
   @ApiResponse({
     status: 401,
@@ -210,9 +228,21 @@ export class PostsController {
     schema: { example: { statusCode: 401, message: 'Unauthorized' } },
   })
   @ApiResponse({
+    status: 403,
+    description: 'Forbidden – caller is not the post author',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'You do not have permission to update this post',
+      },
+    },
+  })
+  @ApiResponse({
     status: 404,
     description: 'Post not found',
-    schema: { example: { statusCode: 404, message: 'Post with ID {id} not found' } },
+    schema: {
+      example: { statusCode: 404, message: 'Post with ID {id} not found' },
+    },
   })
   @ApiResponse({
     status: 429,
@@ -247,9 +277,21 @@ export class PostsController {
     schema: { example: { statusCode: 401, message: 'Unauthorized' } },
   })
   @ApiResponse({
+    status: 403,
+    description: 'Forbidden – caller is not the post author',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'You do not have permission to delete this post',
+      },
+    },
+  })
+  @ApiResponse({
     status: 404,
     description: 'Post not found or already deleted',
-    schema: { example: { statusCode: 404, message: 'Post with ID {id} not found' } },
+    schema: {
+      example: { statusCode: 404, message: 'Post with ID {id} not found' },
+    },
   })
   @ApiResponse({
     status: 429,

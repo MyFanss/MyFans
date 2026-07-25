@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CommentsService } from './comments.service';
 import { Comment } from './entities/comment.entity';
 
@@ -61,7 +61,11 @@ describe('CommentsService', () => {
       });
 
       expect(repo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ content: 'Great post!', postId: 'post-1', authorId: 'author-1' }),
+        expect.objectContaining({
+          content: 'Great post!',
+          postId: 'post-1',
+          authorId: 'author-1',
+        }),
       );
       expect(repo.save).toHaveBeenCalledWith(comment);
       expect(result.id).toBe('comment-1');
@@ -186,7 +190,10 @@ describe('CommentsService', () => {
       const comment = makeComment({ postId: 'post-42' });
       repo.findAndCount.mockResolvedValue([[comment], 1]);
 
-      const result = await service.findByPost('post-42', { page: 1, limit: 20 });
+      const result = await service.findByPost('post-42', {
+        page: 1,
+        limit: 20,
+      });
 
       expect(repo.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({ where: { postId: 'post-42' } }),
@@ -198,7 +205,10 @@ describe('CommentsService', () => {
     it('returns empty list when the post has no comments', async () => {
       repo.findAndCount.mockResolvedValue([[], 0]);
 
-      const result = await service.findByPost('post-empty', { page: 1, limit: 20 });
+      const result = await service.findByPost('post-empty', {
+        page: 1,
+        limit: 20,
+      });
 
       expect(result.data).toHaveLength(0);
       expect(result.total).toBe(0);
@@ -242,7 +252,9 @@ describe('CommentsService', () => {
     it('throws NotFoundException when comment does not exist', async () => {
       repo.findOne.mockResolvedValue(null);
 
-      await expect(service.findOne('missing')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.findOne('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('throws NotFoundException with the comment id in the message', async () => {
@@ -260,7 +272,11 @@ describe('CommentsService', () => {
       repo.findOne.mockResolvedValue(comment);
       repo.save.mockResolvedValue({ ...comment, content: 'Updated content' });
 
-      const result = await service.update('comment-1', { content: 'Updated content' });
+      const result = await service.update(
+        'comment-1',
+        { content: 'Updated content' },
+        'author-1',
+      );
 
       expect(repo.save).toHaveBeenCalled();
       expect(result.content).toBe('Updated content');
@@ -271,7 +287,7 @@ describe('CommentsService', () => {
       repo.findOne.mockResolvedValue(comment);
       repo.save.mockResolvedValue(comment);
 
-      await service.update('comment-1', { content: 'New content' });
+      await service.update('comment-1', { content: 'New content' }, 'author-1');
 
       expect(repo.findOne).toHaveBeenCalledWith({ where: { id: 'comment-1' } });
     });
@@ -280,14 +296,16 @@ describe('CommentsService', () => {
       repo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.update('missing', { content: 'X' }),
+        service.update('missing', { content: 'X' }, 'author-1'),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('does not call save when comment is not found', async () => {
       repo.findOne.mockResolvedValue(null);
 
-      await expect(service.update('missing', { content: 'X' })).rejects.toThrow();
+      await expect(
+        service.update('missing', { content: 'X' }, 'author-1'),
+      ).rejects.toThrow();
 
       expect(repo.save).not.toHaveBeenCalled();
     });
@@ -297,9 +315,23 @@ describe('CommentsService', () => {
       repo.findOne.mockResolvedValue(comment);
       repo.save.mockResolvedValue({ ...comment, content: 'Updated' });
 
-      const result = await service.update('comment-1', { content: 'Updated' });
+      const result = await service.update(
+        'comment-1',
+        { content: 'Updated' },
+        'author-1',
+      );
 
       expect(result.postId).toBe('post-1');
+    });
+
+    it('throws ForbiddenException when the requester is not the author', async () => {
+      const comment = makeComment({ authorId: 'author-1' });
+      repo.findOne.mockResolvedValue(comment);
+
+      await expect(
+        service.update('comment-1', { content: 'Hijacked' }, 'someone-else'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(repo.save).not.toHaveBeenCalled();
     });
   });
 
@@ -311,7 +343,7 @@ describe('CommentsService', () => {
       repo.findOne.mockResolvedValue(comment);
       repo.remove.mockResolvedValue(undefined);
 
-      await service.remove('comment-1');
+      await service.remove('comment-1', 'author-1');
 
       expect(repo.remove).toHaveBeenCalledWith(comment);
     });
@@ -321,7 +353,7 @@ describe('CommentsService', () => {
       repo.findOne.mockResolvedValue(comment);
       repo.remove.mockResolvedValue(undefined);
 
-      const result = await service.remove('comment-1');
+      const result = await service.remove('comment-1', 'author-1');
 
       expect(result).toBeUndefined();
     });
@@ -329,14 +361,26 @@ describe('CommentsService', () => {
     it('throws NotFoundException when comment does not exist', async () => {
       repo.findOne.mockResolvedValue(null);
 
-      await expect(service.remove('missing')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.remove('missing', 'author-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('does not call remove when comment is not found', async () => {
       repo.findOne.mockResolvedValue(null);
 
-      await expect(service.remove('missing')).rejects.toThrow();
+      await expect(service.remove('missing', 'author-1')).rejects.toThrow();
 
+      expect(repo.remove).not.toHaveBeenCalled();
+    });
+
+    it('throws ForbiddenException when the requester is not the author', async () => {
+      const comment = makeComment({ authorId: 'author-1' });
+      repo.findOne.mockResolvedValue(comment);
+
+      await expect(
+        service.remove('comment-1', 'someone-else'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
       expect(repo.remove).not.toHaveBeenCalled();
     });
   });

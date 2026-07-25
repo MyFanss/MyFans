@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PostsService } from './posts.service';
 import { Post } from './entities/post.entity';
 import { PostAuditLog } from './entities/post-audit-log.entity';
@@ -37,7 +37,7 @@ describe('PostsService', () => {
     create: jest.Mock;
     save: jest.Mock;
     findOne: jest.Mock;
-    findAndCount: jest.Mock;
+    findAndCount: jest.Mock<Promise<[Post[], number]>, unknown[]>;
     createQueryBuilder: jest.Mock;
     delete: jest.Mock;
   };
@@ -56,13 +56,13 @@ describe('PostsService', () => {
       create: jest.fn(),
       save: jest.fn(),
       findOne: jest.fn(),
-      findAndCount: jest.fn(),
+      findAndCount: jest.fn<Promise<[Post[], number]>, unknown[]>(),
       createQueryBuilder: jest.fn(() => queryBuilder),
       delete: jest.fn(),
     };
     auditRepo = {
-      create: jest.fn((data) => data),
-      save: jest.fn(async (e) => e),
+      create: jest.fn((data: unknown) => data),
+      save: jest.fn((e: unknown) => Promise.resolve(e)),
     };
     eventBus = { publish: jest.fn() };
 
@@ -112,7 +112,10 @@ describe('PostsService', () => {
       repo.create.mockReturnValue(post);
       repo.save.mockResolvedValue(post);
 
-      const result = await service.create('caller-42', { title: 'T', content: 'C' });
+      const result = await service.create('caller-42', {
+        title: 'T',
+        content: 'C',
+      });
 
       expect(repo.create).toHaveBeenCalledWith(
         expect.objectContaining({ authorId: 'caller-42' }),
@@ -137,11 +140,18 @@ describe('PostsService', () => {
     });
 
     it('returns a mapped PostDto with all expected fields populated', async () => {
-      const post = makePost({ title: 'Hello', content: 'World', authorId: 'author-1' });
+      const post = makePost({
+        title: 'Hello',
+        content: 'World',
+        authorId: 'author-1',
+      });
       repo.create.mockReturnValue(post);
       repo.save.mockResolvedValue(post);
 
-      const result = await service.create('author-1', { title: 'Hello', content: 'World' });
+      const result = await service.create('author-1', {
+        title: 'Hello',
+        content: 'World',
+      });
 
       expect(result).toMatchObject({
         id: 'post-1',
@@ -166,6 +176,7 @@ describe('PostsService', () => {
 
       expect(repo.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- jest matcher typings are `any`
           where: expect.objectContaining({ deletedAt: expect.anything() }),
         }),
       );
@@ -212,6 +223,7 @@ describe('PostsService', () => {
 
       await service.findByAuthor('author-1', { limit: 20 });
 
+      /* eslint-disable @typescript-eslint/no-unsafe-assignment -- jest matcher typings are `any` */
       expect(repo.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
@@ -220,6 +232,7 @@ describe('PostsService', () => {
           }),
         }),
       );
+      /* eslint-enable @typescript-eslint/no-unsafe-assignment */
     });
 
     it('excludes soft-deleted posts for the author', async () => {
@@ -280,12 +293,16 @@ describe('PostsService', () => {
   // ── update ───────────────────────────────────────────────────────────────────
 
   describe('update', () => {
-    it('updates and returns the post', async () => {
-      const post = makePost();
+    it('updates and returns the post when the requester is the author', async () => {
+      const post = makePost({ authorId: 'author-1' });
       repo.findOne.mockResolvedValue(post);
       repo.save.mockResolvedValue({ ...post, title: 'Updated' });
 
-      const result = await service.update('post-1', { title: 'Updated' });
+      const result = await service.update(
+        'post-1',
+        { title: 'Updated' },
+        'author-1',
+      );
 
       expect(repo.save).toHaveBeenCalled();
       expect(result.title).toBe('Updated');
@@ -295,7 +312,7 @@ describe('PostsService', () => {
       repo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.update('post-1', { title: 'New' }),
+        service.update('post-1', { title: 'New' }, 'author-1'),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -303,8 +320,18 @@ describe('PostsService', () => {
       repo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.update('missing', { title: 'X' }),
+        service.update('missing', { title: 'X' }, 'author-1'),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('throws ForbiddenException when the requester is not the author', async () => {
+      const post = makePost({ authorId: 'author-1' });
+      repo.findOne.mockResolvedValue(post);
+
+      await expect(
+        service.update('post-1', { title: 'Hijacked' }, 'someone-else'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(repo.save).not.toHaveBeenCalled();
     });
   });
 
@@ -312,9 +339,13 @@ describe('PostsService', () => {
 
   describe('softDelete', () => {
     it('sets deletedAt and deletedBy then saves', async () => {
-      const post = makePost();
+      const post = makePost({ authorId: 'user-99' });
       repo.findOne.mockResolvedValue(post);
-      repo.save.mockResolvedValue({ ...post, deletedAt: new Date(), deletedBy: 'user-99' });
+      repo.save.mockResolvedValue({
+        ...post,
+        deletedAt: new Date(),
+        deletedBy: 'user-99',
+      });
 
       await service.softDelete('post-1', 'user-99');
 
@@ -325,7 +356,7 @@ describe('PostsService', () => {
     });
 
     it('persists an audit log row with correct fields', async () => {
-      const post = makePost();
+      const post = makePost({ authorId: 'user-99' });
       repo.findOne.mockResolvedValue(post);
       repo.save.mockResolvedValue(post);
 
@@ -342,7 +373,7 @@ describe('PostsService', () => {
     });
 
     it('emits PostDeletedEvent with correct postId and deletedBy', async () => {
-      const post = makePost();
+      const post = makePost({ authorId: 'user-99' });
       repo.findOne.mockResolvedValue(post);
       repo.save.mockResolvedValue(post);
 
@@ -380,12 +411,12 @@ describe('PostsService', () => {
 
     it('audit log is written before event is published', async () => {
       const order: string[] = [];
-      const post = makePost();
+      const post = makePost({ authorId: 'user-1' });
       repo.findOne.mockResolvedValue(post);
       repo.save.mockResolvedValue(post);
-      auditRepo.save.mockImplementation(async (e) => {
+      auditRepo.save.mockImplementation((e: unknown) => {
         order.push('audit');
-        return e;
+        return Promise.resolve(e);
       });
       eventBus.publish.mockImplementation(() => {
         order.push('event');
@@ -394,6 +425,18 @@ describe('PostsService', () => {
       await service.softDelete('post-1', 'user-1');
 
       expect(order).toEqual(['audit', 'event']);
+    });
+
+    it('throws ForbiddenException when the requester is not the author', async () => {
+      const post = makePost({ authorId: 'author-1' });
+      repo.findOne.mockResolvedValue(post);
+
+      await expect(
+        service.softDelete('post-1', 'someone-else'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(auditRepo.save).not.toHaveBeenCalled();
+      expect(eventBus.publish).not.toHaveBeenCalled();
     });
   });
 

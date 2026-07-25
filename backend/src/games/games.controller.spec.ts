@@ -4,9 +4,12 @@ import { GamesController } from './games.controller';
 import { GamesService } from './games.service';
 import { GameStatus } from './entities/game.entity';
 import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 
 describe('GamesController', () => {
   let controller: GamesController;
+
+  const mockUser = { userId: 'user-1' };
 
   const mockPlayer = {
     id: 'player-1',
@@ -36,8 +39,17 @@ describe('GamesController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [GamesController],
-      providers: [{ provide: GamesService, useValue: mockGamesService }],
-    }).compile();
+      providers: [
+        { provide: GamesService, useValue: mockGamesService },
+        {
+          provide: JwtAuthGuard,
+          useValue: { canActivate: jest.fn().mockReturnValue(true) },
+        },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<GamesController>(GamesController);
   });
@@ -54,7 +66,10 @@ describe('GamesController', () => {
       const result = await controller.findAll({ page: 1, limit: 20 });
 
       expect(result).toEqual(paginated);
-      expect(mockGamesService.findAll).toHaveBeenCalledWith({ page: 1, limit: 20 });
+      expect(mockGamesService.findAll).toHaveBeenCalledWith({
+        page: 1,
+        limit: 20,
+      });
     });
 
     it('filters by status when provided', async () => {
@@ -83,16 +98,32 @@ describe('GamesController', () => {
     it('returns the created player on success', async () => {
       mockGamesService.joinGame.mockResolvedValue(mockPlayer);
 
-      const result = await controller.joinGame('game-1', { userId: 'user-1' });
+      const result = await controller.joinGame('game-1', mockUser);
 
       expect(result).toEqual(mockPlayer);
-      expect(mockGamesService.joinGame).toHaveBeenCalledWith('game-1', 'user-1');
+      expect(mockGamesService.joinGame).toHaveBeenCalledWith(
+        'game-1',
+        'user-1',
+      );
+    });
+
+    it('uses the JWT subject as the joining user, ignoring any spoofed identity', async () => {
+      mockGamesService.joinGame.mockResolvedValue(mockPlayer);
+
+      await controller.joinGame('game-1', { userId: 'jwt-user-1' });
+
+      expect(mockGamesService.joinGame).toHaveBeenCalledWith(
+        'game-1',
+        'jwt-user-1',
+      );
     });
 
     it('propagates NotFoundException when game does not exist', async () => {
-      mockGamesService.joinGame.mockRejectedValue(new NotFoundException('Game not found'));
+      mockGamesService.joinGame.mockRejectedValue(
+        new NotFoundException('Game not found'),
+      );
 
-      await expect(controller.joinGame('missing', { userId: 'user-1' })).rejects.toThrow(
+      await expect(controller.joinGame('missing', mockUser)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -102,15 +133,17 @@ describe('GamesController', () => {
         new BadRequestException('Game is not in PENDING status'),
       );
 
-      await expect(controller.joinGame('game-1', { userId: 'user-1' })).rejects.toThrow(
+      await expect(controller.joinGame('game-1', mockUser)).rejects.toThrow(
         BadRequestException,
       );
     });
 
     it('propagates BadRequestException when game is full', async () => {
-      mockGamesService.joinGame.mockRejectedValue(new BadRequestException('Game is full'));
+      mockGamesService.joinGame.mockRejectedValue(
+        new BadRequestException('Game is full'),
+      );
 
-      await expect(controller.joinGame('game-1', { userId: 'user-1' })).rejects.toThrow(
+      await expect(controller.joinGame('game-1', mockUser)).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -120,7 +153,7 @@ describe('GamesController', () => {
         new BadRequestException('Player already joined this game'),
       );
 
-      await expect(controller.joinGame('game-1', { userId: 'user-1' })).rejects.toThrow(
+      await expect(controller.joinGame('game-1', mockUser)).rejects.toThrow(
         BadRequestException,
       );
     });
