@@ -2,14 +2,15 @@ use super::Error as ContractError;
 use super::*;
 use soroban_sdk::token::Client as TokenClient;
 use soroban_sdk::{
-    testutils::{Address as _, Events, Ledger},
+    testutils::{Address as _, Events, Ledger, MockAuth, MockAuthInvoke},
     token::StellarAssetClient,
-    Address, Env, Error as SorobanError, Symbol, TryIntoVal,
+    Address, Env, Error as SorobanError, IntoVal, Symbol, TryIntoVal,
 };
 
 #[test]
 fn test_initialize() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, CreatorRegistryContract);
     let client = CreatorRegistryContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -23,6 +24,7 @@ fn test_initialize() {
 #[test]
 fn test_admin_getter_returns_initialized_admin() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, CreatorRegistryContract);
     let client = CreatorRegistryContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -814,4 +816,208 @@ fn set_spam_fee_emits_spam_fee_set_event() {
     let data: SpamFeeSetEvent = event.2.try_into_val(&env).unwrap();
     assert_eq!(data.token, token_id);
     assert_eq!(data.amount, 200i128);
+}
+
+// ─── initialize admin auth tests (issue #1370) ────────────────────────────────
+
+/// `initialize` must reject a call made without the admin's authorization,
+/// and succeed once the admin's authorization is present via `mock_auths`.
+#[test]
+fn initialize_requires_admin_auth() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    let empty: &[soroban_sdk::xdr::SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+    assert!(
+        client.try_initialize(&admin).is_err(),
+        "initialize must fail without admin auth"
+    );
+
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "initialize",
+            args: (admin.clone(),).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    client.initialize(&admin);
+
+    assert_eq!(client.admin(), admin);
+}
+
+// ─── Globally unique creator_id tests (issue #1371) ────────────────────────────
+
+#[test]
+fn duplicate_creator_id_from_different_address_reverts() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator_a = Address::generate(&env);
+    let creator_b = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.register_creator(&creator_a, &creator_a, &777u64);
+
+    let result = client.try_register_creator(&creator_b, &creator_b, &777u64);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            ContractError::CreatorIdTaken as u32,
+        ))),
+        "registering an already-claimed creator_id from a different address must revert"
+    );
+    assert_eq!(client.get_creator_id(&creator_b), None);
+}
+
+#[test]
+fn different_creator_ids_succeed() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator_a = Address::generate(&env);
+    let creator_b = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.register_creator(&creator_a, &creator_a, &1u64);
+    client.register_creator(&creator_b, &creator_b, &2u64);
+
+    assert_eq!(client.get_creator_id(&creator_a), Some(1u64));
+    assert_eq!(client.get_creator_id(&creator_b), Some(2u64));
+}
+
+#[test]
+fn creator_id_freed_after_unregister_can_be_reused() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator_a = Address::generate(&env);
+    let creator_b = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.register_creator(&creator_a, &creator_a, &42u64);
+    client.unregister_creator(&creator_a);
+
+    // creator_id 42 is now unclaimed; a different address may take it.
+    client.register_creator(&creator_b, &creator_b, &42u64);
+    assert_eq!(client.get_creator_id(&creator_b), Some(42u64));
+}
+
+#[test]
+fn creator_id_taken_error_code_is_8() {
+    assert_eq!(ContractError::CreatorIdTaken as u32, 8);
+}
+
+// ─── Spam-fee-before-persistence ordering tests (issue #1372) ─────────────────
+
+#[test]
+fn failed_fee_transfer_leaves_no_creator_or_reverse_mapping() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    let (token_id, _, token_admin_client) = setup_token(&env);
+    client.initialize(&admin);
+    client.set_spam_fee(&token_id, &100);
+
+    // Caller cannot cover the fee.
+    token_admin_client.mint(&creator, &10);
+    let result = client.try_register_creator(&creator, &creator, &55u64);
+    assert!(result.is_err());
+
+    assert_eq!(client.get_creator_id(&creator), None);
+    env.as_contract(&contract_id, || {
+        assert!(
+            !env.storage()
+                .persistent()
+                .has(&DataKey::CreatorIdOwner(55u64)),
+            "reverse mapping must not be written when the fee transfer fails"
+        );
+    });
+}
+
+// ─── TTL extension tests (issue #1373) ─────────────────────────────────────────
+
+#[test]
+fn register_creator_extends_ttl_on_creator_keys() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_min_persistent_entry_ttl(100);
+    env.ledger().set_max_entry_ttl(1_000_000);
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.register_creator(&creator, &creator, &9u64);
+
+    let creator_key = DataKey::Creator(creator.clone());
+    let owner_key = DataKey::CreatorIdOwner(9u64);
+
+    env.as_contract(&contract_id, || {
+        assert_eq!(
+            env.storage().persistent().get_ttl(&creator_key),
+            CREATOR_TTL_EXTEND_TO,
+            "Creator key TTL must be extended to CREATOR_TTL_EXTEND_TO on registration"
+        );
+        assert_eq!(
+            env.storage().persistent().get_ttl(&owner_key),
+            CREATOR_TTL_EXTEND_TO,
+            "CreatorIdOwner key TTL must be extended to CREATOR_TTL_EXTEND_TO on registration"
+        );
+    });
+}
+
+#[test]
+fn get_creator_id_refreshes_ttl_after_it_decays_below_threshold() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_min_persistent_entry_ttl(100);
+    env.ledger().set_max_entry_ttl(1_000_000);
+    let contract_id = env.register_contract(None, CreatorRegistryContract);
+    let client = CreatorRegistryContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.register_creator(&creator, &creator, &13u64);
+
+    let creator_key = DataKey::Creator(creator.clone());
+
+    // Decay the key's TTL below the refresh threshold. Keep the contract
+    // instance itself alive across the jump so the invocation below can run.
+    advance(&env, CREATOR_TTL_EXTEND_TO - CREATOR_TTL_THRESHOLD + 1);
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .extend_ttl(CREATOR_TTL_EXTEND_TO, CREATOR_TTL_EXTEND_TO);
+        assert!(
+            env.storage().persistent().get_ttl(&creator_key) < CREATOR_TTL_THRESHOLD,
+            "test setup must decay the Creator key below the refresh threshold"
+        );
+    });
+
+    client.get_creator_id(&creator);
+
+    let ttl_after_read = env.as_contract(&contract_id, || {
+        env.storage().persistent().get_ttl(&creator_key)
+    });
+    assert_eq!(
+        ttl_after_read, CREATOR_TTL_EXTEND_TO,
+        "get_creator_id must refresh the Creator key TTL back up after it decays"
+    );
 }

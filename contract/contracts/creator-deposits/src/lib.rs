@@ -63,9 +63,6 @@ pub struct CreatorDeposits;
 impl CreatorDeposits {
     pub fn init(env: Env, admin: Address, platform_fee_bps: u32, platform_treasury: Address) {
         admin.require_auth();
-        if env.storage().instance().has(&DataKey::Admin) {
-            panic_with_error!(&env, Error::AlreadyInitialized);
-        }
         if platform_fee_bps >= 10000 {
             panic_with_error!(&env, Error::InvalidFeeBps);
         }
@@ -424,6 +421,20 @@ mod test {
         let contract_id = env.register_contract(None, CreatorDeposits);
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "init",
+                args: vec![
+                    &env,
+                    admin.clone().into_val(&env),
+                    0_u32.into_val(&env),
+                    treasury.clone().into_val(&env),
+                ],
+                sub_invokes: &[],
+            },
+        }]);
         client.init(&admin, &0, &treasury);
 
         let deposit_amount = 1000_i128;

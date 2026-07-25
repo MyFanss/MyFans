@@ -86,5 +86,47 @@ mod props {
 
             prop_assert_eq!(client.get_creator_id(&first_creator), Some(first_id));
         }
+
+        /// A creator_id is globally unique: once claimed by one address, no
+        /// other address may register with the same id, regardless of order
+        /// or how many other distinct ids are registered around it.
+        #[test]
+        fn prop_creator_id_is_globally_unique(
+            shared_id in any::<u64>(),
+            other_ids in prop::collection::vec(any::<u64>(), 0..8),
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let contract_id = env.register_contract(None, CreatorRegistryContract);
+            let client = CreatorRegistryContractClient::new(&env, &contract_id);
+            let admin = Address::generate(&env);
+            let first_owner = Address::generate(&env);
+            client.initialize(&admin);
+
+            client.register_creator(&first_owner, &first_owner, &shared_id);
+            let mut claimed_ids = std::vec![shared_id];
+
+            for other_id in other_ids {
+                let claimant = Address::generate(&env);
+                let result = client.try_register_creator(&claimant, &claimant, &shared_id);
+                prop_assert_eq!(
+                    result,
+                    Err(Ok(SorobanError::from_contract_error(Error::CreatorIdTaken as u32))),
+                    "a second address must never claim an already-registered creator_id"
+                );
+                prop_assert_eq!(client.get_creator_id(&claimant), None);
+
+                if !claimed_ids.contains(&other_id) {
+                    // A genuinely distinct id from a distinct address must still succeed.
+                    let distinct_owner = Address::generate(&env);
+                    client.register_creator(&distinct_owner, &distinct_owner, &other_id);
+                    prop_assert_eq!(client.get_creator_id(&distinct_owner), Some(other_id));
+                    claimed_ids.push(other_id);
+                }
+            }
+
+            prop_assert_eq!(client.get_creator_id(&first_owner), Some(shared_id));
+        }
     }
 }

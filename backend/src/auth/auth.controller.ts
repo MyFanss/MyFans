@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Headers,
@@ -23,6 +22,7 @@ import {
 import { AuthService } from './auth.service';
 import { WalletAuthService } from './wallet-auth.service';
 import { RequestChallengeDto, VerifyChallengeDto } from './wallet-auth.dto';
+import { WalletAddressDto } from './wallet-address.dto';
 import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
 import { Public } from '../common/decorators/public.decorator';
 import { AuthExceptionFilter } from './filters/auth-exception.filter';
@@ -92,15 +92,11 @@ export class AuthController {
     type: AuthErrorResponseDto,
   })
   async login(
-    @Body() body: { address?: string },
+    @Body() body: WalletAddressDto,
     @Headers('x-network') requestNetwork?: string,
   ) {
     this.assertNetworkMatch(requestNetwork);
-    const address = body.address ?? '';
-    if (!this.authService.validateStellarAddress(address)) {
-      throw new BadRequestException('Invalid Stellar address');
-    }
-    return this.authService.createSession(body.address!);
+    return this.authService.createSession(body.address);
   }
 
   @Post('register')
@@ -133,15 +129,11 @@ export class AuthController {
     type: AuthErrorResponseDto,
   })
   async register(
-    @Body() body: { address?: string },
+    @Body() body: WalletAddressDto,
     @Headers('x-network') requestNetwork?: string,
   ) {
     this.assertNetworkMatch(requestNetwork);
-    const address = body.address ?? '';
-    if (!this.authService.validateStellarAddress(address)) {
-      throw new BadRequestException('Invalid Stellar address');
-    }
-    return this.authService.createSession(body.address!);
+    return this.authService.createSession(body.address);
   }
 
   @Post('challenge')
