@@ -12,6 +12,8 @@ import { AddDigestColumnsToNotifications1745100000000 } from './notifications/17
 import { AddOnboardingStateToUsers1745200000000 } from './users/1745200000000-AddOnboardingStateToUsers';
 import { AddRoleToUsers1747000000000 } from './users/1747000000000-AddRoleToUsers';
 import { CreateSocialLinksTable1748000000000 } from './social-link/1748000000000-CreateSocialLinksTable';
+import { AddCommentSoftDeleteAndAudit1753000000000 } from './comments/1753000000000-AddCommentSoftDeleteAndAudit';
+import { CreateFavorites1753100000000 } from './favorites/1753100000000-CreateFavorites';
 
 export const migrationDataSource = new DataSource({
   type: 'postgres',
@@ -33,5 +35,7 @@ export const migrationDataSource = new DataSource({
     AddOnboardingStateToUsers1745200000000,
     AddRoleToUsers1747000000000,
     CreateSocialLinksTable1748000000000,
+    AddCommentSoftDeleteAndAudit1753000000000,
+    CreateFavorites1753100000000,
   ],
 });

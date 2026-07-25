@@ -27,6 +27,9 @@ import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { ReferralModule } from './referral/referral.module';
 import { CsrfModule } from './csrf/csrf.module';
 import { SocialLinksModule } from './social-link/social-links.module';
+import { FeedModule } from './feed/feed.module';
+import { FavoritesModule } from './favorites/favorites.module';
+import { NetworkConfigModule } from './config/network-config.module';
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
 import { CorrelationExceptionFilter } from './common/filters/correlation-exception.filter';
 import { RequestContextService } from './common/services/request-context.service';
@@ -64,6 +67,9 @@ const IDEMPOTENCY_ROUTES = [
     ReferralModule,
     CsrfModule,
     SocialLinksModule,
+    FeedModule,
+    FavoritesModule,
+    NetworkConfigModule,
   ],
   controllers: [AppController, OpenAPIController],
   providers: [

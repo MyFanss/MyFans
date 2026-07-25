@@ -4,17 +4,23 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
 import { Comment } from './entities/comment.entity';
+import { CommentAuditLog } from './entities/comment-audit-log.entity';
 import { CommentDto, CreateCommentDto, UpdateCommentDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
+import { EventBus } from '../events/event-bus';
+import { CommentDeletedEvent } from '../events/domain-events';
 
 @Injectable()
 export class CommentsService {
   constructor(
     @InjectRepository(Comment)
     private readonly commentsRepository: Repository<Comment>,
+    @InjectRepository(CommentAuditLog)
+    private readonly auditRepository: Repository<CommentAuditLog>,
+    private readonly eventBus: EventBus,
   ) {}
 
   private toDto(comment: Comment): CommentDto {
@@ -39,6 +45,7 @@ export class CommentsService {
     const skip = (page - 1) * limit;
 
     const [comments, total] = await this.commentsRepository.findAndCount({
+      where: { deletedAt: IsNull() },
       skip,
       take: limit,
       order: { createdAt: 'DESC' },
@@ -60,7 +67,7 @@ export class CommentsService {
     const skip = (page - 1) * limit;
 
     const [comments, total] = await this.commentsRepository.findAndCount({
-      where: { postId },
+      where: { postId, deletedAt: IsNull() },
       skip,
       take: limit,
       order: { createdAt: 'DESC' },
@@ -75,7 +82,9 @@ export class CommentsService {
   }
 
   async findOne(id: string): Promise<CommentDto> {
-    const comment = await this.commentsRepository.findOne({ where: { id } });
+    const comment = await this.commentsRepository.findOne({
+      where: { id, deletedAt: IsNull() },
+    });
     if (!comment) {
       throw new NotFoundException(`Comment with id "${id}" not found`);
     }
@@ -91,7 +100,9 @@ export class CommentsService {
     dto: UpdateCommentDto,
     requesterId: string,
   ): Promise<CommentDto> {
-    const comment = await this.commentsRepository.findOne({ where: { id } });
+    const comment = await this.commentsRepository.findOne({
+      where: { id, deletedAt: IsNull() },
+    });
     if (!comment) {
       throw new NotFoundException(`Comment with id "${id}" not found`);
     }
@@ -105,9 +116,19 @@ export class CommentsService {
     return this.toDto(updated);
   }
 
-  /** Only the comment's author may delete it; admin takedowns go through `/moderation`. */
+  /**
+   * Soft-delete a comment: sets deletedAt and deletedBy, persists an audit
+   * log row, then emits a CommentDeletedEvent for downstream consumers.
+   *
+   * Idempotent guard: throws NotFoundException if the comment is already
+   * deleted or does not exist, so callers cannot double-delete. Only the
+   * comment's author may delete it; admin takedowns go through
+   * `/moderation`.
+   */
   async remove(id: string, requesterId: string): Promise<void> {
-    const comment = await this.commentsRepository.findOne({ where: { id } });
+    const comment = await this.commentsRepository.findOne({
+      where: { id, deletedAt: IsNull() },
+    });
     if (!comment) {
       throw new NotFoundException(`Comment with id "${id}" not found`);
     }
@@ -116,6 +137,27 @@ export class CommentsService {
         'You do not have permission to delete this comment',
       );
     }
-    await this.commentsRepository.remove(comment);
+
+    comment.deletedAt = new Date();
+    comment.deletedBy = requesterId;
+    await this.commentsRepository.save(comment);
+
+    await this.auditRepository.save(
+      this.auditRepository.create({
+        commentId: id,
+        deletedBy: requesterId,
+        action: 'soft_delete',
+      }),
+    );
+
+    this.eventBus.publish(new CommentDeletedEvent(id, requesterId));
+  }
+
+  /** @deprecated Use `remove` (soft delete) instead. Hard-deletes the comment. */
+  async hardDelete(id: string): Promise<void> {
+    const res = await this.commentsRepository.delete(id);
+    if (!res.affected) {
+      throw new NotFoundException(`Comment with id "${id}" not found`);
+    }
   }
 }
