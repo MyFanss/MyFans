@@ -82,6 +82,7 @@ export class CreatorsController {
   }
 
   @Get('username/:username')
+  @Public()
   @ApiOperation({
     summary: 'Get a single public creator profile by exact username',
     description:
