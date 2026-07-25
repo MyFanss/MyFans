@@ -9,13 +9,15 @@ Successfully implemented an on-chain content likes contract for the MyFans platf
 ### Architecture
 
 **Storage Model:**
-- `LikeMap(content_id)`: Map<Address, bool> storing user likes per content
-- `LikeCount(content_id)`: u32 storing aggregate like count
+- `DataKey::LikesMap(content_id)`: Map<Address, bool> storing user likes per content
+- `DataKey::Count(content_id)`: u32 storing aggregate like count
+- `DataKey::UserLikes(user)`: Vec<u32> storing content IDs liked by user (pagination)
 
 **Rationale:**
 - Map enables O(1) membership checks for `has_liked()` queries
 - Separate count storage enables O(1) `like_count()` queries
-- Composite keys `("likes", content_id)` and `("count", content_id)` isolate data per content
+- DataKey enum isolates data per content / per user
+- MAX_USER_LIKES (100) bound prevents unbounded Vec growth
 
 ### Core Functions
 

@@ -65,9 +65,11 @@
 ### Gas & Scalability
 
 #### Storage Model
-- **Like Set**: `("likes", content_id)` → Set<Address>
-- **Like Count**: `("count", content_id)` → u32
-- **Rationale**: Separate count enables O(1) queries; Set enables O(1) membership checks
+- **Like Map**: `DataKey::LikesMap(content_id)` → Map<Address, bool>
+- **Like Count**: `DataKey::Count(content_id)` → u32
+- **User Likes**: `DataKey::UserLikes(user)` → Vec<u32>
+- **Max Likes Per User**: 100 (`MAX_USER_LIKES`)
+- **Rationale**: Separate count enables O(1) queries; Map enables O(log n) membership checks; DataKey enum follows project conventions
 
 #### Complexity Analysis
 - `like()`: O(log n) where n = likes on content (Set insert)
