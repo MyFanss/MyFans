@@ -719,6 +719,24 @@ mod test {
         }
     }
 
+    // ── content-likes integration (Issue #1409) ──────────────────────────────
+
+    mod content_likes_integration {
+        use content_likes::Error as LikesError;
+        use myfans_lib::error_codes::content_likes as likes_err;
+
+        /// content-likes contract error discriminants must match the stable
+        /// constants published in `myfans_lib::error_codes::content_likes`.
+        #[test]
+        fn content_likes_error_codes_match_stable_constants() {
+            assert_eq!(LikesError::NotLiked as u32, likes_err::NOT_LIKED);
+            assert_eq!(
+                LikesError::AlreadyInitialized as u32,
+                likes_err::ALREADY_INITIALIZED
+            );
+        }
+    }
+
     // ── creator-earnings integration ───────────────────────────────────────
 
     mod creator_earnings_integration {
