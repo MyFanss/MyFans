@@ -18,11 +18,14 @@ import {
   SubscriptionRenewedEvent,
 } from '../events/domain-events';
 import {
-  RenewalFailurePayload,
+  SUBSCRIPTION_CANCELLED,
+  SUBSCRIPTION_CREATED,
   SUBSCRIPTION_EVENT_PUBLISHER,
   SUBSCRIPTION_RENEWAL_FAILED,
 } from './events';
-import type { SubscriptionEventPublisher } from './events';
+import type { SubscriptionEventPayload, SubscriptionEventPublisher } from './events';
+import { RPC_BALANCE_ADAPTER } from './rpc-adapter';
+import type { RpcBalanceAdapter } from './rpc-adapter';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
 import { SubscriptionIndexRepository } from './repositories/subscription-index.repository';
 import { SubscriptionIndexEntity, SubscriptionStatus } from './entities/subscription-index.entity';
@@ -112,6 +115,8 @@ export class SubscriptionsService {
   constructor(
     private readonly indexRepo: SubscriptionIndexRepository,
     private readonly eventBus: EventBus,
+    @Inject(RPC_BALANCE_ADAPTER)
+    private readonly rpcAdapter: RpcBalanceAdapter,
     @Optional()
     @Inject(SUBSCRIPTION_EVENT_PUBLISHER)
     private readonly subscriptionEventPublisher?: SubscriptionEventPublisher,
@@ -200,6 +205,13 @@ export class SubscriptionsService {
     this.eventBus.publish(
       new SubscriptionCreatedEvent(fan, creator, planId, expiry),
     );
+    this.emitSubscriptionLifecycleEvent(SUBSCRIPTION_CREATED, {
+      subscriptionId: sub.id,
+      fan,
+      creator,
+      planId,
+      timestamp: new Date().toISOString(),
+    });
     return sub;
   }
 
@@ -261,6 +273,13 @@ export class SubscriptionsService {
         existing.planId,
       ),
     );
+    this.emitSubscriptionLifecycleEvent(SUBSCRIPTION_CANCELLED, {
+      subscriptionId: existing.id,
+      fan,
+      creator,
+      planId: existing.planId,
+      timestamp: new Date().toISOString(),
+    });
 
     return {
       success: true,
@@ -609,12 +628,12 @@ export class SubscriptionsService {
     };
   }
 
-  validateBalance(
+  async validateBalance(
     fanAddress: string,
     assetCode: string,
     requiredAmount: string,
-  ): { valid: boolean; balance: string; shortfall?: string } {
-    const balance = this.getMockBalance(fanAddress, assetCode);
+  ): Promise<{ valid: boolean; balance: string; shortfall?: string }> {
+    const balance = await this.rpcAdapter.getBalance(fanAddress, assetCode);
     const balanceNum = parseFloat(balance);
     const requiredNum = parseFloat(requiredAmount);
 
@@ -629,15 +648,18 @@ export class SubscriptionsService {
     };
   }
 
-  getWalletStatus(fanAddress: string) {
-    return {
-      address: fanAddress,
-      balances: this.supportedAssets.map((asset) => ({
+  async getWalletStatus(fanAddress: string) {
+    const balances = await Promise.all(
+      this.supportedAssets.map(async (asset) => ({
         code: asset.code,
         issuer: asset.issuer,
-        balance: this.getMockBalance(fanAddress, asset.code),
+        balance: await this.rpcAdapter.getBalance(fanAddress, asset.code),
         isNative: asset.isNative,
       })),
+    );
+    return {
+      address: fanAddress,
+      balances,
       isConnected: !!fanAddress,
     };
   }
@@ -748,13 +770,6 @@ export class SubscriptionsService {
     return `${days} days`;
   }
 
-  private getMockBalance(address: string, assetCode: string): string {
-    void address;
-    if (assetCode === 'XLM') return '1000.0000000';
-    if (assetCode === 'USDC') return '50.0000000';
-    return '0.0000000';
-  }
-
   private getPlanMock(planId: number): Plan | undefined {
     return this.getPlan(planId);
   }
@@ -795,23 +810,24 @@ export class SubscriptionsService {
   }
 
   private emitRenewalFailureEvent(checkout: Checkout, reason: string): void {
-    const payload: RenewalFailurePayload = {
+    this.emitSubscriptionLifecycleEvent(SUBSCRIPTION_RENEWAL_FAILED, {
       subscriptionId: checkout.id,
       reason,
       timestamp: new Date().toISOString(),
       userId: checkout.fanAddress,
-    };
+    });
+  }
 
+  /** Fire-and-forget emit through the external SUBSCRIPTION_EVENT_PUBLISHER, if configured. */
+  private emitSubscriptionLifecycleEvent(
+    eventName: string,
+    payload: SubscriptionEventPayload,
+  ): void {
     Promise.resolve()
-      .then(() =>
-        this.subscriptionEventPublisher?.emit(
-          SUBSCRIPTION_RENEWAL_FAILED,
-          payload,
-        ),
-      )
+      .then(() => this.subscriptionEventPublisher?.emit(eventName, payload))
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(`Failed to emit renewal failure event: ${message}`);
+        this.logger.error(`Failed to emit ${eventName} event: ${message}`);
       });
   }
 }
