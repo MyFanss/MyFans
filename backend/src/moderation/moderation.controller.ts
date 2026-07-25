@@ -44,8 +44,11 @@ export class ModerationController {
   @ApiOperation({ summary: 'Report content for moderation' })
   @ApiResponse({ status: 201, description: 'Flag created' })
   @ApiResponse({ status: 409, description: 'Already flagged' })
-  createFlag(@CurrentUser() user: JwtUserPayload, @Body() dto: CreateFlagDto) {
-    return this.moderationService.createFlag(user.userId, dto);
+  createFlag(
+    @Request() req: { user: { id: string } },
+    @Body() dto: CreateFlagDto,
+  ) {
+    return this.moderationService.createFlag(req.user.id, dto);
   }
 
   // ── Admin endpoints ───────────────────────────────────────────────────
@@ -73,7 +76,7 @@ export class ModerationController {
   @ApiOperation({ summary: '[Admin] Review / update a moderation flag' })
   @ApiResponse({ status: 200, description: 'Flag updated' })
   reviewFlag(
-    @CurrentUser() user: JwtUserPayload,
+    @Request() req: { user: { id: string } },
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ReviewFlagDto,
   ) {

@@ -1,3 +1,5 @@
+'use client';
+
 import Image from 'next/image';
 import { BookmarkButton } from '@/components/BookmarkButton';
 import { FeatureGate } from '@/components/FeatureGate';
@@ -8,6 +10,7 @@ import {
   type SubscriptionStatus,
 } from '@/lib/subscription-status';
 import type { CreatorProfile } from '@/lib/creator-profile';
+import { useViewerSubscriptionStatus } from '@/hooks/useViewerSubscriptionStatus';
 
 interface CreatorHeroProps {
   creator: CreatorProfile;
@@ -16,10 +19,16 @@ interface CreatorHeroProps {
 
 export function CreatorHero({
   creator,
-  viewerSubscriptionStatus = null,
+  viewerSubscriptionStatus: initialStatus,
 }: CreatorHeroProps) {
-  const statusCopy = viewerSubscriptionStatus
-    ? getSubscriptionStatusCopy(viewerSubscriptionStatus)
+  const { status: liveStatus } = useViewerSubscriptionStatus(
+    initialStatus === undefined ? creator.username : null,
+  );
+
+  const effectiveStatus = initialStatus !== undefined ? initialStatus : liveStatus;
+
+  const statusCopy = effectiveStatus
+    ? getSubscriptionStatusCopy(effectiveStatus)
     : null;
 
   return (
@@ -53,8 +62,8 @@ export function CreatorHero({
                 <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
                   {creator.subscriberCount.toLocaleString()} subscribers
                 </p>
-                {viewerSubscriptionStatus && (
-                  <SubscriptionStatusBadge status={viewerSubscriptionStatus} />
+                {effectiveStatus && (
+                  <SubscriptionStatusBadge status={effectiveStatus} />
                 )}
               </div>
               {statusCopy && (

@@ -53,9 +53,11 @@ describe('SorobanRpcService – getNetworkEvents', () => {
     const getEvents = jest.fn().mockResolvedValue({ events: [], latestLedger: 300 });
     const svc = makeService({ getEvents });
     await svc.getNetworkEvents({ startLedger: 50, limit: 10, paginationToken: 'tok' });
-    expect(getEvents).toHaveBeenCalledWith(
-      expect.objectContaining({ startLedger: 50, limit: 10, cursor: 'tok' }),
-    );
+    expect(getEvents).toHaveBeenCalledWith({
+      cursor: 'tok',
+      filters: [],
+      limit: 10,
+    });
   });
 
   it('returns empty events array when getEvents returns undefined events', async () => {

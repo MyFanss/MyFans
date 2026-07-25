@@ -1,6 +1,8 @@
 //! Treasury contract for holding platform funds
 
-use soroban_sdk::{contract, contracterror, contractimpl, panic_with_error, token, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, panic_with_error, token, Address, Env, Symbol,
+};
 
 const ADMIN: &str = "ADMIN";
 const TOKEN: &str = "TOKEN";

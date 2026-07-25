@@ -46,6 +46,7 @@ The contracts below are deployed by `contract/scripts/deploy.sh`, so their legac
 | admin | `Admin` | Already canonical. |
 | creator id by address | `Creator(Address)` | Already canonical. |
 | caller registration ledger | `LastRegLedger(Address)` | Legacy variant retained; canonical name is `registration_ledger`. |
+| address by creator id | `CreatorIdOwner(u64)` | Already canonical; reverse mapping used to enforce a globally unique `creator_id`. |
 
 ### `myfans-token`
 

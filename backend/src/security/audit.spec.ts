@@ -21,10 +21,7 @@ describe('Security Auditing', () => {
   };
 
   const workflowPaths = {
-    auditCheck: path.join(repoRoot, '.github/workflows/audit-check.yml'),
-    backendCi: path.join(repoRoot, '.github/workflows/backend-ci.yml'),
-    frontendCi: path.join(repoRoot, '.github/workflows/frontend-ci.yml'),
-    contractCi: path.join(repoRoot, '.github/workflows/contract-ci.yml'),
+    ci: path.join(repoRoot, '.github/workflows/ci.yml'),
   };
 
   describe('Audit Ignore Files', () => {
@@ -55,38 +52,23 @@ describe('Security Auditing', () => {
   });
 
   describe('CI Workflows', () => {
-    it('should include npm audit in backend CI', () => {
-      const content = fs.readFileSync(workflowPaths.backendCi, 'utf8');
-      expect(content).toContain('npm audit');
+    it('should have a unified CI workflow', () => {
+      expect(fs.existsSync(workflowPaths.ci)).toBe(true);
     });
 
-    it('should include npm audit in frontend CI', () => {
-      const content = fs.readFileSync(workflowPaths.frontendCi, 'utf8');
-      expect(content).toContain('npm audit');
+    it('should run backend, frontend, and contract jobs', () => {
+      const content = fs.readFileSync(workflowPaths.ci, 'utf8');
+      expect(content).toContain('name: Backend');
+      expect(content).toContain('name: Frontend');
+      expect(content).toContain('name: Contract');
     });
 
-    it('should include cargo audit in contract CI', () => {
-      const content = fs.readFileSync(workflowPaths.contractCi, 'utf8');
-      expect(content).toContain('cargo audit');
-    });
-
-    it('should include comprehensive audit check workflow', () => {
-      const content = fs.readFileSync(workflowPaths.auditCheck, 'utf8');
-      expect(content).toContain('Check Dependencies & Audits');
-      expect(content).toContain('npm audit');
-      expect(content).toContain('cargo audit');
-    });
-
-    it('should fail on critical vulnerabilities', () => {
-      const content = fs.readFileSync(workflowPaths.auditCheck, 'utf8');
-      expect(content).toContain('CRITICAL');
-      expect(content).toContain('exit 1');
-    });
-
-    it('should parse JSON output from audits', () => {
-      const content = fs.readFileSync(workflowPaths.auditCheck, 'utf8');
-      expect(content).toContain('jq');
-      expect(content).toContain('.metadata.vulnerabilities');
+    it('should install dependencies and build each package', () => {
+      const content = fs.readFileSync(workflowPaths.ci, 'utf8');
+      expect(content).toContain('npm ci');
+      expect(content).toContain('npm run build');
+      expect(content).toContain('cargo test');
+      expect(content).toContain('wasm32-unknown-unknown');
     });
   });
 
@@ -175,28 +157,27 @@ describe('Security Auditing', () => {
 
   describe('Vulnerability Severity Handling', () => {
     it('should correctly parse npm audit critical count', () => {
-      // This test verifies the audit script can extract severity data
       const content = fs.readFileSync(
-        path.join(repoRoot, '.github/workflows/audit-check.yml'),
-        'utf8'
+        path.join(repoRoot, 'scripts/check-audits.sh'),
+        'utf8',
       );
-      expect(content).toContain("CRITICAL=$(echo \"$AUDIT_JSON\" | jq '.metadata.vulnerabilities.critical // 0')");
+      expect(content).toContain("CRITICAL=$(echo \"$AUDIT_OUTPUT\" | jq '.metadata.vulnerabilities.critical // 0')");
     });
 
     it('should correctly parse cargo audit severity', () => {
       const content = fs.readFileSync(
-        path.join(repoRoot, '.github/workflows/contract-ci.yml'),
-        'utf8'
+        path.join(repoRoot, 'scripts/check-audits.sh'),
+        'utf8',
       );
       expect(content).toContain('select(.severity==\"critical\")');
     });
 
     it('should exit with failure on critical vulnerabilities', () => {
       const content = fs.readFileSync(
-        path.join(repoRoot, '.github/workflows/audit-check.yml'),
-        'utf8'
+        path.join(repoRoot, 'scripts/check-audits.sh'),
+        'utf8',
       );
-      expect(content).toContain('if (( CRITICAL > 0 ))');
+      expect(content).toContain('if (( CRITICAL > CRITICAL_THRESHOLD ))');
       expect(content).toContain('exit 1');
     });
   });

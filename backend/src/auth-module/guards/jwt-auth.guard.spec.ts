@@ -1,36 +1,49 @@
 import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Test } from '@nestjs/testing';
+import { AuthGuard } from '@nestjs/passport';
 import { JwtAuthGuard } from './jwt-auth.guard';
-
-const mockExecutionContext = (user: unknown): ExecutionContext =>
-  ({
-    switchToHttp: () => ({ getRequest: () => ({ user }) }),
-    getHandler: () => ({}),
-    getClass: () => ({}),
-  }) as unknown as ExecutionContext;
+import { IS_PUBLIC_KEY } from '../../common/decorators/public.decorator';
 
 describe('JwtAuthGuard', () => {
   let guard: JwtAuthGuard;
+  let reflectorMock: jest.Mocked<Reflector>;
 
-  beforeEach(async () => {
-    const module = await Test.createTestingModule({
-      providers: [JwtAuthGuard, Reflector],
-    }).compile();
+  const context = {
+    getHandler: jest.fn(),
+    getClass: jest.fn(),
+  } as unknown as ExecutionContext;
 
-    guard = module.get(JwtAuthGuard);
+  beforeEach(() => {
+    reflectorMock = {
+      getAllAndOverride: jest.fn(),
+    } as unknown as jest.Mocked<Reflector>;
+    guard = new JwtAuthGuard(reflectorMock);
   });
 
-  it('should be defined', () => {
-    expect(guard).toBeDefined();
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
-  it('req.user carries userId, not id', () => {
-    const payload = { userId: 'user-uuid', email: 'a@b.com', role: 'fan' };
-    const ctx = mockExecutionContext(payload);
-    const user = ctx.switchToHttp().getRequest().user as typeof payload;
+  it('allows routes marked @Public() without authenticating', () => {
+    reflectorMock.getAllAndOverride.mockReturnValue(true);
+    const superSpy = jest.spyOn(AuthGuard('jwt').prototype, 'canActivate');
 
-    expect(user.userId).toBe('user-uuid');
-    expect((user as any).id).toBeUndefined();
+    expect(guard.canActivate(context)).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(reflectorMock.getAllAndOverride).toHaveBeenCalledWith(
+      IS_PUBLIC_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    expect(superSpy).not.toHaveBeenCalled();
+  });
+
+  it('delegates to passport JWT authentication on protected routes', () => {
+    reflectorMock.getAllAndOverride.mockReturnValue(undefined);
+    const superSpy = jest
+      .spyOn(AuthGuard('jwt').prototype, 'canActivate')
+      .mockReturnValue(true);
+
+    expect(guard.canActivate(context)).toBe(true);
+    expect(superSpy).toHaveBeenCalledWith(context);
   });
 });

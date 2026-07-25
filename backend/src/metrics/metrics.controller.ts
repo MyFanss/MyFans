@@ -1,9 +1,11 @@
-import { Controller, Get, Header, Query } from '@nestjs/common';
+import { Controller, Get, Header, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import type { MetricsSnapshot } from '../common/services/http-metrics.service';
 import { HttpMetricsService } from '../common/services/http-metrics.service';
 import { RpcMetricsService, RpcMetricsSnapshot } from '../common/services/rpc-metrics.service';
 import { ModerationSlaService, ModerationSlaSnapshot } from '../moderation/moderation-sla.service';
+import { Public } from '../common/decorators/public.decorator';
+import { MetricsGuard } from './metrics.guard';
 
 export type MetricSeverity = 'warning' | 'critical';
 
@@ -44,11 +46,15 @@ export class MetricsController {
    * GET /v1/metrics
    * Returns a point-in-time snapshot of per-endpoint SLA metrics,
    * Soroban RPC call metrics, and moderation queue SLA stats.
+   * Requires Authorization: Bearer <METRICS_SCRAPE_TOKEN>
    */
   @Get()
+  @Public()
+  @UseGuards(MetricsGuard)
   @ApiOperation({ summary: 'Per-endpoint HTTP latency, error rate metrics, Soroban RPC metrics, and moderation queue SLA' })
   @ApiQuery({ name: 'route', required: false, description: 'Filter HTTP endpoints by route prefix, e.g. /v1/auth' })
   @ApiResponse({ status: 200, description: 'Metrics snapshot' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid scrape token' })
   async getMetrics(@Query('route') routeFilter?: string): Promise<FullMetricsSnapshot> {
     const [httpSnap, rpcSnap, slaSnap] = await Promise.all([
       Promise.resolve(this.httpMetrics.snapshot()),
@@ -67,10 +73,13 @@ export class MetricsController {
   }
 
   @Get('prometheus')
+  @Public()
+  @UseGuards(MetricsGuard)
   @Header('Content-Type', 'text/plain; version=0.0.4')
   @ApiOperation({ summary: 'Prometheus scrape endpoint for HTTP and Soroban RPC metrics' })
   @ApiQuery({ name: 'route', required: false, description: 'Filter HTTP endpoints by route prefix, e.g. /v1/auth' })
   @ApiResponse({ status: 200, description: 'Prometheus metrics text format' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid scrape token' })
   async getPrometheusMetrics(@Query('route') routeFilter?: string): Promise<string> {
     const [httpSnap, rpcSnap] = await Promise.all([
       Promise.resolve(this.httpMetrics.snapshot()),
@@ -186,28 +195,44 @@ export class MetricsController {
     lines.push('# TYPE backend_soroban_rpc_duration_seconds_count counter');
 
     for (const endpoint of httpSnap.endpoints) {
-      const labels = this.prometheusLabels({ method: endpoint.method, route: endpoint.route });
-      lines.push(`backend_http_requests_total${labels} ${endpoint.requests}`);
-      lines.push(`backend_http_request_errors_total${labels},code="4xx" ${endpoint.errors4xx}`);
-      lines.push(`backend_http_request_errors_total${labels},code="5xx" ${endpoint.errors5xx}`);
+      const baseLabels = { method: endpoint.method, route: endpoint.route };
+      lines.push(`backend_http_requests_total${this.prometheusLabels(baseLabels)} ${endpoint.requests}`);
+      lines.push(
+        `backend_http_request_errors_total${this.prometheusLabels({ ...baseLabels, code: '4xx' })} ${endpoint.errors4xx}`,
+      );
+      lines.push(
+        `backend_http_request_errors_total${this.prometheusLabels({ ...baseLabels, code: '5xx' })} ${endpoint.errors5xx}`,
+      );
 
       const histogramBuckets = this.cumulativeHistogram(endpoint.histogram);
       for (const [bound, count] of Object.entries(histogramBuckets)) {
         const le = bound === 'Infinity' ? '+Inf' : (Number(bound) / 1000).toFixed(3);
         lines.push(
-          `backend_http_request_duration_seconds_bucket${labels},le="${le}" ${count}`,
+          `backend_http_request_duration_seconds_bucket${this.prometheusLabels({ ...baseLabels, le })} ${count}`,
         );
       }
-      lines.push(`backend_http_request_duration_seconds_sum${labels} ${endpoint.totalLatencyMs / 1000}`);
-      lines.push(`backend_http_request_duration_seconds_count${labels} ${endpoint.requests}`);
+      lines.push(
+        `backend_http_request_duration_seconds_sum${this.prometheusLabels(baseLabels)} ${endpoint.totalLatencyMs / 1000}`,
+      );
+      lines.push(
+        `backend_http_request_duration_seconds_count${this.prometheusLabels(baseLabels)} ${endpoint.requests}`,
+      );
     }
 
     for (const endpoint of rpcSnap.endpoints) {
-      const labels = this.prometheusLabels({ method: endpoint.method });
-      lines.push(`backend_soroban_rpc_calls_total${labels},outcome="success" ${endpoint.successes}`);
-      lines.push(`backend_soroban_rpc_calls_total${labels},outcome="failure" ${endpoint.failures}`);
-      lines.push(`backend_soroban_rpc_duration_seconds_total${labels} ${endpoint.totalLatencyMs / 1000}`);
-      lines.push(`backend_soroban_rpc_duration_seconds_count${labels} ${endpoint.calls}`);
+      const methodLabel = { method: endpoint.method };
+      lines.push(
+        `backend_soroban_rpc_calls_total${this.prometheusLabels({ ...methodLabel, outcome: 'success' })} ${endpoint.successes}`,
+      );
+      lines.push(
+        `backend_soroban_rpc_calls_total${this.prometheusLabels({ ...methodLabel, outcome: 'failure' })} ${endpoint.failures}`,
+      );
+      lines.push(
+        `backend_soroban_rpc_duration_seconds_total${this.prometheusLabels(methodLabel)} ${endpoint.totalLatencyMs / 1000}`,
+      );
+      lines.push(
+        `backend_soroban_rpc_duration_seconds_count${this.prometheusLabels(methodLabel)} ${endpoint.calls}`,
+      );
     }
 
     return lines.join('\n') + '\n';

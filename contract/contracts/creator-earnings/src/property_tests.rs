@@ -27,7 +27,14 @@ mod props {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    fn setup(env: &Env) -> (CreatorEarningsClient<'_>, Address, TokenClient<'_>, StellarAssetClient<'_>) {
+    fn setup(
+        env: &Env,
+    ) -> (
+        CreatorEarningsClient<'_>,
+        Address,
+        TokenClient<'_>,
+        StellarAssetClient<'_>,
+    ) {
         env.mock_all_auths();
         let admin = Address::generate(env);
         let token_admin = Address::generate(env);

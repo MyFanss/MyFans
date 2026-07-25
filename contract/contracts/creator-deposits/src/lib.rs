@@ -52,6 +52,8 @@ pub enum Error {
     PlatformFeeNotInitialized = 4,
     /// Code 5 – platform treasury not set; contract init was incomplete.
     PlatformTreasuryNotInitialized = 5,
+    /// Code 6 – contract was already initialized; re-initialization is not allowed.
+    AlreadyInitialized = 6,
 }
 
 #[contract]
@@ -60,6 +62,7 @@ pub struct CreatorDeposits;
 #[contractimpl]
 impl CreatorDeposits {
     pub fn init(env: Env, admin: Address, platform_fee_bps: u32, platform_treasury: Address) {
+        admin.require_auth();
         if platform_fee_bps >= 10000 {
             panic_with_error!(&env, Error::InvalidFeeBps);
         }
@@ -71,10 +74,8 @@ impl CreatorDeposits {
             .instance()
             .set(&DataKey::PlatformTreasury, &platform_treasury);
 
-        env.events().publish(
-            (Symbol::new(&env, TOPIC_INITIALIZED),),
-            (),
-        );
+        env.events()
+            .publish((Symbol::new(&env, TOPIC_INITIALIZED),), ());
     }
 
     pub fn deposit(env: Env, creator: Address, token: Address, amount: i128) {
@@ -105,6 +106,9 @@ impl CreatorDeposits {
         // Optimization: Only transfer fee if nonzero, avoiding unnecessary transfer calls.
         if fee > 0 {
             token_client.transfer(&creator, &treasury, &fee);
+        }
+        if net > 0 {
+            token_client.transfer(&creator, &env.current_contract_address(), &net);
         }
 
         // Optimization: Read balance once and update in single write;
@@ -167,10 +171,8 @@ impl CreatorDeposits {
         }
         env.storage().instance().set(&DataKey::PlatformFeeBps, &bps);
 
-        env.events().publish(
-            (Symbol::new(&env, TOPIC_FEE_UPDATED),),
-            bps,
-        );
+        env.events()
+            .publish((Symbol::new(&env, TOPIC_FEE_UPDATED),), bps);
     }
 
     pub fn get_balance(env: Env, creator: Address) -> i128 {
@@ -193,9 +195,10 @@ mod test {
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Events, MockAuth, MockAuthInvoke},
+        token::StellarAssetClient,
         vec,
         xdr::{ScAddress, SorobanAuthorizationEntry},
-        Env, IntoVal, Symbol, TryFromVal, TryIntoVal,
+        Env, Error as SorobanError, IntoVal, Symbol, TryFromVal, TryIntoVal,
     };
 
     const EMPTY_AUTHS: &[SorobanAuthorizationEntry] = &[];
@@ -418,6 +421,20 @@ mod test {
         let contract_id = env.register_contract(None, CreatorDeposits);
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "init",
+                args: vec![
+                    &env,
+                    admin.clone().into_val(&env),
+                    0_u32.into_val(&env),
+                    treasury.clone().into_val(&env),
+                ],
+                sub_invokes: &[],
+            },
+        }]);
         client.init(&admin, &0, &treasury);
 
         let deposit_amount = 1000_i128;
@@ -536,7 +553,12 @@ mod test {
             invoke: &MockAuthInvoke {
                 contract: &contract_id,
                 fn_name: "init",
-                args: vec![&env, admin.clone().into_val(&env), treasury.clone().into_val(&env), 500u32.into_val(&env)],
+                args: vec![
+                    &env,
+                    admin.clone().into_val(&env),
+                    treasury.clone().into_val(&env),
+                    500u32.into_val(&env),
+                ],
                 sub_invokes: &[],
             },
         }]);
@@ -591,7 +613,10 @@ mod test {
             },
         }]);
         let result = client.try_set_platform_fee(&200);
-        assert!(result.is_err(), "impostor calling set_platform_fee should revert");
+        assert!(
+            result.is_err(),
+            "impostor calling set_platform_fee should revert"
+        );
     }
 
     // ── Issue #932: Event emission tests ───────────────────────────
@@ -606,12 +631,15 @@ mod test {
         client.init(&admin, &500, &treasury);
 
         let events = env.events().all();
-        let init_events: Vec<_> = events.iter().filter(|e| {
-            e.1.first().is_some_and(|t| {
-                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, TOPIC_INITIALIZED))
+        let init_count = events
+            .iter()
+            .filter(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, TOPIC_INITIALIZED))
+                })
             })
-        }).collect();
-        assert_eq!(init_events.len(), 1);
+            .count();
+        assert_eq!(init_count, 1);
     }
 
     #[test]
@@ -625,13 +653,26 @@ mod test {
         client.set_platform_fee(&750);
 
         let events = env.events().all();
-        let fee_events: Vec<_> = events.iter().filter(|e| {
-            e.1.first().is_some_and(|t| {
-                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, TOPIC_FEE_UPDATED))
+        let fee_count = events
+            .iter()
+            .filter(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, TOPIC_FEE_UPDATED))
+                })
             })
-        }).collect();
-        assert_eq!(fee_events.len(), 1);
-        let data: u32 = fee_events[0].2.try_into_val(&env).unwrap();
+            .count();
+        assert_eq!(fee_count, 1);
+        let data: u32 = events
+            .iter()
+            .find(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, TOPIC_FEE_UPDATED))
+                })
+            })
+            .unwrap()
+            .2
+            .try_into_val(&env)
+            .unwrap();
         assert_eq!(data, 750);
     }
 
@@ -646,13 +687,26 @@ mod test {
         client.deposit(&creator, &token, &500);
 
         let events = env.events().all();
-        let dep_events: Vec<_> = events.iter().filter(|e| {
-            e.1.first().is_some_and(|t| {
-                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, "EarningsDeposited"))
+        let dep_count = events
+            .iter()
+            .filter(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, "EarningsDeposited"))
+                })
             })
-        }).collect();
-        assert_eq!(dep_events.len(), 1);
-        let data: i128 = dep_events[0].2.try_into_val(&env).unwrap();
+            .count();
+        assert_eq!(dep_count, 1);
+        let data: i128 = events
+            .iter()
+            .find(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, "EarningsDeposited"))
+                })
+            })
+            .unwrap()
+            .2
+            .try_into_val(&env)
+            .unwrap();
         assert_eq!(data, 500);
     }
 
@@ -668,45 +722,81 @@ mod test {
         client.withdraw(&creator, &token, &300);
 
         let events = env.events().all();
-        let wd_events: Vec<_> = events.iter().filter(|e| {
-            e.1.first().is_some_and(|t| {
-                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, "EarningsWithdrawn"))
+        let wd_count = events
+            .iter()
+            .filter(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, "EarningsWithdrawn"))
+                })
             })
-        }).collect();
-        assert_eq!(wd_events.len(), 1);
-        let data: i128 = wd_events[0].2.try_into_val(&env).unwrap();
+            .count();
+        assert_eq!(wd_count, 1);
+        let data: i128 = events
+            .iter()
+            .find(|e| {
+                e.1.first().is_some_and(|t| {
+                    t.try_into_val(&env).ok() == Some(Symbol::new(&env, "EarningsWithdrawn"))
+                })
+            })
+            .unwrap()
+            .2
+            .try_into_val(&env)
+            .unwrap();
         assert_eq!(data, 300);
     }
 
     #[test]
-    fn test_idempotent_init_multiple_events() {
+    fn test_reinitialization_rejected() {
         let (env, admin, treasury, _, _) = setup();
         let contract_id = env.register_contract(None, CreatorDeposits);
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         env.mock_all_auths();
         client.init(&admin, &500, &treasury);
-        client.init(&admin, &1000, &treasury);
 
-        let events = env.events().all();
-        let init_events: Vec<_> = events.iter().filter(|e| {
-            e.1.first().is_some_and(|t| {
-                t.try_into_val::<Symbol>(&env).ok() == Some(Symbol::new(&env, TOPIC_INITIALIZED))
-            })
-        }).collect();
-        assert_eq!(init_events.len(), 2);
+        // Second init should fail with AlreadyInitialized
+        let result = client.try_init(&admin, &1000, &treasury);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::AlreadyInitialized as u32,
+            )))
+        );
+    }
+
+    #[test]
+    fn test_init_requires_admin_auth() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let treasury = Address::generate(&env);
+
+        // Strip all auth so that require_auth() fails
+        env.set_auths(&[]);
+
+        let result = client.try_init(&admin, &500, &treasury);
+        assert!(
+            result.is_err(),
+            "init() must reject when admin does not authorize"
+        );
     }
 
     // ── Issue #934: Snapshot / restore consistency test ─────────────
 
     #[test]
     fn test_snapshot_restore_consistency() {
-        let mut env = Env::default();
+        let env = Env::default();
         let admin = Address::generate(&env);
         let treasury = Address::generate(&env);
         let creator1 = Address::generate(&env);
         let creator2 = Address::generate(&env);
-        let token_addr = env.register_contract(None, MockToken);
+        let token_admin = Address::generate(&env);
+        let token_addr = env
+            .register_stellar_asset_contract_v2(token_admin.clone())
+            .address();
+        let token_sac = StellarAssetClient::new(&env, &token_addr);
 
         env.mock_all_auths();
 
@@ -714,6 +804,8 @@ mod test {
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         client.init(&admin, &500, &treasury);
+        token_sac.mint(&creator1, &10_000);
+        token_sac.mint(&creator2, &10_000);
 
         client.deposit(&creator1, &token_addr, &2000);
         client.deposit(&creator2, &token_addr, &1000);
@@ -729,6 +821,7 @@ mod test {
         let sc_treasury: ScAddress = treasury.clone().into();
         let sc_creator1: ScAddress = creator1.clone().into();
         let sc_creator2: ScAddress = creator2.clone().into();
+        let sc_token: ScAddress = token_addr.clone().into();
 
         let snapshot = env.to_snapshot();
 
@@ -740,6 +833,7 @@ mod test {
         let _treasury2: Address = Address::try_from_val(&env2, &sc_treasury).unwrap();
         let creator1_2: Address = Address::try_from_val(&env2, &sc_creator1).unwrap();
         let creator2_2: Address = Address::try_from_val(&env2, &sc_creator2).unwrap();
+        let token_addr2: Address = Address::try_from_val(&env2, &sc_token).unwrap();
 
         env2.register_contract(Some(&contract_id2), CreatorDeposits);
         let client2 = CreatorDepositsClient::new(&env2, &contract_id2);
@@ -751,11 +845,11 @@ mod test {
         client2.set_platform_fee(&300);
         assert_eq!(client2.get_platform_fee(), 300);
 
-        client2.deposit(&creator1_2, &token_addr, &500);
+        client2.deposit(&creator1_2, &token_addr2, &500);
         let expected = bal1 + 500 - ((500 * 300) / 10000);
         assert_eq!(client2.get_balance(&creator1_2), expected);
 
-        client2.withdraw(&creator1_2, &token_addr, &100);
+        client2.withdraw(&creator1_2, &token_addr2, &100);
         assert_eq!(client2.get_balance(&creator1_2), expected - 100);
     }
 }

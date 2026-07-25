@@ -1,11 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
 import { Comment } from './entities/comment.entity';
 import { CommentDto, CreateCommentDto, UpdateCommentDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
-import { createPaginatedResponse } from '../common/utils/pagination.util';
 
 @Injectable()
 export class CommentsService {
@@ -15,7 +18,9 @@ export class CommentsService {
   ) {}
 
   private toDto(comment: Comment): CommentDto {
-    return plainToInstance(CommentDto, comment, { excludeExtraneousValues: true });
+    return plainToInstance(CommentDto, comment, {
+      excludeExtraneousValues: true,
+    });
   }
 
   async create(authorId: string, dto: CreateCommentDto): Promise<CommentDto> {
@@ -27,7 +32,9 @@ export class CommentsService {
     return this.toDto(saved);
   }
 
-  async findAll(pagination: PaginationDto): Promise<PaginatedResponseDto<CommentDto>> {
+  async findAll(
+    pagination: PaginationDto,
+  ): Promise<PaginatedResponseDto<CommentDto>> {
     const { page = 1, limit = 20 } = pagination;
     const skip = (page - 1) * limit;
 
@@ -37,13 +44,18 @@ export class CommentsService {
       order: { createdAt: 'DESC' },
     });
 
-    return createPaginatedResponse(
-      [comments.map((c) => this.toDto(c)), total],
-      pagination,
+    return new PaginatedResponseDto(
+      comments.map((c) => this.toDto(c)),
+      total,
+      page,
+      limit,
     );
   }
 
-  async findByPost(postId: string, pagination: PaginationDto): Promise<PaginatedResponseDto<CommentDto>> {
+  async findByPost(
+    postId: string,
+    pagination: PaginationDto,
+  ): Promise<PaginatedResponseDto<CommentDto>> {
     const { page = 1, limit = 20 } = pagination;
     const skip = (page - 1) * limit;
 
@@ -54,9 +66,11 @@ export class CommentsService {
       order: { createdAt: 'DESC' },
     });
 
-    return createPaginatedResponse(
-      [comments.map((c) => this.toDto(c)), total],
-      pagination,
+    return new PaginatedResponseDto(
+      comments.map((c) => this.toDto(c)),
+      total,
+      page,
+      limit,
     );
   }
 
@@ -68,20 +82,39 @@ export class CommentsService {
     return this.toDto(comment);
   }
 
-  async update(id: string, dto: UpdateCommentDto): Promise<CommentDto> {
+  /**
+   * Only the comment's author may update it. Moderator/admin takedowns go
+   * through the separate `/moderation` flow, not this endpoint.
+   */
+  async update(
+    id: string,
+    dto: UpdateCommentDto,
+    requesterId: string,
+  ): Promise<CommentDto> {
     const comment = await this.commentsRepository.findOne({ where: { id } });
     if (!comment) {
       throw new NotFoundException(`Comment with id "${id}" not found`);
+    }
+    if (comment.authorId !== requesterId) {
+      throw new ForbiddenException(
+        'You do not have permission to update this comment',
+      );
     }
     Object.assign(comment, dto);
     const updated = await this.commentsRepository.save(comment);
     return this.toDto(updated);
   }
 
-  async remove(id: string): Promise<void> {
+  /** Only the comment's author may delete it; admin takedowns go through `/moderation`. */
+  async remove(id: string, requesterId: string): Promise<void> {
     const comment = await this.commentsRepository.findOne({ where: { id } });
     if (!comment) {
       throw new NotFoundException(`Comment with id "${id}" not found`);
+    }
+    if (comment.authorId !== requesterId) {
+      throw new ForbiddenException(
+        'You do not have permission to delete this comment',
+      );
     }
     await this.commentsRepository.remove(comment);
   }

@@ -13,7 +13,9 @@
 
 use crate::{ContentAccess, ContentAccessClient, Error};
 use soroban_sdk::{
-    testutils::Address as _, xdr::SorobanAuthorizationEntry, Address, Env, Error as SorobanError,
+    testutils::{Address as _, Ledger},
+    xdr::SorobanAuthorizationEntry,
+    Address, Env, Error as SorobanError,
 };
 
 const EMPTY_AUTHS: &[SorobanAuthorizationEntry] = &[];

@@ -898,7 +898,7 @@ mod test {
     /// Invariant: Price set by creator should be retrievable.
     #[test]
     fn test_price_set_is_retrievable() {
-        let (env, contract_id, admin, token_address, creator) = setup_test();
+        let (env, contract_id, admin, token_address, _, creator) = setup_test();
         let client = ContentAccessClient::new(&env, &contract_id);
 
         client.initialize(&admin, &token_address);
@@ -912,7 +912,7 @@ mod test {
     /// Invariant: Admin function returns the currently set admin.
     #[test]
     fn test_admin_returns_current_admin() {
-        let (env, contract_id, admin1, token_address) = setup_test();
+        let (env, contract_id, admin1, token_address, _, _) = setup_test();
         let client = ContentAccessClient::new(&env, &contract_id);
 
         client.initialize(&admin1, &token_address);

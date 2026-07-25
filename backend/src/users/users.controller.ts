@@ -17,9 +17,25 @@ import { UsersService } from './users.service';
 import { UpdateUserDto, UserProfileDto, DeleteAccountDto, UpdateOnboardingDto } from './dto';
 import { plainToInstance } from 'class-transformer';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
+import { AuthGuard } from '../utils/auth.guard';
+import { User } from './entities/user.entity';
+import { Delete, HttpCode, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
-import { CurrentUser, JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
+import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
 
+/**
+ * UsersController
+ *
+ * Handles user profile CRUD and account management. Protected endpoints
+ * use JWT authentication via AuthGuard or @CurrentUser decorator to extract
+ * the authenticated user's identity. The updateMe method now uses
+ * @CurrentUser instead of a hardcoded temp ID.
+ *
+ * @Controller users
+ * @version 1
+ * @tags users
+ * @security BearerAuth
+ */
 @ApiTags('users')
 @ApiBearerAuth()
 @Controller({ path: 'users', version: '1' })
@@ -37,14 +53,17 @@ export class UsersController {
     return plainToInstance(UserProfileDto, found);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch('me')
   @ApiOperation({ summary: 'Update current user profile' })
   @ApiResponse({ status: 200, description: 'Updated user profile', type: UserProfileDto })
-  async updateMe(@Body() updateUserDto: UpdateUserDto): Promise<UserProfileDto> {
-    // TODO: Get user ID from auth token/session
-    const userId = 'temp-user-id';
-    const user = await this.usersService.update(userId, updateUserDto);
-    return plainToInstance(UserProfileDto, user);
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async updateMe(
+    @Body() updateUserDto: UpdateUserDto,
+    @CurrentUser() user: { id: string },
+  ): Promise<UserProfileDto> {
+    const updatedUser = await this.usersService.update(user.id, updateUserDto);
+    return plainToInstance(UserProfileDto, updatedUser);
   }
 
   @UseGuards(JwtAuthGuard)

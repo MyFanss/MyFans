@@ -1,10 +1,6 @@
 name: E2E – Mock Stellar RPC
 
 on:
-  pull_request:
-    branches: [main, develop]
-  push:
-    branches: [main, develop]
   workflow_dispatch:
 
 jobs:

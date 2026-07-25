@@ -5,6 +5,7 @@ import { User } from './entities/user.entity';
 import { UpdateUserDto } from './dto';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
 import { Creator } from './entities/creator.entity';
+import { PaginationDto } from '../common/dto/pagination.dto';
 import * as bcrypt from 'bcrypt';
 
 
@@ -17,6 +18,21 @@ export class UsersService {
     private creatorRepository: Repository<Creator>
   ) { }
 
+  async findAll(
+    pagination: PaginationDto,
+  ): Promise<{ data: User[]; total: number }> {
+    const limit = pagination.limit ?? 20;
+    const page = pagination.page ?? 1;
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await this.usersRepository.findAndCount({
+      take: limit,
+      skip,
+      order: { created_at: 'DESC' },
+    });
+
+    return { data, total };
+  }
 
   async findOne(id: string): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id } });

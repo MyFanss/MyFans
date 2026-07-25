@@ -107,19 +107,19 @@ describe('LoggerService – structured log fields standard', () => {
 
   it('redacts sensitive fields in object messages', () => {
     service.log({ password: 'secret123', username: 'alice' }, 'TestCtx');
-    expect(mockWinston.info).toHaveBeenCalledWith(
+    expect(winstonLogger.info).toHaveBeenCalledWith(
       expect.stringContaining('[REDACTED]'),
       expect.objectContaining({ context: 'TestCtx' }),
     );
     // Verify secret is not in the logged message
-    const [loggedMessage] = mockWinston.info.mock.calls[0];
+    const [loggedMessage] = winstonLogger.info.mock.calls[0];
     expect(loggedMessage).not.toContain('secret123');
     expect(loggedMessage).toContain('alice');
   });
 
   it('redacts sensitive fields in error messages with objects', () => {
     service.error({ authorization: 'Bearer token', action: 'login' }, undefined, 'TestCtx');
-    const [loggedMessage] = mockWinston.error.mock.calls[0];
+    const [loggedMessage] = winstonLogger.error.mock.calls[0];
     expect(loggedMessage).toContain('[REDACTED]');
     expect(loggedMessage).not.toContain('Bearer token');
     expect(loggedMessage).toContain('login');
@@ -127,14 +127,14 @@ describe('LoggerService – structured log fields standard', () => {
 
   it('redacts sensitive fields in warn messages', () => {
     service.warn({ api_key: 'key-123', status: 'warning' }, 'TestCtx');
-    const [loggedMessage] = mockWinston.warn.mock.calls[0];
+    const [loggedMessage] = winstonLogger.warn.mock.calls[0];
     expect(loggedMessage).toContain('[REDACTED]');
     expect(loggedMessage).not.toContain('key-123');
   });
 
   it('redacts sensitive fields in debug messages', () => {
     service.debug({ email: 'user@example.com', userId: '123' }, 'TestCtx');
-    const [loggedMessage] = mockWinston.debug.mock.calls[0];
+    const [loggedMessage] = winstonLogger.debug.mock.calls[0];
     expect(loggedMessage).toContain('[REDACTED]');
     expect(loggedMessage).not.toContain('user@example.com');
   });
@@ -144,7 +144,7 @@ describe('LoggerService – structured log fields standard', () => {
       { user: { email: 'secret@example.com', name: 'Bob', wallet_address: 'GAB123' } },
       'TestCtx',
     );
-    const [loggedMessage] = mockWinston.info.mock.calls[0];
+    const [loggedMessage] = winstonLogger.info.mock.calls[0];
     expect(loggedMessage).toContain('[REDACTED]');
     expect(loggedMessage).not.toContain('secret@example.com');
     expect(loggedMessage).not.toContain('GAB123');
@@ -154,7 +154,7 @@ describe('LoggerService – structured log fields standard', () => {
   it('does not redact string messages (trusted by caller)', () => {
     const message = 'User logged in successfully';
     service.log(message, 'TestCtx');
-    expect(mockWinston.info).toHaveBeenCalledWith(message, expect.any(Object));
+    expect(winstonLogger.info).toHaveBeenCalledWith(message, expect.any(Object));
   });
 
   it('handles arrays of objects with sensitive fields', () => {
@@ -165,7 +165,7 @@ describe('LoggerService – structured log fields standard', () => {
       ],
       'TestCtx',
     );
-    const [loggedMessage] = mockWinston.info.mock.calls[0];
+    const [loggedMessage] = winstonLogger.info.mock.calls[0];
     expect(loggedMessage).toContain('[REDACTED]');
     expect(loggedMessage).not.toContain('p1');
     expect(loggedMessage).not.toContain('p2');

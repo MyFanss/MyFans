@@ -9,12 +9,21 @@ use events::{LikedEvent, UnlikedEvent, TOPIC_LIKED, TOPIC_UNLIKED};
 
 const MAX_PAGE_LIMIT: u32 = 100;
 
+/// Maximum number of content items a single user may like.
+const MAX_USER_LIKES: u32 = 100;
+
 /// Storage keys for content likes contract
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
     /// Admin address
     Admin,
+    /// Map of users who liked a content item, keyed by content_id
+    LikesMap(u32),
+    /// Like count for a content item, keyed by content_id
+    Count(u32),
+    /// List of content IDs liked by a user, keyed by user address
+    UserLikes(Address),
 }
 
 /// Per-contract error codes for the **content-likes** contract.
@@ -26,6 +35,7 @@ pub enum DataKey {
 /// |------|---------|
 /// | 1 | `NotLiked` |
 /// | 2 | `AlreadyInitialized` |
+/// | 3 | `CapacityExceeded` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -33,6 +43,8 @@ pub enum Error {
     NotLiked = 1,
     /// Code 2 – contract was already initialized.
     AlreadyInitialized = 2,
+    /// Code 3 – user has reached the maximum number of likes.
+    CapacityExceeded = 3,
 }
 
 #[contract]
@@ -75,14 +87,11 @@ impl ContentLikes {
     pub fn like(env: Env, user: Address, content_id: u32) {
         user.require_auth();
 
-        let like_map_key = ("likes", content_id);
-        let count_key = ("count", content_id);
-
         // Get existing like map or create new one
         let mut likes: Map<Address, bool> = env
             .storage()
             .instance()
-            .get(&like_map_key)
+            .get(&DataKey::LikesMap(content_id))
             .unwrap_or_else(|| Map::new(&env));
 
         // Check if already liked (idempotent); cache result to avoid redundant storage operations
@@ -91,23 +100,28 @@ impl ContentLikes {
         if !already_liked {
             // Add user to map
             likes.set(user.clone(), true);
-            env.storage().instance().set(&like_map_key, &likes);
+            env.storage().instance().set(&DataKey::LikesMap(content_id), &likes);
 
             // Increment count
-            let current_count: u32 = env.storage().instance().get(&count_key).unwrap_or(0);
+            let current_count: u32 = env.storage().instance().get(&DataKey::Count(content_id)).unwrap_or(0);
             env.storage()
                 .instance()
-                .set(&count_key, &(current_count + 1));
+                .set(&DataKey::Count(content_id), &(current_count + 1));
 
             // Maintain user_likes index for list_likes_by_user
-            let user_likes_key = ("user_likes", user.clone());
             let mut list: Vec<u32> = env
                 .storage()
                 .instance()
-                .get(&user_likes_key)
+                .get(&DataKey::UserLikes(user.clone()))
                 .unwrap_or_else(|| Vec::new(&env));
+
+            // Bound check: reject if user already reached the maximum
+            if list.len() >= MAX_USER_LIKES {
+                panic_with_error!(&env, Error::CapacityExceeded);
+            }
+
             list.push_back(content_id);
-            env.storage().instance().set(&user_likes_key, &list);
+            env.storage().instance().set(&DataKey::UserLikes(user.clone()), &list);
 
             // Publish event
             env.events().publish(
@@ -140,14 +154,11 @@ impl ContentLikes {
     pub fn unlike(env: Env, user: Address, content_id: u32) {
         user.require_auth();
 
-        let like_map_key = ("likes", content_id);
-        let count_key = ("count", content_id);
-
         // Get existing like map
         let mut likes: Map<Address, bool> = env
             .storage()
             .instance()
-            .get(&like_map_key)
+            .get(&DataKey::LikesMap(content_id))
             .unwrap_or_else(|| Map::new(&env));
 
         // Verify user has liked (revert early if not, avoiding redundant writes)
@@ -157,22 +168,21 @@ impl ContentLikes {
 
         // Remove user from map
         likes.remove(user.clone());
-        env.storage().instance().set(&like_map_key, &likes);
+        env.storage().instance().set(&DataKey::LikesMap(content_id), &likes);
 
         // Decrement count
-        let current_count: u32 = env.storage().instance().get(&count_key).unwrap_or(0);
+        let current_count: u32 = env.storage().instance().get(&DataKey::Count(content_id)).unwrap_or(0);
         if current_count > 0 {
             env.storage()
                 .instance()
-                .set(&count_key, &(current_count - 1));
+                .set(&DataKey::Count(content_id), &(current_count - 1));
         }
 
         // Maintain user_likes index: remove content_id from user's list
-        let user_likes_key = ("user_likes", user.clone());
         let list: Vec<u32> = env
             .storage()
             .instance()
-            .get(&user_likes_key)
+            .get(&DataKey::UserLikes(user.clone()))
             .unwrap_or_else(|| Vec::new(&env));
         let mut new_list = Vec::new(&env);
         for i in 0..list.len() {
@@ -181,7 +191,7 @@ impl ContentLikes {
                 new_list.push_back(id);
             }
         }
-        env.storage().instance().set(&user_likes_key, &new_list);
+        env.storage().instance().set(&DataKey::UserLikes(user.clone()), &new_list);
 
         // Publish event
         env.events().publish(
@@ -205,8 +215,7 @@ impl ContentLikes {
     /// # Gas optimization
     /// - Single storage read; O(1) operation
     pub fn like_count(env: Env, content_id: u32) -> u32 {
-        let count_key = ("count", content_id);
-        env.storage().instance().get(&count_key).unwrap_or(0)
+        env.storage().instance().get(&DataKey::Count(content_id)).unwrap_or(0)
     }
 
     /// Check if a user has liked a content item
@@ -219,11 +228,10 @@ impl ContentLikes {
     /// # Returns
     /// true if user has liked the content, false otherwise
     pub fn has_liked(env: Env, user: Address, content_id: u32) -> bool {
-        let like_map_key = ("likes", content_id);
         let likes: Map<Address, bool> = env
             .storage()
             .instance()
-            .get(&like_map_key)
+            .get(&DataKey::LikesMap(content_id))
             .unwrap_or_else(|| Map::new(&env));
 
         likes.get(user).is_some()
@@ -241,11 +249,10 @@ impl ContentLikes {
     /// (page of content_ids, next_cursor) — `next_cursor` is 0 when there is no next page
     pub fn list_likes_by_user(env: Env, user: Address, cursor: u32, limit: u32) -> (Vec<u32>, u32) {
         let limit = core::cmp::min(limit, MAX_PAGE_LIMIT);
-        let user_likes_key = ("user_likes", user);
         let list: Vec<u32> = env
             .storage()
             .instance()
-            .get(&user_likes_key)
+            .get(&DataKey::UserLikes(user))
             .unwrap_or_else(|| Vec::new(&env));
 
         let len = list.len();
@@ -706,6 +713,62 @@ mod test {
             result.is_err(),
             "unlike() must reject when caller is not the user parameter"
         );
+    }
+
+    #[test]
+    fn test_like_capacity_exceeded() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+
+        // Like MAX_USER_LIKES distinct content items (100 items)
+        for content_id in 0..MAX_USER_LIKES {
+            client.like(&user, &content_id);
+        }
+
+        // Verify count
+        assert_eq!(client.like_count(&0), 1);
+        let (page, next) = client.list_likes_by_user(&user, &0, &200);
+        assert_eq!(page.len(), MAX_USER_LIKES);
+        assert_eq!(next, 0);
+
+        // Next like should fail with CapacityExceeded
+        let result = client.try_like(&user, &MAX_USER_LIKES);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::CapacityExceeded as u32,
+            )))
+        );
+    }
+
+    #[test]
+    fn test_like_capacity_exceeded_allows_unlike_and_relike() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ContentLikes);
+        let client = ContentLikesClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+
+        // Like MAX_USER_LIKES distinct content items to fill the list
+        for content_id in 0..MAX_USER_LIKES {
+            client.like(&user, &content_id);
+        }
+
+        // Unlike one item
+        client.unlike(&user, &0);
+
+        // Now we should be able to like a new item (capacity freed)
+        client.like(&user, &MAX_USER_LIKES);
+
+        // Verify the list still has MAX_USER_LIKES items
+        let (page, next) = client.list_likes_by_user(&user, &0, &200);
+        assert_eq!(page.len(), MAX_USER_LIKES);
+        assert_eq!(next, 0);
     }
 }
 

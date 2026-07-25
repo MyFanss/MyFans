@@ -89,6 +89,7 @@ describe('config.properties — startup validation', () => {
     });
     // STELLAR_NETWORK is validated by validateSorobanEnv — set a safe default
     process.env['STELLAR_NETWORK'] = 'testnet';
+    process.env['SOROBAN_RPC_URL'] = 'https://soroban-testnet.stellar.org';
 
     // Should not throw when all required keys are present
     expect(() => validateRequiredSecrets()).not.toThrow();

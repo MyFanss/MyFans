@@ -28,6 +28,7 @@ describe('SubscriptionEventPollerService – correlation ID propagation', () => 
         getLatestLedgerSequence: async () => 0, // no new ledgers → early return
       },
       requestContext,
+      { isSorobanPollerEnabled: () => true },
     ) as SubscriptionEventPollerService;
 
     // Patch onModuleInit so contractId is set without real config
@@ -61,6 +62,7 @@ describe('SubscriptionEventPollerService – correlation ID propagation', () => 
       { publish: () => undefined },
       { getLatestLedgerSequence: async () => 0 },
       requestContext,
+      { isSorobanPollerEnabled: () => true },
     ) as SubscriptionEventPollerService;
     (service as any).contractId = 'CONTRACT_ID';
 

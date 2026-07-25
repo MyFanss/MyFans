@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
@@ -90,12 +94,26 @@ export class PostsService {
     return this.toDto(post);
   }
 
-  async update(id: string, dto: UpdatePostDto): Promise<PostDto> {
+  /**
+   * Only the post's author may update it. Moderator/admin takedowns go
+   * through the separate `/moderation` flow (see ModerationController),
+   * not this endpoint.
+   */
+  async update(
+    id: string,
+    dto: UpdatePostDto,
+    requesterId: string,
+  ): Promise<PostDto> {
     const post = await this.postRepo.findOne({
       where: { id, deletedAt: IsNull() },
     });
     if (!post) {
       throw new NotFoundException(`Post with ID ${id} not found`);
+    }
+    if (post.authorId !== requesterId) {
+      throw new ForbiddenException(
+        'You do not have permission to update this post',
+      );
     }
     Object.assign(post, dto);
     const saved = await this.postRepo.save(post);
@@ -107,7 +125,8 @@ export class PostsService {
    * row, then emits a PostDeletedEvent for downstream consumers.
    *
    * Idempotent guard: throws NotFoundException if the post is already deleted
-   * or does not exist, so callers cannot double-delete.
+   * or does not exist, so callers cannot double-delete. Only the post's
+   * author may delete it; admin takedowns go through `/moderation`.
    */
   async softDelete(id: string, deletedBy: string): Promise<void> {
     const post = await this.postRepo.findOne({
@@ -115,6 +134,11 @@ export class PostsService {
     });
     if (!post) {
       throw new NotFoundException(`Post with ID ${id} not found`);
+    }
+    if (post.authorId !== deletedBy) {
+      throw new ForbiddenException(
+        'You do not have permission to delete this post',
+      );
     }
 
     post.deletedAt = new Date();

@@ -466,7 +466,6 @@ fn admin_can_deposit() {
     assert_eq!(client.balance(&creator), 400);
 }
 
-
 // -------- Additional initialize & admin path tests (issue #940) --------
 
 #[test]
@@ -543,7 +542,10 @@ fn add_authorized_requires_admin_auth() {
     env.set_auths(empty);
 
     let result = client.try_add_authorized(&depositor);
-    assert!(result.is_err(), "add_authorized without admin auth must revert");
+    assert!(
+        result.is_err(),
+        "add_authorized without admin auth must revert"
+    );
 }
 
 // -------- Error code validation tests (issue #945) --------
@@ -712,6 +714,53 @@ fn unauthorized_deposit_reverts_with_not_authorized() {
             Error::NotAuthorized as u32,
         ))),
         "unauthorized deposit must return NotAuthorized (code 2)"
+    );
+}
+
+#[test]
+fn test_admin_view_returns_correct_address() {
+    let env = Env::default();
+    let (admin, _, _, client, _, _) = setup(&env);
+
+    let returned_admin = client.admin().expect("admin view must return Ok");
+    assert_eq!(returned_admin, admin, "admin view must return the stored admin address");
+}
+
+#[test]
+fn test_token_view_returns_correct_address() {
+    let env = Env::default();
+    let (_, _, _, client, _, token_admin_client) = setup(&env);
+
+    let token_addr = token_admin_client.address();
+    let returned_token = client.token().expect("token view must return Ok");
+    assert_eq!(returned_token, token_addr, "token view must return the stored token address");
+}
+
+#[test]
+fn test_admin_view_returns_not_initialized_when_not_initialized() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    let result = client.try_admin();
+    assert_eq!(
+        result,
+        Err(Ok(Error::NotInitialized)),
+        "admin view must return NotInitialized error when contract is not initialized"
+    );
+}
+
+#[test]
+fn test_token_view_returns_not_initialized_when_not_initialized() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    let result = client.try_token();
+    assert_eq!(
+        result,
+        Err(Ok(Error::NotInitialized)),
+        "token view must return NotInitialized error when contract is not initialized"
     );
 }
 

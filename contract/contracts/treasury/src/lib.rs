@@ -3,6 +3,7 @@ pub mod errors;
 
 pub use errors::TreasuryError as Error;
 use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, Env, Symbol};
+use myfans_lib::auth;
 
 const ADMIN: &str = "ADMIN";
 const TOKEN: &str = "TOKEN";
@@ -42,7 +43,8 @@ impl Treasury {
     /// Requires authorization from the admin.
     pub fn set_paused(env: Env, paused: bool) {
         let admin = Self::get_admin(&env);
-        admin.require_auth();
+        let caller = env.invoker();
+        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "set_paused"));
         env.storage().instance().set(&PAUSED, &paused);
 
         env.events()
@@ -140,6 +142,22 @@ impl Treasury {
             (Symbol::new(&env, "withdraw"),),
             (to, amount, token_address),
         );
+    }
+
+    /// #1381: Public view – returns the treasury admin address.
+    ///
+    /// Panics with [`Error::NotInitialized`] if the contract has not been
+    /// initialized yet, giving integrators a typed error instead of a host trap.
+    pub fn admin(env: Env) -> Address {
+        Self::get_admin(&env)
+    }
+
+    /// #1381: Public view – returns the token address accepted by the treasury.
+    ///
+    /// Panics with [`Error::NotInitialized`] if the contract has not been
+    /// initialized yet, giving integrators a typed error instead of a host trap.
+    pub fn token(env: Env) -> Address {
+        Self::get_token(&env)
     }
 
     // Internal helper functions

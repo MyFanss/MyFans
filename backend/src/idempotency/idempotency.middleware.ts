@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -14,6 +15,14 @@ export const IDEMPOTENCY_KEY_HEADER = 'idempotency-key';
 /** Maximum allowed key length to prevent abuse. */
 const MAX_KEY_LENGTH = 255;
 
+/**
+ * Checkout/payment routes where the Idempotency-Key header is mandatory
+ * (not just tracked-if-present). A missing key on these routes is rejected
+ * with 400 rather than silently allowed through, since a retried payment
+ * mutation without a key can double-charge or double-create a subscription.
+ */
+const REQUIRED_IDEMPOTENCY_PATH_PREFIXES = ['/v1/subscriptions/checkout'];
+
 @Injectable()
 export class IdempotencyMiddleware implements NestMiddleware {
   private readonly logger = new Logger(IdempotencyMiddleware.name);
@@ -23,9 +32,15 @@ export class IdempotencyMiddleware implements NestMiddleware {
   async use(req: Request, res: Response, next: NextFunction): Promise<void> {
     const rawKey = req.headers[IDEMPOTENCY_KEY_HEADER] as string | undefined;
 
-    // No key supplied — pass through (key is optional; callers that want
-    // idempotency protection must supply it).
     if (!rawKey) {
+      if (this.isRequiredRoute(req.path)) {
+        throw new BadRequestException(
+          `Idempotency-Key header is required for ${req.method} ${req.path}.`,
+        );
+      }
+      // No key supplied on a non-payment route — pass through (key is
+      // optional there; callers that want idempotency protection must
+      // supply it).
       return next();
     }
 
@@ -98,6 +113,16 @@ export class IdempotencyMiddleware implements NestMiddleware {
     };
 
     next();
+  }
+
+  /**
+   * Whether the given request path is a checkout/payment route on which
+   * the Idempotency-Key header is mandatory rather than opt-in.
+   */
+  private isRequiredRoute(path: string): boolean {
+    return REQUIRED_IDEMPOTENCY_PATH_PREFIXES.some((prefix) =>
+      path.startsWith(prefix),
+    );
   }
 
   /**

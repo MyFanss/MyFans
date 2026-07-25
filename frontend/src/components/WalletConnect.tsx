@@ -1,8 +1,19 @@
 'use client';
-import { useState } from 'react';
-import { connectWallet } from '@/lib/wallet';
 
-export default function WalletConnect() {
+import { useState } from 'react';
+import { connectWalletLegacy } from '@/lib/wallet';
+
+export interface WalletConnectProps {
+  className?: string;
+  onConnect?: (address: string) => void;
+  onDisconnect?: () => void;
+}
+
+export default function WalletConnect({
+  className,
+  onConnect,
+  onDisconnect,
+}: WalletConnectProps = {}) {
   const [address, setAddress] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -11,9 +22,13 @@ export default function WalletConnect() {
     setIsConnecting(true);
     setError(null);
     try {
-      const addr = await connectWallet();
-      if (addr) setAddress(addr);
-      else setError('No address returned. Is Freighter installed?');
+      const addr = await connectWalletLegacy();
+      if (addr) {
+        setAddress(addr);
+        onConnect?.(addr);
+      } else {
+        setError('No address returned. Is Freighter installed?');
+      }
     } catch {
       setError('Failed to connect wallet. Please try again.');
     } finally {
@@ -21,8 +36,13 @@ export default function WalletConnect() {
     }
   };
 
+  const handleDisconnect = () => {
+    setAddress(null);
+    onDisconnect?.();
+  };
+
   return (
-    <div className="p-4">
+    <div className={className ?? 'p-4'}>
       {!address ? (
         <div>
           <button
@@ -41,11 +61,22 @@ export default function WalletConnect() {
           )}
         </div>
       ) : (
-        <div
-          aria-label={`Wallet connected: ${address}`}
-          className="text-sm font-mono"
-        >
-          Connected: {address.slice(0, 8)}…{address.slice(-8)}
+        <div className="flex items-center gap-3">
+          <div
+            aria-label={`Wallet connected: ${address}`}
+            className="text-sm font-mono"
+          >
+            Connected: {address.slice(0, 8)}…{address.slice(-8)}
+          </div>
+          {onDisconnect && (
+            <button
+              type="button"
+              onClick={handleDisconnect}
+              className="text-sm text-slate-600 underline hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
+              Disconnect
+            </button>
+          )}
         </div>
       )}
     </div>

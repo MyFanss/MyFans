@@ -54,7 +54,11 @@ class UnversionedProbeController {
 }
 
 @Module({
-  controllers: [ProbeV1Controller, ProbeV2Controller, UnversionedProbeController],
+  controllers: [
+    ProbeV1Controller,
+    ProbeV2Controller,
+    UnversionedProbeController,
+  ],
 })
 class VersioningTestModule {}
 
@@ -168,18 +172,14 @@ describe('API Versioning – response shape', () => {
   });
 
   it('v1 response body contains expected fields', async () => {
-    const res = await request(app.getHttpServer())
-      .get('/v1/probe')
-      .expect(200);
+    const res = await request(app.getHttpServer()).get('/v1/probe').expect(200);
 
     expect(res.body).toHaveProperty('version', 'v1');
     expect(res.body).toHaveProperty('ok', true);
   });
 
   it('v2 response body contains expected fields', async () => {
-    const res = await request(app.getHttpServer())
-      .get('/v2/probe')
-      .expect(200);
+    const res = await request(app.getHttpServer()).get('/v2/probe').expect(200);
 
     expect(res.body).toHaveProperty('version', 'v2');
     expect(res.body).toHaveProperty('ok', true);
