@@ -13,6 +13,8 @@ Contracts covered here (deployed by `contract/scripts/deploy.sh`):
 3. `subscription`
 4. `content-access`
 5. `earnings`
+6. `treasury`
+7. `creator-deposits`
 
 ## Signer Legend
 
@@ -81,6 +83,27 @@ Contracts covered here (deployed by `contract/scripts/deploy.sh`):
 | `admin(env)` | `none` | Any caller reads admin address. | Expecting signer/auth to be required for read. |
 | `record(env, creator, amount)` | `admin` | Current admin signs and records creator earnings. | Non-admin caller records creator earnings. |
 | `get_earnings(env, creator)` | `none` | Any caller reads creator earnings. | Expecting signer/auth to be required for read. |
+
+## treasury
+
+| Method | Required signer(s) | Valid invocation example | Invalid invocation example |
+| --- | --- | --- | --- |
+| `initialize(env, admin, token_address)` | `admin` | `admin` signs to initialize with token config. | Caller invokes without `admin` signature; `require_auth` fails. |
+| `deposit(env, from, amount)` | `from` | `from` signs and transfers tokens into treasury. | Third party calls deposit for `from` without `from` auth. |
+| `withdraw(env, to, amount)` | `admin` | Current admin signs and withdraws to `to`. | Non-admin (including `to`) withdraws without `admin` auth. |
+| `set_paused(env, paused)` | `admin` | Current admin signs and pauses/unpauses contract. | Non-admin caller sets paused state. |
+| `set_min_balance(env, amount)` | `admin` | Current admin signs and sets minimum balance floor. | Non-admin caller changes min balance. |
+
+## creator-deposits
+
+| Method | Required signer(s) | Valid invocation example | Invalid invocation example |
+| --- | --- | --- | --- |
+| `init(env, admin, platform_fee_bps, platform_treasury)` | `admin` | `admin` signs to initialize with fee config. | Caller invokes without `admin` signature; `require_auth` fails. |
+| `deposit(env, creator, token, amount)` | `creator` | `creator` signs and deposits earnings (fee deducted to treasury). | Third party calls deposit for `creator` without `creator` auth. |
+| `withdraw(env, creator, token, amount)` | `creator` | `creator` signs and withdraws own earned balance. | Third party withdraws for `creator` without `creator` auth. |
+| `set_platform_fee(env, bps)` | `admin` | Current admin signs and updates platform fee bps. | Non-admin caller changes platform fee. |
+| `get_balance(env, creator)` | `none` | Any caller reads creator's earned balance. | Expecting signer/auth to be required for read. |
+| `get_platform_fee(env)` | `none` | Any caller reads current platform fee bps. | Expecting signer/auth to be required for read. |
 
 ## Maintenance Rule (Required)
 
