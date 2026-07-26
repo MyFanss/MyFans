@@ -33,6 +33,7 @@ describe('GamesService', () => {
       findOne: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
+      remove: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -179,6 +180,218 @@ describe('GamesService', () => {
 
       await expect(service.joinGame(mockGame.id!, mockPlayer.user_id!))
         .rejects.toThrow('Player already joined this game');
+    });
+
+    it('assigns the first joining player as host', async () => {
+      mockManager.findOne
+        .mockResolvedValueOnce(mockGame)
+        .mockResolvedValueOnce(null);
+      mockManager.create.mockReturnValue(mockPlayer);
+      mockManager.save.mockResolvedValue(mockPlayer);
+
+      await service.joinGame(mockGame.id!, mockPlayer.user_id!);
+
+      expect(mockManager.save).toHaveBeenCalledWith(
+        Game,
+        expect.objectContaining({ host_user_id: mockPlayer.user_id }),
+      );
+    });
+
+    it('does not reassign host when a later player joins', async () => {
+      const gameWithHost = { ...mockGame, host_user_id: 'existing-host', players: [{ id: 'p1' }] };
+      mockManager.findOne
+        .mockResolvedValueOnce(gameWithHost)
+        .mockResolvedValueOnce(null);
+      mockManager.create.mockReturnValue(mockPlayer);
+      mockManager.save.mockResolvedValue(mockPlayer);
+
+      await service.joinGame(mockGame.id!, mockPlayer.user_id!);
+
+      expect(mockManager.save).not.toHaveBeenCalledWith(
+        Game,
+        expect.anything(),
+      );
+    });
+  });
+
+  describe('startGame', () => {
+    const pendingGameWithPlayers = {
+      ...mockGame,
+      host_user_id: 'host-1',
+      players: [{ id: 'p1', user_id: 'host-1' }, { id: 'p2', user_id: 'user-2' }],
+    };
+
+    it('allows the host to start a pending game with enough players', async () => {
+      mockManager.findOne.mockResolvedValueOnce(pendingGameWithPlayers);
+      mockManager.save.mockImplementation((_entity: unknown, value: unknown) => value);
+
+      const result = await service.startGame(mockGame.id!, 'host-1');
+
+      expect(result.status).toBe(GameStatus.IN_PROGRESS);
+      expect(mockManager.save).toHaveBeenCalledWith(
+        Game,
+        expect.objectContaining({ status: GameStatus.IN_PROGRESS }),
+      );
+    });
+
+    it('throws NotFoundException when game does not exist', async () => {
+      mockManager.findOne.mockResolvedValueOnce(null);
+      await expect(service.startGame('missing', 'host-1')).rejects.toThrow('Game not found');
+    });
+
+    it('throws ForbiddenException when caller is not the host', async () => {
+      mockManager.findOne.mockResolvedValueOnce(pendingGameWithPlayers);
+      await expect(service.startGame(mockGame.id!, 'not-the-host')).rejects.toThrow(
+        'Only the host can start the game',
+      );
+    });
+
+    it('throws BadRequestException (invalid state) when game is not PENDING', async () => {
+      mockManager.findOne.mockResolvedValueOnce({
+        ...pendingGameWithPlayers,
+        status: GameStatus.IN_PROGRESS,
+      });
+      await expect(service.startGame(mockGame.id!, 'host-1')).rejects.toThrow(
+        'Game is not in PENDING status',
+      );
+    });
+
+    it('throws BadRequestException when fewer than 2 players have joined', async () => {
+      mockManager.findOne.mockResolvedValueOnce({
+        ...pendingGameWithPlayers,
+        players: [{ id: 'p1', user_id: 'host-1' }],
+      });
+      await expect(service.startGame(mockGame.id!, 'host-1')).rejects.toThrow(
+        'At least 2 players are required to start the game',
+      );
+    });
+  });
+
+  describe('leaveGame', () => {
+    it('removes the player and reports success', async () => {
+      const game = {
+        ...mockGame,
+        host_user_id: 'user-2',
+        players: [{ id: 'p1', user_id: 'user-2' }, { id: 'p2', user_id: mockPlayer.user_id }],
+      };
+      mockManager.findOne
+        .mockResolvedValueOnce(game)
+        .mockResolvedValueOnce({ id: 'p2', user_id: mockPlayer.user_id });
+
+      const result = await service.leaveGame(mockGame.id!, mockPlayer.user_id!);
+
+      expect(result).toEqual({ left: true });
+      expect(mockManager.remove).toHaveBeenCalledWith(Player, {
+        id: 'p2',
+        user_id: mockPlayer.user_id,
+      });
+    });
+
+    it('reassigns host to the remaining player with the lowest turn order', async () => {
+      const departingHost = mockPlayer.user_id!;
+      const game = {
+        ...mockGame,
+        host_user_id: departingHost,
+        players: [
+          { id: 'p1', user_id: departingHost, turn_order: 1 },
+          { id: 'p2', user_id: 'user-3', turn_order: 3 },
+          { id: 'p3', user_id: 'user-4', turn_order: 2 },
+        ],
+      };
+      mockManager.findOne
+        .mockResolvedValueOnce(game)
+        .mockResolvedValueOnce({ id: 'p1', user_id: departingHost });
+
+      await service.leaveGame(mockGame.id!, departingHost);
+
+      expect(mockManager.save).toHaveBeenCalledWith(
+        Game,
+        expect.objectContaining({ host_user_id: 'user-4' }),
+      );
+    });
+
+    it('clears host when the last player leaves', async () => {
+      const departingHost = mockPlayer.user_id!;
+      const game = {
+        ...mockGame,
+        host_user_id: departingHost,
+        players: [{ id: 'p1', user_id: departingHost, turn_order: 1 }],
+      };
+      mockManager.findOne
+        .mockResolvedValueOnce(game)
+        .mockResolvedValueOnce({ id: 'p1', user_id: departingHost });
+
+      await service.leaveGame(mockGame.id!, departingHost);
+
+      expect(mockManager.save).toHaveBeenCalledWith(
+        Game,
+        expect.objectContaining({ host_user_id: null }),
+      );
+    });
+
+    it('throws NotFoundException when game does not exist', async () => {
+      mockManager.findOne.mockResolvedValueOnce(null);
+      await expect(service.leaveGame('missing', mockPlayer.user_id!)).rejects.toThrow(
+        'Game not found',
+      );
+    });
+
+    it('throws BadRequestException (invalid state) when game is completed', async () => {
+      mockManager.findOne.mockResolvedValueOnce({ ...mockGame, status: GameStatus.COMPLETED });
+      await expect(service.leaveGame(mockGame.id!, mockPlayer.user_id!)).rejects.toThrow(
+        'Cannot leave a completed game',
+      );
+    });
+
+    it('throws NotFoundException when the caller never joined this game', async () => {
+      mockManager.findOne
+        .mockResolvedValueOnce(mockGame)
+        .mockResolvedValueOnce(null);
+      await expect(service.leaveGame(mockGame.id!, mockPlayer.user_id!)).rejects.toThrow(
+        'Player not found in this game',
+      );
+    });
+  });
+
+  describe('submitScore', () => {
+    const inProgressGame = { ...mockGame, status: GameStatus.IN_PROGRESS };
+
+    it('updates the player balance while the game is in progress', async () => {
+      mockManager.findOne
+        .mockResolvedValueOnce(inProgressGame)
+        .mockResolvedValueOnce({ ...mockPlayer });
+      mockManager.save.mockImplementation((_entity: unknown, value: unknown) => value);
+
+      const result = await service.submitScore(mockGame.id!, mockPlayer.user_id!, { balance: 2500 });
+
+      expect(result.balance).toBe(2500);
+      expect(mockManager.save).toHaveBeenCalledWith(
+        Player,
+        expect.objectContaining({ balance: 2500 }),
+      );
+    });
+
+    it('throws NotFoundException when game does not exist', async () => {
+      mockManager.findOne.mockResolvedValueOnce(null);
+      await expect(
+        service.submitScore('missing', mockPlayer.user_id!, { balance: 100 }),
+      ).rejects.toThrow('Game not found');
+    });
+
+    it('throws BadRequestException (invalid state) when game is not in progress', async () => {
+      mockManager.findOne.mockResolvedValueOnce(mockGame);
+      await expect(
+        service.submitScore(mockGame.id!, mockPlayer.user_id!, { balance: 100 }),
+      ).rejects.toThrow('Game is not in progress');
+    });
+
+    it('throws NotFoundException when the caller is not a player in this game', async () => {
+      mockManager.findOne
+        .mockResolvedValueOnce(inProgressGame)
+        .mockResolvedValueOnce(null);
+      await expect(
+        service.submitScore(mockGame.id!, mockPlayer.user_id!, { balance: 100 }),
+      ).rejects.toThrow('Player not found in this game');
     });
   });
 });
