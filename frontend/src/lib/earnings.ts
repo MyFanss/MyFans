@@ -1,6 +1,8 @@
 /**
- * Earnings chart types and data (API or mock).
+ * Earnings chart types and data from API with fallback to mock on error.
  */
+
+import { fetchEarningsBreakdown, type EarningsBreakdown } from '@/lib/earnings-api';
 
 export type EarningsTimeRange = '7d' | '30d' | '90d';
 
@@ -31,14 +33,31 @@ function generateMockData(range: EarningsTimeRange): EarningsDataPoint[] {
 }
 
 /**
- * Fetch earnings for a time range. Replace with real API when available.
+ * Fetch earnings for a time range from API, with fallback to mock on error.
  */
 export async function fetchEarnings(range: EarningsTimeRange): Promise<EarningsSeries> {
-  await new Promise((r) => setTimeout(r, 600));
-  return {
-    range,
-    data: generateMockData(range),
-  };
+  const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
+
+  try {
+    const breakdown = await fetchEarningsBreakdown(days);
+
+    const data: EarningsDataPoint[] = breakdown.by_time.map((item) => ({
+      date: item.date,
+      earnings: parseFloat(item.amount),
+      label: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    }));
+
+    return {
+      range,
+      data,
+    };
+  } catch {
+    // Fall back to mock data on error
+    return {
+      range,
+      data: generateMockData(range),
+    };
+  }
 }
 
 export const EARNINGS_RANGE_OPTIONS: { value: EarningsTimeRange; label: string }[] = [
