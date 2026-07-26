@@ -207,6 +207,7 @@
 * API versioning ([c62bb64](https://github.com/MyFanss/MyFans/commit/c62bb648e1fc7745ca67b945fbfb991718152117))
 * **api:** standardize pagination on subscriptions, creators, and posts ([#861](https://github.com/MyFanss/MyFans/issues/861)) ([ad25d72](https://github.com/MyFanss/MyFans/commit/ad25d7280d658e48c73b4277506a45712163bd41))
 * **auth:** add pagination and limit query support ([ca9bfea](https://github.com/MyFanss/MyFans/commit/ca9bfeabc33f65e4f4ad4d61c29d1356c1fd7677))
+* **auth:** add stricter dedicated throttle guard for challenge/login ([6b2a5f9](https://github.com/MyFanss/MyFans/commit/6b2a5f92ccde84816551f2050f1246ab7022815f))
 * **auth:** wallet signature challenge endpoints ([561d65d](https://github.com/MyFanss/MyFans/commit/561d65d498549206d65d72ce9ca3a6105f6826d7)), closes [#wallet-challenge-auth](https://github.com/MyFanss/MyFans/issues/wallet-challenge-auth)
 * **auth:** wire ThrottlerGuard explicitly and add rate-limit tests ([9b97ae7](https://github.com/MyFanss/MyFans/commit/9b97ae7fe1195f47fc0d583363e6e4d9d813e934)), closes [#1053](https://github.com/MyFanss/MyFans/issues/1053)
 * backend contract health checks against CI deployment outputs ([5282a06](https://github.com/MyFanss/MyFans/commit/5282a06a8c02a7395a65e8f6e3b591b5c8f45e61))
@@ -348,6 +349,7 @@
 * introduce internal domain events for module decoupling ([10a9d24](https://github.com/MyFanss/MyFans/commit/10a9d2413f2b459ee4d5fa8f9b9797b8e6fcb27a))
 * keyboard accessibility, E2E flow, skeleton loaders & error boundaries ([8b11114](https://github.com/MyFanss/MyFans/commit/8b11114e15b731eca5dbd361468a65829dfff634)), closes [#867](https://github.com/MyFanss/MyFans/issues/867) [#870](https://github.com/MyFanss/MyFans/issues/870) [#871](https://github.com/MyFanss/MyFans/issues/871) [#872](https://github.com/MyFanss/MyFans/issues/872)
 * lock down notification creation to admin role ([#1421](https://github.com/MyFanss/MyFans/issues/1421)) ([d4c8669](https://github.com/MyFanss/MyFans/commit/d4c866987ebf3cb3d4885f8a0268965a665e6328))
+* **logging:** add free-text redaction utility for JWT/webhook secrets ([94c97a1](https://github.com/MyFanss/MyFans/commit/94c97a14bf879b956d2726a62aec7ee7e9a341ab))
 * **logging:** redact PII and secrets from logs ([0125540](https://github.com/MyFanss/MyFans/commit/0125540a22d51ed138943a8356e5eecfbc957a00)), closes [#717](https://github.com/MyFanss/MyFans/issues/717)
 * make creator dashboard mobile responsive ([858fc4d](https://github.com/MyFanss/MyFans/commit/858fc4db3416c5227a0756713181bb0ead472474))
 * make IMyFans trait public and add subscribe and get_subscription_details methods ([aecd378](https://github.com/MyFanss/MyFans/commit/aecd3788c6dfdc7a483e97fabffc590fc107fed9))
@@ -381,6 +383,7 @@
 * security audit in ci ([55f0a4f](https://github.com/MyFanss/MyFans/commit/55f0a4fcefa6b227f7d7ce6426b2f4b47e0f0e6d))
 * **security:** CSRF double-submit cookie strategy for BFF ([23c5fdb](https://github.com/MyFanss/MyFans/commit/23c5fdbf0955e117e12c6b5bc74eb3aa48139428))
 * **security:** integrate helmet as baseline security headers layer ([044e5e2](https://github.com/MyFanss/MyFans/commit/044e5e24f07cad9ee5f6d14ed1dfec392da4d210))
+* **seed:** expand demo seed with posts, subscriptions, conversations ([9fca42d](https://github.com/MyFanss/MyFans/commit/9fca42d72b6565825f085f4a5a4c074bb212e836))
 * skeleton loading states for major pages ([49203d1](https://github.com/MyFanss/MyFans/commit/49203d13b66710d72eaa24c519b44a0beab67904))
 * skeleton loading states for major pages ([b221ebd](https://github.com/MyFanss/MyFans/commit/b221ebd0f6c1036270055be551659c4c49ccd0b6))
 * **social-link:** add URL and domain validation with unit tests ([2f9e43f](https://github.com/MyFanss/MyFans/commit/2f9e43f7312038c574a1186ea0f0ea90d5ac138f))
@@ -410,6 +413,7 @@
 * **test-consumer:** add admin authorization with unauthorized caller tests ([b939826](https://github.com/MyFanss/MyFans/commit/b93982696ed600f3e7c1d759d61a73a50158ef0d)), closes [#981](https://github.com/MyFanss/MyFans/issues/981)
 * **test-consumer:** add initialize and admin functions with unit tests ([f77f377](https://github.com/MyFanss/MyFans/commit/f77f3771f57b1c19fc11720700bda5bccbe100ae)), closes [#980](https://github.com/MyFanss/MyFans/issues/980)
 * **token:** typed errors and mint initial_supply on initialize ([f868f16](https://github.com/MyFanss/MyFans/commit/f868f16c5be5bebbe29eebb61c3e7bdabb1c772d)), closes [#1399](https://github.com/MyFanss/MyFans/issues/1399) [#1401](https://github.com/MyFanss/MyFans/issues/1401)
+* **tracing:** scaffold optional OTel span export for critical routes ([869efe4](https://github.com/MyFanss/MyFans/commit/869efe4b8c22b060837ccf52831667ee4d7c46e4))
 * treasury deposit event ([d474a33](https://github.com/MyFanss/MyFans/commit/d474a3395761d872b51735bf3d783ac9246d3c35))
 * Treasury-min-balance guard ([5e0bcf1](https://github.com/MyFanss/MyFans/commit/5e0bcf1a114cf65c4f232375fbdb43e40089f427))
 * **treasury:** add minimum balance or emergency pause protection ([#851](https://github.com/MyFanss/MyFans/issues/851)) ([81cfbfc](https://github.com/MyFanss/MyFans/commit/81cfbfc570c50ca3a047c726cc41cb87ea839de5))
@@ -427,11 +431,11 @@
 
 ### Performance Improvements
 
-* optimise gas usage in earnings contract hot paths ([#966](https://github.com/devoclan/MyFans/issues/966)) ([799bd81](https://github.com/devoclan/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
-* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/devoclan/MyFans/issues/986)) ([97d059e](https://github.com/devoclan/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
-* Optimize creator profile page performance ([d8ba3ca](https://github.com/devoclan/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/devoclan/MyFans/issues/415)
+* optimise gas usage in earnings contract hot paths ([#966](https://github.com/MyFanss/MyFans/issues/966)) ([799bd81](https://github.com/MyFanss/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
+* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/MyFanss/MyFans/issues/986)) ([97d059e](https://github.com/MyFanss/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
+* Optimize creator profile page performance ([d8ba3ca](https://github.com/MyFanss/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/MyFanss/MyFans/issues/415)
 
 
 ### Reverts
 
-* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/devoclan/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
+* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/MyFanss/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
