@@ -11,9 +11,14 @@ function setFreighter(getNetwork: (() => Promise<{ network: string; networkPassp
   (window as any).freighter = getNetwork ? { getNetwork } : undefined;
 }
 
+function setLobstr(getNetwork: (() => Promise<{ network: string; networkPassphrase: string }>) | undefined) {
+  (window as any).lobstr = getNetwork ? { getNetwork } : undefined;
+}
+
 describe('useNetworkGuard', () => {
   afterEach(() => {
     delete (window as any).freighter;
+    delete (window as any).lobstr;
     vi.clearAllMocks();
   });
 
@@ -57,6 +62,49 @@ describe('useNetworkGuard', () => {
 
   it('handles getNetwork() throwing without crashing', async () => {
     setFreighter(async () => { throw new Error('wallet locked'); });
+    const { result } = renderHook(() => useNetworkGuard());
+    await waitFor(() => expect(result.current.checking).toBe(false));
+    expect(result.current.mismatch).toBe(false);
+  });
+
+  it('detects Lobstr wallet on correct network', async () => {
+    setLobstr(async () => ({ network: 'TESTNET', networkPassphrase: '' }));
+    const { result } = renderHook(() => useNetworkGuard());
+    await waitFor(() => expect(result.current.checking).toBe(false));
+    expect(result.current.mismatch).toBe(false);
+    expect(result.current.expected).toBe('testnet');
+  });
+
+  it('detects Lobstr network mismatch', async () => {
+    setLobstr(async () => ({ network: 'PUBLIC', networkPassphrase: '' }));
+    const { result } = renderHook(() => useNetworkGuard());
+    await waitFor(() => expect(result.current.checking).toBe(false));
+    expect(result.current.mismatch).toBe(true);
+    expect(result.current.detected).toBe('PUBLIC');
+  });
+
+  it('re-checks on lobstr:networkChanged event', async () => {
+    setLobstr(async () => ({ network: 'PUBLIC', networkPassphrase: '' }));
+    const { result } = renderHook(() => useNetworkGuard());
+    await waitFor(() => expect(result.current.mismatch).toBe(true));
+
+    setLobstr(async () => ({ network: 'TESTNET', networkPassphrase: '' }));
+    act(() => {
+      window.dispatchEvent(new Event('lobstr:networkChanged'));
+    });
+    await waitFor(() => expect(result.current.mismatch).toBe(false));
+  });
+
+  it('handles Lobstr getNetwork() error without crashing', async () => {
+    setLobstr(async () => { throw new Error('wallet locked'); });
+    const { result } = renderHook(() => useNetworkGuard());
+    await waitFor(() => expect(result.current.checking).toBe(false));
+    expect(result.current.mismatch).toBe(false);
+  });
+
+  it('prefers Freighter over Lobstr when both are present', async () => {
+    setFreighter(async () => ({ network: 'TESTNET', networkPassphrase: '' }));
+    setLobstr(async () => ({ network: 'PUBLIC', networkPassphrase: '' }));
     const { result } = renderHook(() => useNetworkGuard());
     await waitFor(() => expect(result.current.checking).toBe(false));
     expect(result.current.mismatch).toBe(false);
