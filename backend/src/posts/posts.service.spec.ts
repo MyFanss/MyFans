@@ -440,6 +440,97 @@ describe('PostsService', () => {
     });
   });
 
+  // ── findFeed ─────────────────────────────────────────────────────────────────
+
+  describe('findFeed', () => {
+    it('returns an empty page without querying when authorIds is empty', async () => {
+      const result = await service.findFeed([], undefined, 20);
+
+      expect(repo.createQueryBuilder).not.toHaveBeenCalled();
+      expect(result.data).toHaveLength(0);
+      expect(result.hasMore).toBe(false);
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('filters by authorId IN (...), isPublished, and deletedAt IS NULL', async () => {
+      queryBuilder.getMany.mockResolvedValue([]);
+
+      await service.findFeed(['author-1', 'author-2'], undefined, 20);
+
+      expect(repo.createQueryBuilder).toHaveBeenCalledWith('post');
+      expect(queryBuilder.where).toHaveBeenCalledWith(
+        'post.authorId IN (:...authorIds)',
+        { authorIds: ['author-1', 'author-2'] },
+      );
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        'post.isPublished = :isPublished',
+        { isPublished: true },
+      );
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        'post.deletedAt IS NULL',
+      );
+    });
+
+    it('orders by createdAt DESC, id DESC and requests limit + 1 rows', async () => {
+      queryBuilder.getMany.mockResolvedValue([]);
+
+      await service.findFeed(['author-1'], undefined, 10);
+
+      expect(queryBuilder.orderBy).toHaveBeenCalledWith(
+        'post.createdAt',
+        'DESC',
+      );
+      expect(queryBuilder.take).toHaveBeenCalledWith(11);
+    });
+
+    it('returns hasMore=true and a nextCursor when more rows exist than the limit', async () => {
+      const posts = [
+        makePost({ id: 'p1', createdAt: new Date('2026-01-03T00:00:00Z') }),
+        makePost({ id: 'p2', createdAt: new Date('2026-01-02T00:00:00Z') }),
+        makePost({ id: 'p3', createdAt: new Date('2026-01-01T00:00:00Z') }),
+      ];
+      queryBuilder.getMany.mockResolvedValue(posts);
+
+      const result = await service.findFeed(['author-1'], undefined, 2);
+
+      expect(result.data).toHaveLength(2);
+      expect(result.hasMore).toBe(true);
+      expect(result.nextCursor).not.toBeNull();
+    });
+
+    it('returns hasMore=false and nextCursor=null when exactly at the page boundary', async () => {
+      const posts = [makePost({ id: 'p1' })];
+      queryBuilder.getMany.mockResolvedValue(posts);
+
+      const result = await service.findFeed(['author-1'], undefined, 20);
+
+      expect(result.hasMore).toBe(false);
+      expect(result.data).toHaveLength(1);
+    });
+
+    it('applies a keyset filter derived from the cursor on subsequent pages', async () => {
+      queryBuilder.getMany.mockResolvedValue([]);
+      const cursor = Buffer.from('2026-01-01T00:00:00.000Z|post-9').toString(
+        'base64',
+      );
+
+      await service.findFeed(['author-1'], cursor, 20);
+
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('post.createdAt < :cCreatedAt'),
+        { cCreatedAt: '2026-01-01T00:00:00.000Z', cId: 'post-9' },
+      );
+    });
+
+    it('ignores a malformed cursor rather than throwing', async () => {
+      queryBuilder.getMany.mockResolvedValue([]);
+
+      await expect(
+        service.findFeed(['author-1'], 'not-valid-base64!!', 20),
+      ).resolves.toBeDefined();
+    });
+  });
+
   // ── PostDeletedEvent ─────────────────────────────────────────────────────────
 
   describe('PostDeletedEvent', () => {

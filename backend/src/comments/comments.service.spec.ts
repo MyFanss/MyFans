@@ -3,6 +3,9 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CommentsService } from './comments.service';
 import { Comment } from './entities/comment.entity';
+import { CommentAuditLog } from './entities/comment-audit-log.entity';
+import { EventBus } from '../events/event-bus';
+import { CommentDeletedEvent } from '../events/domain-events';
 
 const makeComment = (overrides: Partial<Comment> = {}): Comment =>
   ({
@@ -13,6 +16,8 @@ const makeComment = (overrides: Partial<Comment> = {}): Comment =>
     parentId: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
+    deletedAt: null,
+    deletedBy: null,
     ...overrides,
   }) as Comment;
 
@@ -24,7 +29,10 @@ describe('CommentsService', () => {
     findOne: jest.Mock;
     findAndCount: jest.Mock;
     remove: jest.Mock;
+    delete: jest.Mock;
   };
+  let auditRepo: { create: jest.Mock; save: jest.Mock };
+  let eventBus: { publish: jest.Mock };
 
   beforeEach(async () => {
     repo = {
@@ -33,12 +41,20 @@ describe('CommentsService', () => {
       findOne: jest.fn(),
       findAndCount: jest.fn(),
       remove: jest.fn(),
+      delete: jest.fn(),
     };
+    auditRepo = {
+      create: jest.fn((data: unknown) => data),
+      save: jest.fn((e: unknown) => Promise.resolve(e)),
+    };
+    eventBus = { publish: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommentsService,
         { provide: getRepositoryToken(Comment), useValue: repo },
+        { provide: getRepositoryToken(CommentAuditLog), useValue: auditRepo },
+        { provide: EventBus, useValue: eventBus },
       ],
     }).compile();
 
@@ -143,6 +159,19 @@ describe('CommentsService', () => {
       expect(result.limit).toBe(20);
     });
 
+    it('filters by deletedAt: IsNull()', async () => {
+      repo.findAndCount.mockResolvedValue([[], 0]);
+
+      await service.findAll({ page: 1, limit: 20 });
+
+      expect(repo.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- jest matcher typings are `any`
+          where: expect.objectContaining({ deletedAt: expect.anything() }),
+        }),
+      );
+    });
+
     it('returns empty list when there are no comments', async () => {
       repo.findAndCount.mockResolvedValue([[], 0]);
 
@@ -186,7 +215,7 @@ describe('CommentsService', () => {
   // ── findByPost ───────────────────────────────────────────────────────────────
 
   describe('findByPost', () => {
-    it('returns comments filtered by postId', async () => {
+    it('returns comments filtered by postId and deletedAt: IsNull()', async () => {
       const comment = makeComment({ postId: 'post-42' });
       repo.findAndCount.mockResolvedValue([[comment], 1]);
 
@@ -196,7 +225,13 @@ describe('CommentsService', () => {
       });
 
       expect(repo.findAndCount).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { postId: 'post-42' } }),
+        expect.objectContaining({
+          where: expect.objectContaining({
+            postId: 'post-42',
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- jest matcher typings are `any`
+            deletedAt: expect.anything(),
+          }),
+        }),
       );
       expect(result.data).toHaveLength(1);
       expect(result.data[0].postId).toBe('post-42');
@@ -244,7 +279,11 @@ describe('CommentsService', () => {
 
       const result = await service.findOne('comment-1');
 
-      expect(repo.findOne).toHaveBeenCalledWith({ where: { id: 'comment-1' } });
+      expect(repo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'comment-1' }),
+        }),
+      );
       expect(result.id).toBe('comment-1');
       expect(result.content).toBe('Great post!');
     });
@@ -261,6 +300,14 @@ describe('CommentsService', () => {
       repo.findOne.mockResolvedValue(null);
 
       await expect(service.findOne('missing-id')).rejects.toThrow('missing-id');
+    });
+
+    it('throws NotFoundException for a soft-deleted comment (filtered by IsNull)', async () => {
+      repo.findOne.mockResolvedValue(null);
+
+      await expect(service.findOne('comment-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 
@@ -289,7 +336,11 @@ describe('CommentsService', () => {
 
       await service.update('comment-1', { content: 'New content' }, 'author-1');
 
-      expect(repo.findOne).toHaveBeenCalledWith({ where: { id: 'comment-1' } });
+      expect(repo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'comment-1' }),
+        }),
+      );
     });
 
     it('throws NotFoundException when comment does not exist', async () => {
@@ -335,23 +386,64 @@ describe('CommentsService', () => {
     });
   });
 
-  // ── remove ───────────────────────────────────────────────────────────────────
+  // ── remove (soft delete) ─────────────────────────────────────────────────────
 
   describe('remove', () => {
-    it('removes the comment when it exists', async () => {
-      const comment = makeComment();
+    it('sets deletedAt and deletedBy then saves', async () => {
+      const comment = makeComment({ authorId: 'author-1' });
       repo.findOne.mockResolvedValue(comment);
-      repo.remove.mockResolvedValue(undefined);
+      repo.save.mockResolvedValue({
+        ...comment,
+        deletedAt: new Date(),
+        deletedBy: 'author-1',
+      });
 
       await service.remove('comment-1', 'author-1');
 
-      expect(repo.remove).toHaveBeenCalledWith(comment);
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ deletedBy: 'author-1' }),
+      );
+      expect(comment.deletedAt).not.toBeNull();
+      expect(repo.remove).not.toHaveBeenCalled();
+    });
+
+    it('persists an audit log row with correct fields', async () => {
+      const comment = makeComment({ authorId: 'author-1' });
+      repo.findOne.mockResolvedValue(comment);
+      repo.save.mockResolvedValue(comment);
+
+      await service.remove('comment-1', 'author-1');
+
+      expect(auditRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          commentId: 'comment-1',
+          deletedBy: 'author-1',
+          action: 'soft_delete',
+        }),
+      );
+      expect(auditRepo.save).toHaveBeenCalled();
+    });
+
+    it('emits CommentDeletedEvent with correct commentId and deletedBy', async () => {
+      const comment = makeComment({ authorId: 'author-1' });
+      repo.findOne.mockResolvedValue(comment);
+      repo.save.mockResolvedValue(comment);
+
+      await service.remove('comment-1', 'author-1');
+
+      expect(eventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'comment.deleted',
+          commentId: 'comment-1',
+          deletedBy: 'author-1',
+        }),
+      );
     });
 
     it('returns void on success', async () => {
       const comment = makeComment();
       repo.findOne.mockResolvedValue(comment);
-      repo.remove.mockResolvedValue(undefined);
+      repo.save.mockResolvedValue(comment);
 
       const result = await service.remove('comment-1', 'author-1');
 
@@ -364,14 +456,37 @@ describe('CommentsService', () => {
       await expect(
         service.remove('missing', 'author-1'),
       ).rejects.toBeInstanceOf(NotFoundException);
+      expect(eventBus.publish).not.toHaveBeenCalled();
+      expect(auditRepo.save).not.toHaveBeenCalled();
     });
 
-    it('does not call remove when comment is not found', async () => {
+    it('does not emit event or write audit log when comment is already soft-deleted', async () => {
+      // IsNull() filter means the repo returns null for already-deleted comments
       repo.findOne.mockResolvedValue(null);
 
-      await expect(service.remove('missing', 'author-1')).rejects.toThrow();
+      await expect(
+        service.remove('comment-1', 'author-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(eventBus.publish).not.toHaveBeenCalled();
+      expect(auditRepo.save).not.toHaveBeenCalled();
+    });
 
-      expect(repo.remove).not.toHaveBeenCalled();
+    it('audit log is written before event is published', async () => {
+      const order: string[] = [];
+      const comment = makeComment({ authorId: 'author-1' });
+      repo.findOne.mockResolvedValue(comment);
+      repo.save.mockResolvedValue(comment);
+      auditRepo.save.mockImplementation((e: unknown) => {
+        order.push('audit');
+        return Promise.resolve(e);
+      });
+      eventBus.publish.mockImplementation(() => {
+        order.push('event');
+      });
+
+      await service.remove('comment-1', 'author-1');
+
+      expect(order).toEqual(['audit', 'event']);
     });
 
     it('throws ForbiddenException when the requester is not the author', async () => {
@@ -381,7 +496,47 @@ describe('CommentsService', () => {
       await expect(
         service.remove('comment-1', 'someone-else'),
       ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(auditRepo.save).not.toHaveBeenCalled();
+      expect(eventBus.publish).not.toHaveBeenCalled();
       expect(repo.remove).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── hardDelete ───────────────────────────────────────────────────────────────
+
+  describe('hardDelete', () => {
+    it('is not the default deletion path (hard-deletes only when called explicitly)', async () => {
+      repo.delete.mockResolvedValue({ affected: 1 });
+
+      await service.hardDelete('comment-1');
+
+      expect(repo.delete).toHaveBeenCalledWith('comment-1');
+    });
+
+    it('throws NotFoundException when nothing was deleted', async () => {
+      repo.delete.mockResolvedValue({ affected: 0 });
+
+      await expect(service.hardDelete('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  // ── CommentDeletedEvent ──────────────────────────────────────────────────────
+
+  describe('CommentDeletedEvent', () => {
+    it('has the correct type discriminant', () => {
+      const event = new CommentDeletedEvent('c1', 'u1');
+      expect(event.type).toBe('comment.deleted');
+      expect(event.commentId).toBe('c1');
+      expect(event.deletedBy).toBe('u1');
+    });
+
+    it('records a timestamp', () => {
+      const before = Date.now();
+      const event = new CommentDeletedEvent('c1', 'u1');
+      expect(event.timestamp).toBeGreaterThanOrEqual(before);
     });
   });
 });

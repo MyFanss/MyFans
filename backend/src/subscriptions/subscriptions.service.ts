@@ -296,6 +296,12 @@ export class SubscriptionsService {
     return this.indexRepo.isSubscriber(fan, creator);
   }
 
+  /** Returns the distinct creator IDs the fan currently holds an active subscription to. */
+  async getActiveCreatorIdsForFan(fan: string): Promise<string[]> {
+    const subs = await this.indexRepo.listActiveForFan(fan, 1, 1000);
+    return [...new Set(subs.map((sub) => sub.creator))];
+  }
+
   async getSubscription(
     fan: string,
     creator: string,

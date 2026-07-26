@@ -602,4 +602,41 @@ describe('SubscriptionsService', () => {
       }),
     );
   });
+
+  describe('getActiveCreatorIdsForFan', () => {
+    const fan = 'GFANFEED1111111111111111111111111111111111111111111111111';
+
+    it('returns the distinct creator IDs the fan actively subscribes to', async () => {
+      await service.addSubscription(
+        fan,
+        'GCREATORFEED1111111111111111111111111111111111111111111111',
+        1,
+        Math.floor(Date.now() / 1000) + 3600,
+      );
+      await service.addSubscription(
+        fan,
+        'GCREATORFEED2222222222222222222222222222222222222222222222',
+        2,
+        Math.floor(Date.now() / 1000) + 3600,
+      );
+
+      const creatorIds = await service.getActiveCreatorIdsForFan(fan);
+
+      expect(creatorIds).toEqual(
+        expect.arrayContaining([
+          'GCREATORFEED1111111111111111111111111111111111111111111111',
+          'GCREATORFEED2222222222222222222222222222222222222222222222',
+        ]),
+      );
+      expect(creatorIds).toHaveLength(2);
+    });
+
+    it('returns an empty array when the fan has no active subscriptions', async () => {
+      const creatorIds = await service.getActiveCreatorIdsForFan(
+        'GNOSUBSCRIPTIONS11111111111111111111111111111111111111111',
+      );
+
+      expect(creatorIds).toEqual([]);
+    });
+  });
 });

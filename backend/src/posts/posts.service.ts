@@ -159,4 +159,72 @@ export class PostsService {
       throw new NotFoundException(`Post with ID ${id} not found`);
     }
   }
+
+  /**
+   * Cursor-paginated, published, non-deleted posts authored by any of
+   * `authorIds`, newest first. Used by the fan feed to aggregate posts from
+   * subscribed creators. Returns an empty page when `authorIds` is empty
+   * rather than querying with an empty IN clause.
+   */
+  async findFeed(
+    authorIds: string[],
+    cursor?: string,
+    limit = 20,
+  ): Promise<PaginatedResponseDto<PostDto>> {
+    if (authorIds.length === 0) {
+      return new PaginatedResponseDto([], limit, null, false);
+    }
+
+    const qb = this.postRepo
+      .createQueryBuilder('post')
+      .where('post.authorId IN (:...authorIds)', { authorIds })
+      .andWhere('post.isPublished = :isPublished', { isPublished: true })
+      .andWhere('post.deletedAt IS NULL')
+      .orderBy('post.createdAt', 'DESC')
+      .addOrderBy('post.id', 'DESC')
+      .take(limit + 1);
+
+    const decoded = cursor ? this.decodeFeedCursor(cursor) : null;
+    if (decoded) {
+      qb.andWhere(
+        '(post.createdAt < :cCreatedAt OR (post.createdAt = :cCreatedAt AND post.id < :cId))',
+        { cCreatedAt: decoded.createdAt, cId: decoded.id },
+      );
+    }
+
+    const rows = await qb.getMany();
+    const hasMore = rows.length > limit;
+    if (hasMore) {
+      rows.pop();
+    }
+
+    const nextCursor =
+      rows.length > 0 ? this.encodeFeedCursor(rows[rows.length - 1]) : null;
+
+    return new PaginatedResponseDto(
+      rows.map((p) => this.toDto(p)),
+      limit,
+      nextCursor,
+      hasMore,
+    );
+  }
+
+  private encodeFeedCursor(post: Post): string {
+    return Buffer.from(`${post.createdAt.toISOString()}|${post.id}`).toString(
+      'base64',
+    );
+  }
+
+  private decodeFeedCursor(
+    cursor: string,
+  ): { createdAt: string; id: string } | null {
+    try {
+      const decoded = Buffer.from(cursor, 'base64').toString('utf8');
+      const [createdAt, id] = decoded.split('|');
+      if (!createdAt || !id) return null;
+      return { createdAt, id };
+    } catch {
+      return null;
+    }
+  }
 }
