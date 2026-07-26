@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Image from 'next/image';
 import { Search, Download } from 'lucide-react';
 import Badge from '../ui/Badge';
 import DataTable, { ColumnDef, SortState } from '../ui/DataTable';
 import { useImageLoad } from '@/hooks/useImageLoad';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { apiClient } from '@/clients/api-client';
 
 type SubscriberStatus = 'Active' | 'Cancelled' | 'Past Due';
 
@@ -23,20 +24,6 @@ interface Subscriber {
   totalPaid: number;
 }
 
-const MOCK_DATA: Subscriber[] = [
-  { id: '1', name: 'Alice Smith', email: 'alice@example.com', avatar: 'https://i.pravatar.cc/150?u=1', plan: 'VIP Access', tier: '$20/mo', joinDate: '2023-01-15', renewDate: '2023-02-15', status: 'Active', totalPaid: 240 },
-  { id: '2', name: 'Bob Johnson', email: 'bob@example.com', avatar: 'https://i.pravatar.cc/150?u=2', plan: 'Supporter', tier: '$5/mo', joinDate: '2023-05-20', renewDate: '2023-06-20', status: 'Active', totalPaid: 45 },
-  { id: '3', name: 'Charlie Brown', email: 'charlie@example.com', avatar: 'https://i.pravatar.cc/150?u=3', plan: 'VIP Access', tier: '$20/mo', joinDate: '2022-11-01', renewDate: '2023-11-01', status: 'Past Due', totalPaid: 400 },
-  { id: '4', name: 'Diana Prince', email: 'diana@example.com', avatar: 'https://i.pravatar.cc/150?u=4', plan: 'Exclusive Content', tier: '$10/mo', joinDate: '2023-06-10', renewDate: '2023-07-10', status: 'Cancelled', totalPaid: 30 },
-  { id: '5', name: 'Evan Davis', email: 'evan@example.com', avatar: 'https://i.pravatar.cc/150?u=5', plan: 'Supporter', tier: '$5/mo', joinDate: '2023-07-01', renewDate: '2023-08-01', status: 'Active', totalPaid: 5 },
-  { id: '6', name: 'Fiona Gallagher', email: 'fiona@example.com', avatar: 'https://i.pravatar.cc/150?u=6', plan: 'VIP Access', tier: '$20/mo', joinDate: '2023-02-28', renewDate: '2023-03-28', status: 'Active', totalPaid: 100 },
-  { id: '7', name: 'George Miller', email: 'george@example.com', avatar: 'https://i.pravatar.cc/150?u=7', plan: 'Exclusive Content', tier: '$10/mo', joinDate: '2023-03-15', renewDate: '2023-04-15', status: 'Active', totalPaid: 50 },
-  { id: '8', name: 'Hannah Abbott', email: 'hannah@example.com', avatar: 'https://i.pravatar.cc/150?u=8', plan: 'Supporter', tier: '$5/mo', joinDate: '2023-04-10', renewDate: '2023-05-10', status: 'Cancelled', totalPaid: 15 },
-  { id: '9', name: 'Ian Malcolm', email: 'ian@example.com', avatar: 'https://i.pravatar.cc/150?u=9', plan: 'VIP Access', tier: '$20/mo', joinDate: '2023-01-05', renewDate: '2023-02-05', status: 'Past Due', totalPaid: 20 },
-  { id: '10', name: 'Julia Roberts', email: 'julia@example.com', avatar: 'https://i.pravatar.cc/150?u=10', plan: 'Exclusive Content', tier: '$10/mo', joinDate: '2023-05-05', renewDate: '2023-06-05', status: 'Active', totalPaid: 20 },
-  { id: '11', name: 'Kevin Hart', email: 'kevin@example.com', avatar: 'https://i.pravatar.cc/150?u=11', plan: 'Supporter', tier: '$5/mo', joinDate: '2023-06-25', renewDate: '2023-07-25', status: 'Active', totalPaid: 10 },
-  { id: '12', name: 'Laura Dern', email: 'laura@example.com', avatar: 'https://i.pravatar.cc/150?u=12', plan: 'VIP Access', tier: '$20/mo', joinDate: '2023-02-14', renewDate: '2023-03-14', status: 'Active', totalPaid: 120 },
-];
 
 type SubscriberKey = 'name' | 'plan' | 'joinDate' | 'status' | 'totalPaid';
 
@@ -158,45 +145,49 @@ export default function SubscribersTable() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [sort, setSort] = useState<SortState<SubscriberKey>>({ key: 'joinDate', direction: 'desc' });
   const [page, setPage] = useState(1);
-
-  const filtered = useMemo(() => {
-    let result = MOCK_DATA;
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter((s) => s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q));
-    }
-    if (statusFilter !== 'All') {
-      result = result.filter((s) => s.status === statusFilter);
-    }
-    return result;
-  }, [search, statusFilter]);
-
-  // Reset page when filters change
-  React.useEffect(() => { setPage(1); }, [search, statusFilter]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
 
   const PAGE_SIZE = 5;
 
-  // Client-side sort for mobile card view (DataTable handles its own sort)
-  const sorted = useMemo(() => {
-    const key = sort.key;
-    if (!key) return filtered;
-    return [...filtered].sort((a, b) => {
-      const av = a[key as keyof Subscriber];
-      const bv = b[key as keyof Subscriber];
-      if (av == null && bv == null) return 0;
-      if (av == null) return 1;
-      if (bv == null) return -1;
-      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
-      return sort.direction === 'asc' ? cmp : -cmp;
-    });
-  }, [filtered, sort]);
+  // Fetch subscribers from API
+  useEffect(() => {
+    async function fetchSubscribers() {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await apiClient.getCreatorSubscribers({
+          page,
+          limit: PAGE_SIZE,
+          search: search || undefined,
+          status: statusFilter !== 'All' ? statusFilter : undefined,
+        });
+        setSubscribers(response.data || []);
+        setTotalCount(response.total || 0);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load subscribers');
+        setSubscribers([]);
+      } finally {
+        setLoading(false);
+      }
+    }
 
-  const totalMobilePages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const pagedMobile = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    fetchSubscribers();
+  }, [page, search, statusFilter]);
+
+  // Reset to first page when filters change
+  React.useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const mobilePageData = subscribers;
 
   const handleExportCSV = () => {
     const headers = ['Name', 'Email', 'Plan', 'Tier', 'Join Date', 'Renew Date', 'Status', 'Total Paid'];
-    const rows = filtered.map((s) => `"${s.name}","${s.email}","${s.plan}","${s.tier}","${s.joinDate}","${s.renewDate}","${s.status}","${s.totalPaid}"`);
+    const rows = subscribers.map((s) => `"${s.name}","${s.email}","${s.plan}","${s.tier}","${s.joinDate}","${s.renewDate}","${s.status}","${s.totalPaid}"`);
     const blob = new Blob([[headers.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -218,13 +209,15 @@ export default function SubscribersTable() {
               onChange={(e) => setSearch(e.target.value)}
               aria-label="Search subscribers"
               className="w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors"
+              disabled={loading}
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             aria-label="Filter by status"
-            className="w-full sm:w-44 pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors appearance-none"
+            disabled={loading}
+            className="w-full sm:w-44 pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors appearance-none disabled:opacity-50"
           >
             <option value="All">All Statuses</option>
             <option value="Active">Active</option>
@@ -234,62 +227,79 @@ export default function SubscribersTable() {
         </div>
         <button
           onClick={handleExportCSV}
-          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors w-full md:w-auto justify-center"
+          disabled={loading || subscribers.length === 0}
+          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors w-full md:w-auto justify-center disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Download className="w-4 h-4" aria-hidden />
           Export CSV
         </button>
       </div>
 
-      <DataTable<Subscriber, SubscriberKey>
-        columns={COLUMNS}
-        data={filtered}
-        keyExtractor={(s) => s.id}
-        sort={sort}
-        onSortChange={setSort}
-        page={page}
-        onPageChange={setPage}
-        pageSize={PAGE_SIZE}
-        emptyMessage="No subscribers found matching your criteria."
-        caption="Subscribers"
-        className="hidden sm:block"
-      />
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+          <p className="text-sm text-red-700 dark:text-red-300">Error loading subscribers: {error}</p>
+        </div>
+      )}
 
-      {/* Mobile card stack — shown only on small screens */}
-      <div className="sm:hidden space-y-3" aria-label="Subscribers">
-        {pagedMobile.length === 0 ? (
-          <p className="text-center text-sm text-gray-500 dark:text-gray-400 py-8">
-            No subscribers found matching your criteria.
-          </p>
-        ) : (
-          pagedMobile.map((sub) => <SubscriberCard key={sub.id} sub={sub} />)
-        )}
-        {totalMobilePages > 1 && (
-          <div className="flex items-center justify-between pt-2">
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              Page {page} of {totalMobilePages}
-            </span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                aria-label="Previous page"
-                className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                Prev
-              </button>
-              <button
-                onClick={() => setPage((p) => Math.min(totalMobilePages, p + 1))}
-                disabled={page === totalMobilePages}
-                aria-label="Next page"
-                className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                Next
-              </button>
-            </div>
+      {loading ? (
+        <div className="hidden sm:block space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-12 rounded-lg bg-gray-200 dark:bg-gray-700" />
+          ))}
+        </div>
+      ) : (
+        <>
+          <DataTable<Subscriber, SubscriberKey>
+            columns={COLUMNS}
+            data={subscribers}
+            keyExtractor={(s) => s.id}
+            sort={sort}
+            onSortChange={setSort}
+            page={page}
+            onPageChange={setPage}
+            pageSize={PAGE_SIZE}
+            emptyMessage="No subscribers found matching your criteria."
+            caption="Subscribers"
+            className="hidden sm:block"
+          />
+
+          {/* Mobile card stack — shown only on small screens */}
+          <div className="sm:hidden space-y-3" aria-label="Subscribers">
+            {mobilePageData.length === 0 ? (
+              <p className="text-center text-sm text-gray-500 dark:text-gray-400 py-8">
+                No subscribers found matching your criteria.
+              </p>
+            ) : (
+              mobilePageData.map((sub) => <SubscriberCard key={sub.id} sub={sub} />)
+            )}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  Page {page} of {totalPages}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    aria-label="Previous page"
+                    className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    aria-label="Next page"
+                    className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
