@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { FeedController } from './feed.controller';
 import { FeedService } from './feed.service';
 import { PaginatedResponseDto } from '../common/dto';
@@ -13,6 +14,9 @@ describe('FeedController', () => {
     service = { getSubscriptionsFeed: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [
+        ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 100 }]),
+      ],
       controllers: [FeedController],
       providers: [{ provide: FeedService, useValue: service }],
     }).compile();
