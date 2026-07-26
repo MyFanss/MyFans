@@ -181,6 +181,7 @@
 * add reusable subscription status badges ([cd9c62c](https://github.com/MyFanss/MyFans/commit/cd9c62c62e02fb2d77c01dd3169f96c00f8d99ce))
 * add secure account deletion UI with warnings and re-auth confirmation ([4c7ee81](https://github.com/MyFanss/MyFans/commit/4c7ee812663699e08c0cadf5bc91f4df4370bc77))
 * add security audit to backend ([8ce549d](https://github.com/MyFanss/MyFans/commit/8ce549d46df057258596ffc9ef0e6f8abb9ab42f))
+* add server-side auth middleware for protected routes ([#1484](https://github.com/MyFanss/MyFans/issues/1484)) ([bdbde7a](https://github.com/MyFanss/MyFans/commit/bdbde7a5abf366f16a1f4b2ac9b19ba4b5b52453))
 * add set_autorenew function ([e573715](https://github.com/MyFanss/MyFans/commit/e573715110745806f93237ce84b76f70f342984d))
 * add Soroban RPC health check endpoints ([b5543e2](https://github.com/MyFanss/MyFans/commit/b5543e25e660c934125de10fc3acf020515d710c))
 * add startup probes for DB and RPC ([dc66ea1](https://github.com/MyFanss/MyFans/commit/dc66ea1e36660f0301fcbdc822faa9288a19bcc4))
@@ -205,6 +206,7 @@
 * added the post crud feature ([053beb0](https://github.com/MyFanss/MyFans/commit/053beb04b27651f17ad59c81aa8069ec9e35949b))
 * added the redis cache feature ([0ac8f43](https://github.com/MyFanss/MyFans/commit/0ac8f43f20451f068803709a37608af7b1f943b8))
 * admin-guard webhook secret rotation endpoints with audit logging ([#1419](https://github.com/MyFanss/MyFans/issues/1419)) ([c6b644d](https://github.com/MyFanss/MyFans/commit/c6b644d7f484eeaa872fc008b4d2521b99318d93))
+* align api-client typing with backend response envelopes ([#1487](https://github.com/MyFanss/MyFans/issues/1487)) ([e620bc9](https://github.com/MyFanss/MyFans/commit/e620bc9305065505cee3d1229ab3e134f1ccd5b7))
 * **analytics:** payment analytics endpoints ([0a31511](https://github.com/MyFanss/MyFans/commit/0a31511c45b7bbf2fba829e92a5a2c6e17bcadb9)), closes [#payment-analytics](https://github.com/MyFanss/MyFans/issues/payment-analytics)
 * API versioning ([c62bb64](https://github.com/MyFanss/MyFans/commit/c62bb648e1fc7745ca67b945fbfb991718152117))
 * **api:** standardize pagination on subscriptions, creators, and posts ([#861](https://github.com/MyFanss/MyFans/issues/861)) ([ad25d72](https://github.com/MyFanss/MyFans/commit/ad25d7280d658e48c73b4277506a45712163bd41))
@@ -416,6 +418,7 @@
 * **subscriptions:** GET fan–creator subscription state with auth ([2fec38f](https://github.com/MyFanss/MyFans/commit/2fec38f7d73e046ce497399ec412220b12fd8044))
 * **subscriptions:** map query status string to SubscriptionStatus enum ([0661159](https://github.com/MyFanss/MyFans/commit/0661159312d2cc5051c8c91e5b9a8b398c24b314))
 * **subscriptions:** track worst-case simulation resource fees ([bc60859](https://github.com/MyFanss/MyFans/commit/bc60859f713b928c27bae13c1ca43ab3b3319f63))
+* sync COEP CORP headers with wallet extension needs ([#1485](https://github.com/MyFanss/MyFans/issues/1485)) ([ac4aff9](https://github.com/MyFanss/MyFans/commit/ac4aff9c4bb9f7bfab6e8dce9b5c0790d5bc3a60))
 * **test-consumer:** add admin authorization with unauthorized caller tests ([b939826](https://github.com/MyFanss/MyFans/commit/b93982696ed600f3e7c1d759d61a73a50158ef0d)), closes [#981](https://github.com/MyFanss/MyFans/issues/981)
 * **test-consumer:** add initialize and admin functions with unit tests ([f77f377](https://github.com/MyFanss/MyFans/commit/f77f3771f57b1c19fc11720700bda5bccbe100ae)), closes [#980](https://github.com/MyFanss/MyFans/issues/980)
 * **token:** typed errors and mint initial_supply on initialize ([f868f16](https://github.com/MyFanss/MyFans/commit/f868f16c5be5bebbe29eebb61c3e7bdabb1c772d)), closes [#1399](https://github.com/MyFanss/MyFans/issues/1399) [#1401](https://github.com/MyFanss/MyFans/issues/1401)
@@ -434,15 +437,16 @@
 * wire JWT identity on social write controllers ([2b11c66](https://github.com/MyFanss/MyFans/commit/2b11c66e7e17ec70bb5626d6ed5e58bd38652ee8)), closes [#JWT-wiring](https://github.com/MyFanss/MyFans/issues/JWT-wiring)
 * wire myfans-lib require_authorized into production contracts ([9b582a1](https://github.com/MyFanss/MyFans/commit/9b582a1c6b88711dbba47189d8f45f6943cddc41)), closes [#1402](https://github.com/MyFanss/MyFans/issues/1402)
 * wire myfans-lib require_authorized into production contracts ([0c812c4](https://github.com/MyFanss/MyFans/commit/0c812c4f6e2ca107acb677cbd6e2c43c61675a61)), closes [#1402](https://github.com/MyFanss/MyFans/issues/1402)
+* wire transaction history page to real API ([#1486](https://github.com/MyFanss/MyFans/issues/1486)) ([410ae8b](https://github.com/MyFanss/MyFans/commit/410ae8bd28de46d7b956e566aa4cc07a1bf25fc2))
 
 
 ### Performance Improvements
 
-* optimise gas usage in earnings contract hot paths ([#966](https://github.com/favourawaku/MyFans/issues/966)) ([799bd81](https://github.com/favourawaku/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
-* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/favourawaku/MyFans/issues/986)) ([97d059e](https://github.com/favourawaku/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
-* Optimize creator profile page performance ([d8ba3ca](https://github.com/favourawaku/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/favourawaku/MyFans/issues/415)
+* optimise gas usage in earnings contract hot paths ([#966](https://github.com/MyFanss/MyFans/issues/966)) ([799bd81](https://github.com/MyFanss/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
+* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/MyFanss/MyFans/issues/986)) ([97d059e](https://github.com/MyFanss/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
+* Optimize creator profile page performance ([d8ba3ca](https://github.com/MyFanss/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/MyFanss/MyFans/issues/415)
 
 
 ### Reverts
 
-* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/favourawaku/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
+* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/MyFanss/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
