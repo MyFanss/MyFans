@@ -128,6 +128,7 @@
 * use rpc.Server and import rpc.Api helpers where UInt32Val is used ([#581](https://github.com/MyFanss/MyFans/issues/581)) ([a96b86e](https://github.com/MyFanss/MyFans/commit/a96b86e262b3e05ead6de3f4f796b5d40f059a92))
 * validate error codes and panic messages in earnings contract ([#965](https://github.com/MyFanss/MyFans/issues/965)) ([45278b8](https://github.com/MyFanss/MyFans/commit/45278b85b2605fe1ae8e8375c1119213f74e5202))
 * validate error codes and panic messages in test-consumer contract ([#985](https://github.com/MyFanss/MyFans/issues/985)) ([aead6b4](https://github.com/MyFanss/MyFans/commit/aead6b4c789068993b95d04f3a159c07897cc8d7))
+* wire dashboard, stellar wallets, analytics, and JWT profile auth ([e43f40e](https://github.com/MyFanss/MyFans/commit/e43f40e3116de45401933698df640305f6a867f0))
 * wrap CLI top-level awaits in async main() for CommonJS compatibility ([c75238e](https://github.com/MyFanss/MyFans/commit/c75238e1684a3b695025001ca4c19ad48e34c612))
 
 
