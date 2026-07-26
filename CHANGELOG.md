@@ -1,4 +1,4 @@
-# 0.1.0 (2026-07-25)
+# 0.1.0 (2026-07-26)
 
 
 ### Bug Fixes
@@ -216,6 +216,7 @@
 * **backend:** add Soroban RPC retry/backoff utility with circuit breaker ([#343](https://github.com/MyFanss/MyFans/issues/343)) ([24dbfe7](https://github.com/MyFanss/MyFans/commit/24dbfe7e431ba12e98b26228c1f64556b5e0c9dc))
 * **backend:** auto-load contract IDs from deploy artifacts ([dc50afe](https://github.com/MyFanss/MyFans/commit/dc50afe5e2affd56fc3f7324707bd87119d4514b))
 * **backend:** creator dashboard endpoint for revenue and subscriber metrics ([d1a39ea](https://github.com/MyFanss/MyFans/commit/d1a39eab6d25c3d77ae84a590a73545515d2e1ed))
+* **backend:** e2e CI job, readiness probe, earnings module, security tracker ([c597a6c](https://github.com/MyFanss/MyFans/commit/c597a6c25c098a2248dcdab551f453e38d8990e7)), closes [#1444](https://github.com/MyFanss/MyFans/issues/1444) [#1443](https://github.com/MyFanss/MyFans/issues/1443) [#1445](https://github.com/MyFanss/MyFans/issues/1445)
 * **backend:** harden CreatorsService with Logger and resilient edges ([d4418ed](https://github.com/MyFanss/MyFans/commit/d4418edfe825c4d03bf7cf0363ab8a2edcdcae9c))
 * **backend:** IPFS metadata upload flow ([c46de68](https://github.com/MyFanss/MyFans/commit/c46de682411b3f69f24ccd4e450ae743c4d41629))
 * **backend:** social-links service tests, DTO validation, e2e coverage, pagination ([2f1db47](https://github.com/MyFanss/MyFans/commit/2f1db47e7ae4491bf0cae7789cd1fe7e661b5e08))

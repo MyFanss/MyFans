@@ -1,9 +1,7 @@
 import { resolveUserId } from "@/lib/auth-storage";
+import { getApiBaseUrl } from "@/lib/api/base-url";
 
-const API_BASE =
-  typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL
-    ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "")
-    : "http://localhost:3000";
+const API_BASE = getApiBaseUrl();
 
 export type MeResponse = {
   id: string;
