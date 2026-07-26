@@ -1,3 +1,5 @@
+import { getConfiguredApiBaseUrl, trimTrailingSlash } from '@/lib/api/base-url';
+
 export const FeatureFlag = {
   BOOKMARKS: 'bookmarks',
   EARNINGS_WITHDRAWALS: 'earnings_withdrawals',
@@ -104,17 +106,16 @@ function sanitizeFlagOverrides(value: unknown): FeatureFlagOverrides {
   }, {});
 }
 
-function trimTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, '');
-}
-
 export function getRemoteFlagsUrl(): string | undefined {
   const explicitUrl = process.env[FEATURE_FLAGS_URL_ENV_KEY];
   if (explicitUrl) {
     return explicitUrl;
   }
 
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+  // Uses getConfiguredApiBaseUrl() (undefined when unset) rather than
+  // getApiBaseUrl(), since this function's fallback is a same-origin
+  // relative path rather than the shared absolute localhost default (#1455).
+  const apiBaseUrl = getConfiguredApiBaseUrl();
   if (apiBaseUrl) {
     const normalizedApiBaseUrl = trimTrailingSlash(apiBaseUrl);
 

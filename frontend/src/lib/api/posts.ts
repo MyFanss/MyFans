@@ -2,6 +2,7 @@
  * Posts API client.
  */
 import type { CreatorPost } from '@/lib/creator-profile';
+import { getApiBaseUrl } from '@/lib/api/base-url';
 
 const EXCERPT_LENGTH = 140;
 
@@ -24,7 +25,7 @@ export interface PostsPage {
   hasMore: boolean;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
+const API_BASE = `${getApiBaseUrl()}/api/v1`;
 
 export async function getPostsByAuthor(
   authorId: string,

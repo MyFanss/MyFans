@@ -2,6 +2,7 @@
  * Creators search API client.
  */
 import type { CreatorProfile } from '@/lib/creator-profile';
+import { getApiBaseUrl } from '@/lib/api/base-url';
 
 export interface PublicCreator {
   id: string;
@@ -20,7 +21,7 @@ export interface CreatorsSearchResult {
   hasMore: boolean;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
+const API_BASE = `${getApiBaseUrl()}/api/v1`;
 
 export async function searchCreators(params: {
   q?: string;
