@@ -300,6 +300,7 @@
 * **frontend:** fan onboarding quickstart with wallet and first sub flow ([ebb5b86](https://github.com/MyFanss/MyFans/commit/ebb5b864f077d3eeebcaca4e3affbb5f67f79ce2))
 * **frontend:** fix appearance.test.tsx and add theme e2e tests ([52788e2](https://github.com/MyFanss/MyFans/commit/52788e23ef47474b480d83d4875094e8e4bad32e)), closes [#24](https://github.com/MyFanss/MyFans/issues/24)
 * **frontend:** persist wallet/subscription state for e2e critical flow ([ad944bd](https://github.com/MyFanss/MyFans/commit/ad944bd992753f3a00f0e82cad13ee072b92dff4))
+* **frontend:** proxy /api/v1, earnings UI, content library, CSRF/prefs URLs ([1e7edd8](https://github.com/MyFanss/MyFans/commit/1e7edd88fac58044cfcf74c9b820cbdd52a3dcb6))
 * **frontend:** replace mock viewer subscription status on creator pages ([#1360](https://github.com/MyFanss/MyFans/issues/1360)) ([562c7bd](https://github.com/MyFanss/MyFans/commit/562c7bd7438e6105cfacacc51d0d66fe09dd98da))
 * **frontend:** show offline banner when RPC or network is unavailable ([11a4a2c](https://github.com/MyFanss/MyFans/commit/11a4a2cb54b8fbd36d089358a3b36744cd9eaba6))
 * **frontend:** standardize error copy with actionable recovery steps ([53e8b4f](https://github.com/MyFanss/MyFans/commit/53e8b4fbb0721d7df0eea13702de2b1c878d81ed))
@@ -442,11 +443,11 @@
 
 ### Performance Improvements
 
-* optimise gas usage in earnings contract hot paths ([#966](https://github.com/success-OG/MyFans/issues/966)) ([799bd81](https://github.com/success-OG/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
-* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/success-OG/MyFans/issues/986)) ([97d059e](https://github.com/success-OG/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
-* Optimize creator profile page performance ([d8ba3ca](https://github.com/success-OG/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/success-OG/MyFans/issues/415)
+* optimise gas usage in earnings contract hot paths ([#966](https://github.com/MyFanss/MyFans/issues/966)) ([799bd81](https://github.com/MyFanss/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
+* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/MyFanss/MyFans/issues/986)) ([97d059e](https://github.com/MyFanss/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
+* Optimize creator profile page performance ([d8ba3ca](https://github.com/MyFanss/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/MyFanss/MyFans/issues/415)
 
 
 ### Reverts
 
-* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/success-OG/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
+* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/MyFanss/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
