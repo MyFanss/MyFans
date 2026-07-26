@@ -56,7 +56,13 @@ class ApiClient {
 
   // User endpoints
   async getCurrentUser(): Promise<GetCurrentUserResponse> {
-    return this.request<ApiResponse<User>>('/users/me');
+    const response = await this.request<User | ApiResponse<User>>('/users/me');
+    // Adapter: backend may return bare DTO or wrapped response
+    if ('success' in response) {
+      return response as ApiResponse<User>;
+    }
+    // Wrap bare DTO response
+    return { success: true, data: response as User };
   }
 
   async getUser(id: string): Promise<ApiResponse<User>> {
