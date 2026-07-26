@@ -7,11 +7,14 @@ import { NotificationPreferencesForm } from "@/components/settings/NotificationP
 import { useTheme, type Theme } from "@/contexts/ThemeContext";
 import { useConsent } from "@/contexts/ConsentContext";
 import { useToast } from "@/contexts/ToastContext";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FeatureFlag } from "@/lib/feature-flags";
 import { ProfileSettingsPanel } from "@/components/settings/profile-settings-panel";
-import { WalletSettingsPanel } from "@/components/settings/WalletSettingsPanel";
+import { ReferralSharePanel } from "@/components/referral/ReferralSharePanel";
 
 export default function SettingsPage() {
-  const { showSuccess, showError, showWarning } = useToast();
+  const { showSuccess, showError, showInfo, showWarning } = useToast();
+  const referralEnabled = useFeatureFlag(FeatureFlag.REFERRAL_CODES);
   const [role, setRole] = useState<Role>("creator");
   const [activeSectionId, setActiveSectionId] = useState("profile");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -406,6 +409,40 @@ export default function SettingsPage() {
           </p>
           <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-sm text-slate-700 dark:text-slate-300">
             Current mode: Public profile + searchable.
+          </div>
+        </section>
+      );
+    }
+
+    /* ── REFERRAL CODE (creator only) ── */
+    if (role === "creator" && activeSectionId === "referral") {
+      if (!referralEnabled) {
+        return (
+          <section className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
+              Referral Code
+            </h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              This feature is not yet available.
+            </p>
+          </section>
+        );
+      }
+
+      return (
+        <section className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5">
+          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
+            Referral Code
+          </h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            Share your unique referral code to earn rewards when others sign up.
+          </p>
+          <div className="mt-4">
+            <ReferralSharePanel
+              code="REF123456"
+              useCount={5}
+              maxUses={100}
+            />
           </div>
         </section>
       );

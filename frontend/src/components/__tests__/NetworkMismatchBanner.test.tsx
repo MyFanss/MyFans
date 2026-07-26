@@ -65,4 +65,12 @@ describe('NetworkMismatchBanner', () => {
     const alert = screen.getByRole('alert');
     expect(alert).toHaveAttribute('aria-live', 'assertive');
   });
+
+  it('shows generic wallet message for Lobstr mismatch', () => {
+    mockGuard({ mismatch: true, expected: 'testnet', detected: 'PUBLIC' });
+    render(<NetworkMismatchBanner />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toBeInTheDocument();
+    expect(screen.getByText(/Switch networks in your wallet to continue/i)).toBeInTheDocument();
+  });
 });
