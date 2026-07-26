@@ -12,7 +12,6 @@ import {
   CONTENT_TYPE_OPTIONS,
   STATUS_OPTIONS,
   SORT_OPTIONS,
-  MOCK_CONTENT_ITEMS,
   type ViewMode,
   type ContentItem,
   type ContentLibraryFilters,
@@ -37,14 +36,22 @@ function setStoredView(mode: ViewMode) {
 }
 
 export interface ContentLibraryProps {
+  /** Real items from the API. Defaults to empty — never injects mock data. */
   initialItems?: ContentItem[];
+  loading?: boolean;
+  error?: string | null;
+  /** Shown when file upload is not available; disables the dropzone actions. */
+  uploadDisabledMessage?: string | null;
   onUpload?: (files: File[]) => Promise<void>;
   onBulkDelete?: (ids: string[]) => Promise<void>;
   onBulkArchive?: (ids: string[]) => Promise<void>;
 }
 
 export function ContentLibrary({
-  initialItems = MOCK_CONTENT_ITEMS,
+  initialItems = [],
+  loading = false,
+  error = null,
+  uploadDisabledMessage = null,
   onUpload,
   onBulkDelete,
   onBulkArchive,
@@ -60,9 +67,16 @@ export function ContentLibrary({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'archive'; ids: string[] } | null>(null);
   const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
   const listParentRef = useRef<HTMLDivElement>(null);
+
+  const uploadEnabled = Boolean(onUpload) && !uploadDisabledMessage;
+
+  useEffect(() => {
+    setItems(initialItems);
+  }, [initialItems]);
 
   const filteredItems = useMemo(() => filterAndSort(items, filters), [items, filters]);
   const selectedCount = selectedIds.size;
@@ -88,21 +102,33 @@ export function ContentLibrary({
     }
   }, [filteredItems, selectedCount]);
 
-  const handleDrop = useCallback(
-    async (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragging(false);
-      const files = Array.from(e.dataTransfer.files);
+  const runUpload = useCallback(
+    async (files: File[]) => {
       if (files.length === 0) return;
-      if (!onUpload) return;
+      if (!uploadEnabled || !onUpload) {
+        setUploadMessage(uploadDisabledMessage ?? 'Upload is not available.');
+        return;
+      }
       setIsUploading(true);
+      setUploadMessage(null);
       try {
         await onUpload(files);
+      } catch (err) {
+        setUploadMessage(err instanceof Error ? err.message : 'Upload failed');
       } finally {
         setIsUploading(false);
       }
     },
-    [onUpload]
+    [onUpload, uploadEnabled, uploadDisabledMessage],
+  );
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      await runUpload(Array.from(e.dataTransfer.files));
+    },
+    [runUpload],
   );
 
   const handleConfirmBulk = useCallback(async () => {
@@ -138,7 +164,6 @@ export function ContentLibrary({
 
   return (
     <div className="space-y-4">
-      {/* Toolbar: view toggle, filter, sort, upload, bulk */}
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 bg-gray-50 dark:bg-gray-800">
           <button
@@ -246,55 +271,99 @@ export function ContentLibrary({
         )}
       </div>
 
-      {/* Upload zone */}
       <div
-        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (uploadEnabled) setIsDragging(true);
+        }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
         className={`rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
           isDragging
             ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
             : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50'
-        }`}
+        } ${!uploadEnabled ? 'opacity-80' : ''}`}
       >
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-          Drag and drop files here, or{' '}
-          <button
-            type="button"
-            onClick={() => document.getElementById('content-upload-input')?.click()}
-            className="text-primary-600 dark:text-primary-400 hover:underline"
-          >
-            browse
-          </button>
-        </p>
-        {isUploading && <p className="text-sm text-gray-500">Uploading…</p>}
+        {uploadDisabledMessage ? (
+          <p className="text-sm text-amber-700 dark:text-amber-300" role="status">
+            {uploadDisabledMessage}
+          </p>
+        ) : (
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+            Drag and drop files here, or{' '}
+            <button
+              type="button"
+              onClick={() => document.getElementById('content-upload-input')?.click()}
+              className="text-primary-600 dark:text-primary-400 hover:underline"
+              disabled={!uploadEnabled}
+            >
+              browse
+            </button>
+          </p>
+        )}
+        {isUploading && <p className="text-sm text-gray-500 mt-2">Uploading…</p>}
+        {uploadMessage && !uploadDisabledMessage && (
+          <p className="text-sm text-amber-700 dark:text-amber-300 mt-2" role="status">
+            {uploadMessage}
+          </p>
+        )}
         <input
           id="content-upload-input"
           type="file"
           multiple
           className="sr-only"
+          disabled={!uploadEnabled}
           onChange={async (e) => {
             const files = Array.from(e.target.files ?? []);
             e.target.value = '';
-            if (files.length && onUpload) {
-              setIsUploading(true);
-              try {
-                await onUpload(files);
-              } finally {
-                setIsUploading(false);
-              }
-            }
+            await runUpload(files);
           }}
         />
       </div>
 
-      {/* Content area: virtualized when 50+ */}
+      {error && (
+        <div
+          className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-4 py-3 text-sm text-red-700 dark:text-red-200"
+          role="alert"
+        >
+          {error}
+        </div>
+      )}
+
       <div
         ref={listParentRef}
         className="overflow-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
         style={{ minHeight: 400, maxHeight: 600 }}
       >
-        {viewMode === 'grid' && !useVirtual && (
+        {loading && (
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" aria-busy="true">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-48 w-full" rounded="lg" />
+            ))}
+          </div>
+        )}
+
+        {!loading && filteredItems.length === 0 && (
+          <div className="flex flex-col items-center justify-center text-center px-6 py-16" role="status">
+            <div
+              className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400 dark:text-gray-500 mb-4"
+              aria-hidden
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">No content yet</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm">
+              {error
+                ? 'We could not load your library. Try again once the API is reachable.'
+                : 'Your content library is empty. Create content via the metadata API when upload is enabled.'}
+            </p>
+          </div>
+        )}
+
+        {!loading && viewMode === 'grid' && !useVirtual && filteredItems.length > 0 && (
           <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredItems.map((item) => (
               <GridCard
@@ -306,7 +375,7 @@ export function ContentLibrary({
             ))}
           </div>
         )}
-        {viewMode === 'grid' && useVirtual && (
+        {!loading && viewMode === 'grid' && useVirtual && (
           <div
             style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}
             className="p-4"
@@ -339,7 +408,7 @@ export function ContentLibrary({
             })}
           </div>
         )}
-        {viewMode === 'list' && !useVirtual && (
+        {!loading && viewMode === 'list' && !useVirtual && filteredItems.length > 0 && (
           <ul className="divide-y divide-gray-200 dark:divide-gray-700">
             {filteredItems.map((item) => (
               <ListRow
@@ -351,7 +420,7 @@ export function ContentLibrary({
             ))}
           </ul>
         )}
-        {viewMode === 'list' && useVirtual && (
+        {!loading && viewMode === 'list' && useVirtual && (
           <ul
             style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}
             className="divide-y divide-gray-200 dark:divide-gray-700"
@@ -383,7 +452,6 @@ export function ContentLibrary({
         )}
       </div>
 
-      {/* Bulk confirmation modal */}
       {confirmAction && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"

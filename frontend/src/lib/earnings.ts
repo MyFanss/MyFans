@@ -17,19 +17,24 @@ export interface EarningsSeries {
   data: EarningsDataPoint[];
 }
 
-function generateMockData(range: EarningsTimeRange): EarningsDataPoint[] {
-  const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
-  const data: EarningsDataPoint[] = [];
-  const now = new Date();
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
-    const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const earnings = Math.round((Math.random() * 80 + 20) * 100) / 100;
-    data.push({ date: dateStr, earnings, label });
-  }
-  return data;
+function rangeToDays(range: EarningsTimeRange): number {
+  return range === '7d' ? 7 : range === '30d' ? 30 : 90;
+}
+
+function mapBreakdownToPoints(breakdown: EarningsBreakdown): EarningsDataPoint[] {
+  return (breakdown.by_time ?? []).map((row) => {
+    const date = row.date.slice(0, 10);
+    const parsed = new Date(date);
+    const label = Number.isNaN(parsed.getTime())
+      ? date
+      : parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const earnings = Number.parseFloat(row.amount);
+    return {
+      date,
+      earnings: Number.isFinite(earnings) ? earnings : 0,
+      label,
+    };
+  });
 }
 
 /**
