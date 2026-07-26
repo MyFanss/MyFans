@@ -1,4 +1,6 @@
 const USER_ID_KEY = "myfans_user_id";
+/** JWT access token persisted after login (aligned with api-utils `authToken`). */
+const AUTH_TOKEN_KEY = "authToken";
 
 /** Persisted after login (`token` / `userId` from POST /auth/login). */
 export function getStoredUserId(): string | null {
@@ -27,4 +29,13 @@ export function resolveUserId(): string | null {
 
 export function hasStoredUserId(): boolean {
   return Boolean(resolveUserId());
+}
+
+export function hasStoredAuthToken(): boolean {
+  return Boolean(resolveAuthToken());
+}
+
+export function clearAuthSession(): void {
+  clearStoredUserId();
+  clearStoredAuthToken();
 }

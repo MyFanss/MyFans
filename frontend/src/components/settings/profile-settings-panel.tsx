@@ -5,9 +5,10 @@ import {
   fetchMe,
   patchMe,
   patchCreatorMe,
+  ProfileUnauthorizedError,
   type MeResponse,
 } from "@/lib/api/profile";
-import { resolveUserId } from "@/lib/auth-storage";
+import { resolveAuthToken } from "@/lib/auth-storage";
 import {
   validateDisplayName,
   validateHttpsUrl,
@@ -45,10 +46,10 @@ export function ProfileSettingsPanel({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
-    const id = resolveUserId();
-    if (!id) {
+    const token = resolveAuthToken();
+    if (!token) {
       setLoadError(
-        "No user session. Log in or set localStorage key myfans_user_id (or NEXT_PUBLIC_DEV_USER_ID)."
+        "No auth session. Sign in or set localStorage key authToken (or NEXT_PUBLIC_DEV_AUTH_TOKEN)."
       );
       setLoading(false);
       return;
@@ -66,7 +67,11 @@ export function ProfileSettingsPanel({
       setSubscriptionPrice(data.creator?.subscription_price ?? "0");
       setCurrency((data.creator?.currency as "XLM" | "USDC") ?? "XLM");
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Failed to load profile");
+      if (e instanceof ProfileUnauthorizedError) {
+        setLoadError(e.message);
+      } else {
+        setLoadError(e instanceof Error ? e.message : "Failed to load profile");
+      }
     } finally {
       setLoading(false);
     }
