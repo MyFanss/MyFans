@@ -115,7 +115,13 @@ mod props {
                 let unlock_result = client.try_unlock_content(buyer, creator, &content_id, &expiry_ledger);
 
                 if expiry_ledger <= current_seq {
-                    prop_assert!(unlock_result.is_ok());
+                    prop_assert_eq!(
+                        unlock_result,
+                        Err(Ok(SorobanError::from_contract_error(
+                            Error::InvalidExpiry as u32,
+                        ))),
+                        "expiry_ledger <= current_seq must be rejected with InvalidExpiry"
+                    );
                     prop_assert!(!client.has_access(buyer, creator, &content_id));
                 } else {
                     prop_assert!(unlock_result.is_ok());

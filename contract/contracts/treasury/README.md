@@ -44,6 +44,37 @@ Transfer `amount` tokens from the treasury to `to`.
 - Requires authorization from the admin.
 - Emits a `withdraw` event: `(to, amount, token_address)`.
 
+### `admin(env) -> Address`
+
+Returns the configured admin address.
+
+- Panics with `NotInitialized` (code 5) if the contract was never initialized.
+
+### `token(env) -> Address`
+
+Returns the token address accepted by the treasury.
+
+- Panics with `NotInitialized` (code 5) if the contract was never initialized.
+
+### `set_admin(env, new_admin)`
+
+Rotate the admin to a new address.
+
+- Only the current admin may authorize this call.
+- Panics with `NotInitialized` (code 5) if the contract was never initialized.
+- Emits an `admin_transferred` event with `(current_admin, new_admin)`.
+
+## Storage Layout
+
+All keys use the `DataKey` enum (instance storage):
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `DataKey::Admin` | `Address` | Contract admin |
+| `DataKey::Token` | `Address` | Token contract address |
+| `DataKey::Paused` | `bool` | Pause flag |
+| `DataKey::MinBalance` | `i128` | Minimum balance guard |
+
 ## Error Codes
 
 | Code | Variant | Meaning |
