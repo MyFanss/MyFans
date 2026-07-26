@@ -16,10 +16,12 @@ export function clearStoredUserId(): void {
   localStorage.removeItem(USER_ID_KEY);
 }
 
-/** Dev fallback when nothing is in localStorage (optional). */
+/** Dev fallback when nothing is in localStorage (development only). */
 export function resolveUserId(): string | null {
-  const fromEnv = process.env.NEXT_PUBLIC_DEV_USER_ID?.trim();
-  if (fromEnv) return fromEnv;
+  if (process.env.NODE_ENV === 'development') {
+    const fromEnv = process.env.NEXT_PUBLIC_DEV_USER_ID?.trim();
+    if (fromEnv) return fromEnv;
+  }
   return getStoredUserId();
 }
 
