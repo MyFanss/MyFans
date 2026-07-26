@@ -24,6 +24,14 @@ export {
 // Wallet hook
 export { useWallet } from './useWallet';
 
+// Dashboard overview hook
+export {
+  useDashboardData,
+  type DashboardLoadState,
+  type UseDashboardDataOptions,
+  type UseDashboardDataResult,
+} from './useDashboardData';
+
 // Onboarding hook
 export { useOnboarding } from './useOnboarding';
 

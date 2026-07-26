@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React from 'react';
 import { MetricCard } from '@/components/cards';
 import { MetricCardSkeleton } from './MetricCardSkeleton';
 import { ActivityFeed } from './ActivityFeed';
@@ -8,7 +8,8 @@ import { ActivityFeedSkeleton } from './ActivityFeedSkeleton';
 import { QuickActions } from './QuickActions';
 import { DashboardError } from './DashboardError';
 import { DashboardSectionBoundary } from './DashboardSectionBoundary';
-import { fetchDashboardData, type DashboardData } from '@/lib/dashboard';
+import { type DashboardData } from '@/lib/dashboard';
+import { useDashboardData } from '@/hooks/useDashboardData';
 
 const PeopleIcon = () => (
   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" /></svg>
@@ -32,33 +33,15 @@ export interface DashboardHomeProps {
   fetchDashboardData?: () => Promise<DashboardData>;
 }
 
-export function DashboardHome({ onCreatePlan, onUploadContent, fetchDashboardData: fetchFn = fetchDashboardData }: DashboardHomeProps) {
-  const [state, setState] = useState<'loading' | 'success' | 'error'>('loading');
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string>('');
-
-  const load = useCallback(async () => {
-    setState('loading');
-    setErrorMessage('');
-    try {
-      const result = await fetchFn();
-      setData(result);
-      setState('success');
-    } catch (e) {
-      setState('error');
-      setErrorMessage(e instanceof Error ? e.message : 'Failed to load dashboard');
-    }
-  }, [fetchFn]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    load();
-  }, [load]);
+export function DashboardHome({ onCreatePlan, onUploadContent, fetchDashboardData: fetchFn }: DashboardHomeProps) {
+  const { state, data, errorMessage, reload } = useDashboardData({
+    fetchFn,
+  });
 
   if (state === 'error') {
     return (
       <div className="grid gap-4 sm:gap-6 max-w-full">
-        <DashboardError message={errorMessage} onRetry={load} />
+        <DashboardError message={errorMessage} onRetry={reload} />
       </div>
     );
   }
@@ -97,6 +80,7 @@ export function DashboardHome({ onCreatePlan, onUploadContent, fetchDashboardDat
   if (!data) return null;
 
   const { metrics, recentActivity } = data;
+  const isEmpty = state === 'empty';
 
   return (
     <div className="grid gap-4 sm:gap-6 max-w-full">
@@ -132,7 +116,16 @@ export function DashboardHome({ onCreatePlan, onUploadContent, fetchDashboardDat
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="lg:col-span-2 min-w-0">
           <DashboardSectionBoundary label="Activity feed">
-            <ActivityFeed items={recentActivity} />
+            {isEmpty || recentActivity.length === 0 ? (
+              <div
+                className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-8 text-center text-sm text-gray-500 dark:text-gray-400"
+                data-testid="dashboard-empty"
+              >
+                No activity yet. Create a plan or publish content to get started.
+              </div>
+            ) : (
+              <ActivityFeed items={recentActivity} />
+            )}
           </DashboardSectionBoundary>
         </div>
         <div className="min-w-0">
