@@ -408,6 +408,42 @@ describe('HealthService', () => {
         });
     });
 
+    describe('getReadiness', () => {
+        it('is up when the database is reachable', async () => {
+            mockDataSource.query.mockResolvedValue([1]);
+            mockSorobanRpcService.checkConnectivity.mockResolvedValue({ status: 'up' });
+
+            const result = await service.getReadiness();
+
+            expect(result.status).toBe('up');
+            expect(result.checks.database.status).toBe('up');
+        });
+
+        it('is down when the database is unreachable', async () => {
+            mockDataSource.query.mockRejectedValue(new Error('connection refused'));
+            mockSorobanRpcService.checkConnectivity.mockResolvedValue({ status: 'up' });
+
+            const result = await service.getReadiness();
+
+            expect(result.status).toBe('down');
+            expect(result.checks.database.status).toBe('down');
+            expect(result.checks.database.error).toBe('connection refused');
+        });
+
+        it('stays up when only Soroban RPC is down (RPC is optional for readiness)', async () => {
+            mockDataSource.query.mockResolvedValue([1]);
+            mockSorobanRpcService.checkConnectivity.mockResolvedValue({
+                status: 'down',
+                error: 'timeout',
+            });
+
+            const result = await service.getReadiness();
+
+            expect(result.status).toBe('up');
+            expect(result.checks.sorobanRpc.status).toBe('down');
+        });
+    });
+
     describe('getAggregatedHealth', () => {
         it('should return up when all subsystems are up and Redis is unconfigured', async () => {
             mockDataSource.query.mockResolvedValue([1]);
