@@ -2,8 +2,9 @@
  * Checkout API Service
  * Handles all checkout-related API calls to the backend
  */
+import { getApiBaseUrl } from '@/lib/api/base-url';
 
-const API_BASE_URL = "http://localhost:3000";
+const API_BASE_URL = getApiBaseUrl();
 
 export interface CreateCheckoutRequest {
   fanAddress: string;

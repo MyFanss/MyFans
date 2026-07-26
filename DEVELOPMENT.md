@@ -56,44 +56,28 @@ Or open `http://localhost:3001/v1/health` in your browser.
 
 ---
 
-## Backend Testing
+## Frontend API base URL (`NEXT_PUBLIC_API_URL`)
 
-### Unit tests
+All frontend API clients resolve the backend origin through the shared
+`getApiBaseUrl()` helper in `frontend/src/lib/api/base-url.ts`, instead of
+each module hardcoding its own `localhost` host/port fallback.
 
-```bash
-cd backend
-npm test
-```
-
-### End-to-end tests
-
-The e2e suite (`backend/test/*.e2e-spec.ts`) exercises full request/response
-cycles — including auth, RBAC, CORS, and security-hardening behavior — against
-a real Postgres database. It runs in CI on every PR (see the `Backend E2E` job
-in `.github/workflows/ci.yml`) and can also be run locally:
-
-```bash
-# 1. Start a disposable Postgres instance (or reuse the one from
-#    docker-compose.dev.yml if it's already running on 5432)
-docker run --rm -d --name myfans-e2e-pg \
-  -e POSTGRES_USER=myfans_ci \
-  -e POSTGRES_PASSWORD=myfans_ci \
-  -e POSTGRES_DB=myfans_test \
-  -p 5432:5432 postgres:16-alpine
-
-# 2. Point the backend at it and run the suite
-cd backend
-DB_HOST=localhost DB_PORT=5432 DB_USER=myfans_ci DB_PASSWORD=myfans_ci \
-  DB_NAME=myfans_test JWT_SECRET=local-e2e-secret \
-  WEBHOOK_SECRET=local-e2e-webhook-secret NODE_ENV=test \
-  npm run test:e2e
-
-# 3. Tear down
-docker stop myfans-e2e-pg
-```
-
-A PR fails CI if `test:e2e` fails, so run it locally before pushing changes
-that touch auth, guards, middleware, or any e2e-covered module.
+- Set `NEXT_PUBLIC_API_URL` to override the backend origin, e.g. in
+  `frontend/.env.local`:
+  ```bash
+  NEXT_PUBLIC_API_URL=http://localhost:3001
+  ```
+- When unset, it defaults to `http://localhost:3001` (matching the backend's
+  `docker-compose.yml`/`docker-compose.dev.yml` port), so local dev works out
+  of the box without any frontend env file.
+- `NEXT_PUBLIC_API_URL` should be the bare origin (protocol + host + optional
+  port) — individual clients append their own resource paths (e.g. `/v1/...`,
+  `/api/v1/...`, `/favorites`) on top of it. Do not include a trailing slash.
+- If you add a new frontend module that calls the backend, import
+  `getApiBaseUrl()` (or `getConfiguredApiBaseUrl()` if you need a different
+  fallback than the shared absolute default, e.g. a same-origin relative URL)
+  from `@/lib/api/base-url` rather than reading
+  `process.env.NEXT_PUBLIC_API_URL` directly.
 
 ---
 

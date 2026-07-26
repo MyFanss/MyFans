@@ -45,8 +45,14 @@ pub mod content_access {
 }
 
 /// Error codes for the **content-likes** contract.
+///
+/// | Code | Constant | Contract variant |
+/// |------|----------|-------------------|
+/// | 1 | `NOT_LIKED` | `Error::NotLiked` |
+/// | 2 | `ALREADY_INITIALIZED` | `Error::AlreadyInitialized` |
 pub mod content_likes {
     pub const NOT_LIKED: u32 = 1;
+    pub const ALREADY_INITIALIZED: u32 = 2;
 }
 
 /// Error codes for the **creator-registry** contract.

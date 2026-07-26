@@ -1,4 +1,6 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+import { getApiBaseUrl } from '@/lib/api/base-url';
+
+const API_BASE = getApiBaseUrl();
 
 let cached: string | null = null;
 

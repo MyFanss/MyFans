@@ -18,8 +18,10 @@ import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
 import { DashboardQueryDto } from './dto/creator-dashboard.dto';
 import { CreatePlanDto } from './dto/create-plan.dto';
+import { CreatorRegistrySyncDto } from './dto/creator-registry-sync.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 import { Public } from '../common/decorators/public.decorator';
+import { CreatorRegistrySyncService } from './creator-registry-sync.service';
 
 @ApiTags('creators')
 @UseGuards(JwtAuthGuard, ThrottlerGuard)
@@ -28,6 +30,7 @@ export class CreatorsController {
   constructor(
     private creatorsService: CreatorsService,
     private dashboardService: CreatorDashboardService,
+    private registrySyncService: CreatorRegistrySyncService,
   ) {}
 
   @Get()
@@ -218,5 +221,24 @@ export class CreatorsController {
     @Query() query: DashboardQueryDto,
   ) {
     return this.dashboardService.getDashboard(address, query);
+  }
+
+  @Post(':creatorId/onchain-sync')
+  @ApiOperation({
+    summary: 'Sync a creator-registry on-chain creator_id with this CreatorProfile (#1454)',
+    description:
+      'Called after the creator-registry contract\'s register_creator succeeds during onboarding. ' +
+      'Writes/updates the creator_onchain_mappings row so reconcile() can later detect drift.',
+  })
+  @ApiResponse({ status: 201, description: 'Mapping written' })
+  syncOnchainRegistration(
+    @Param('creatorId') creatorId: string,
+    @Body() dto: CreatorRegistrySyncDto,
+  ) {
+    return this.registrySyncService.syncOnOnboard(
+      creatorId,
+      dto.stellarAddress,
+      dto.onchainCreatorId,
+    );
   }
 }

@@ -4,6 +4,7 @@
  * Covers channel-level toggles (email / push / marketing) and
  * per-event toggles for each channel.
  */
+import { getApiBaseUrl } from '@/lib/api/base-url';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -90,7 +91,7 @@ export const DEFAULT_PREFERENCES: NotificationPreferences = {
 
 // ── API ────────────────────────────────────────────────────────────────────
 
-const API_BASE = 'http://localhost:3001/api/v1';
+const API_BASE = `${getApiBaseUrl()}/api/v1`;
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
