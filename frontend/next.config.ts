@@ -110,16 +110,32 @@ const nextConfig: NextConfig = {
             value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
           },
           {
-            key: 'Cross-Origin-Embedder-Policy',
-            value: 'require-corp',
-          },
-          {
             key: 'Cross-Origin-Opener-Policy',
             value: 'same-origin',
           },
           {
             key: 'Cross-Origin-Resource-Policy',
-            value: 'same-origin',
+            value: 'cross-origin',
+          },
+        ],
+      },
+      // Scoped headers for checkout and wallet-heavy routes where extensions need relaxed COEP
+      {
+        source: '/(checkout|subscribe|wallet-demo)/:path*',
+        headers: [
+          {
+            key: 'Cross-Origin-Embedder-Policy',
+            value: 'credentialless',
+          },
+        ],
+      },
+      // Default COEP for other routes
+      {
+        source: '/((?!checkout|subscribe|wallet-demo).*)',
+        headers: [
+          {
+            key: 'Cross-Origin-Embedder-Policy',
+            value: 'require-corp',
           },
         ],
       },

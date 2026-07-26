@@ -9,6 +9,7 @@ import {
 } from '@/lib/subscriptions';
 import { formatCurrency, formatDate, getCurrencySymbol } from '@/lib/formatting';
 import { BaseCard } from '@/components/cards/BaseCard';
+import { Modal } from '@/components/Modal';
 import HistoryCardSkeleton from '@/components/ui/HistoryCardSkeleton';
 import ActiveSubscriptionSkeleton from '@/components/ui/ActiveSubscriptionSkeleton';
 import { useToast } from '@/contexts/ToastContext';
@@ -31,10 +32,6 @@ export default function SubscriptionsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isHistoryLoading, setIsHistoryLoading] = useState(true);
   const [isPaymentsLoading, setIsPaymentsLoading] = useState(true);
-  const cancelModalRef = useRef<HTMLDivElement>(null);
-  const renewModalRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-  const modalTriggerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -135,73 +132,6 @@ export default function SubscriptionsPage() {
     return () => { mounted = false; };
   }, []);
 
-  // Modal focus management and keyboard handling
-  useEffect(() => {
-    const target = cancelTarget || renewTarget;
-    if (!target) return;
-
-    // Prevent background scroll
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-
-    document.body.style.overflow = 'hidden';
-    if (scrollbarWidth > 0) {
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
-    }
-
-    previousFocusRef.current = document.activeElement as HTMLElement;
-    const modalRef = cancelTarget ? cancelModalRef : renewModalRef;
-    const modalElement = modalRef.current;
-    
-    const focusableSelector =
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-    const focusFirstElement = () => {
-      const firstFocusable = modalElement?.querySelector<HTMLElement>(focusableSelector);
-      firstFocusable?.focus();
-    };
-
-    // Focus first element after a brief delay
-    const focusTimeout = setTimeout(focusFirstElement, 10);
-
-    const handleModalKeyDown = (event: KeyboardEvent) => {
-      if (!modalRef.current) return;
-
-      if (event.key === 'Escape' && !isCancelling && !isRenewing) {
-        setCancelTarget(null);
-        setRenewTarget(null);
-        return;
-      }
-
-      if (event.key !== 'Tab') return;
-
-      const focusableElements = Array.from(
-        modalRef.current.querySelectorAll<HTMLElement>(focusableSelector),
-      );
-      if (focusableElements.length === 0) return;
-
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
-
-      if (event.shiftKey && document.activeElement === firstElement) {
-        event.preventDefault();
-        lastElement.focus();
-      } else if (!event.shiftKey && document.activeElement === lastElement) {
-        event.preventDefault();
-        lastElement.focus();
-      }
-    };
-
-    document.addEventListener('keydown', handleModalKeyDown);
-
-    return () => {
-      clearTimeout(focusTimeout);
-      document.removeEventListener('keydown', handleModalKeyDown);
-      modalTriggerRef.current?.focus();
-      if (!modalTriggerRef.current) {
-        previousFocusRef.current?.focus();
-      }
-    };
-  }, [cancelTarget, renewTarget, isCancelling, isRenewing]);
 
   const handleCancelConfirm = useCallback(async () => {
     if (!cancelTarget) return;
@@ -267,8 +197,7 @@ export default function SubscriptionsPage() {
     }
   }, [renewTarget, dismiss, showError, showSuccess, showLoading, statusFilter, sortOption]);
 
-  const handleRenewClick = useCallback((item: ActiveSubscription | SubscriptionHistoryItem, event: React.MouseEvent) => {
-    modalTriggerRef.current = event.currentTarget as HTMLElement;
+  const handleRenewClick = useCallback((item: ActiveSubscription | SubscriptionHistoryItem) => {
     setRenewTarget(item);
   }, []);
 
@@ -365,7 +294,7 @@ export default function SubscriptionsPage() {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={(event) => handleRenewClick(sub, event)}
+                        onClick={() => handleRenewClick(sub)}
                         disabled={renewingId === sub.id || !isRenewable(sub)}
                         title={!isRenewable(sub) ? "Renewal only available 7 days before expiry" : ""}
                         className="flex-shrink-0 px-4 py-2 text-sm font-medium text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -374,10 +303,7 @@ export default function SubscriptionsPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={(event) => {
-                          modalTriggerRef.current = event.currentTarget;
-                          setCancelTarget(sub);
-                        }}
+                        onClick={() => setCancelTarget(sub)}
                         className="flex-shrink-0 px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                       >
                         Cancel
@@ -447,101 +373,80 @@ export default function SubscriptionsPage() {
       </main>
 
       {/* Cancel confirmation modal */}
-      {cancelTarget && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="cancel-dialog-title"
-          aria-describedby="cancel-dialog-description"
-        >
-          <div 
-            ref={cancelModalRef} 
-            tabIndex={-1} 
-            className="max-w-md w-full focus:outline-none"
-          >
-            <BaseCard padding="lg">
-              <h3 id="cancel-dialog-title" className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                Cancel subscription?
-              </h3>
-              <p id="cancel-dialog-description" className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                You will lose access to {cancelTarget.creatorName}&apos;s {cancelTarget.planName} content at the end of your current billing period ({formatDate(cancelTarget.currentPeriodEnd)}). You can resubscribe anytime.
-              </p>
-              <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2 mb-4">
-                ⚠ No refund will be issued for the remaining days in the current period. Cancellation takes effect on-chain immediately.
-              </p>
-              <div className="flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setCancelTarget(null)}
-                  disabled={isCancelling}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-                  aria-disabled={isCancelling}
-                >
-                  Keep subscription
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCancelConfirm}
-                  disabled={isCancelling}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg disabled:opacity-50"
-                  aria-disabled={isCancelling}
-                >
-                  {isCancelling ? 'Cancelling…' : 'Cancel subscription'}
-                </button>
-              </div>
-            </BaseCard>
+      <Modal
+        isOpen={cancelTarget !== null}
+        onClose={() => setCancelTarget(null)}
+        title="Cancel subscription?"
+      >
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              You will lose access to {cancelTarget?.creatorName}&apos;s {cancelTarget?.planName} content at the end of your current billing period ({cancelTarget && formatDate(cancelTarget.currentPeriodEnd)}). You can resubscribe anytime.
+            </p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2 mt-4">
+              ⚠ No refund will be issued for the remaining days in the current period. Cancellation takes effect on-chain immediately.
+            </p>
+          </div>
+          <div className="flex gap-3 justify-end pt-4">
+            <button
+              type="button"
+              onClick={() => setCancelTarget(null)}
+              disabled={isCancelling}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+            >
+              Keep subscription
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelConfirm}
+              disabled={isCancelling}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg disabled:opacity-50"
+            >
+              {isCancelling ? 'Cancelling…' : 'Cancel subscription'}
+            </button>
           </div>
         </div>
-      )}
+      </Modal>
       {/* Renew confirmation modal */}
-      {renewTarget && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="renew-dialog-title"
-        >
-          <div ref={renewModalRef} tabIndex={-1} className="max-w-md w-full focus-visible:outline-none">
-            <BaseCard padding="lg">
-              <h3 id="renew-dialog-title" className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                Renew subscription?
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                You are about to renew your subscription to {renewTarget.creatorName} ({renewTarget.planName}). This will trigger a transaction of {getCurrencySymbol(renewTarget.currency)}{renewTarget.price.toFixed(2)} from your wallet.
-              </p>
-              <div className="flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setRenewTarget(null)}
-                  disabled={isRenewing}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRenewConfirm}
-                  disabled={isRenewing}
-                  className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg disabled:opacity-50 min-w-[120px]"
-                >
-                  {isRenewing ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Renewing…
-                    </span>
-                  ) : (
-                    'Confirm Renewal'
-                  )}
-                </button>
-              </div>
-            </BaseCard>
+      <Modal
+        isOpen={renewTarget !== null}
+        onClose={() => setRenewTarget(null)}
+        title="Renew subscription?"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            You are about to renew your subscription to {renewTarget?.creatorName} ({renewTarget?.planName}). This will trigger a transaction of {renewTarget && getCurrencySymbol(renewTarget.currency)}{renewTarget?.price.toFixed(2)} from your wallet.
+          </p>
+          <div className="flex gap-3 justify-end pt-4">
+            <button
+              type="button"
+              onClick={() => setRenewTarget(null)}
+              disabled={isRenewing}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleRenewConfirm}
+              disabled={isRenewing}
+              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg disabled:opacity-50 min-w-[120px]"
+            >
+              {isRenewing ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Renewing…
+                </span>
+              ) : (
+                'Confirm Renewal'
+              )}
+            </button>
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }
@@ -585,7 +490,7 @@ function HistoryCard({
 }: {
   item: SubscriptionHistoryItem;
   isRenewing: boolean;
-  onRenew: (item: SubscriptionHistoryItem, event: React.MouseEvent) => void;
+  onRenew: (item: SubscriptionHistoryItem) => void;
 }) {
   return (
     <BaseCard padding="md">
@@ -600,7 +505,7 @@ function HistoryCard({
       )}
       <button
         type="button"
-        onClick={(event) => onRenew(item, event)}
+        onClick={() => onRenew(item)}
         disabled={isRenewing}
         className="mt-3 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
       >

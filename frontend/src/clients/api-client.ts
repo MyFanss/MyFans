@@ -56,7 +56,13 @@ class ApiClient {
 
   // User endpoints
   async getCurrentUser(): Promise<GetCurrentUserResponse> {
-    return this.request<ApiResponse<User>>('/users/me');
+    const response = await this.request<User | ApiResponse<User>>('/users/me');
+    // Adapter: backend may return bare DTO or wrapped response
+    if ('success' in response) {
+      return response as ApiResponse<User>;
+    }
+    // Wrap bare DTO response
+    return { success: true, data: response as User };
   }
 
   async getUser(id: string): Promise<ApiResponse<User>> {
@@ -113,6 +119,16 @@ class ApiClient {
     if (params.limit) search.set('limit', String(params.limit));
     const queryString = search.toString();
     return this.request<PaginatedResponse<PaymentRecord>>(`/analytics/payments${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async getCreatorSubscribers(params: { page?: number; limit?: number; search?: string; status?: string } = {}): Promise<PaginatedResponse<any>> {
+    const search = new URLSearchParams();
+    if (params.page) search.set('page', String(params.page));
+    if (params.limit) search.set('limit', String(params.limit));
+    if (params.search) search.set('search', params.search);
+    if (params.status) search.set('status', params.status);
+    const queryString = search.toString();
+    return this.request<PaginatedResponse<any>>(`/creators/me/subscribers${queryString ? `?${queryString}` : ''}`);
   }
 }
 

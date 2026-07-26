@@ -1,6 +1,6 @@
 import { getApiBaseUrl } from '@/lib/api/base-url';
 
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = `${getApiBaseUrl()}/api/v1`;
 
 type FavoritesPayload =
   | string[]

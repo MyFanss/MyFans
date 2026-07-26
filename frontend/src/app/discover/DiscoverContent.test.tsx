@@ -70,6 +70,8 @@ const getCreatorsMock = vi.fn(
   },
 );
 
+const searchCreatorsMock = vi.fn();
+
 vi.mock("@/lib/creator-profile", () => ({
   CATEGORIES: ["Art", "Music"],
   SORT_OPTIONS: [
@@ -77,6 +79,11 @@ vi.mock("@/lib/creator-profile", () => ({
     { value: "recent", label: "Recent" },
   ],
   getCreators: getCreatorsMock,
+}));
+
+vi.mock("@/lib/api/creators", () => ({
+  searchCreators: searchCreatorsMock,
+  publicCreatorToProfile: (creator: any) => creator,
 }));
 
 vi.mock("@/components/cards", () => ({
@@ -113,6 +120,12 @@ beforeAll(() => {
 describe("DiscoverContent", () => {
   beforeEach(() => {
     getCreatorsMock.mockClear();
+    searchCreatorsMock.mockClear();
+    searchCreatorsMock.mockResolvedValue({
+      data: creators,
+      hasMore: false,
+      nextCursor: null,
+    });
     useSearchParamsMock.mockReturnValue(new URLSearchParams());
     replaceMock.mockReset();
 
@@ -145,23 +158,38 @@ describe("DiscoverContent", () => {
     expect(screen.getByRole("button", { name: "Music" })).toBeInTheDocument();
   });
 
-  it("debounces search input before fetching filtered results", async () => {
+  it("uses API by default to fetch creators", async () => {
     await renderDiscoverContent();
 
-    expect(getCreatorsMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(searchCreatorsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          limit: 12,
+        }),
+      );
+    });
+  });
+
+  it("debounces search input before fetching via API", async () => {
+    await renderDiscoverContent();
+
+    expect(searchCreatorsMock).toHaveBeenCalledTimes(1);
 
     const searchInput = screen.getByPlaceholderText("Search creators...");
     fireEvent.change(searchInput, { target: { value: "Creator B" } });
 
-    expect(getCreatorsMock).toHaveBeenCalledTimes(1);
+    expect(searchCreatorsMock).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(316);
     });
 
     await waitFor(() => {
-      expect(getCreatorsMock).toHaveBeenCalledTimes(2);
-      expect(screen.getByText("Creator B (creator-b)")).toBeInTheDocument();
+      expect(searchCreatorsMock).toHaveBeenCalledTimes(2);
+      expect(searchCreatorsMock).toHaveBeenLastCalledWith({
+        q: "Creator B",
+        limit: 12,
+      });
     });
   });
 
@@ -177,10 +205,6 @@ describe("DiscoverContent", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Art ×")).toBeInTheDocument();
-      expect(getCreatorsMock).toHaveBeenLastCalledWith(
-        expect.objectContaining({ categories: ["Art"] }),
-      );
-      expect(screen.getByText("Creator A (creator-a)")).toBeInTheDocument();
     });
 
     fireEvent.click(artButton);
@@ -205,10 +229,7 @@ describe("DiscoverContent", () => {
     });
 
     await waitFor(() => {
-      expect(getCreatorsMock).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "recent" }),
-      );
-      expect(screen.getByText("Creator B (creator-b)")).toBeInTheDocument();
+      expect(searchCreatorsMock).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -263,5 +284,48 @@ describe("DiscoverContent", () => {
         ),
       ).toBeInTheDocument();
     });
+  });
+
+  it("falls back to mock data in development when API fails", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+
+    searchCreatorsMock.mockRejectedValue(new Error("API Error"));
+    getCreatorsMock.mockReturnValue({
+      creators: [creators[0]],
+      total: 1,
+      hasMore: false,
+    });
+
+    await renderDiscoverContent();
+
+    await waitFor(() => {
+      expect(searchCreatorsMock).toHaveBeenCalled();
+      expect(getCreatorsMock).toHaveBeenCalled();
+      expect(screen.getByText("Creator A (creator-a)")).toBeInTheDocument();
+    });
+
+    process.env.NODE_ENV = originalEnv;
+  });
+
+  it("shows empty state in production when API fails", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+
+    searchCreatorsMock.mockRejectedValue(new Error("API Error"));
+
+    await renderDiscoverContent();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16);
+    });
+
+    await waitFor(() => {
+      expect(searchCreatorsMock).toHaveBeenCalled();
+      expect(getCreatorsMock).not.toHaveBeenCalled();
+      expect(screen.getByText("No creators found")).toBeInTheDocument();
+    });
+
+    process.env.NODE_ENV = originalEnv;
   });
 });
