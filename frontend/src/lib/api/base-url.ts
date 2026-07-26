@@ -60,3 +60,28 @@ export function getConfiguredApiBaseUrl(): string | undefined {
 export function getApiBaseUrl(): string {
   return getConfiguredApiBaseUrl() ?? DEFAULT_API_BASE_URL;
 }
+
+/**
+ * Versioned API root for browser clients (no trailing slash).
+ *
+ * - When `NEXT_PUBLIC_API_URL` is unset → same-origin `/api/v1` (Next rewrite
+ *   proxies to Nest `/v1/*`; see `next.config.ts`).
+ * - When set to a bare Nest origin → `${origin}/v1`.
+ * - When already ending in `/api`, `/v1`, or `/api/v1` → normalize accordingly.
+ *
+ * Prefer this for CSRF, notification preferences, and other cookie-auth
+ * clients so paths stay aligned with Nest URI versioning.
+ */
+export function getVersionedApiBaseUrl(): string {
+  const configured = getConfiguredApiBaseUrl();
+  if (!configured) {
+    return '/api/v1';
+  }
+  if (configured.endsWith('/api/v1') || configured.endsWith('/v1')) {
+    return configured;
+  }
+  if (configured.endsWith('/api')) {
+    return `${configured}/v1`;
+  }
+  return `${configured}/v1`;
+}

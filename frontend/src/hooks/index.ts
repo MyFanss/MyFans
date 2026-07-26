@@ -48,3 +48,6 @@ export { usePrefetchCreatorRoute } from './usePrefetchCreatorRoute';
 
 // RPC / network status hook
 export { useRpcStatus, type RpcStatus, type RpcStatusResult } from './useRpcStatus';
+
+// Content library
+export { useContentLibrary, type UseContentLibraryResult } from './useContentLibrary';

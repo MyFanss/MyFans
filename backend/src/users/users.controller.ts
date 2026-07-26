@@ -21,7 +21,7 @@ import { AuthGuard } from '../utils/auth.guard';
 import { User } from './entities/user.entity';
 import { Delete, HttpCode, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
-import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
+import { CurrentUser, JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 
 /**
  * UsersController
@@ -83,6 +83,15 @@ export class UsersController {
       updatedAt: dto.updatedAt,
     });
     return plainToInstance(UserProfileDto, user);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me/notifications')
+  @ApiOperation({ summary: 'Get notification preferences for current user' })
+  @ApiResponse({ status: 200, description: 'Notification preferences' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getNotifications(@CurrentUser() user: JwtUserPayload) {
+    return this.usersService.getNotificationPreferences(user.userId);
   }
 
   @UseGuards(JwtAuthGuard)

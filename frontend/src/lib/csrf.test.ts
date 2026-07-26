@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getCsrfToken, invalidateCsrfToken } from './csrf';
 
 global.fetch = vi.fn() as any;
@@ -15,19 +15,50 @@ function mockFetchOk(token = TOKEN) {
 describe('getCsrfToken', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
     invalidateCsrfToken(); // reset cache between tests
   });
 
-  it('fetches token from /v1/csrf/token with credentials:include', async () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('fetches token from versioned /csrf/token with credentials:include', async () => {
     mockFetchOk();
 
     const token = await getCsrfToken();
 
     expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/v1/csrf/token'),
+      expect.stringMatching(/\/(?:api\/)?v1\/csrf\/token$/),
       expect.objectContaining({ method: 'GET', credentials: 'include' }),
     );
     expect(token).toBe(TOKEN);
+  });
+
+  it('uses NEXT_PUBLIC_API_URL when set', async () => {
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'https://api.example.com');
+    // Re-import after env stub so module-level helpers see the value.
+    // getVersionedApiBaseUrl reads process.env at call time, so this is enough.
+    mockFetchOk();
+
+    await getCsrfToken();
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.example.com/v1/csrf/token',
+      expect.objectContaining({ method: 'GET', credentials: 'include' }),
+    );
+  });
+
+  it('falls back to same-origin /api/v1 when NEXT_PUBLIC_API_URL is unset', async () => {
+    vi.stubEnv('NEXT_PUBLIC_API_URL', '');
+    mockFetchOk();
+
+    await getCsrfToken();
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/csrf/token',
+      expect.objectContaining({ method: 'GET', credentials: 'include' }),
+    );
   });
 
   it('caches the token so fetch is only called once', async () => {

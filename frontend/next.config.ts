@@ -62,6 +62,20 @@ const nextConfig: NextConfig = {
     optimizeCss: true,
   },
   generateEtags: true,
+  /**
+   * Proxy same-origin `/api/v1/*` to the Nest backend's `/v1/*`.
+   * Pages and clients that fetch `/api/v1/...` hit Nest in local/dev without CORS.
+   * Destination host comes from `NEXT_PUBLIC_API_URL` (default `http://localhost:3001`).
+   */
+  async rewrites() {
+    const apiOrigin = getApiBaseUrl();
+    return [
+      {
+        source: '/api/v1/:path*',
+        destination: `${apiOrigin}/v1/:path*`,
+      },
+    ];
+  },
   async headers() {
     return [
       {

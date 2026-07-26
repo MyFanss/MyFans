@@ -74,10 +74,53 @@ each module hardcoding its own `localhost` host/port fallback.
   port) — individual clients append their own resource paths (e.g. `/v1/...`,
   `/api/v1/...`, `/favorites`) on top of it. Do not include a trailing slash.
 - If you add a new frontend module that calls the backend, import
-  `getApiBaseUrl()` (or `getConfiguredApiBaseUrl()` if you need a different
-  fallback than the shared absolute default, e.g. a same-origin relative URL)
-  from `@/lib/api/base-url` rather than reading
-  `process.env.NEXT_PUBLIC_API_URL` directly.
+  `getApiBaseUrl()` (or `getConfiguredApiBaseUrl()` / `getVersionedApiBaseUrl()`
+  if you need a different fallback or a `/v1`-prefixed root) from
+  `@/lib/api/base-url` rather than reading `process.env.NEXT_PUBLIC_API_URL`
+  directly.
+
+### Next.js `/api/v1` proxy rewrites
+
+Browser code often calls same-origin paths like `/api/v1/subscriptions/...`.
+`frontend/next.config.ts` rewrites those to the Nest backend:
+
+| Browser request | Proxied to (Nest) |
+| --- | --- |
+| `/api/v1/:path*` | `${NEXT_PUBLIC_API_URL}/v1/:path*` |
+
+Smoke check (with backend on `:3001` and `npm run dev` in `frontend/`):
+
+```bash
+# Same-origin via Next (typical frontend port 3000)
+curl -s http://localhost:3000/api/v1/health
+# Expected: {"status":"ok",...} (same as Nest /v1/health)
+```
+
+Start order for local UI work:
+
+1. Backend: `docker compose -f docker-compose.dev.yml --profile dev up` (or Nest on `:3001`)
+2. Frontend: `cd frontend && npm run dev`
+3. Prefer same-origin `/api/v1/...` fetches (or `getVersionedApiBaseUrl()`) so cookies/CSRF stay on the Next origin.
+
+### Content library upload
+
+The dashboard content library lists items from `GET /api/v1/content` (rewritten to Nest
+`GET /v1/content`). **Direct multipart file upload is not available yet** — the UI
+disables the dropzone and shows a clear message.
+
+To add content today, create metadata via the API:
+
+```bash
+# After obtaining a CSRF token + auth cookie/JWT
+curl -X POST http://localhost:3000/api/v1/content \
+  -H 'Content-Type: application/json' \
+  -H "X-CSRF-Token: $CSRF_TOKEN" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"title":"My post","content_type":"image","is_published":true}'
+```
+
+When a file upload endpoint ships, wire `uploadContentFiles` in
+`frontend/src/lib/content-api.ts` and clear `uploadDisabledMessage` from the page hook.
 
 ---
 

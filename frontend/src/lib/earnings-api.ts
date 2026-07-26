@@ -1,5 +1,5 @@
 import { createAppError } from '@/types/errors';
-import { getApiBaseUrl } from '@/lib/api/base-url';
+import { getVersionedApiBaseUrl } from '@/lib/api/base-url';
 
 export interface EarningsSummary {
   total_earnings: string;
@@ -86,12 +86,11 @@ export interface ReconciliationReport {
   total_pages: number;
 }
 
-const API_BASE = getApiBaseUrl();
-
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
   try {
-    const response = await fetch(`${API_BASE}${endpoint}`, {
+    const response = await fetch(`${getVersionedApiBaseUrl()}${endpoint}`, {
       ...options,
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         ...options?.headers,
