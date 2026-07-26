@@ -17,6 +17,7 @@ import {
 } from "@/lib/checkout";
 import { useTransaction } from "@/hooks/useTransaction";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { FeatureFlag } from "@/lib/feature-flags";
 import { useToast } from "@/contexts/ToastContext";
 import { createTrackedTransaction, getExplorerUrl } from "@/lib/transaction-history";
@@ -50,6 +51,7 @@ export default function CheckoutFlow({
   onCancel,
 }: CheckoutFlowProps) {
   const { showError, showSuccess } = useToast();
+  const { mismatch } = useNetworkGuard();
 
   // Checkout state
   const [checkoutId, setCheckoutId] = useState<string | null>(null);
@@ -197,6 +199,14 @@ export default function CheckoutFlow({
   // Handle submit transaction
   const handleSubmit = useCallback(async () => {
     if (!checkoutId) return;
+
+    if (mismatch) {
+      showError("NETWORK_MISMATCH", {
+        message: "Your wallet is on the wrong network",
+        description: "Please switch networks in your wallet and try again.",
+      });
+      return;
+    }
 
     await tx.execute(async () => {
       const txHash = `tx_${Date.now()}_${Math.random()
