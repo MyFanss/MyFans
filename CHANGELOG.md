@@ -403,6 +403,7 @@
 * standardize API error response format across all endpoints ([#340](https://github.com/MyFanss/MyFans/issues/340)) ([51c928b](https://github.com/MyFanss/MyFans/commit/51c928b468547cfe9df5dc578bfcb3bbfdfa8b64))
 * standardize deployed contract env vars with backward-compatible aliases ([e976fe2](https://github.com/MyFanss/MyFans/commit/e976fe2ecad5435e46e6e0ae1b9a39e6ae2ae7b8))
 * Strengthen useAuth with server session validation ([#1469](https://github.com/MyFanss/MyFans/issues/1469)) ([dbbc4db](https://github.com/MyFanss/MyFans/commit/dbbc4db4594c5257bba1c2010f70dc3e587020ba))
+* stub WalletConnect, proxy transactions, unify flags, API-first notifications ([129544f](https://github.com/MyFanss/MyFans/commit/129544f95a1282ec0838c465d79fe611d6d6dea3))
 * Subscription List Filter by Status & Sorting ([cc37385](https://github.com/MyFanss/MyFans/commit/cc37385e6ff45abe89b46f4fea01fe1086ba085b))
 * **subscription, treasury:** adopt myfans-lib require_authorized helper ([9ce16de](https://github.com/MyFanss/MyFans/commit/9ce16decac9402c65390189e012b6bb671644e8d)), closes [#1402](https://github.com/MyFanss/MyFans/issues/1402)
 * **subscription:** add unauthorized caller revert tests ([#891](https://github.com/MyFanss/MyFans/issues/891)) ([4d174d9](https://github.com/MyFanss/MyFans/commit/4d174d9141df9bc7615c048b9717cebd10c77405))
