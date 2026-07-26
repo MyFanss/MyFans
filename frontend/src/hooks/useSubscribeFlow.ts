@@ -7,6 +7,7 @@ import { createAppError } from '@/types/errors';
 import { buildSubscriptionTx, submitTransaction } from '@/lib/stellar';
 import { signTransaction } from '@/lib/wallet';
 import { useTransactionPoller } from './useTransactionPoller';
+import { useNetworkGuard } from './useNetworkGuard';
 
 const MAX_AUTO_RETRIES = 3;
 const NETWORK_ERROR_CODES = new Set(['NETWORK_ERROR', 'TX_SUBMIT_FAILED', 'RPC_ERROR']);
@@ -19,6 +20,7 @@ export function useSubscribeFlow(plan: SubscriptionPlan | null) {
   const [state, setState] = useState<FlowState>({ step: 'wallet-gate' });
   const walletAddressRef = useRef<string>('');
   const retryCountRef = useRef<number>(0);
+  const { mismatch } = useNetworkGuard();
 
   // Derive txHash for poller
   const txHash = state.step === 'polling' ? state.txHash : null;
@@ -142,11 +144,22 @@ export function useSubscribeFlow(plan: SubscriptionPlan | null) {
   const execute = useCallback(
     async (walletAddress: string) => {
       if (!plan) return;
+      if (mismatch) {
+        setState({
+          step: 'error',
+          plan,
+          error: createAppError('NETWORK_MISMATCH', {
+            message: 'Your wallet is on the wrong network. Please switch networks and try again.',
+          }),
+          retryCount: 0,
+        });
+        return;
+      }
       walletAddressRef.current = walletAddress;
       retryCountRef.current = 0;
       await executeWithRetry(walletAddress, 0);
     },
-    [plan, executeWithRetry]
+    [plan, executeWithRetry, mismatch]
   );
 
   const retry = useCallback(() => {
