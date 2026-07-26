@@ -120,6 +120,16 @@ class ApiClient {
     const queryString = search.toString();
     return this.request<PaginatedResponse<PaymentRecord>>(`/analytics/payments${queryString ? `?${queryString}` : ''}`);
   }
+
+  async getCreatorSubscribers(params: { page?: number; limit?: number; search?: string; status?: string } = {}): Promise<PaginatedResponse<any>> {
+    const search = new URLSearchParams();
+    if (params.page) search.set('page', String(params.page));
+    if (params.limit) search.set('limit', String(params.limit));
+    if (params.search) search.set('search', params.search);
+    if (params.status) search.set('status', params.status);
+    const queryString = search.toString();
+    return this.request<PaginatedResponse<any>>(`/creators/me/subscribers${queryString ? `?${queryString}` : ''}`);
+  }
 }
 
 export const apiClient = new ApiClient();

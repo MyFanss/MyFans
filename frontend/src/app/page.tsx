@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { createBaseMetadata } from '@/lib/metadata';
-import { Hero } from "@/components/landing";
-import CreatorCardSkeleton from "@/components/ui/CreatorCardSkeleton";
+import { HomeContent } from './HomeContent';
 
 export const metadata: Metadata = createBaseMetadata({
   title: 'Home',
@@ -12,16 +11,8 @@ export const metadata: Metadata = createBaseMetadata({
 
 export default function Home() {
   return (
-    <>
-      <Hero />
-
-
-<CreatorCardSkeleton/>
-
-      {/* Main content area with id for skip-to-content link */}
-      <main id="main-content" className="min-h-screen">
-        {/* Additional sections can be added here */}
-      </main>
-    </>
+    <main id="main-content">
+      <HomeContent />
+    </main>
   );
 }

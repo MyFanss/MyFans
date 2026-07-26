@@ -1,4 +1,4 @@
-import { resolveUserId } from "@/lib/auth-storage";
+import { resolveAuthToken, clearStoredAuthToken } from "@/lib/auth-storage";
 import { getApiBaseUrl } from "@/lib/api/base-url";
 
 const API_BASE = getApiBaseUrl();
@@ -25,16 +25,36 @@ export type MeResponse = {
   } | null;
 };
 
+export class ProfileUnauthorizedError extends Error {
+  readonly status = 401;
+
+  constructor(message = "Session expired. Please sign in again.") {
+    super(message);
+    this.name = "ProfileUnauthorizedError";
+  }
+}
+
 function authHeaders(): HeadersInit {
-  const id = resolveUserId();
+  const token = resolveAuthToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  if (id) {
-    headers["Authorization"] = `Bearer ${id}`;
-    headers["X-User-Id"] = id;
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
   return headers;
+}
+
+async function handleProfileResponse<T>(res: Response, label: string): Promise<T> {
+  if (res.status === 401) {
+    clearStoredAuthToken();
+    throw new ProfileUnauthorizedError();
+  }
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err || `${label} failed: ${res.status}`);
+  }
+  return res.json() as Promise<T>;
 }
 
 export async function fetchMe(): Promise<MeResponse> {
@@ -43,11 +63,7 @@ export async function fetchMe(): Promise<MeResponse> {
     headers: authHeaders(),
     cache: "no-store",
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err || `GET /users/me failed: ${res.status}`);
-  }
-  return res.json() as Promise<MeResponse>;
+  return handleProfileResponse<MeResponse>(res, "GET /users/me");
 }
 
 export type PatchUserBody = Partial<{
@@ -66,11 +82,7 @@ export async function patchMe(body: PatchUserBody): Promise<MeResponse> {
     headers: authHeaders(),
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err || `PATCH /users/me failed: ${res.status}`);
-  }
-  return res.json() as Promise<MeResponse>;
+  return handleProfileResponse<MeResponse>(res, "PATCH /users/me");
 }
 
 export type PatchOnboardingBody = Partial<{
@@ -89,11 +101,7 @@ export async function patchMyOnboarding(
     headers: authHeaders(),
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err || `PATCH /users/me/onboarding failed: ${res.status}`);
-  }
-  return res.json() as Promise<MeResponse>;
+  return handleProfileResponse<MeResponse>(res, "PATCH /users/me/onboarding");
 }
 
 export type PatchCreatorBody = Partial<{
@@ -111,9 +119,5 @@ export async function patchCreatorMe(
     headers: authHeaders(),
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err || `PATCH /creators/me failed: ${res.status}`);
-  }
-  return res.json();
+  return handleProfileResponse(res, "PATCH /creators/me");
 }

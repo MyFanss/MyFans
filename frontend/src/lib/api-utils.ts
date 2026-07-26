@@ -1,3 +1,4 @@
+import { resolveAuthToken } from '@/lib/auth-storage';
 import type { AppError, ErrorCode } from '@/types';
 import { createAppError, isNetworkError, getErrorFromUnknown } from '@/types';
 
@@ -30,9 +31,9 @@ export async function retryWithBackoff<T>(
   throw lastError!;
 }
 
-// Get auth headers (assumes localStorage 'authToken')
+// Get auth headers from stored JWT (localStorage `authToken`)
 export function getAuthHeaders(): HeadersInit {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+  const token = resolveAuthToken();
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   };
