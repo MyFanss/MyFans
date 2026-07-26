@@ -208,6 +208,7 @@
 * **analytics:** payment analytics endpoints ([0a31511](https://github.com/MyFanss/MyFans/commit/0a31511c45b7bbf2fba829e92a5a2c6e17bcadb9)), closes [#payment-analytics](https://github.com/MyFanss/MyFans/issues/payment-analytics)
 * API versioning ([c62bb64](https://github.com/MyFanss/MyFans/commit/c62bb648e1fc7745ca67b945fbfb991718152117))
 * **api:** standardize pagination on subscriptions, creators, and posts ([#861](https://github.com/MyFanss/MyFans/issues/861)) ([ad25d72](https://github.com/MyFanss/MyFans/commit/ad25d7280d658e48c73b4277506a45712163bd41))
+* attach CSRF headers on checkout and subscription fetches ([#1481](https://github.com/MyFanss/MyFans/issues/1481)) ([6df2d06](https://github.com/MyFanss/MyFans/commit/6df2d0648f3712a9381e94d5ae72e750f34c5a07))
 * **auth:** add pagination and limit query support ([ca9bfea](https://github.com/MyFanss/MyFans/commit/ca9bfeabc33f65e4f4ad4d61c29d1356c1fd7677))
 * **auth:** add stricter dedicated throttle guard for challenge/login ([6b2a5f9](https://github.com/MyFanss/MyFans/commit/6b2a5f92ccde84816551f2050f1246ab7022815f))
 * **auth:** wallet signature challenge endpoints ([561d65d](https://github.com/MyFanss/MyFans/commit/561d65d498549206d65d72ce9ca3a6105f6826d7)), closes [#wallet-challenge-auth](https://github.com/MyFanss/MyFans/issues/wallet-challenge-auth)
@@ -228,6 +229,7 @@
 * **backend:** social-links service tests, DTO validation, e2e coverage, pagination ([2f1db47](https://github.com/MyFanss/MyFans/commit/2f1db47e7ae4491bf0cae7789cd1fe7e661b5e08))
 * **backend:** subscription reconciler job with dry-run and audit logging ([0a145a1](https://github.com/MyFanss/MyFans/commit/0a145a18aea622f9797ea79828030a2eeb06fb41))
 * **backend:** validate Soroban env at startup with tests ([a10971a](https://github.com/MyFanss/MyFans/commit/a10971ad7be01e549a0526df2bd114af7d68a179))
+* block mutating API calls on network mismatch ([#1480](https://github.com/MyFanss/MyFans/issues/1480)) ([27441ea](https://github.com/MyFanss/MyFans/commit/27441ea272204bf7ec9f35245222804f106b55c3))
 * bootstrap runtime contract config ([676e56a](https://github.com/MyFanss/MyFans/commit/676e56a2c195ca3371754479de6406555595dcfb))
 * build a deprecation middleware ([e521b07](https://github.com/MyFanss/MyFans/commit/e521b07a9bd0138c217e1d2c965fb9815234a143))
 * **cards:** create reusable card UI component library ([0d06284](https://github.com/MyFanss/MyFans/commit/0d06284fd1671f9acc2caca92a98dde1b1fb992c))
@@ -436,11 +438,11 @@
 
 ### Performance Improvements
 
-* optimise gas usage in earnings contract hot paths ([#966](https://github.com/Saboleee/MyFans/issues/966)) ([799bd81](https://github.com/Saboleee/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
-* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/Saboleee/MyFans/issues/986)) ([97d059e](https://github.com/Saboleee/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
-* Optimize creator profile page performance ([d8ba3ca](https://github.com/Saboleee/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/Saboleee/MyFans/issues/415)
+* optimise gas usage in earnings contract hot paths ([#966](https://github.com/MyFanss/MyFans/issues/966)) ([799bd81](https://github.com/MyFanss/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
+* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/MyFanss/MyFans/issues/986)) ([97d059e](https://github.com/MyFanss/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
+* Optimize creator profile page performance ([d8ba3ca](https://github.com/MyFanss/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/MyFanss/MyFans/issues/415)
 
 
 ### Reverts
 
-* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/Saboleee/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
+* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/MyFanss/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
