@@ -1,90 +1,81 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { apiClient } from "@/clients/api-client";
+import { useCallback, useEffect, useState } from "react";
 import { TransactionTable } from "@/components/transactions/TransactionTable";
 import { TransactionFilters } from "@/components/transactions/TransactionFilters";
 import { Pagination } from "@/components/transactions/Pagination";
-import type { PaymentRecord } from "@/types";
+import { getAuthHeaders } from "@/lib/api-utils";
+import type { Transaction, TransactionsResponse } from "@/lib/transactions";
 
-interface Transaction {
-    id: string;
-    type: "subscription" | "payment" | "refund";
-    status: "pending" | "success" | "failed";
-    amount: number;
-    currency: string;
-    txHash?: string;
-    createdAt: string;
-}
-
-function mapPaymentToTransaction(payment: PaymentRecord): Transaction {
-    return {
-        id: payment.id,
-        type: "payment",
-        status: (payment.status as "completed" | "pending" | "failed" | "refunded") === "completed"
-            ? "success"
-            : payment.status === "pending"
-            ? "pending"
-            : "failed",
-        amount: payment.amount,
-        currency: payment.currency,
-        txHash: payment.txHash,
-        createdAt: payment.date,
-    };
+interface Filters {
+  type?: string;
+  status?: string;
+  fromDate?: string;
+  toDate?: string;
+  creator?: string;
 }
 
 export default function TransactionsPage() {
-    const [data, setData] = useState<Transaction[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [filters, setFilters] = useState({});
-    const [page, setPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
+  const [data, setData] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<Filters>({});
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
-    useEffect(() => {
-        fetchTransactions();
-    }, [filters, page]);
+  const fetchTransactions = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
 
-    async function fetchTransactions() {
-        setIsLoading(true);
-        setError(null);
-        try {
-            const result = await apiClient.getPaymentHistory({
-                page,
-                limit: 10,
-                creator: (filters as any).creator,
-                from: (filters as any).from,
-                to: (filters as any).to,
-            });
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: "10",
+    });
+    if (filters.creator) params.set("creator", filters.creator);
+    if (filters.fromDate) params.set("from", filters.fromDate);
+    if (filters.toDate) params.set("to", filters.toDate);
+    if (filters.type) params.set("type", filters.type);
+    if (filters.status) params.set("status", filters.status);
 
-            if (!result.data || result.data.length === 0) {
-                setData([]);
-            } else {
-                setData(result.data.map(mapPaymentToTransaction));
-            }
+    try {
+      const res = await fetch(`/api/transactions?${params.toString()}`, {
+        method: "GET",
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
 
-            setTotalPages(result.totalPages || 1);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to fetch transactions");
-            setData([]);
-        } finally {
-            setIsLoading(false);
-        }
+      const json = (await res.json().catch(() => ({}))) as TransactionsResponse & {
+        message?: string;
+      };
+
+      if (!res.ok) {
+        throw new Error(json.message || `Failed to fetch transactions (${res.status})`);
+      }
+
+      setData(Array.isArray(json.data) ? json.data : []);
+      setTotalPages(json.totalPages || 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch transactions");
+      setData([]);
+      setTotalPages(1);
+    } finally {
+      setIsLoading(false);
     }
+  }, [filters, page]);
 
-    return (
-        <div className="p-6">
-            <h1 className="text-2xl font-semibold mb-4">Transaction History</h1>
+  useEffect(() => {
+    fetchTransactions();
+  }, [fetchTransactions]);
 
-            <TransactionFilters filters={filters} setFilters={setFilters} />
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-semibold mb-4">Transaction History</h1>
 
-            <TransactionTable data={data} isLoading={isLoading} error={error} />
+      <TransactionFilters filters={filters} setFilters={setFilters} />
 
-            <Pagination
-                page={page}
-                totalPages={totalPages}
-                onPageChange={setPage}
-            />
-        </div>
-    );
+      <TransactionTable data={data} isLoading={isLoading} error={error} />
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+    </div>
+  );
 }

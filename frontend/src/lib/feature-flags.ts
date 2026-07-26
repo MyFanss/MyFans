@@ -7,6 +7,7 @@ export const FeatureFlag = {
   REFERRAL_CODES: 'referral_codes',
   NEW_SUBSCRIPTION_FLOW: 'newSubscriptionFlow',
   CRYPTO_PAYMENTS: 'cryptoPayments',
+  WALLET_CONNECT: 'walletConnect',
 } as const;
 
 export type FeatureFlag = (typeof FeatureFlag)[keyof typeof FeatureFlag];
@@ -50,6 +51,10 @@ export const featureFlagDefinitions: Record<FeatureFlag, FeatureFlagDefinition> 
     description: 'Enables crypto payment options in the checkout flow.',
     envKey: 'NEXT_PUBLIC_FEATURE_CRYPTO_PAYMENTS',
   },
+  [FeatureFlag.WALLET_CONNECT]: {
+    description: 'Enables WalletConnect as a wallet connection option. Disabled by default until the provider is fully integrated.',
+    envKey: 'NEXT_PUBLIC_FEATURE_WALLET_CONNECT',
+  },
 };
 
 export const defaultFeatureFlags: FeatureFlagSnapshot = Object.freeze({
@@ -59,6 +64,7 @@ export const defaultFeatureFlags: FeatureFlagSnapshot = Object.freeze({
   [FeatureFlag.REFERRAL_CODES]: false,
   [FeatureFlag.NEW_SUBSCRIPTION_FLOW]: false,
   [FeatureFlag.CRYPTO_PAYMENTS]: false,
+  [FeatureFlag.WALLET_CONNECT]: false,
 });
 
 let cachedRemoteFlags: FeatureFlagOverrides = {};
