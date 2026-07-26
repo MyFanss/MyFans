@@ -29,6 +29,15 @@ export interface Notification {
 
 const API_BASE = `${getApiBaseUrl()}/api/v1`;
 
+/**
+ * Mock inbox is opt-in only.
+ * Production / default: hit the API.
+ * Set `NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS=true` to use MOCK_NOTIFICATIONS.
+ */
+export function shouldUseMockNotifications(): boolean {
+  return process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS === 'true';
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },

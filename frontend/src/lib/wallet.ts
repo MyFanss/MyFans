@@ -1,4 +1,18 @@
 import { createAppError, type AppError } from '@/types/errors';
+import { FeatureFlag, isFeatureEnabled } from '@/lib/feature-flags';
+
+/** Clear copy when WalletConnect is stubbed / not yet available */
+export const WALLETCONNECT_UNSUPPORTED_MESSAGE = 'WalletConnect is not available yet';
+export const WALLETCONNECT_UNSUPPORTED_DESCRIPTION =
+  'WalletConnect support is coming soon. Please connect with Freighter or Lobstr for now.';
+
+/**
+ * Whether WalletConnect is enabled via feature flag.
+ * Defaults to false — the provider is a stub until fully integrated.
+ */
+export function isWalletConnectEnabled(): boolean {
+  return isFeatureEnabled(FeatureFlag.WALLET_CONNECT);
+}
 
 /** Base wallet interface */
 interface BaseWallet {
@@ -57,8 +71,8 @@ export function isWalletInstalled(walletType: 'freighter' | 'lobstr' | 'walletco
     case 'lobstr':
       return !!windowWithWallets.lobstr;
     case 'walletconnect':
-      // WalletConnect doesn't require installation - it's a protocol
-      return true;
+      // Protocol wallets need no extension; still gated by feature flag.
+      return isWalletConnectEnabled();
     default:
       return false;
   }
@@ -325,9 +339,16 @@ async function connectLobstr(): Promise<string> {
 }
 
 async function connectWalletConnect(): Promise<string> {
-  // WalletConnect implementation would go here
-  // For now, throw an error as it's not implemented
-  throw new Error('WalletConnect integration is not yet implemented');
+  // Stub: full WalletConnect provider is not wired yet.
+  // Throw a structured AppError so UI can show a clear unsupported CTA
+  // without crashing Freighter/Lobstr flows.
+  throw createAppError('UNSUPPORTED_WALLET', {
+    message: WALLETCONNECT_UNSUPPORTED_MESSAGE,
+    description: WALLETCONNECT_UNSUPPORTED_DESCRIPTION,
+    actions: [
+      { label: 'Use Freighter', type: 'retry', primary: true },
+    ],
+  });
 }
 
 async function signWithFreighter(xdr: string): Promise<string> {
@@ -358,7 +379,9 @@ async function signWithLobstr(xdr: string): Promise<string> {
   return signedXdr;
 }
 
-async function signWithWalletConnect(xdr: string): Promise<string> {
-  // WalletConnect implementation would go here
-  throw new Error('WalletConnect integration is not yet implemented');
+async function signWithWalletConnect(_xdr: string): Promise<string> {
+  throw createAppError('UNSUPPORTED_WALLET', {
+    message: WALLETCONNECT_UNSUPPORTED_MESSAGE,
+    description: WALLETCONNECT_UNSUPPORTED_DESCRIPTION,
+  });
 }

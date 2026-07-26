@@ -5,7 +5,12 @@ import { WalletOption } from './WalletOption';
 import { ConnectedWalletView } from './ConnectedWalletView';
 import type { WalletType, WalletConnectionState } from '@/types/wallet';
 import { useToast } from '@/contexts/ToastContext';
-import { connectWallet } from '@/lib/wallet';
+import {
+  connectWallet,
+  isWalletConnectEnabled,
+  WALLETCONNECT_UNSUPPORTED_DESCRIPTION,
+  WALLETCONNECT_UNSUPPORTED_MESSAGE,
+} from '@/lib/wallet';
 import { errorToastWithCause } from '@/lib/error-copy';
 
 interface WalletSelectionModalProps {
@@ -31,6 +36,7 @@ export function WalletSelectionModal({
   });
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const walletConnectEnabled = isWalletConnectEnabled();
 
   const handleClose = useCallback(() => {
     if (connectionState.status === 'connecting') return;
@@ -112,6 +118,16 @@ export function WalletSelectionModal({
   }, [handleClose, isOpen]);
 
   const handleWalletSelect = useCallback(async (walletType: WalletType) => {
+    if (walletType === 'walletconnect' && !isWalletConnectEnabled()) {
+      setConnectionState({
+        status: 'error',
+        error: WALLETCONNECT_UNSUPPORTED_MESSAGE,
+        walletType,
+      });
+      showInfo(WALLETCONNECT_UNSUPPORTED_MESSAGE, WALLETCONNECT_UNSUPPORTED_DESCRIPTION);
+      return;
+    }
+
     // Check if wallet is installed first
     if (!isWalletInstalled(walletType)) {
       const installUrl = getInstallUrl(walletType);
@@ -144,7 +160,12 @@ export function WalletSelectionModal({
       onConnect?.(address, walletType);
       showSuccess('Wallet connected', `${walletType} wallet is ready.`);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to connect';
+      const errorMessage =
+        error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+          ? error.message
+          : error instanceof Error
+          ? error.message
+          : 'Failed to connect';
       dismiss(loadingToastId);
       setConnectionState({
         status: 'error',
@@ -153,7 +174,7 @@ export function WalletSelectionModal({
       });
       showError('WALLET_CONNECTION_FAILED', errorToastWithCause('WALLET_CONNECTION_FAILED', error));
     }
-  }, [dismiss, onConnect, showError, showLoading, showSuccess, showInfo]);
+  }, [dismiss, getInstallUrl, isWalletInstalled, onConnect, showError, showLoading, showSuccess, showInfo]);
 
   const handleInstallWallet = useCallback((walletType: WalletType) => {
     const installUrl = getInstallUrl(walletType);
@@ -164,7 +185,7 @@ export function WalletSelectionModal({
         `Opening ${walletType} installation page. Please return here after installation.`
       );
     }
-  }, [showInfo]);
+  }, [getInstallUrl, showInfo]);
 
   const handleDisconnect = useCallback(() => {
     setConnectionState({ status: 'disconnected' });
@@ -173,6 +194,9 @@ export function WalletSelectionModal({
 
   const handleRetry = useCallback(() => {
     if (connectionState.status === 'error' && connectionState.walletType) {
+      if (connectionState.walletType === 'walletconnect' && !isWalletConnectEnabled()) {
+        return;
+      }
       handleWalletSelect(connectionState.walletType);
     }
   }, [connectionState, handleWalletSelect]);
@@ -287,7 +311,9 @@ export function WalletSelectionModal({
                 connectionState.status === 'connecting' &&
                 connectionState.walletType === 'walletconnect'
               }
-              isInstalled={isWalletInstalled('walletconnect')}
+              isInstalled={walletConnectEnabled}
+              unsupported={!walletConnectEnabled}
+              unsupportedLabel="Coming soon"
               installUrl={getInstallUrl('walletconnect') || undefined}
               onSelect={() => handleWalletSelect('walletconnect')}
               onInstall={() => handleInstallWallet('walletconnect')}
@@ -319,12 +345,18 @@ export function WalletSelectionModal({
                     <p className="text-sm font-medium text-red-800 dark:text-red-200">
                       {connectionState.error}
                     </p>
-                    <button
-                      onClick={handleRetry}
-                      className="mt-2 text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                    >
-                      Try again
-                    </button>
+                    {connectionState.walletType === 'walletconnect' && !walletConnectEnabled ? (
+                      <p className="mt-1 text-sm text-red-700 dark:text-red-300">
+                        {WALLETCONNECT_UNSUPPORTED_DESCRIPTION}
+                      </p>
+                    ) : (
+                      <button
+                        onClick={handleRetry}
+                        className="mt-2 text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                      >
+                        Try again
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -335,4 +367,3 @@ export function WalletSelectionModal({
     </div>
   );
 }
-
