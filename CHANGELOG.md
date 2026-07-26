@@ -167,6 +167,7 @@
 * add games UI consuming /v1/games ([#1474](https://github.com/MyFanss/MyFans/issues/1474)) ([4e31324](https://github.com/MyFanss/MyFans/commit/4e313240bd673810fc93aa0eb48ce2653a621493))
 * add image upload component with progress tracking and validation ([4c51ac9](https://github.com/MyFanss/MyFans/commit/4c51ac9abea5dab94f499f654e493585bb107e84))
 * add integration tests for subscribe functionality and edge cases ([c84d232](https://github.com/MyFanss/MyFans/commit/c84d232820bb06c3cb68460748c0ba9fee3f942c))
+* add Lobstr network mismatch UX ([#1479](https://github.com/MyFanss/MyFans/issues/1479)) ([9e7ea27](https://github.com/MyFanss/MyFans/commit/9e7ea27a500d29fa0b51116ed0cb25256c64df89))
 * add messaging UI for conversations ([#1473](https://github.com/MyFanss/MyFans/issues/1473)) ([bc7d24b](https://github.com/MyFanss/MyFans/commit/bc7d24b84e6d17bd23164f7bd1f8e2804bfaa266))
 * add mock ERC20 contract for testing subscription payments ([ccbc304](https://github.com/MyFanss/MyFans/commit/ccbc304e9ced5d49dc369698aa8b0f5529991e7a))
 * add notification channel preferences form with per-event toggles ([4ee4100](https://github.com/MyFanss/MyFans/commit/4ee41003c74730039279159893c392faa74f2093))
@@ -344,6 +345,7 @@
 * initialization and cli ([a7c449f](https://github.com/MyFanss/MyFans/commit/a7c449f68e41b1c3276d7393ce605218a4a5a7e0))
 * initialization and cli ([ba1ebb1](https://github.com/MyFanss/MyFans/commit/ba1ebb19a5400601704666ab3fe5699aa46eefae))
 * initialize Soroban contracts workspace with stub token contract ([ea95e06](https://github.com/MyFanss/MyFans/commit/ea95e06e48c5903401ed406bcccef195bc452469))
+* integrate earnings-api on earnings pages ([#1477](https://github.com/MyFanss/MyFans/issues/1477)) ([a92bd3b](https://github.com/MyFanss/MyFans/commit/a92bd3b80f94d561426a5ee4cbaa6c40443f2d2d))
 * integrate TransactionProgress component into CheckoutFlow and add tests ([f0e468f](https://github.com/MyFanss/MyFans/commit/f0e468ffc36370ac6c43a367192790232dbce285))
 * **integration:** sync subscription state from chain ([42c50d6](https://github.com/MyFanss/MyFans/commit/42c50d62712979c4876d603fec65312fd2471cdd))
 * introduce internal domain events for module decoupling ([10a9d24](https://github.com/MyFanss/MyFans/commit/10a9d2413f2b459ee4d5fa8f9b9797b8e6fcb27a))
@@ -355,6 +357,7 @@
 * make IMyFans trait public and add subscribe and get_subscription_details methods ([aecd378](https://github.com/MyFanss/MyFans/commit/aecd3788c6dfdc7a483e97fabffc590fc107fed9))
 * metrics and alerting ([1f51207](https://github.com/MyFanss/MyFans/commit/1f5120755388c253d3861617a743a931dafa222d))
 * **moderation:** add content moderation flags model and admin endpoints ([#353](https://github.com/MyFanss/MyFans/issues/353)) ([227a0ec](https://github.com/MyFanss/MyFans/commit/227a0ec3686f6e3c9a6c747323b79acc6bda0275))
+* mount ReferralSharePanel in settings and checkout ([#1478](https://github.com/MyFanss/MyFans/issues/1478)) ([3ffebcd](https://github.com/MyFanss/MyFans/commit/3ffebcd507387cce494f892be3768467a9d99c01))
 * **myfans-token:** add property tests for allowance, approve, clear_allowance, set_admin, total_supply invariants ([#889](https://github.com/MyFanss/MyFans/issues/889)) ([1316e4b](https://github.com/MyFanss/MyFans/commit/1316e4b48d61fea106b75b16f48d5a3670ffeae1))
 * **myfans-token:** add property tests for approve/allowance and sequential transfer invariants ([#889](https://github.com/MyFanss/MyFans/issues/889)) ([e7082b6](https://github.com/MyFanss/MyFans/commit/e7082b66fc6669f5d824c2333b4669c663098671))
 * normalize subscription expiry ledger calculations ([#288](https://github.com/MyFanss/MyFans/issues/288)) ([31ccf63](https://github.com/MyFanss/MyFans/commit/31ccf63483e9d83269a1d4baa998a54704210375))
@@ -423,6 +426,7 @@
 * **wallet:** return actionable errors on network mismatch ([636713c](https://github.com/MyFanss/MyFans/commit/636713ca0c498926b269040d5a542a82c2528d7c))
 * wasm build size ([8ace45b](https://github.com/MyFanss/MyFans/commit/8ace45bb3216bbde6b0af7d575dc3a5a763ab3a7))
 * webhook secret rotation with active + previous secret and cutoff strategy ([a8b248d](https://github.com/MyFanss/MyFans/commit/a8b248d13583d838fa57f01e138c54c309b36aeb))
+* wire creator subscribers table to API ([#1476](https://github.com/MyFanss/MyFans/issues/1476)) ([34fd25f](https://github.com/MyFanss/MyFans/commit/34fd25f9d034eb57801b89ea94856c6c708b79cb))
 * wire favorites UI to backend favorites API ([#1475](https://github.com/MyFanss/MyFans/issues/1475)) ([a824002](https://github.com/MyFanss/MyFans/commit/a824002485ec376808987093f9faaa225b36b825))
 * wire JWT identity on social write controllers ([2b11c66](https://github.com/MyFanss/MyFans/commit/2b11c66e7e17ec70bb5626d6ed5e58bd38652ee8)), closes [#JWT-wiring](https://github.com/MyFanss/MyFans/issues/JWT-wiring)
 * wire myfans-lib require_authorized into production contracts ([9b582a1](https://github.com/MyFanss/MyFans/commit/9b582a1c6b88711dbba47189d8f45f6943cddc41)), closes [#1402](https://github.com/MyFanss/MyFans/issues/1402)
@@ -431,11 +435,11 @@
 
 ### Performance Improvements
 
-* optimise gas usage in earnings contract hot paths ([#966](https://github.com/Almikefred/MyFans/issues/966)) ([799bd81](https://github.com/Almikefred/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
-* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/Almikefred/MyFans/issues/986)) ([97d059e](https://github.com/Almikefred/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
-* Optimize creator profile page performance ([d8ba3ca](https://github.com/Almikefred/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/Almikefred/MyFans/issues/415)
+* optimise gas usage in earnings contract hot paths ([#966](https://github.com/MyFanss/MyFans/issues/966)) ([799bd81](https://github.com/MyFanss/MyFans/commit/799bd811bdd156c51e59a24ae827c0cc6e0a6b18))
+* optimise gas usage in test-consumer contract hot paths ([#986](https://github.com/MyFanss/MyFans/issues/986)) ([97d059e](https://github.com/MyFanss/MyFans/commit/97d059ec23188aee5f4442a0887dc245f6fda972))
+* Optimize creator profile page performance ([d8ba3ca](https://github.com/MyFanss/MyFans/commit/d8ba3caa3cf605404a033eb7760b7719bc15ded6)), closes [#415](https://github.com/MyFanss/MyFans/issues/415)
 
 
 ### Reverts
 
-* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/Almikefred/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
+* Revert "feat(backend): subscription reconciler job with dry-run and audit logging" ([7b179fc](https://github.com/MyFanss/MyFans/commit/7b179fcc47dc7454dbc903c7fb019ad0642ab769))
