@@ -54,6 +54,36 @@ host can't sneak into the policy.
   or a change to `buildConnectSrcHosts()` that drops env-configured hosts
   fails CI instead of shipping a broken wallet connection.
 
+## Regression test
+
+`src/lib/csp.test.ts` is a CI regression test for `connect-src`. It exists
+because CSP is easy to break silently — a refactor of `next.config.ts` or
+`src/lib/csp.ts` can drop a Stellar host and nothing fails locally; it only
+shows up later as a wallet extension throwing CSP violations in production.
+
+What it asserts:
+
+- Every host in `DEFAULT_STELLAR_CONNECT_HOSTS` (`*.stellar.org`,
+  `mainnet.sorobanrpc.com`, `rpc-futurenet.stellar.org`,
+  `soroban-testnet.stellar.org`, `horizon-testnet.stellar.org`,
+  `horizon-futurenet.stellar.org`) is present in `connect-src`.
+- The API origin host is present.
+- A host configured via `NEXT_PUBLIC_SOROBAN_RPC_URL` /
+  `NEXT_PUBLIC_HORIZON_URL` is added and deduped against the defaults.
+- Hosts that aren't the API origin, a default Stellar host, or an
+  env-configured RPC/Horizon host are **not** added.
+- `localhost:*` / `127.0.0.1:*` only appear outside production.
+
+Run it directly with `npm test -- csp` (or `npm test` for the full suite).
+
+**When you need to update the host list**, edit
+`DEFAULT_STELLAR_CONNECT_HOSTS` in `src/lib/csp.ts` and update the
+corresponding assertions/list in `src/lib/csp.test.ts` and the "What's
+allowed" section above in the same change — the test is intentionally
+written to fail if the two drift apart, so a host removal must be a
+deliberate, reviewed edit in both places, not an accidental side effect of
+an unrelated refactor.
+
 ## Related
 
 - `src/lib/csp.ts` — host + CSP string construction, unit-tested directly.
