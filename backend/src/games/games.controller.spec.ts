@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { GamesController } from './games.controller';
 import { GamesService } from './games.service';
 import { GameStatus } from './entities/game.entity';
@@ -32,6 +32,9 @@ describe('GamesController', () => {
   const mockGamesService = {
     findAll: jest.fn(),
     joinGame: jest.fn(),
+    startGame: jest.fn(),
+    leaveGame: jest.fn(),
+    submitScore: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -156,6 +159,93 @@ describe('GamesController', () => {
       await expect(controller.joinGame('game-1', mockUser)).rejects.toThrow(
         BadRequestException,
       );
+    });
+  });
+
+  describe('startGame', () => {
+    it('returns the started game on success', async () => {
+      const startedGame = { ...mockGame, status: GameStatus.IN_PROGRESS };
+      mockGamesService.startGame.mockResolvedValue(startedGame);
+
+      const result = await controller.startGame('game-1', mockUser);
+
+      expect(result).toEqual(startedGame);
+      expect(mockGamesService.startGame).toHaveBeenCalledWith('game-1', 'user-1');
+    });
+
+    it('propagates ForbiddenException when caller is not the host', async () => {
+      mockGamesService.startGame.mockRejectedValue(
+        new ForbiddenException('Only the host can start the game'),
+      );
+
+      await expect(controller.startGame('game-1', mockUser)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('propagates BadRequestException when game is not in a startable state', async () => {
+      mockGamesService.startGame.mockRejectedValue(
+        new BadRequestException('Game is not in PENDING status'),
+      );
+
+      await expect(controller.startGame('game-1', mockUser)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  describe('leaveGame', () => {
+    it('returns confirmation on success', async () => {
+      mockGamesService.leaveGame.mockResolvedValue({ left: true });
+
+      const result = await controller.leaveGame('game-1', mockUser);
+
+      expect(result).toEqual({ left: true });
+      expect(mockGamesService.leaveGame).toHaveBeenCalledWith('game-1', 'user-1');
+    });
+
+    it('propagates BadRequestException when game is completed', async () => {
+      mockGamesService.leaveGame.mockRejectedValue(
+        new BadRequestException('Cannot leave a completed game'),
+      );
+
+      await expect(controller.leaveGame('game-1', mockUser)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('propagates NotFoundException when player never joined', async () => {
+      mockGamesService.leaveGame.mockRejectedValue(
+        new NotFoundException('Player not found in this game'),
+      );
+
+      await expect(controller.leaveGame('game-1', mockUser)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('submitScore', () => {
+    it('delegates to the service with the JWT subject and dto', async () => {
+      const updatedPlayer = { ...mockPlayer, balance: 2500 };
+      mockGamesService.submitScore.mockResolvedValue(updatedPlayer);
+
+      const result = await controller.submitScore('game-1', mockUser, { balance: 2500 });
+
+      expect(result).toEqual(updatedPlayer);
+      expect(mockGamesService.submitScore).toHaveBeenCalledWith('game-1', 'user-1', {
+        balance: 2500,
+      });
+    });
+
+    it('propagates BadRequestException when game is not in progress', async () => {
+      mockGamesService.submitScore.mockRejectedValue(
+        new BadRequestException('Game is not in progress'),
+      );
+
+      await expect(
+        controller.submitScore('game-1', mockUser, { balance: 100 }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

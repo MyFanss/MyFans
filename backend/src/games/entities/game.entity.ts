@@ -24,6 +24,10 @@ export class Game {
     randomize_turn_order: boolean;
   };
 
+  /** User ID of the player who can start the game; the first player to join. */
+  @Column({ type: 'varchar', nullable: true })
+  host_user_id: string | null;
+
   @OneToMany(() => Player, player => player.game)
   players: Player[];
 
