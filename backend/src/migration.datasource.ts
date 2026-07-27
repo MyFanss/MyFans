@@ -13,8 +13,7 @@ import { AddOnboardingStateToUsers1745200000000 } from './users/1745200000000-Ad
 import { AddRoleToUsers1747000000000 } from './users/1747000000000-AddRoleToUsers';
 import { CreateSocialLinksTable1748000000000 } from './social-link/1748000000000-CreateSocialLinksTable';
 import { CreateCreatorOnchainMappings1749000000000 } from './creators/1749000000000-CreateCreatorOnchainMappings';
-import { AddCommentSoftDeleteAndAudit1753000000000 } from './comments/1753000000000-AddCommentSoftDeleteAndAudit';
-import { CreateFavorites1753100000000 } from './favorites/1753100000000-CreateFavorites';
+import { CreateNotificationDurableState1750000000000 } from './notifications/1750000000000-CreateNotificationDurableState';
 
 export const migrationDataSource = new DataSource({
   type: 'postgres',
@@ -37,7 +36,6 @@ export const migrationDataSource = new DataSource({
     AddRoleToUsers1747000000000,
     CreateSocialLinksTable1748000000000,
     CreateCreatorOnchainMappings1749000000000,
-    AddCommentSoftDeleteAndAudit1753000000000,
-    CreateFavorites1753100000000,
+    CreateNotificationDurableState1750000000000,
   ],
 });
