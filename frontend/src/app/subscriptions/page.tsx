@@ -7,6 +7,7 @@ import {
   type SubscriptionHistoryItem,
   type PaymentRecord,
 } from '@/lib/subscriptions';
+import { fetchActiveSubscriptions, SubscriptionsUnauthorizedError } from '@/lib/api/subscriptions';
 import { formatCurrency, formatDate, getCurrencySymbol } from '@/lib/formatting';
 import { BaseCard } from '@/components/cards/BaseCard';
 import { Modal } from '@/components/Modal';
@@ -32,30 +33,37 @@ export default function SubscriptionsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isHistoryLoading, setIsHistoryLoading] = useState(true);
   const [isPaymentsLoading, setIsPaymentsLoading] = useState(true);
+  const [activeListError, setActiveListError] = useState<'unauthorized' | 'error' | null>(null);
 
   useEffect(() => {
     let mounted = true;
     const fetchSubscriptions = async () => {
       setIsLoading(true);
       try {
-        const params = new URLSearchParams({ status: statusFilter, sort: sortOption });
-        const res = await fetch(`/api/v1/subscriptions/me/list?${params.toString()}`);
-        if (!res.ok) throw new Error('Failed to fetch subscriptions');
-        const data = await res.json();
+        const list = await fetchActiveSubscriptions({ status: statusFilter, sort: sortOption });
         if (mounted) {
-          // API returns { data: [...], ... } paginated shape
-          setActiveList(Array.isArray(data) ? data : (data.data ?? []));
+          setActiveList(list);
+          setActiveListError(null);
         }
       } catch (err) {
         console.error(err);
-        showError('NETWORK_ERROR', subscriptionsLoadFailed());
+        if (mounted) {
+          setActiveList([]);
+          setActiveListError(err instanceof SubscriptionsUnauthorizedError ? 'unauthorized' : 'error');
+        }
+        showError(
+          'NETWORK_ERROR',
+          err instanceof SubscriptionsUnauthorizedError
+            ? { message: 'Please sign in again', description: err.message }
+            : subscriptionsLoadFailed(),
+        );
       } finally {
         if (mounted) setIsLoading(false);
       }
     };
     fetchSubscriptions();
     return () => { mounted = false; };
-  }, [sortOption, statusFilter]);
+  }, [sortOption, statusFilter, showError]);
 
   useEffect(() => {
     let mounted = true;
@@ -178,15 +186,12 @@ export default function SubscriptionsPage() {
       await new Promise((resolve) => setTimeout(resolve, 1500));
       
       showSuccess('Subscription renewed', `${renewTarget.creatorName} ${renewTarget.planName} is active again.`);
-      
+
       // Refresh list after renewal
-      const params = new URLSearchParams({ status: statusFilter, sort: sortOption });
-      const res = await fetch(`/api/v1/subscriptions/me/list?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setActiveList(Array.isArray(data) ? data : (data.data ?? []));
-      }
-      
+      const list = await fetchActiveSubscriptions({ status: statusFilter, sort: sortOption });
+      setActiveList(list);
+      setActiveListError(null);
+
       setRenewTarget(null);
     } catch {
       showError('TX_FAILED', subscriptionActionToast.renewFailed());
@@ -268,6 +273,18 @@ export default function SubscriptionsPage() {
                 <ActiveSubscriptionSkeleton key={i} />
               ))}
             </div>
+          ) : activeListError === 'unauthorized' ? (
+            <EmptyState
+              title="Sign in required"
+              description="Your session has expired. Sign in again to see your active subscriptions."
+              actionLabel="Sign in"
+              actionHref="/auth/sign-in"
+            />
+          ) : activeListError === 'error' ? (
+            <EmptyState
+              title="Couldn't load subscriptions"
+              description="Something went wrong while loading your subscriptions. Please try again."
+            />
           ) : activeList.length === 0 ? (
             <EmptyState
               title="No subscriptions found"
