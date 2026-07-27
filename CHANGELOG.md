@@ -1,4 +1,4 @@
-# 0.1.0 (2026-07-26)
+# 0.1.0 (2026-07-27)
 
 
 ### Bug Fixes
@@ -243,6 +243,7 @@
 * **content-likes:** add invariant property tests ([ec35f84](https://github.com/MyFanss/MyFans/commit/ec35f84bf72ccf118557d7a05d9ee94f4876abeb))
 * **content-likes:** add pagination or cap for likes by user ([#849](https://github.com/MyFanss/MyFans/issues/849)) ([ef593f2](https://github.com/MyFanss/MyFans/commit/ef593f2172f0bb34851f2fc639ee6481e5fd03dd))
 * **content:** add content metadata CRUD API ([#333](https://github.com/MyFanss/MyFans/issues/333)) ([0d053df](https://github.com/MyFanss/MyFans/commit/0d053df53c7a1bd84903d6eb018775a9254b4e0c))
+* **content:** add creator posts query DTO with visibility filter ([ff007b5](https://github.com/MyFanss/MyFans/commit/ff007b5723e0bf414a21545be45297a52f8ef899))
 * **contract:** add admin token metadata update (set_metadata) ([5df26ab](https://github.com/MyFanss/MyFans/commit/5df26ab664c3458a8b768c056485df6f145f1542)), closes [#280](https://github.com/MyFanss/MyFans/issues/280)
 * **contract:** add AUTH_MATRIX.md compliance test suite ([d2d185f](https://github.com/MyFanss/MyFans/commit/d2d185fabb5d598558b0009b6c9d754c14f7d3fd))
 * **contract:** add get_content_info catalog query ([#312](https://github.com/MyFanss/MyFans/issues/312)) ([3d05d30](https://github.com/MyFanss/MyFans/commit/3d05d30fe6c43dc8920af66765aabe54ce7b845e))
@@ -283,6 +284,7 @@
 * Enable discover API by default with mock fallback ([#1470](https://github.com/MyFanss/MyFans/issues/1470)) ([bbc668f](https://github.com/MyFanss/MyFans/commit/bbc668fa1885b887aacac69df5f478472661788e))
 * enforce transfer validation and strengthen subscription/earnings initialization guards ([9228790](https://github.com/MyFanss/MyFans/commit/92287901400d40a2a28ed1a2f46dba06536f6342))
 * enhance wallet connection resilience and UX ([ce92df0](https://github.com/MyFanss/MyFans/commit/ce92df09e39b485567cce1572f3964241ba94b85))
+* **events:** add unlock event consumer stub for entitlement cache ([af8960c](https://github.com/MyFanss/MyFans/commit/af8960c3a2b6c3a07ce5a7372541096787d5da9a))
 * feature flags for new flows ([0bd8aa3](https://github.com/MyFanss/MyFans/commit/0bd8aa342d977bbf8929112da2da1f177564774b))
 * fetch content detail by route id from API ([#1471](https://github.com/MyFanss/MyFans/issues/1471)) ([ea27992](https://github.com/MyFanss/MyFans/commit/ea27992f10b9961a0aaea5c1b1c893196b707bde))
 * fix app.module.ts ([65507f1](https://github.com/MyFanss/MyFans/commit/65507f1e5f348adb28218a3e966c091f71342b41))
@@ -391,6 +393,7 @@
 * **scripts:** add --dry-run flag to deploy script ([bb5fbbc](https://github.com/MyFanss/MyFans/commit/bb5fbbc8a83aaa8ac17a8ba25b050ee0e2630b83)), closes [#306](https://github.com/MyFanss/MyFans/issues/306)
 * security audit in ci ([55f0a4f](https://github.com/MyFanss/MyFans/commit/55f0a4fcefa6b227f7d7ce6426b2f4b47e0f0e6d))
 * **security:** CSRF double-submit cookie strategy for BFF ([23c5fdb](https://github.com/MyFanss/MyFans/commit/23c5fdbf0955e117e12c6b5bc74eb3aa48139428))
+* **security:** define explicit body/upload quota constants ([b0a50c1](https://github.com/MyFanss/MyFans/commit/b0a50c195c07c75121026861a4e34ed637aa6667))
 * **security:** integrate helmet as baseline security headers layer ([044e5e2](https://github.com/MyFanss/MyFans/commit/044e5e24f07cad9ee5f6d14ed1dfec392da4d210))
 * **seed:** expand demo seed with posts, subscriptions, conversations ([9fca42d](https://github.com/MyFanss/MyFans/commit/9fca42d72b6565825f085f4a5a4c074bb212e836))
 * skeleton loading states for major pages ([49203d1](https://github.com/MyFanss/MyFans/commit/49203d13b66710d72eaa24c519b44a0beab67904))
