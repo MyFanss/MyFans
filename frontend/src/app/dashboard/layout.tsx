@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -40,6 +40,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   });
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const pathname = usePathname();
+  const mainRef = useRef<HTMLElement>(null);
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    mainRef.current?.focus();
+  }, [pathname]);
 
   const toggleCollapse = () => {
     const newState = !isCollapsed;
@@ -49,6 +59,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <a
+        href="#dashboard-main"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:rounded-lg focus:bg-sky-600 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:shadow-lg"
+      >
+        Skip to main content
+      </a>
       <header className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 z-50 flex items-center px-3 sm:px-4">
         <button
           onClick={() => setIsMobileOpen(!isMobileOpen)}
@@ -164,9 +180,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       <main
+        id="dashboard-main"
+        ref={mainRef}
+        tabIndex={-1}
         className={`
           transition-all duration-300 ease-in-out
           pt-16 lg:pt-0 min-w-0
+          focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-inset
           ${isCollapsed ? 'lg:ml-20' : 'lg:ml-64'}
         `}
       >
