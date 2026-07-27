@@ -115,4 +115,61 @@ describe('publicCreatorToProfile', () => {
     expect(profile.bio).toBe('');
     expect(profile.avatarUrl).toBeUndefined();
   });
+
+  it('maps subscription price, currency-bearing numeric strings, and categories when present', () => {
+    const creator: PublicCreator = {
+      id: '3',
+      username: 'sam',
+      display_name: 'Sam Rivera',
+      avatar_url: null,
+      bio: null,
+      is_verified: false,
+      followers_count: 8300,
+      subscription_price: '4.99',
+      currency: 'USDC',
+      categories: ['Photography', 'Video'],
+    };
+
+    const profile = publicCreatorToProfile(creator);
+
+    expect(profile.subscriberCount).toBe(8300);
+    expect(profile.subscriptionPrice).toBe(4.99);
+    expect(profile.categories).toEqual(['Photography', 'Video']);
+  });
+
+  it('accepts a numeric subscription_price without parsing errors', () => {
+    const creator: PublicCreator = {
+      id: '4',
+      username: 'lee',
+      display_name: 'Lee Park',
+      avatar_url: null,
+      bio: null,
+      is_verified: false,
+      followers_count: 100,
+      subscription_price: 12.5,
+    };
+
+    const profile = publicCreatorToProfile(creator);
+
+    expect(profile.subscriptionPrice).toBe(12.5);
+  });
+
+  it('defaults price and categories safely when the fields are missing or unparsable', () => {
+    const creator: PublicCreator = {
+      id: '5',
+      username: 'nopricecats',
+      display_name: 'No Price',
+      avatar_url: null,
+      bio: null,
+      is_verified: false,
+      followers_count: 5,
+      subscription_price: 'not-a-number',
+      categories: null,
+    };
+
+    const profile = publicCreatorToProfile(creator);
+
+    expect(profile.subscriptionPrice).toBe(0);
+    expect(profile.categories).toEqual([]);
+  });
 });

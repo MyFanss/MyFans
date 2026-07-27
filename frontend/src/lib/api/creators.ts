@@ -12,6 +12,10 @@ export interface PublicCreator {
   bio: string | null;
   is_verified: boolean;
   followers_count: number;
+  /** Present on `/creators` and `/creators/username/:username` when the creator has set a price. */
+  subscription_price?: string | number | null;
+  currency?: string | null;
+  categories?: string[] | null;
 }
 
 export interface CreatorsSearchResult {
@@ -62,12 +66,27 @@ export async function getCreatorProfile(username: string): Promise<PublicCreator
 }
 
 /**
+ * Parse the API's `subscription_price` field into a number.
+ *
+ * The field can arrive as a numeric string (Postgres `numeric` columns are
+ * serialized as strings), a plain number, null, or be absent entirely.
+ * Anything that doesn't parse to a finite number falls back to 0 rather
+ * than propagating `NaN` into price displays and sort comparisons.
+ */
+function parseSubscriptionPrice(value: string | number | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  const parsed = typeof value === 'number' ? value : parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
  * Map an API creator record to the CreatorProfile shape used by the
  * discovery grid and the profile page's hero/header components.
  *
- * The backend doesn't yet track subscriber count, subscription price,
- * categories, location, or social links for a creator, so those fall
- * back to sensible empty defaults rather than fabricated data.
+ * The backend doesn't track location or social links for a creator yet,
+ * so those fall back to sensible empty defaults rather than fabricated
+ * data. Subscriber count, subscription price, and categories are mapped
+ * from the API when present, and default safely when absent.
  */
 export function publicCreatorToProfile(c: PublicCreator): CreatorProfile {
   return {
@@ -76,10 +95,10 @@ export function publicCreatorToProfile(c: PublicCreator): CreatorProfile {
     displayName: c.display_name,
     bio: c.bio ?? '',
     avatarUrl: c.avatar_url ?? undefined,
-    subscriberCount: c.followers_count,
-    subscriptionPrice: 0,
+    subscriberCount: c.followers_count ?? 0,
+    subscriptionPrice: parseSubscriptionPrice(c.subscription_price),
     isVerified: c.is_verified,
-    categories: [],
+    categories: c.categories ?? [],
     socialLinks: [],
   };
 }
