@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { FavoritesController } from './favorites.controller';
 import { FavoritesService } from './favorites.service';
 
@@ -20,6 +21,9 @@ describe('FavoritesController', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [
+        ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 100 }]),
+      ],
       controllers: [FavoritesController],
       providers: [{ provide: FavoritesService, useValue: service }],
     }).compile();
@@ -31,7 +35,10 @@ describe('FavoritesController', () => {
 
   describe('findAll', () => {
     it("returns only the authenticated user's favorite creator IDs", async () => {
-      service.listFavoriteCreatorIds.mockResolvedValue(['creator-1', 'creator-2']);
+      service.listFavoriteCreatorIds.mockResolvedValue([
+        'creator-1',
+        'creator-2',
+      ]);
 
       const result = await controller.findAll(mockUser);
 
@@ -46,7 +53,10 @@ describe('FavoritesController', () => {
 
       const result = await controller.addFavorite('creator-1', mockUser);
 
-      expect(service.addFavorite).toHaveBeenCalledWith('jwt-user-1', 'creator-1');
+      expect(service.addFavorite).toHaveBeenCalledWith(
+        'jwt-user-1',
+        'creator-1',
+      );
       expect(result).toEqual({ creatorId: 'creator-1', favorited: true });
     });
 
