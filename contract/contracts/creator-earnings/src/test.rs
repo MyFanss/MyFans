@@ -465,3 +465,108 @@ fn admin_can_deposit() {
 
     assert_eq!(client.balance(&creator), 400);
 }
+
+#[test]
+fn remove_authorized_depositor_cannot_deposit() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let depositor = Address::generate(&env);
+
+    let token_admin = Address::generate(&env);
+    #[allow(deprecated)]
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+    let token_admin_client = StellarAssetClient::new(&env, &token_id);
+
+    token_admin_client.mint(&depositor, &1_000);
+
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &token_id);
+    client.add_authorized(&depositor);
+
+    // Depositor is authorized — deposit succeeds
+    client.deposit(&depositor, &creator, &500);
+    assert_eq!(client.balance(&creator), 500);
+
+    // Admin removes depositor authorization
+    client.remove_authorized(&depositor);
+
+    // Depositor is no longer authorized — deposit reverts
+    let result = client.try_deposit(&depositor, &creator, &100);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::NotAuthorized as u32,
+        )))
+    );
+}
+
+#[test]
+fn remove_authorized_admin_only() {
+    let env = Env::default();
+
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let depositor = Address::generate(&env);
+    let unauthorized = Address::generate(&env);
+
+    let token_admin = Address::generate(&env);
+    #[allow(deprecated)]
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+    let token_admin_client = StellarAssetClient::new(&env, &token_id);
+
+    token_admin_client.mint(&depositor, &1_000);
+
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &token_id);
+    client.add_authorized(&depositor);
+
+    // Non-admin tries to remove authorized — should fail
+    let result = client.try_remove_authorized(&unauthorized, &depositor);
+    assert!(result.is_err(), "non-admin remove_authorized should revert");
+}
+
+#[test]
+fn deposit_overflow_reverts() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let depositor = Address::generate(&env);
+
+    let token_admin = Address::generate(&env);
+    #[allow(deprecated)]
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+    let token_admin_client = StellarAssetClient::new(&env, &token_id);
+
+    // Mint a very large amount to depositor
+    token_admin_client.mint(&depositor, &i128::MAX);
+
+    let contract_id = env.register_contract(None, CreatorEarnings);
+    let client = CreatorEarningsClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &token_id);
+    client.add_authorized(&depositor);
+
+    // Deposit i128::MAX — this is the first deposit so it should succeed
+    client.deposit(&depositor, &creator, &i128::MAX);
+    assert_eq!(client.balance(&creator), i128::MAX);
+
+    // Mint more tokens and attempt another deposit — this should overflow
+    token_admin_client.mint(&depositor, &1);
+    let result = client.try_deposit(&depositor, &creator, &1);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidAmount as u32,
+        )))
+    );
+}

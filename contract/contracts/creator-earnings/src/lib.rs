@@ -57,6 +57,12 @@ pub struct AuthorizedAddedEvent {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthorizedRemovedEvent {
+    pub depositor: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DepositEvent {
     pub from: Address,
     pub creator: Address,
@@ -75,6 +81,7 @@ pub struct WithdrawEvent {
 /// Avoid magic strings
 const INITIALIZED_EVENT: &str = "initialized";
 const AUTHORIZED_ADDED_EVENT: &str = "authorized_added";
+const AUTHORIZED_REMOVED_EVENT: &str = "authorized_removed";
 const DEPOSIT_EVENT: &str = "deposit";
 const WITHDRAW_EVENT: &str = "withdraw";
 
@@ -122,6 +129,23 @@ impl CreatorEarnings {
         );
     }
 
+    /// Remove authorized depositor contract (admin only)
+    pub fn remove_authorized(env: Env, contract: Address) {
+        let admin: Address = Self::get_admin(&env);
+        admin.require_auth();
+
+        env.storage()
+            .instance()
+            .remove(&DataKey::AuthorizedDepositor(contract.clone()));
+
+        env.events().publish(
+            (Symbol::new(&env, AUTHORIZED_REMOVED_EVENT),),
+            AuthorizedRemovedEvent {
+                depositor: contract,
+            },
+        );
+    }
+
     /// Deposit earnings for creator
     /// Callable by authorized contracts or admin
     pub fn deposit(env: Env, from: Address, creator: Address, amount: i128) {
@@ -138,7 +162,9 @@ impl CreatorEarnings {
         token_client.transfer(&from, &env.current_contract_address(), &amount);
 
         let balance = Self::balance(env.clone(), creator.clone());
-        let new_balance = balance + amount;
+        let new_balance = balance
+            .checked_add(amount)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::InvalidAmount));
 
         env.storage()
             .instance()

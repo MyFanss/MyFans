@@ -11,6 +11,7 @@ pub enum DataKey {
     PlatformFeeBps,
     PlatformTreasury,
     CreatorBalance(Address),
+    CanonicalToken,
 }
 
 /// Per-contract error codes for the **creator-deposits** contract.
@@ -25,6 +26,7 @@ pub enum DataKey {
 /// | 3 | `AdminNotInitialized` |
 /// | 4 | `PlatformFeeNotInitialized` |
 /// | 5 | `PlatformTreasuryNotInitialized` |
+/// | 6 | `TokenNotAllowed` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -38,6 +40,8 @@ pub enum Error {
     PlatformFeeNotInitialized = 4,
     /// Code 5 – platform treasury not set; contract init was incomplete.
     PlatformTreasuryNotInitialized = 5,
+    /// Code 6 – deposited token does not match the canonical token set at init.
+    TokenNotAllowed = 6,
 }
 
 #[contract]
@@ -45,7 +49,13 @@ pub struct CreatorDeposits;
 
 #[contractimpl]
 impl CreatorDeposits {
-    pub fn init(env: Env, admin: Address, platform_fee_bps: u32, platform_treasury: Address) {
+    pub fn init(
+        env: Env,
+        admin: Address,
+        platform_fee_bps: u32,
+        platform_treasury: Address,
+        canonical_token: Address,
+    ) {
         if platform_fee_bps >= 10000 {
             panic_with_error!(&env, Error::InvalidFeeBps);
         }
@@ -56,10 +66,25 @@ impl CreatorDeposits {
         env.storage()
             .instance()
             .set(&DataKey::PlatformTreasury, &platform_treasury);
+        env.storage()
+            .instance()
+            .set(&DataKey::CanonicalToken, &canonical_token);
     }
 
     pub fn deposit(env: Env, creator: Address, token: Address, amount: i128) {
         creator.require_auth();
+
+        // Validate token against canonical token set at init.
+        let canonical: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::CanonicalToken)
+            .unwrap_or_else(|| {
+                panic_with_error!(&env, Error::TokenNotAllowed);
+            });
+        if token != canonical {
+            panic_with_error!(&env, Error::TokenNotAllowed);
+        }
 
         // Optimization: Read both config values once and cache in local variables
         // to avoid redundant storage reads during a single transaction.
@@ -107,8 +132,6 @@ impl CreatorDeposits {
     pub fn withdraw(env: Env, creator: Address, token: Address, amount: i128) {
         creator.require_auth();
 
-        // Optimization: Read balance once, validate, and update in single write;
-        // use unwrap_or(0) to handle accounts with no prior deposits.
         let balance_key = DataKey::CreatorBalance(creator.clone());
         let current: i128 = env.storage().instance().get(&balance_key).unwrap_or(0);
 
@@ -116,13 +139,14 @@ impl CreatorDeposits {
             panic_with_error!(&env, Error::InsufficientBalance);
         }
 
-        // Optimization: Only update storage if withdrawal succeeds validation.
+        // Transfer before debiting — if the token transfer fails, the ledger
+        // balance is untouched and accounting remains consistent.
+        let token_client = token::Client::new(&env, &token);
+        token_client.transfer(&env.current_contract_address(), &creator, &amount);
+
         env.storage()
             .instance()
             .set(&balance_key, &(current - amount));
-
-        let token_client = token::Client::new(&env, &token);
-        token_client.transfer(&env.current_contract_address(), &creator, &amount);
 
         env.events().publish(
             (
@@ -200,7 +224,7 @@ mod test {
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         env.mock_all_auths();
-        client.init(&admin, &500, &treasury); // 5% fee
+        client.init(&admin, &500, &treasury, &token); // 5% fee
         client.deposit(&creator, &token, &1000);
 
         assert_eq!(client.get_balance(&creator), 950); // 1000 - 50 fee
@@ -231,7 +255,7 @@ mod test {
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         env.mock_all_auths();
-        client.init(&admin, &500, &treasury);
+        client.init(&admin, &500, &treasury, &token);
         client.deposit(&creator, &token, &1000);
 
         // Verify transfer was called with correct fee (50)
@@ -245,7 +269,7 @@ mod test {
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         env.mock_all_auths();
-        client.init(&admin, &1000, &treasury); // 10% fee
+        client.init(&admin, &1000, &treasury, &token); // 10% fee
         client.deposit(&creator, &token, &5000);
 
         assert_eq!(client.get_balance(&creator), 4500); // 5000 - 500 fee
@@ -258,7 +282,7 @@ mod test {
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         env.mock_all_auths();
-        let result = client.try_init(&admin, &10000, &treasury);
+        let result = client.try_init(&admin, &10000, &treasury, &token);
         assert_eq!(
             result,
             Err(Ok(soroban_sdk::Error::from_contract_error(
@@ -269,12 +293,12 @@ mod test {
 
     #[test]
     fn test_invalid_bps_set_platform_fee_reverts() {
-        let (env, admin, treasury, _, _) = setup();
+        let (env, admin, treasury, _, token) = setup();
         let contract_id = env.register_contract(None, CreatorDeposits);
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         env.mock_all_auths();
-        client.init(&admin, &500, &treasury);
+        client.init(&admin, &500, &treasury, &token);
         let result = client.try_set_platform_fee(&10001);
         assert_eq!(
             result,
@@ -286,12 +310,12 @@ mod test {
 
     #[test]
     fn test_set_platform_fee_admin_only() {
-        let (env, admin, treasury, _creator, _) = setup();
+        let (env, admin, treasury, _creator, token) = setup();
         let contract_id = env.register_contract(None, CreatorDeposits);
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         env.mock_all_auths();
-        client.init(&admin, &500, &treasury);
+        client.init(&admin, &500, &treasury, &token);
         client.set_platform_fee(&1000);
 
         assert_eq!(client.get_platform_fee(), 1000);
@@ -304,7 +328,7 @@ mod test {
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         env.mock_all_auths();
-        client.init(&admin, &0, &treasury);
+        client.init(&admin, &0, &treasury, &token);
         client.deposit(&creator, &token, &1000);
 
         assert_eq!(client.get_balance(&creator), 1000);
@@ -317,7 +341,7 @@ mod test {
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         env.mock_all_auths();
-        client.init(&admin, &500, &treasury);
+        client.init(&admin, &500, &treasury, &token);
         client.deposit(&creator, &token, &1000);
         client.deposit(&creator, &token, &2000);
 
@@ -331,7 +355,7 @@ mod test {
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         env.mock_all_auths();
-        client.init(&admin, &0, &treasury);
+        client.init(&admin, &0, &treasury, &token);
         client.deposit(&creator, &token, &1000);
 
         assert_eq!(client.get_balance(&creator), 1000);
@@ -386,7 +410,7 @@ mod test {
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         env.mock_all_auths();
-        client.init(&admin, &0, &treasury);
+        client.init(&admin, &0, &treasury, &token);
         client.deposit(&creator, &token, &1000);
 
         let result = client.try_withdraw(&creator, &token, &1001);
@@ -405,7 +429,7 @@ mod test {
         let contract_id = env.register_contract(None, CreatorDeposits);
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
-        client.init(&admin, &0, &treasury);
+        client.init(&admin, &0, &treasury, &token);
 
         let deposit_amount = 1000_i128;
         env.mock_auths(&[MockAuth {
@@ -458,9 +482,29 @@ mod test {
         let client = CreatorDepositsClient::new(&env, &contract_id);
 
         env.mock_all_auths();
-        // Don't call init, deposit should fail
+        // Don't call init, deposit should fail on canonical token check
         let result = client.try_deposit(&creator, &token, &1000);
-        // Should fail with either PlatformFeeNotInitialized or PlatformTreasuryNotInitialized
+        // Should fail with TokenNotAllowed since canonical token is not stored
         assert!(result.is_err(), "deposit without init should return error");
+    }
+
+    #[test]
+    fn test_deposit_wrong_token_reverts() {
+        let (env, admin, treasury, creator, token) = setup();
+        let contract_id = env.register_contract(None, CreatorDeposits);
+        let client = CreatorDepositsClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        client.init(&admin, &0, &treasury, &token);
+
+        let wrong_token = Address::generate(&env);
+        // Mint some tokens to creator on wrong token so deposit can try
+        let result = client.try_deposit(&creator, &wrong_token, &1000);
+        assert_eq!(
+            result,
+            Err(Ok(soroban_sdk::Error::from_contract_error(
+                Error::TokenNotAllowed as u32,
+            )))
+        );
     }
 }
