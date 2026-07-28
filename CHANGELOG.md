@@ -1,4 +1,4 @@
-# 0.1.0 (2026-07-27)
+# 0.1.0 (2026-07-28)
 
 
 ### Bug Fixes
@@ -75,6 +75,7 @@
 * **frontend:** remove duplicate typescript key, add missing comma after vitest ([b8c6484](https://github.com/MyFanss/MyFans/commit/b8c648425a0b025ff586609a3ef6e1d615f5874c))
 * **frontend:** replace invalid ErrorCode COPY_FAILED with UNKNOWN_ERROR ([ad7f66a](https://github.com/MyFanss/MyFans/commit/ad7f66a5a99e9a6ff63982dbe4d06a8c14c2ebbd))
 * **frontend:** resolve all remaining build errors - build passes ([1e6aebe](https://github.com/MyFanss/MyFans/commit/1e6aebe665641fc5457896977bf244e477b07fd2))
+* implement canonical token pin, safe withdraw ordering, remove_authorized, and checked_add ([82c2064](https://github.com/MyFanss/MyFans/commit/82c2064c412c2b778e88e8e4b38e7f9ba67f84bf)), closes [#1394](https://github.com/MyFanss/MyFans/issues/1394) [#1395](https://github.com/MyFanss/MyFans/issues/1395) [#1396](https://github.com/MyFanss/MyFans/issues/1396) [#1397](https://github.com/MyFanss/MyFans/issues/1397) [#1394](https://github.com/MyFanss/MyFans/issues/1394) [#1395](https://github.com/MyFanss/MyFans/issues/1395) [#1396](https://github.com/MyFanss/MyFans/issues/1396) [#1397](https://github.com/MyFanss/MyFans/issues/1397)
 * implement issue resolution ([1434376](https://github.com/MyFanss/MyFans/commit/1434376fd2fe65d63fd46f15101ceb5b46179425))
 * implement issue resolution ([fbac9ae](https://github.com/MyFanss/MyFans/commit/fbac9aec6f9be5abf7b4377025bf6b5f8eab528a))
 * implement issue resolution ([e6ed891](https://github.com/MyFanss/MyFans/commit/e6ed891397ae6f12090cd761595ef1cd1286ae73))
