@@ -15,6 +15,8 @@ const FEATURE_FLAG_ENV_KEYS = {
     'FEATURE_FLAG_NEW_SUBSCRIPTION_FLOW',
   ],
   cryptoPayments: ['FEATURE_CRYPTO_PAYMENTS', 'FEATURE_FLAG_CRYPTO_PAYMENTS'],
+  referralCodes: ['FEATURE_REFERRAL_CODES'],
+  sorobanPoller: ['FEATURE_SOROBAN_POLLER'],
 } as const;
 
 export type FeatureFlagName = keyof typeof FEATURE_FLAG_ENV_KEYS;
@@ -59,11 +61,12 @@ export class FeatureFlagsService {
   }
 
   isReferralCodesEnabled(): boolean {
-    return process.env.FEATURE_REFERRAL_CODES === 'true';
+    return this.isEnabled('referralCodes');
   }
 
   isSorobanPollerEnabled(): boolean {
-    return process.env.FEATURE_SOROBAN_POLLER !== 'false';
+    const parsed = parseBooleanEnv(process.env.FEATURE_SOROBAN_POLLER);
+    return parsed === undefined ? true : parsed;
   }
 
   getAllFlags(): FeatureFlagsSnapshot {

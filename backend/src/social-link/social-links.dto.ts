@@ -25,9 +25,12 @@ export class SocialLinksDto {
   @MaxLength(500)
   @IsSafeUrl({ message: 'website_url must be a valid http or https URL' })
   @IsAllowedDomain()
-  @Transform(({ value }) => {
+  @Transform(({ value }: { value: unknown }) => {
+    if (value !== null && value !== undefined && typeof value !== 'string') {
+      return value;
+    }
     const sanitized = sanitizeUrl(value);
-    return sanitized !== null ? sanitized : value ?? null;
+    return sanitized !== null ? sanitized : (value ?? null);
   })
   websiteUrl?: string | null;
 
@@ -39,7 +42,11 @@ export class SocialLinksDto {
   @IsString()
   @MaxLength(50)
   @IsSocialHandle({ message: 'twitter_handle must be a valid social handle' })
-  @Transform(({ value }) => normalizeHandle(value))
+  @Transform(({ value }: { value: unknown }) =>
+    value !== null && value !== undefined && typeof value !== 'string'
+      ? value
+      : normalizeHandle(value),
+  )
   twitterHandle?: string | null;
 
   @ApiPropertyOptional({
@@ -50,11 +57,16 @@ export class SocialLinksDto {
   @IsString()
   @MaxLength(50)
   @IsSocialHandle({ message: 'instagram_handle must be a valid social handle' })
-  @Transform(({ value }) => normalizeHandle(value))
+  @Transform(({ value }: { value: unknown }) =>
+    value !== null && value !== undefined && typeof value !== 'string'
+      ? value
+      : normalizeHandle(value),
+  )
   instagramHandle?: string | null;
 
   @ApiPropertyOptional({
-    description: 'Any other link (Linktree, portfolio, etc.). Must be http/https.',
+    description:
+      'Any other link (Linktree, portfolio, etc.). Must be http/https.',
     example: 'https://linktr.ee/johndoe',
   })
   @IsOptional()
@@ -62,9 +74,12 @@ export class SocialLinksDto {
   @MaxLength(500)
   @IsSafeUrl({ message: 'other_link must be a valid http or https URL' })
   @IsAllowedDomain()
-  @Transform(({ value }) => {
+  @Transform(({ value }: { value: unknown }) => {
+    if (value !== null && value !== undefined && typeof value !== 'string') {
+      return value;
+    }
     const sanitized = sanitizeUrl(value);
-    return sanitized !== null ? sanitized : value ?? null;
+    return sanitized !== null ? sanitized : (value ?? null);
   })
   otherLink?: string | null;
 }

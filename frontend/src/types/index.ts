@@ -40,7 +40,13 @@ export type {
   Subscription,
   CreateSubscriptionRequest,
   GetSubscriptionsResponse,
-  CreateSubscriptionResponse
+  CreateSubscriptionResponse,
+  // Subscription & payment history
+  PaginatedResponse,
+  SubscriptionHistoryItem,
+  PaymentRecord,
+  GetSubscriptionHistoryParams,
+  GetPaymentHistoryParams
 } from './api';
 
 // Subscription status — shared type + value constants usable across frontend modules

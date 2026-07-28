@@ -1,11 +1,11 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+import { getVersionedApiBaseUrl } from '@/lib/api/base-url';
 
 let cached: string | null = null;
 
-/** Fetch (and cache) the CSRF token from the BFF. Resets on 403. */
+/** Fetch (and cache) the CSRF token from the versioned API. Resets on 403. */
 export async function getCsrfToken(): Promise<string> {
   if (cached) return cached;
-  const res = await fetch(`${API_BASE}/v1/csrf/token`, {
+  const res = await fetch(`${getVersionedApiBaseUrl()}/csrf/token`, {
     method: 'GET',
     credentials: 'include',
   });

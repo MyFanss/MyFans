@@ -5,6 +5,7 @@ import { User } from './entities/user.entity';
 import { UpdateUserDto } from './dto';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
 import { Creator } from './entities/creator.entity';
+import { PaginationDto } from '../common/dto/pagination.dto';
 import * as bcrypt from 'bcrypt';
 
 
@@ -17,6 +18,21 @@ export class UsersService {
     private creatorRepository: Repository<Creator>
   ) { }
 
+  async findAll(
+    pagination: PaginationDto,
+  ): Promise<{ data: User[]; total: number }> {
+    const limit = pagination.limit ?? 20;
+    const page = pagination.page ?? 1;
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await this.usersRepository.findAndCount({
+      take: limit,
+      skip,
+      order: { created_at: 'DESC' },
+    });
+
+    return { data, total };
+  }
 
   async findOne(id: string): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id } });
@@ -67,38 +83,43 @@ export class UsersService {
     return user;
   }
 
+  private notificationPreferencesFromUser(user: User) {
+    return {
+      email_notifications: user.email_notifications,
+      push_notifications: user.push_notifications,
+      marketing_emails: user.marketing_emails,
+      email_new_subscriber: user.email_new_subscriber,
+      email_subscription_renewal: user.email_subscription_renewal,
+      email_new_comment: user.email_new_comment,
+      email_new_like: user.email_new_like,
+      email_new_message: user.email_new_message,
+      email_payout: user.email_payout,
+      push_new_subscriber: user.push_new_subscriber,
+      push_subscription_renewal: user.push_subscription_renewal,
+      push_new_comment: user.push_new_comment,
+      push_new_like: user.push_new_like,
+      push_new_message: user.push_new_message,
+      push_payout: user.push_payout,
+    };
+  }
+
+  async getNotificationPreferences(userId: string) {
+    const user = await this.findById(userId);
+    return this.notificationPreferencesFromUser(user);
+  }
+
   async updateNotificationPreferences(
     userId: string,
     dto: UpdateNotificationsDto,
   ) {
     const user = await this.findById(userId);
 
-
     Object.assign(user, dto);
     await this.usersRepository.save(user);
 
     return {
       message: 'Notification preferences updated successfully',
-      preferences: {
-        // channels
-        email_notifications: user.email_notifications,
-        push_notifications: user.push_notifications,
-        marketing_emails: user.marketing_emails,
-        // per-event email
-        email_new_subscriber: user.email_new_subscriber,
-        email_subscription_renewal: user.email_subscription_renewal,
-        email_new_comment: user.email_new_comment,
-        email_new_like: user.email_new_like,
-        email_new_message: user.email_new_message,
-        email_payout: user.email_payout,
-        // per-event push
-        push_new_subscriber: user.push_new_subscriber,
-        push_subscription_renewal: user.push_subscription_renewal,
-        push_new_comment: user.push_new_comment,
-        push_new_like: user.push_new_like,
-        push_new_message: user.push_new_message,
-        push_payout: user.push_payout,
-      },
+      preferences: this.notificationPreferencesFromUser(user),
     };
   }
 

@@ -39,11 +39,20 @@ pub mod content_access {
     pub const PURCHASE_EXPIRED: u32 = 4;
     // Note: code 5 is intentionally unassigned (reserved gap).
     pub const NOT_BUYER: u32 = 6;
+    pub const INVALID_PRICE: u32 = 7;
+    pub const PRICE_EXCEEDS_MAX: u32 = 8;
+    pub const INVALID_MAX_PRICE: u32 = 9;
 }
 
 /// Error codes for the **content-likes** contract.
+///
+/// | Code | Constant | Contract variant |
+/// |------|----------|-------------------|
+/// | 1 | `NOT_LIKED` | `Error::NotLiked` |
+/// | 2 | `ALREADY_INITIALIZED` | `Error::AlreadyInitialized` |
 pub mod content_likes {
     pub const NOT_LIKED: u32 = 1;
+    pub const ALREADY_INITIALIZED: u32 = 2;
 }
 
 /// Error codes for the **creator-registry** contract.
@@ -96,6 +105,8 @@ pub mod myfans_contract {
     pub const PAUSED: u32 = 4;
     pub const SUBSCRIPTION_DOES_NOT_EXIST: u32 = 5;
     pub const ADMIN_NOT_INITIALIZED: u32 = 6;
+    pub const ALREADY_INITIALIZED: u32 = 7;
+    pub const PLAN_NOT_FOUND: u32 = 8;
 }
 
 /// Error codes for the **myfans-token** contract.

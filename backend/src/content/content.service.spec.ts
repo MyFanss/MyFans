@@ -9,13 +9,24 @@ const mockIpfsService = {
   uploadMetadata: jest.fn().mockResolvedValue({ cid: 'QmMock', url: 'https://gateway/QmMock' }),
 };
 
-const mockRepo = () => ({
-  create: jest.fn(),
-  save: jest.fn(),
-  findAndCount: jest.fn(),
-  findOne: jest.fn(),
-  remove: jest.fn(),
-});
+const mockRepo = () => {
+  const queryBuilder = {
+    orderBy: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
+    getMany: jest.fn(),
+  };
+  return {
+    create: jest.fn(),
+    save: jest.fn(),
+    findAndCount: jest.fn(),
+    findOne: jest.fn(),
+    remove: jest.fn(),
+    createQueryBuilder: jest.fn(() => queryBuilder),
+    _queryBuilder: queryBuilder,
+  };
+};
 
 const makeContent = (overrides: Partial<ContentMetadata> = {}): ContentMetadata =>
   ({
@@ -82,24 +93,25 @@ describe('ContentService', () => {
   describe('findAll', () => {
     it('returns paginated results', async () => {
       const items = [makeContent()];
-      repo.findAndCount.mockResolvedValue([items, 1]);
+      repo._queryBuilder.getMany.mockResolvedValue(items);
 
-      const result = await service.findAll({ page: 1, limit: 10 });
+      const result = await service.findAll({ limit: 10 });
 
       expect(result.data).toEqual(items);
-      expect(result.total).toBe(1);
-      expect(result.page).toBe(1);
+      expect(result.hasMore).toBe(false);
     });
   });
 
   describe('findByCreator', () => {
     it('filters by creator_id', async () => {
-      repo.findAndCount.mockResolvedValue([[], 0]);
+      repo._queryBuilder.getMany.mockResolvedValue([]);
 
-      await service.findByCreator('creator-1', { page: 1, limit: 10 });
+      await service.findByCreator('creator-1', { limit: 10 });
 
-      expect(repo.findAndCount).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { creator_id: 'creator-1' } }),
+      expect(repo.createQueryBuilder).toHaveBeenCalledWith('content');
+      expect(repo._queryBuilder.where).toHaveBeenCalledWith(
+        'content.creator_id = :creatorId',
+        { creatorId: 'creator-1' },
       );
     });
   });

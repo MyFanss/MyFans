@@ -67,12 +67,16 @@ Include in your PR description:
 - [ ] Workflow reaches the test step
 - [ ] Tests pass in CI
 - [ ] WASM artifacts build successfully
-- [ ] All 5 WASM files verified:
-  - subscription.wasm
+- [ ] All 9 production WASM files verified:
   - myfans_token.wasm
-  - content_access.wasm
   - creator_registry.wasm
+  - creator_deposits.wasm
+  - creator_earnings.wasm
+  - subscription.wasm
+  - content_access.wasm
+  - content_likes.wasm
   - earnings.wasm
+  - treasury.wasm
 
 ### Addressing Test Failures
 

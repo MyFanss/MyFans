@@ -1,5 +1,6 @@
 /**
- * Content library types, mock data, filter/sort, view preference.
+ * Content library types, filter/sort, view preference.
+ * Mock generators are test/dev helpers only — production UI loads via content-api.
  */
 
 import type { ContentType, ContentStatus } from '@/components/cards/ContentCard';
@@ -38,32 +39,27 @@ export interface ContentLibraryFilters {
 const CONTENT_TYPES: ContentType[] = ['image', 'video', 'audio', 'text', 'live'];
 const STATUSES: ContentStatus[] = ['published', 'draft', 'scheduled', 'archived'];
 
-function randomItem<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function generateMockItems(count: number): ContentItem[] {
+/** @deprecated Test helper only — do not use as the production default list. */
+export function createMockContentItems(count: number): ContentItem[] {
   const items: ContentItem[] = [];
   for (let i = 0; i < count; i++) {
-    const type = randomItem(CONTENT_TYPES);
+    const type = CONTENT_TYPES[i % CONTENT_TYPES.length];
     items.push({
       id: `content-${i + 1}`,
       title: `Content ${i + 1} ${type}`,
       type,
       description: i % 3 === 0 ? 'Short description for this item.' : undefined,
-      status: randomItem(STATUSES),
+      status: STATUSES[i % STATUSES.length],
       publishedAt: i % 4 !== 0 ? new Date(Date.now() - i * 86400000).toISOString() : undefined,
-      viewCount: type === 'video' || type === 'image' ? Math.floor(Math.random() * 50000) : undefined,
-      likeCount: Math.floor(Math.random() * 2000),
-      commentCount: Math.floor(Math.random() * 500),
-      duration: type === 'video' || type === 'audio' ? 60 + Math.floor(Math.random() * 3600) : undefined,
+      viewCount: type === 'video' || type === 'image' ? (i * 100) % 50000 : undefined,
+      likeCount: (i * 17) % 2000,
+      commentCount: (i * 3) % 500,
+      duration: type === 'video' || type === 'audio' ? 60 + (i % 3600) : undefined,
       isLocked: i % 5 === 0,
     });
   }
   return items;
 }
-
-export const MOCK_CONTENT_ITEMS = generateMockItems(55);
 
 export function filterAndSort(
   items: ContentItem[],

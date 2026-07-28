@@ -919,3 +919,212 @@ fn test_set_min_balance_emits_event() {
     let amount: i128 = event.2.try_into_val(&env).unwrap();
     assert_eq!(amount, 250);
 }
+
+// ── #1381 – public admin() and token() view functions ────────────────────────
+
+/// admin() returns the address stored during initialize.
+#[test]
+fn test_admin_view_returns_initialized_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let (token_address, _, _) = create_token_contract(&env, &admin);
+
+    let treasury_id = env.register_contract(None, Treasury);
+    let treasury_client = TreasuryClient::new(&env, &treasury_id);
+
+    treasury_client.initialize(&admin, &token_address);
+
+    assert_eq!(
+        treasury_client.admin(),
+        admin,
+        "admin() must return the address passed to initialize"
+    );
+}
+
+/// token() returns the token address stored during initialize.
+#[test]
+fn test_token_view_returns_initialized_token() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let (token_address, _, _) = create_token_contract(&env, &admin);
+
+    let treasury_id = env.register_contract(None, Treasury);
+    let treasury_client = TreasuryClient::new(&env, &treasury_id);
+
+    treasury_client.initialize(&admin, &token_address);
+
+    assert_eq!(
+        treasury_client.token(),
+        token_address,
+        "token() must return the address passed to initialize"
+    );
+}
+
+/// admin() before initialize returns the typed NotInitialized error.
+#[test]
+fn test_admin_view_before_init_returns_not_initialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let (token_address, _, _) = create_token_contract(&env, &admin);
+
+    let treasury_id = env.register_contract(None, Treasury);
+    let treasury_client = TreasuryClient::new(&env, &treasury_id);
+
+    // Do NOT call initialize — contract is uninitialized.
+    let result = treasury_client.try_admin();
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            Error::NotInitialized as u32,
+        ))),
+        "admin() on uninitialized contract must return NotInitialized"
+    );
+
+    // Suppress unused variable warning.
+    let _ = token_address;
+}
+
+/// token() before initialize returns the typed NotInitialized error.
+#[test]
+fn test_token_view_before_init_returns_not_initialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let (token_address, _, _) = create_token_contract(&env, &admin);
+
+    let treasury_id = env.register_contract(None, Treasury);
+    let treasury_client = TreasuryClient::new(&env, &treasury_id);
+
+    // Do NOT call initialize — contract is uninitialized.
+    let result = treasury_client.try_token();
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            Error::NotInitialized as u32,
+        ))),
+        "token() on uninitialized contract must return NotInitialized"
+    );
+
+    // Suppress unused variable warning.
+    let _ = token_address;
+}
+
+// ── #1383 – set_admin for admin rotation ───────────────────────────────
+
+/// set_admin transfers the admin role; admin() returns the new address.
+#[test]
+fn test_set_admin_transfers_admin_role() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let (token_address, _, _) = create_token_contract(&env, &admin);
+
+    let treasury_id = env.register_contract(None, Treasury);
+    let treasury_client = TreasuryClient::new(&env, &treasury_id);
+
+    treasury_client.initialize(&admin, &token_address);
+    assert_eq!(treasury_client.admin(), admin, "admin must be initial admin");
+
+    treasury_client.set_admin(&new_admin);
+    assert_eq!(
+        treasury_client.admin(),
+        new_admin,
+        "admin() must return new admin after set_admin"
+    );
+}
+
+/// Only the current admin can rotate; unauthorized callers are rejected.
+#[test]
+fn test_set_admin_requires_current_admin_auth() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let (token_address, _, _) = create_token_contract(&env, &admin);
+
+    let treasury_id = env.register_contract(None, Treasury);
+    let treasury_client = TreasuryClient::new(&env, &treasury_id);
+
+    treasury_client.initialize(&admin, &token_address);
+
+    // Attempt with unauthorized caller
+    env.set_auths(&[]);
+    let result = treasury_client.try_set_admin(&new_admin);
+    assert!(
+        result.is_err(),
+        "set_admin must fail without current admin auth"
+    );
+
+    // Restore mock auths and verify admin was NOT changed
+    env.mock_all_auths();
+    assert_eq!(
+        treasury_client.admin(),
+        admin,
+        "admin must remain unchanged after unauthorized set_admin attempt"
+    );
+}
+
+/// set_admin panics with NotInitialized before initialize is called.
+#[test]
+fn test_set_admin_before_init_returns_not_initialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let (token_address, _, _) = create_token_contract(&env, &admin);
+
+    let treasury_id = env.register_contract(None, Treasury);
+    let treasury_client = TreasuryClient::new(&env, &treasury_id);
+
+    let result = treasury_client.try_set_admin(&admin);
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            Error::NotInitialized as u32,
+        ))),
+        "set_admin on uninitialized contract must return NotInitialized"
+    );
+
+    // Suppress unused variable warning.
+    let _ = token_address;
+}
+
+/// set_admin emits an admin_transferred event.
+#[test]
+fn test_set_admin_emits_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let (token_address, _, _) = create_token_contract(&env, &admin);
+
+    let treasury_id = env.register_contract(None, Treasury);
+    let treasury_client = TreasuryClient::new(&env, &treasury_id);
+
+    treasury_client.initialize(&admin, &token_address);
+    treasury_client.set_admin(&new_admin);
+
+    let events = env.events().all();
+    let at_event = events.iter().find(|event| {
+        event.1.first().is_some_and(|topic| {
+            topic.try_into_val(&env).ok() == Some(Symbol::new(&env, "admin_transferred"))
+        })
+    });
+    assert!(at_event.is_some(), "admin_transferred event must be emitted");
+
+    let event = at_event.unwrap();
+    let (old, new): (Address, Address) = event.2.try_into_val(&env).unwrap();
+    assert_eq!(old, admin, "event must carry old admin");
+    assert_eq!(new, new_admin, "event must carry new admin");
+}

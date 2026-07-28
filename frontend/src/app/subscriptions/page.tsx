@@ -3,14 +3,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  MOCK_HISTORY,
-  MOCK_PAYMENTS,
   type ActiveSubscription,
   type SubscriptionHistoryItem,
   type PaymentRecord,
 } from '@/lib/subscriptions';
+import { fetchActiveSubscriptions, SubscriptionsUnauthorizedError } from '@/lib/api/subscriptions';
 import { formatCurrency, formatDate, getCurrencySymbol } from '@/lib/formatting';
 import { BaseCard } from '@/components/cards/BaseCard';
+import { Modal } from '@/components/Modal';
 import HistoryCardSkeleton from '@/components/ui/HistoryCardSkeleton';
 import ActiveSubscriptionSkeleton from '@/components/ui/ActiveSubscriptionSkeleton';
 import { useToast } from '@/contexts/ToastContext';
@@ -20,6 +20,9 @@ import { cancelSubscriptionOnSoroban } from '@/lib/stellar';
 export default function SubscriptionsPage() {
   const { showInfo, showSuccess, showError, showLoading, dismiss } = useToast();
   const [activeList, setActiveList] = useState<ActiveSubscription[]>([]);
+  const [historyList, setHistoryList] = useState<SubscriptionHistoryItem[]>([]);
+  const [paymentsList, setPaymentsList] = useState<PaymentRecord[]>([]);
+
   const [statusFilter, setStatusFilter] = useState('active');
   const [sortOption, setSortOption] = useState('expiry');
   const [cancelTarget, setCancelTarget] = useState<ActiveSubscription | null>(null);
@@ -28,104 +31,115 @@ export default function SubscriptionsPage() {
   const [isRenewing, setIsRenewing] = useState(false);
   const [renewingId, setRenewingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const cancelModalRef = useRef<HTMLDivElement>(null);
-  const renewModalRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-  const modalTriggerRef = useRef<HTMLElement | null>(null);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(true);
+  const [isPaymentsLoading, setIsPaymentsLoading] = useState(true);
+  const [activeListError, setActiveListError] = useState<'unauthorized' | 'error' | null>(null);
 
   useEffect(() => {
     let mounted = true;
     const fetchSubscriptions = async () => {
       setIsLoading(true);
       try {
-        const params = new URLSearchParams({ status: statusFilter, sort: sortOption });
-        const res = await fetch(`/api/v1/subscriptions/me/list?${params.toString()}`);
-        if (!res.ok) throw new Error('Failed to fetch subscriptions');
-        const data = await res.json();
+        const list = await fetchActiveSubscriptions({ status: statusFilter, sort: sortOption });
         if (mounted) {
-          // API returns { data: [...], ... } paginated shape
-          setActiveList(Array.isArray(data) ? data : (data.data ?? []));
+          setActiveList(list);
+          setActiveListError(null);
         }
       } catch (err) {
         console.error(err);
-        showError('NETWORK_ERROR', subscriptionsLoadFailed());
+        if (mounted) {
+          setActiveList([]);
+          setActiveListError(err instanceof SubscriptionsUnauthorizedError ? 'unauthorized' : 'error');
+        }
+        showError(
+          'NETWORK_ERROR',
+          err instanceof SubscriptionsUnauthorizedError
+            ? { message: 'Please sign in again', description: err.message }
+            : subscriptionsLoadFailed(),
+        );
       } finally {
         if (mounted) setIsLoading(false);
       }
     };
     fetchSubscriptions();
     return () => { mounted = false; };
-  }, [showError, sortOption, statusFilter]);
+  }, [sortOption, statusFilter, showError]);
 
-  // Modal focus management and keyboard handling
   useEffect(() => {
-    const target = cancelTarget || renewTarget;
-    if (!target) return;
-
-    // Prevent background scroll
-    const originalOverflow = document.body.style.overflow;
-    const originalPaddingRight = document.body.style.paddingRight;
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-
-    document.body.style.overflow = 'hidden';
-    if (scrollbarWidth > 0) {
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
-    }
-
-    previousFocusRef.current = document.activeElement as HTMLElement;
-    const modalRef = cancelTarget ? cancelModalRef : renewModalRef;
-    const modalElement = modalRef.current;
-    
-    const focusableSelector =
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-    const focusFirstElement = () => {
-      const firstFocusable = modalElement?.querySelector<HTMLElement>(focusableSelector);
-      firstFocusable?.focus();
-    };
-
-    // Focus first element after a brief delay
-    const focusTimeout = setTimeout(focusFirstElement, 10);
-
-    const handleModalKeyDown = (event: KeyboardEvent) => {
-      if (!modalRef.current) return;
-
-      if (event.key === 'Escape' && !isCancelling && !isRenewing) {
-        setCancelTarget(null);
-        setRenewTarget(null);
-        return;
-      }
-
-      if (event.key !== 'Tab') return;
-
-      const focusableElements = Array.from(
-        modalRef.current.querySelectorAll<HTMLElement>(focusableSelector),
-      );
-      if (focusableElements.length === 0) return;
-
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
-
-      if (event.shiftKey && document.activeElement === firstElement) {
-        event.preventDefault();
-        lastElement.focus();
-      } else if (!event.shiftKey && document.activeElement === lastElement) {
-        event.preventDefault();
-        firstElement.focus();
+    let mounted = true;
+    const fetchHistory = async () => {
+      setIsHistoryLoading(true);
+      try {
+        const res = await fetch(`/api/v1/subscriptions/me/list?status=cancelled`);
+        if (!res.ok) throw new Error('Failed to fetch history');
+        const data = await res.json();
+        if (mounted) {
+          const items = Array.isArray(data) ? data : (data.data ?? []);
+          const normalized: SubscriptionHistoryItem[] = items.map((item: Record<string, unknown>) => ({
+            id: String(item.id ?? ''),
+            creatorName: String(item.creatorName ?? item.creator ?? 'Creator'),
+            creatorUsername: String(item.creatorUsername ?? ''),
+            planName: String(item.planName ?? 'Subscription'),
+            price: typeof item.price === 'number' ? item.price : parseFloat(String(item.price || '0')),
+            currency: String(item.currency ?? 'XLM'),
+            startedAt: String(item.startedAt ?? item.createdAt ?? new Date().toISOString()),
+            endedAt: String(item.endedAt ?? item.currentPeriodEnd ?? new Date().toISOString()),
+            cancelReason: item.cancelReason ? String(item.cancelReason) : undefined,
+          }));
+          setHistoryList(normalized);
+        }
+      } catch (err) {
+        console.error(err);
+        showError('NETWORK_ERROR', {
+          message: 'Couldn’t load subscription history',
+          description:
+            'Refresh the page. If it still fails, check your internet and that the app backend is running.',
+        });
+      } finally {
+        if (mounted) setIsHistoryLoading(false);
       }
     };
+    fetchHistory();
+    return () => { mounted = false; };
+  }, []);
 
-    document.addEventListener('keydown', handleModalKeyDown);
-
-    return () => {
-      clearTimeout(focusTimeout);
-      document.removeEventListener('keydown', handleModalKeyDown);
-      modalTriggerRef.current?.focus();
-      if (!modalTriggerRef.current) {
-        previousFocusRef.current?.focus();
+  useEffect(() => {
+    let mounted = true;
+    const fetchPayments = async () => {
+      setIsPaymentsLoading(true);
+      try {
+        const res = await fetch(`/api/v1/analytics/payments`);
+        if (!res.ok) throw new Error('Failed to fetch payments');
+        const data = await res.json();
+        if (mounted) {
+          const items = Array.isArray(data) ? data : (data.data ?? []);
+          const normalized: PaymentRecord[] = items.map((item: Record<string, unknown>) => ({
+            id: String(item.id ?? ''),
+            date: String(item.date ?? item.paidAt ?? item.createdAt ?? new Date().toISOString()),
+            creatorName: String(item.creatorName ?? item.creator ?? 'Creator'),
+            planName: String(item.planName ?? 'Subscription'),
+            amount: typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || '0')),
+            currency: String(item.currency ?? item.asset ?? 'XLM'),
+            status: (item.status as PaymentRecord['status']) || 'completed',
+            description: item.description ? String(item.description) : undefined,
+          }));
+          setPaymentsList(normalized);
+        }
+      } catch (err) {
+        console.error(err);
+        showError('NETWORK_ERROR', {
+          message: 'Couldn’t load payment history',
+          description:
+            'Refresh the page. If it still fails, check your internet and that the app backend is running.',
+        });
+      } finally {
+        if (mounted) setIsPaymentsLoading(false);
       }
     };
-  }, [cancelTarget, renewTarget, isCancelling, isRenewing]);
+    fetchPayments();
+    return () => { mounted = false; };
+  }, []);
+
 
   const handleCancelConfirm = useCallback(async () => {
     if (!cancelTarget) return;
@@ -133,11 +147,12 @@ export default function SubscriptionsPage() {
     const loadingToastId = showLoading(`Cancelling ${cancelTarget.creatorName}...`);
     try {
       // Derive fan address from connected wallet; fall back to demo address
-      const fanAddress =
-        typeof window !== 'undefined' &&
-        (window as any).freighter
-          ? await (window as any).freighter.getPublicKey().catch(() => 'fan_demo_address')
-          : 'fan_demo_address';
+      const freighter = typeof window !== 'undefined'
+        ? (window as unknown as { freighter?: { getPublicKey: () => Promise<string> } }).freighter
+        : undefined;
+      const fanAddress = freighter
+        ? await freighter.getPublicKey().catch(() => 'fan_demo_address')
+        : 'fan_demo_address';
 
       await cancelSubscriptionOnSoroban({
         fanAddress,
@@ -171,15 +186,12 @@ export default function SubscriptionsPage() {
       await new Promise((resolve) => setTimeout(resolve, 1500));
       
       showSuccess('Subscription renewed', `${renewTarget.creatorName} ${renewTarget.planName} is active again.`);
-      
+
       // Refresh list after renewal
-      const params = new URLSearchParams({ status: statusFilter, sort: sortOption });
-      const res = await fetch(`/api/v1/subscriptions/me/list?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setActiveList(Array.isArray(data) ? data : (data.data ?? []));
-      }
-      
+      const list = await fetchActiveSubscriptions({ status: statusFilter, sort: sortOption });
+      setActiveList(list);
+      setActiveListError(null);
+
       setRenewTarget(null);
     } catch {
       showError('TX_FAILED', subscriptionActionToast.renewFailed());
@@ -190,8 +202,7 @@ export default function SubscriptionsPage() {
     }
   }, [renewTarget, dismiss, showError, showSuccess, showLoading, statusFilter, sortOption]);
 
-  const handleRenewClick = useCallback((item: ActiveSubscription | SubscriptionHistoryItem, event: React.MouseEvent) => {
-    modalTriggerRef.current = event.currentTarget as HTMLElement;
+  const handleRenewClick = useCallback((item: ActiveSubscription | SubscriptionHistoryItem) => {
     setRenewTarget(item);
   }, []);
 
@@ -262,6 +273,18 @@ export default function SubscriptionsPage() {
                 <ActiveSubscriptionSkeleton key={i} />
               ))}
             </div>
+          ) : activeListError === 'unauthorized' ? (
+            <EmptyState
+              title="Sign in required"
+              description="Your session has expired. Sign in again to see your active subscriptions."
+              actionLabel="Sign in"
+              actionHref="/auth/sign-in"
+            />
+          ) : activeListError === 'error' ? (
+            <EmptyState
+              title="Couldn't load subscriptions"
+              description="Something went wrong while loading your subscriptions. Please try again."
+            />
           ) : activeList.length === 0 ? (
             <EmptyState
               title="No subscriptions found"
@@ -288,7 +311,7 @@ export default function SubscriptionsPage() {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={(event) => handleRenewClick(sub, event)}
+                        onClick={() => handleRenewClick(sub)}
                         disabled={renewingId === sub.id || !isRenewable(sub)}
                         title={!isRenewable(sub) ? "Renewal only available 7 days before expiry" : ""}
                         className="flex-shrink-0 px-4 py-2 text-sm font-medium text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -297,10 +320,7 @@ export default function SubscriptionsPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={(event) => {
-                          modalTriggerRef.current = event.currentTarget;
-                          setCancelTarget(sub);
-                        }}
+                        onClick={() => setCancelTarget(sub)}
                         className="flex-shrink-0 px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                       >
                         Cancel
@@ -318,14 +338,20 @@ export default function SubscriptionsPage() {
           <h2 id="history-heading" className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
             Subscription history
           </h2>
-          {MOCK_HISTORY.length === 0 ? (
+          {isHistoryLoading ? (
+            <div className="space-y-3">
+              {[...Array(2)].map((_, i) => (
+                <HistoryCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : historyList.length === 0 ? (
             <EmptyState
               title="No subscription history"
               description="Cancelled subscriptions will appear here."
             />
           ) : (
             <ul className="space-y-3">
-              {MOCK_HISTORY.map((item) => (
+              {historyList.map((item) => (
                 <HistoryCard
                   key={item.id}
                   item={item}
@@ -342,14 +368,20 @@ export default function SubscriptionsPage() {
           <h2 id="payments-heading" className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
             Payment history
           </h2>
-          {MOCK_PAYMENTS.length === 0 ? (
+          {isPaymentsLoading ? (
+            <div className="space-y-3">
+              {[...Array(2)].map((_, i) => (
+                <HistoryCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : paymentsList.length === 0 ? (
             <EmptyState
               title="No payments yet"
               description="Payment records will appear here when you subscribe to creators."
             />
           ) : (
             <ul className="space-y-3">
-              {MOCK_PAYMENTS.map((payment) => (
+              {paymentsList.map((payment) => (
                 <PaymentCard key={payment.id} payment={payment} />
               ))}
             </ul>
@@ -358,101 +390,80 @@ export default function SubscriptionsPage() {
       </main>
 
       {/* Cancel confirmation modal */}
-      {cancelTarget && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="cancel-dialog-title"
-          aria-describedby="cancel-dialog-description"
-        >
-          <div 
-            ref={cancelModalRef} 
-            tabIndex={-1} 
-            className="max-w-md w-full focus:outline-none"
-          >
-            <BaseCard padding="lg">
-              <h3 id="cancel-dialog-title" className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                Cancel subscription?
-              </h3>
-              <p id="cancel-dialog-description" className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                You will lose access to {cancelTarget.creatorName}&apos;s {cancelTarget.planName} content at the end of your current billing period ({formatDate(cancelTarget.currentPeriodEnd)}). You can resubscribe anytime.
-              </p>
-              <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2 mb-4">
-                ⚠ No refund will be issued for the remaining days in the current period. Cancellation takes effect on-chain immediately.
-              </p>
-              <div className="flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setCancelTarget(null)}
-                  disabled={isCancelling}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-                  aria-disabled={isCancelling}
-                >
-                  Keep subscription
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCancelConfirm}
-                  disabled={isCancelling}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg disabled:opacity-50"
-                  aria-disabled={isCancelling}
-                >
-                  {isCancelling ? 'Cancelling…' : 'Cancel subscription'}
-                </button>
-              </div>
-            </BaseCard>
+      <Modal
+        isOpen={cancelTarget !== null}
+        onClose={() => setCancelTarget(null)}
+        title="Cancel subscription?"
+      >
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              You will lose access to {cancelTarget?.creatorName}&apos;s {cancelTarget?.planName} content at the end of your current billing period ({cancelTarget && formatDate(cancelTarget.currentPeriodEnd)}). You can resubscribe anytime.
+            </p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2 mt-4">
+              ⚠ No refund will be issued for the remaining days in the current period. Cancellation takes effect on-chain immediately.
+            </p>
+          </div>
+          <div className="flex gap-3 justify-end pt-4">
+            <button
+              type="button"
+              onClick={() => setCancelTarget(null)}
+              disabled={isCancelling}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+            >
+              Keep subscription
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelConfirm}
+              disabled={isCancelling}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg disabled:opacity-50"
+            >
+              {isCancelling ? 'Cancelling…' : 'Cancel subscription'}
+            </button>
           </div>
         </div>
-      )}
+      </Modal>
       {/* Renew confirmation modal */}
-      {renewTarget && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="renew-dialog-title"
-        >
-          <div ref={renewModalRef} tabIndex={-1} className="max-w-md w-full focus-visible:outline-none">
-            <BaseCard padding="lg">
-              <h3 id="renew-dialog-title" className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                Renew subscription?
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                You are about to renew your subscription to {renewTarget.creatorName} ({renewTarget.planName}). This will trigger a transaction of {getCurrencySymbol(renewTarget.currency)}{renewTarget.price.toFixed(2)} from your wallet.
-              </p>
-              <div className="flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setRenewTarget(null)}
-                  disabled={isRenewing}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRenewConfirm}
-                  disabled={isRenewing}
-                  className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg disabled:opacity-50 min-w-[120px]"
-                >
-                  {isRenewing ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Renewing…
-                    </span>
-                  ) : (
-                    'Confirm Renewal'
-                  )}
-                </button>
-              </div>
-            </BaseCard>
+      <Modal
+        isOpen={renewTarget !== null}
+        onClose={() => setRenewTarget(null)}
+        title="Renew subscription?"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            You are about to renew your subscription to {renewTarget?.creatorName} ({renewTarget?.planName}). This will trigger a transaction of {renewTarget && getCurrencySymbol(renewTarget.currency)}{renewTarget?.price.toFixed(2)} from your wallet.
+          </p>
+          <div className="flex gap-3 justify-end pt-4">
+            <button
+              type="button"
+              onClick={() => setRenewTarget(null)}
+              disabled={isRenewing}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleRenewConfirm}
+              disabled={isRenewing}
+              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg disabled:opacity-50 min-w-[120px]"
+            >
+              {isRenewing ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Renewing…
+                </span>
+              ) : (
+                'Confirm Renewal'
+              )}
+            </button>
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }
@@ -496,7 +507,7 @@ function HistoryCard({
 }: {
   item: SubscriptionHistoryItem;
   isRenewing: boolean;
-  onRenew: (item: SubscriptionHistoryItem, event: React.MouseEvent) => void;
+  onRenew: (item: SubscriptionHistoryItem) => void;
 }) {
   return (
     <BaseCard padding="md">
@@ -511,7 +522,7 @@ function HistoryCard({
       )}
       <button
         type="button"
-        onClick={(event) => onRenew(item, event)}
+        onClick={() => onRenew(item)}
         disabled={isRenewing}
         className="mt-3 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
       >

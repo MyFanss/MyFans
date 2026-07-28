@@ -3,6 +3,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
     String, Symbol,
 };
+use myfans_lib::auth;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -69,6 +70,7 @@ impl DataKey {
 /// | 8 | `InvalidTokenAddress` |
 /// | 9 | `InvalidPrice` |
 /// | 10 | `PlanNotFound` |
+/// | 11 | `InvalidPlanParams` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -92,6 +94,8 @@ pub enum Error {
     InvalidPrice = 9,
     /// Code 10 – plan ID does not exist; never created or out of range.
     PlanNotFound = 10,
+    /// Code 11 – plan `amount` must be strictly positive and `interval_days` non-zero.
+    InvalidPlanParams = 11,
 }
 
 /// Stellar "null" account (GAAA...WHF) — not a valid fee recipient.
@@ -128,6 +132,8 @@ pub struct MyfansContract;
 impl MyfansContract {
     /// Initialize the subscription contract once.
     ///
+    /// Requires `admin` to authorize the call.
+    ///
     /// Validates:
     /// * `fee_bps` must be ≤ 10000 (100%).
     /// * `token` must be a valid non-null address.
@@ -143,6 +149,7 @@ impl MyfansContract {
         if env.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
+        admin.require_auth();
         require_valid_fee_recipient(&env, &fee_recipient);
         require_valid_fee_bps(&env, fee_bps);
         require_valid_token_address(&env, &token);
@@ -181,6 +188,9 @@ impl MyfansContract {
         if paused {
             panic_with_error!(&env, Error::Paused);
         }
+        if amount <= 0 || interval_days == 0 {
+            panic_with_error!(&env, Error::InvalidPlanParams);
+        }
 
         let count: u32 = env
             .storage()
@@ -202,7 +212,7 @@ impl MyfansContract {
         plan_id
     }
 
-    pub fn subscribe(env: Env, fan: Address, plan_id: u32, _token: Address) {
+    pub fn subscribe(env: Env, fan: Address, plan_id: u32, token: Address) {
         fan.require_auth();
         let paused: bool = env
             .storage()
@@ -218,6 +228,13 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Plan(plan_id))
             .unwrap_or_else(|| panic_with_error!(&env, Error::PlanNotFound));
+
+        // #1378: Validate caller-supplied token matches the plan's asset.
+        // Mismatched token is rejected to prevent payment in an unintended asset.
+        if token != plan.asset {
+            panic_with_error!(&env, Error::InvalidTokenAddress);
+        }
+
         let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
         let fee = (plan.amount * fee_bps as i128) / 10000;
         let creator_amount = plan.amount - fee;
@@ -350,6 +367,10 @@ impl MyfansContract {
     /// * `reason` - Reason code for cancellation (e.g. 0 = user-initiated,
     ///   1 = too expensive, 2 = content quality, 3 = switching creator, 4 = other)
     ///
+    /// # Errors
+    /// * [`Error::SubscriptionNotFound`] – no active subscription record exists
+    ///   for the `(fan, creator)` pair.
+    ///
     /// Event: `cancelled` — topics: `(name, fan, creator)` data: `(true, reason)`
     /// Backward-compatible: topics unchanged; data is now a tuple instead of bare `true`.
     pub fn cancel(env: Env, fan: Address, creator: Address, reason: u32) {
@@ -363,9 +384,32 @@ impl MyfansContract {
             panic_with_error!(&env, Error::Paused);
         }
 
+        // #1379: Guard — return SubscriptionNotFound when no subscription exists.
+        // Prevents spurious cancel events and silent no-ops.
+        if !env
+            .storage()
+            .instance()
+            .has(&DataKey::subscription(fan.clone(), creator.clone()))
+        {
+            panic_with_error!(&env, Error::SubscriptionNotFound);
+        }
+
         env.storage()
             .instance()
             .remove(&DataKey::subscription(fan.clone(), creator.clone()));
+
+        // #1380: Decrement CreatorSubscriptionCount, floored at zero.
+        let current_count: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::CreatorSubscriptionCount(creator.clone()))
+            .unwrap_or(0);
+        let new_count = current_count.saturating_sub(1);
+        env.storage().instance().set(
+            &DataKey::CreatorSubscriptionCount(creator.clone()),
+            &new_count,
+        );
+
         // topics: (name, fan, creator)  data: (true, reason)
         env.events().publish(
             (Symbol::new(&env, "cancelled"), fan.clone(), creator),
@@ -445,7 +489,8 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        admin.require_auth();
+        let caller = env.invoker();
+        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "pause"));
 
         env.storage().instance().set(&DataKey::Paused, &true);
         env.events().publish((Symbol::new(&env, "paused"),), admin);
@@ -459,7 +504,8 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        admin.require_auth();
+        let caller = env.invoker();
+        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "unpause"));
 
         env.storage().instance().set(&DataKey::Paused, &false);
         env.events()
@@ -477,7 +523,8 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        admin.require_auth();
+        let caller = env.invoker();
+        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "set_fee_recipient"));
 
         require_valid_fee_recipient(&env, &new_fee_recipient);
 
@@ -510,7 +557,8 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        admin.require_auth();
+        let caller = env.invoker();
+        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "set_fee_bps"));
 
         require_valid_fee_bps(&env, new_fee_bps);
 

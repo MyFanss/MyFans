@@ -17,10 +17,8 @@ export class ThrottlerGuard extends NestThrottlerGuard implements CanActivate {
   }
 
   private isHealthCheckRoute(url: string): boolean {
-    return (
-      url === '/health' ||
-      url.startsWith('/health/') ||
-      url.startsWith('/v1/health')
-    );
+    // Only exempt the basic liveness probe — expensive sub-checks are throttled
+    // to prevent resource exhaustion from scanning probes.
+    return url === '/health' || url === '/v1/health';
   }
 }

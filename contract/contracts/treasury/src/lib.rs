@@ -2,12 +2,22 @@
 pub mod errors;
 
 pub use errors::TreasuryError as Error;
-use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, Env, Symbol};
+use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, token, Address, Env, Symbol};
+use myfans_lib::auth;
 
-const ADMIN: &str = "ADMIN";
-const TOKEN: &str = "TOKEN";
-const PAUSED: &str = "PAUSED";
-const MIN_BALANCE: &str = "MIN_BALANCE";
+/// Typed storage keys for the treasury contract.
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKey {
+    /// Admin address
+    Admin,
+    /// Token contract address
+    Token,
+    /// Whether the contract is paused
+    Paused,
+    /// Minimum token balance the contract must retain
+    MinBalance,
+}
 
 #[contract]
 pub struct Treasury;
@@ -22,14 +32,14 @@ impl Treasury {
     pub fn initialize(env: Env, admin: Address, token_address: Address) {
         admin.require_auth();
 
-        if env.storage().instance().has(&ADMIN) {
+        if env.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
 
-        env.storage().instance().set(&ADMIN, &admin);
-        env.storage().instance().set(&TOKEN, &token_address);
-        env.storage().instance().set(&PAUSED, &false);
-        env.storage().instance().set(&MIN_BALANCE, &0i128);
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Token, &token_address);
+        env.storage().instance().set(&DataKey::Paused, &false);
+        env.storage().instance().set(&DataKey::MinBalance, &0i128);
 
         env.events()
             .publish((Symbol::new(&env, "initialized"),), (admin, token_address));
@@ -42,8 +52,9 @@ impl Treasury {
     /// Requires authorization from the admin.
     pub fn set_paused(env: Env, paused: bool) {
         let admin = Self::get_admin(&env);
-        admin.require_auth();
-        env.storage().instance().set(&PAUSED, &paused);
+        let caller = env.invoker();
+        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "set_paused"));
+        env.storage().instance().set(&DataKey::Paused, &paused);
 
         env.events()
             .publish((Symbol::new(&env, "paused_set"),), paused);
@@ -59,7 +70,7 @@ impl Treasury {
         if amount < 0 {
             panic_with_error!(&env, Error::NegativeMinBalance);
         }
-        env.storage().instance().set(&MIN_BALANCE, &amount);
+        env.storage().instance().set(&DataKey::MinBalance, &amount);
 
         env.events()
             .publish((Symbol::new(&env, "min_balance_set"),), amount);
@@ -142,27 +153,58 @@ impl Treasury {
         );
     }
 
+    /// #1381: Public view – returns the treasury admin address.
+    ///
+    /// Panics with [`Error::NotInitialized`] if the contract has not been
+    /// initialized yet, giving integrators a typed error instead of a host trap.
+    pub fn admin(env: Env) -> Address {
+        Self::get_admin(&env)
+    }
+
+    /// #1381: Public view – returns the token address accepted by the treasury.
+    ///
+    /// Panics with [`Error::NotInitialized`] if the contract has not been
+    /// initialized yet, giving integrators a typed error instead of a host trap.
+    pub fn token(env: Env) -> Address {
+        Self::get_token(&env)
+    }
+
+    /// #1383: Rotate the admin to a new address.
+    ///
+    /// Only the current admin may call this. Emits an `admin_transferred` event.
+    /// Panics with [`Error::NotInitialized`] if the contract has not been initialized.
+    pub fn set_admin(env: Env, new_admin: Address) {
+        let current_admin = Self::get_admin(&env);
+        current_admin.require_auth();
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        env.events().publish(
+            (Symbol::new(&env, "admin_transferred"),),
+            (current_admin, new_admin),
+        );
+    }
+
     // Internal helper functions
     fn get_admin(env: &Env) -> Address {
         env.storage()
             .instance()
-            .get(&ADMIN)
+            .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
     }
 
     fn get_token(env: &Env) -> Address {
         env.storage()
             .instance()
-            .get(&TOKEN)
+            .get(&DataKey::Token)
             .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
     }
 
     fn get_min_balance(env: &Env) -> i128 {
-        env.storage().instance().get(&MIN_BALANCE).unwrap_or(0)
+        env.storage().instance().get(&DataKey::MinBalance).unwrap_or(0)
     }
 
     fn is_paused(env: &Env) -> bool {
-        env.storage().instance().get(&PAUSED).unwrap_or(false)
+        env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
     }
 }
 
@@ -175,3 +217,6 @@ mod error_tests;
 
 #[cfg(test)]
 mod gas_benchmarks;
+
+#[cfg(test)]
+mod property_tests;

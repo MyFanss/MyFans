@@ -137,7 +137,7 @@ describe('PublicCreatorDto', () => {
       const creator: Creator = {
         id: '456e7890-e89b-12d3-a456-426614174001',
         user: user,
-        bio: undefined as any,
+        bio: undefined as unknown as string,
         subscription_price: 9.99,
         total_subscribers: 100,
         is_active: true,
@@ -187,11 +187,13 @@ describe('PublicCreatorDto', () => {
       const dto = new PublicCreatorDto(user, creator);
       const dtoKeys = Object.keys(dto);
 
-      // Assert - verify only 5 public fields
-      expect(dtoKeys).toHaveLength(5);
+      // Assert - verify only the public fields
+      expect(dtoKeys).toHaveLength(7);
       expect(dtoKeys).toContain('id');
       expect(dtoKeys).toContain('username');
       expect(dtoKeys).toContain('display_name');
+      expect(dtoKeys).toContain('is_verified');
+      expect(dtoKeys).toContain('followers_count');
       expect(dtoKeys).toContain('avatar_url');
       expect(dtoKeys).toContain('bio');
     });

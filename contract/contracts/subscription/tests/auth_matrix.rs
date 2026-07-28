@@ -450,9 +450,9 @@ fn sub_setup(
     (sub, token, admin, creator, fan)
 }
 
-/// init – no auth required; any caller initializes once.
+/// init – admin signs and initializes once.
 #[test]
-fn sub_init_valid_any_caller() {
+fn sub_init_valid_admin_signs() {
     let env = base_env();
     let (token, admin) = setup_token(&env);
     let fee_recipient = Address::generate(&env);
@@ -460,6 +460,22 @@ fn sub_init_valid_any_caller() {
     let client = MyfansContractClient::new(&env, &id);
     client.init(&admin, &500u32, &fee_recipient, &token.address, &1000i128);
     assert_eq!(client.admin(), admin);
+}
+
+/// init – non-admin (no auth) is rejected.
+#[test]
+fn sub_init_invalid_non_admin_rejected() {
+    let env = base_env();
+    let (token, admin) = setup_token(&env);
+    let fee_recipient = Address::generate(&env);
+    let id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &id);
+    env.set_auths(EMPTY_AUTHS);
+    let result = client.try_init(&admin, &500u32, &fee_recipient, &token.address, &1000i128);
+    assert!(
+        result.is_err(),
+        "non-admin must not initialize subscription contract"
+    );
 }
 
 /// init – re-initialization is rejected.

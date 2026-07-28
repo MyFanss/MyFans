@@ -2,7 +2,8 @@
 mod events;
 
 use crate::events::{
-    AdminTransferredEvent, ContentPriceSetEvent, MaxPriceClearedEvent, MaxPriceSetEvent,
+    AdminTransferredEvent, ContentPriceSetEvent, InitializedEvent, MaxPriceClearedEvent,
+    MaxPriceSetEvent,
 };
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
@@ -47,6 +48,8 @@ pub enum DataKey {
     ContentPrice(Address, u64),
     /// Optional maximum price cap set by admin
     MaxPrice,
+    /// Whether the contract is paused (emergency stop)
+    Paused,
 }
 
 /// Per-contract error codes for the **content-access** contract.
@@ -61,6 +64,11 @@ pub enum DataKey {
 /// | 3 | `NotInitialized` |
 /// | 4 | `PurchaseExpired` |
 /// | 6 | `NotBuyer` |
+/// | 7 | `InvalidPrice` |
+/// | 8 | `PriceExceedsMax` |
+/// | 9 | `InvalidMaxPrice` |
+/// | 10 | `Paused` |
+/// | 11 | `InvalidExpiry` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -80,6 +88,10 @@ pub enum Error {
     PriceExceedsMax = 8,
     /// Code 9 – provided max price is invalid (negative).
     InvalidMaxPrice = 9,
+    /// Code 10 – contract is paused; action not allowed.
+    Paused = 10,
+    /// Code 11 – expiry_ledger must be greater than the current ledger sequence.
+    InvalidExpiry = 11,
 }
 
 #[contract]
@@ -101,12 +113,20 @@ impl ContentAccess {
         env.storage()
             .instance()
             .set(&DataKey::TokenAddress, &token_address);
+
+        env.events().publish(
+            (Symbol::new(&env, "initialized"),),
+            InitializedEvent {
+                admin: admin.clone(),
+            },
+        );
     }
 
     /// Unlock content for a buyer by transferring payment to creator.
     ///
     /// `expiry_ledger` sets when the purchase expires. Pass `u64::MAX` for a
-    /// non-expiring purchase. Passing `0` is rejected (would be immediately expired).
+    /// non-expiring purchase. Passing a value at or below the current ledger
+    /// sequence is rejected with [`Error::InvalidExpiry`].
     ///
     /// # Errors
     /// - `ContentPriceNotSet` – no price registered for (creator, content_id).
@@ -120,10 +140,19 @@ impl ContentAccess {
         content_id: u64,
         expiry_ledger: u64,
     ) {
+        if env.storage().instance().has(&DataKey::Paused) {
+            panic_with_error!(&env, Error::Paused);
+        }
         buyer.require_auth();
 
         // Cache current ledger sequence once (hot path optimization).
         let current_seq: u64 = env.ledger().sequence() as u64;
+
+        // #1385: Reject expiry at or below the current ledger — such a purchase
+        // would be immediately expired and is almost certainly a caller mistake.
+        if expiry_ledger <= current_seq {
+            panic_with_error!(&env, Error::InvalidExpiry);
+        }
 
         // Check if already unlocked (idempotent) – but re-check expiry.
         let access_key = DataKey::Access(buyer.clone(), creator.clone(), content_id);
@@ -272,6 +301,25 @@ impl ContentAccess {
         env.storage().instance().get(&DataKey::MaxPrice)
     }
 
+    /// Pause or unpause the contract. Only admin may call this.
+    ///
+    /// When paused, `unlock_content` is blocked (emergency stop).
+    /// Pass `true` to pause, `false` to unpause.
+    pub fn set_paused(env: Env, paused: bool) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+        admin.require_auth();
+
+        if paused {
+            env.storage().instance().set(&DataKey::Paused, &true);
+        } else {
+            env.storage().instance().remove(&DataKey::Paused);
+        }
+    }
+
     /// Set a new admin address. Current admin must authorize.
     pub fn set_admin(env: Env, new_admin: Address) {
         let current_admin: Address = env
@@ -298,6 +346,10 @@ impl ContentAccess {
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
     }
 }
+
+#[cfg(test)]
+#[path = "property_tests.rs"]
+mod property_tests;
 
 mod content_query_test;
 
@@ -898,7 +950,7 @@ mod test {
     /// Invariant: Price set by creator should be retrievable.
     #[test]
     fn test_price_set_is_retrievable() {
-        let (env, contract_id, admin, token_address, creator) = setup_test();
+        let (env, contract_id, admin, token_address, _, creator) = setup_test();
         let client = ContentAccessClient::new(&env, &contract_id);
 
         client.initialize(&admin, &token_address);
@@ -912,7 +964,7 @@ mod test {
     /// Invariant: Admin function returns the currently set admin.
     #[test]
     fn test_admin_returns_current_admin() {
-        let (env, contract_id, admin1, token_address) = setup_test();
+        let (env, contract_id, admin1, token_address, _, _) = setup_test();
         let client = ContentAccessClient::new(&env, &contract_id);
 
         client.initialize(&admin1, &token_address);
@@ -922,6 +974,102 @@ mod test {
         let admin2 = Address::generate(&env);
         client.set_admin(&admin2);
         assert_eq!(client.admin(), admin2);
+    }
+
+    // ── #1385 – Expiry validation ───────────────────────────────────────────
+
+    /// Past expiry ledger is rejected.
+    #[test]
+    fn test_unlock_content_with_past_expiry_rejected() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &1, &100);
+
+        // Current ledger is 1000, try with expiry = 999 (past)
+        let result = client.try_unlock_content(&buyer, &creator, &1, &999);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::InvalidExpiry as u32,
+            ))),
+            "past expiry must be rejected"
+        );
+    }
+
+    /// Current ledger expiry (equal) is rejected.
+    #[test]
+    fn test_unlock_content_with_equal_expiry_rejected() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &1, &100);
+
+        // Current ledger is 1000, try with expiry = 1000 (equal - immediately expired)
+        let result = client.try_unlock_content(&buyer, &creator, &1, &1000);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::InvalidExpiry as u32,
+            ))),
+            "equal expiry must be rejected"
+        );
+    }
+
+    /// Future expiry is accepted.
+    #[test]
+    fn test_unlock_content_with_future_expiry_accepted() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &1, &100);
+
+        // Current ledger is 1000, try with expiry = 1001 (future)
+        client.unlock_content(&buyer, &creator, &1, &1001);
+        assert!(
+            client.has_access(&buyer, &creator, &1),
+            "future expiry must be accepted and grant access"
+        );
+    }
+
+    /// u64::MAX (non-expiring) is accepted.
+    #[test]
+    fn test_unlock_content_with_max_expiry_accepted() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &1, &100);
+
+        // u64::MAX is well above current ledger (1000)
+        client.unlock_content(&buyer, &creator, &1, &NO_EXPIRY);
+        assert!(
+            client.has_access(&buyer, &creator, &1),
+            "u64::MAX expiry must be accepted"
+        );
+    }
+
+    /// Zero expiry is rejected (zero is always <= current ledger > 0).
+    #[test]
+    fn test_unlock_content_with_zero_expiry_rejected() {
+        let (env, contract_id, admin, token_address, buyer, creator) = setup_test();
+        let client = ContentAccessClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &token_address);
+        client.set_content_price(&creator, &1, &100);
+
+        // Current ledger is 1000, expiry = 0 is immediately expired
+        let result = client.try_unlock_content(&buyer, &creator, &1, &0);
+        assert_eq!(
+            result,
+            Err(Ok(SorobanError::from_contract_error(
+                Error::InvalidExpiry as u32,
+            ))),
+            "zero expiry must be rejected"
+        );
     }
 }
 

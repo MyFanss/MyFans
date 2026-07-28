@@ -115,6 +115,32 @@ fn test_init_rejects_non_positive_price() {
     );
 }
 
+/// init() requires the supplied admin to authorize the call; a rejected
+/// attempt leaves the contract uninitialized, allowing a later valid init.
+#[test]
+fn test_init_requires_admin_auth_without_persisting_state() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let token_address = env.register_stellar_asset_contract_v2(admin.clone());
+    let token_client = token::Client::new(&env, &token_address.address());
+    let contract_id = env.register_contract(None, MyfansContract);
+    let client = MyfansContractClient::new(&env, &contract_id);
+    let fee_recipient = Address::generate(&env);
+
+    let empty: &[SorobanAuthorizationEntry] = &[];
+    env.set_auths(empty);
+    assert!(
+        client
+            .try_init(&admin, &500u32, &fee_recipient, &token_client.address, &1000i128)
+            .is_err(),
+        "init must require admin auth"
+    );
+
+    env.mock_all_auths();
+    client.init(&admin, &500u32, &fee_recipient, &token_client.address, &1000i128);
+    assert_eq!(client.admin(), admin);
+}
+
 #[test]
 fn test_init_succeeds_sets_admin_and_configuration() {
     let (env, client, admin, token, _token_admin) = setup_test();
@@ -1489,6 +1515,169 @@ fn admin_is_stable_after_pause_and_unpause() {
     );
 }
 
+// ── #890 – initialize and admin path unit tests ──────────────────────────────
+
+#[test]
+fn test_init_stores_admin() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    assert_eq!(client.admin(), admin);
+}
+
+#[test]
+fn test_init_stores_fee_bps_zero() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &0, &fee_recipient, &token.address, &1000);
+    // fee_bps=0 means creator gets 100% — verify via subscribe payment
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    let (_, _, _, _, token_admin) = setup_test();
+    // use a fresh env for payment check
+    let (env2, client2, admin2, token2, token_admin2) = setup_test();
+    let fee_recipient2 = Address::generate(&env2);
+    client2.init(&admin2, &0, &fee_recipient2, &token2.address, &1000);
+    let creator2 = Address::generate(&env2);
+    let fan2 = Address::generate(&env2);
+    token_admin2.mint(&fan2, &5000);
+    let plan_id = client2.create_plan(&creator2, &token2.address, &1000, &30);
+    client2.subscribe(&fan2, &plan_id, &token2.address);
+    assert_eq!(
+        token2.balance(&fee_recipient2),
+        0,
+        "zero fee: recipient gets nothing"
+    );
+    assert_eq!(
+        token2.balance(&creator2),
+        1000,
+        "zero fee: creator gets full amount"
+    );
+    // suppress unused warnings
+    let _ = (
+        env,
+        client,
+        admin,
+        token,
+        fee_recipient,
+        creator,
+        fan,
+        token_admin,
+    );
+}
+
+#[test]
+fn test_init_stores_max_fee_bps() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    // 10_000 bps = 100% is the maximum valid value
+    client.init(&admin, &10_000, &fee_recipient, &token.address, &1000);
+    assert_eq!(client.admin(), admin);
+}
+
+#[test]
+fn test_init_rejects_already_initialized() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let result = client.try_init(&admin, &500, &fee_recipient, &token.address, &1000);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::AlreadyInitialized as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_init_rejects_negative_price() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    let result = client.try_init(&admin, &500, &fee_recipient, &token.address, &-1);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidPrice as u32,
+        )))
+    );
+}
+
+#[test]
+fn test_pause_sets_paused_flag() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    assert!(!client.is_paused());
+    client.pause();
+    assert!(client.is_paused());
+}
+
+#[test]
+fn test_unpause_clears_paused_flag() {
+    let (env, client, admin, token, _) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    client.pause();
+    assert!(client.is_paused());
+    client.unpause();
+    assert!(!client.is_paused());
+}
+
+#[test]
+fn test_set_fee_bps_updates_value() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    // Change fee to 1000 bps (10%) and verify via subscribe payment
+    client.set_fee_bps(&1000);
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    assert_eq!(token.balance(&fee_recipient), 100, "10% fee = 100");
+    assert_eq!(
+        token.balance(&creator),
+        900,
+        "creator gets 900 after 10% fee"
+    );
+}
+
+#[test]
+fn test_set_fee_recipient_updates_value() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let old_recipient = Address::generate(&env);
+    let new_recipient = Address::generate(&env);
+    client.init(&admin, &500, &old_recipient, &token.address, &1000);
+    client.set_fee_recipient(&new_recipient);
+    // Verify new recipient receives fees
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &5000);
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    assert_eq!(
+        token.balance(&old_recipient),
+        0,
+        "old recipient gets nothing"
+    );
+    assert_eq!(
+        token.balance(&new_recipient),
+        50,
+        "new recipient gets 5% fee"
+    );
+}
+
+#[test]
+fn test_paused_blocks_create_plan() {
+    let (_env, client, _admin, creator, _fan, token, _token_admin) = setup_paused();
+    let result = client.try_create_plan(&creator, &token.address, &1000, &30);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
+    );
+}
+
 // ============================================================================
 // HEALTH CHECK / PING TESTS
 // Verifies Soroban RPC / contract connectivity probe (issue: health-check).
@@ -1628,4 +1817,69 @@ fn test_cancel_paused_returns_typed_error() {
         result,
         Err(Ok(SorobanError::from_contract_error(Error::Paused as u32)))
     );
+}
+
+// ── create_plan parameter validation ─────────────────────────────────────────
+
+/// create_plan rejects a zero amount with a typed InvalidPlanParams error.
+#[test]
+fn test_create_plan_rejects_zero_amount() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+
+    let result = client.try_create_plan(&creator, &token.address, &0, &30);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidPlanParams as u32,
+        )))
+    );
+}
+
+/// create_plan rejects a negative amount with a typed InvalidPlanParams error.
+#[test]
+fn test_create_plan_rejects_negative_amount() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+
+    let result = client.try_create_plan(&creator, &token.address, &-1, &30);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidPlanParams as u32,
+        )))
+    );
+}
+
+/// create_plan rejects a zero interval_days with a typed InvalidPlanParams error.
+#[test]
+fn test_create_plan_rejects_zero_interval_days() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+
+    let result = client.try_create_plan(&creator, &token.address, &1000, &0);
+    assert_eq!(
+        result,
+        Err(Ok(SorobanError::from_contract_error(
+            Error::InvalidPlanParams as u32,
+        )))
+    );
+}
+
+/// A valid plan (positive amount, non-zero interval_days) still succeeds.
+#[test]
+fn test_create_plan_accepts_valid_params() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+    let creator = Address::generate(&env);
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    assert_eq!(plan_id, 1);
 }

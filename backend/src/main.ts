@@ -1,7 +1,8 @@
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { Request, Response, NextFunction } from 'express';
-import * as cookieParser from 'cookie-parser';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { StartupProbeService } from './health/startup-probe.service';
@@ -60,8 +61,6 @@ async function bootstrap() {
 
   const probeService = app.get(StartupProbeService);
 
-  // Setup Swagger/OpenAPI documentation
-  const { DocumentBuilder, SwaggerModule } = require('@nestjs/swagger');
   const config = new DocumentBuilder()
     .setTitle('MyFans API')
     .setDescription('MyFans backend REST API')

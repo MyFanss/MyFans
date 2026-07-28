@@ -45,6 +45,7 @@ pub struct Subscription {
 | 7 | `InvalidFeeBps` | Fee basis points exceed 10 000 (100%) |
 | 8 | `InvalidTokenAddress` | Token address is the Stellar null/burn address |
 | 9 | `InvalidPrice` | Subscription price must be strictly positive |
+| 11 | `InvalidPlanParams` | Plan `amount` must be strictly positive and `interval_days` non-zero |
 
 ---
 
@@ -65,6 +66,8 @@ pub fn init(
 
 One-time contract initialization. Stores admin, fee configuration, token address, and base subscription price.
 
+**Requires `admin` authorization.**
+
 **Panics** with `AlreadyInitialized` if called again, `InvalidFeeBps` if `fee_bps > 10_000`,
 `InvalidTokenAddress` if `token` is the Stellar null address, or `InvalidPrice` if `price <= 0`.
 
@@ -83,7 +86,8 @@ pub fn create_plan(
 ```
 
 Registers a new billing plan for `creator`. Returns the assigned `plan_id` (auto-incremented from 1).
-Requires `creator` authorization. Panics with `Paused` if the contract is paused.
+Requires `creator` authorization. Panics with `Paused` if the contract is paused, or
+`InvalidPlanParams` if `amount <= 0` or `interval_days == 0`.
 
 **Event** `plan_created` — topics: `(name, creator)`, data: `plan_id`
 

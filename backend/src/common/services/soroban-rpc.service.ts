@@ -471,12 +471,11 @@ const health = await this.recordRpcCall('getHealth', () =>
     const { startLedger, limit = 200, paginationToken } = opts;
     try {
       const response = await this.recordRpcCall('getEvents', () =>
-        this.server!.getEvents({
-          startLedger,
-          filters: [],
-          limit,
-          ...(paginationToken ? { cursor: paginationToken } : {}),
-        }),
+        this.server!.getEvents(
+          paginationToken
+            ? { cursor: paginationToken, filters: [], limit }
+            : { startLedger, filters: [], limit },
+        ),
       );
       return {
         events: response.events ?? [],

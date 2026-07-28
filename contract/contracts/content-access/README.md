@@ -21,6 +21,8 @@ All signatures are shown with Soroban types.
   - Buyer authorizes the call (`buyer.require_auth()`).
   - Looks up the configured price via `get_content_price`; panics with
     `Error::ContentPriceNotSet` if no price is set for `(creator, content_id)`.
+  - `expiry_ledger` must be greater than the current ledger sequence. Values at or
+    below the current ledger are rejected with `Error::InvalidExpiry`.
   - Transfers the price from `buyer` to `creator` using the configured token.
   - Stores a `Purchase { expiry }` record under `DataKey::Access(buyer, creator, content_id)`.
   - `expiry_ledger` is an exclusive ledger sequence; use `u64::MAX` for no expiry.

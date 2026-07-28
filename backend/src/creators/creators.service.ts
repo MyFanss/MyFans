@@ -41,7 +41,13 @@ export class CreatorsService {
     amount: string,
     intervalDays: number,
   ): Plan {
-    const plan = { id: ++this.planCounter, creator, asset, amount, intervalDays };
+    const plan = {
+      id: ++this.planCounter,
+      creator,
+      asset,
+      amount,
+      intervalDays,
+    };
     this.plans.set(plan.id, plan);
     if (!this.eventBus) {
       this.logger.debug(
@@ -78,7 +84,9 @@ export class CreatorsService {
       if (!isNaN(cursorId)) {
         allPlans = allPlans.filter((p) => p.id > cursorId);
       } else {
-        this.logger.debug(`Ignoring invalid plans pagination cursor "${cursor}"`);
+        this.logger.debug(
+          `Ignoring invalid plans pagination cursor "${cursor}"`,
+        );
       }
     }
 
@@ -106,7 +114,9 @@ export class CreatorsService {
     pagination: PaginationDto,
   ): PaginatedResponseDto<PlanDto> {
     const { cursor, limit = 20 } = pagination;
-    let creatorPlans = this.getCreatorPlans(creator).sort((a, b) => a.id - b.id);
+    let creatorPlans = this.getCreatorPlans(creator).sort(
+      (a, b) => a.id - b.id,
+    );
 
     if (cursor) {
       const cursorId = parseInt(cursor, 10);
@@ -144,7 +154,9 @@ export class CreatorsService {
    * syncStatus='unknown' so callers always receive a valid response.
    */
   async listCreators(mergeChain = false): Promise<PlanDto[]> {
-    const allPlans = Array.from(this.plans.values()).sort((a, b) => a.id - b.id);
+    const allPlans = Array.from(this.plans.values()).sort(
+      (a, b) => a.id - b.id,
+    );
 
     if (!mergeChain) {
       return allPlans.map((p) => Object.assign(new PlanDto(), p));
@@ -152,7 +164,9 @@ export class CreatorsService {
 
     const contractId = this.chainReader?.getConfiguredContractId();
     if (!contractId || !this.chainReader) {
-      this.logger.debug('listCreators: chain reader not configured, skipping merge');
+      this.logger.debug(
+        'listCreators: chain reader not configured, skipping merge',
+      );
       return allPlans.map((p) =>
         Object.assign(new PlanDto(), { ...p, syncStatus: 'unknown' }),
       );
@@ -163,7 +177,10 @@ export class CreatorsService {
 
     const merged = await Promise.all(
       allPlans.map(async (plan) => {
-        const chainResult = await this.chainReader!.readPlan(contractId, plan.id);
+        const chainResult = await this.chainReader!.readPlan(
+          contractId,
+          plan.id,
+        );
         if (!chainResult.ok) {
           this.logger.warn(
             `listCreators: chain read failed for plan ${plan.id}: ${chainResult.error}`,
@@ -204,6 +221,8 @@ export class CreatorsService {
       .createQueryBuilder('user')
       .leftJoin('user.creator', 'creator')
       .addSelect('creator.bio', 'creator_bio')
+      .addSelect('creator.is_verified', 'creator_is_verified')
+      .addSelect('creator.followers_count', 'creator_followers_count')
       .where('user.is_creator = :isCreator', { isCreator: true })
       .orderBy('user.username', 'ASC')
       .take(limit + 1);
@@ -216,15 +235,21 @@ export class CreatorsService {
     }
 
     if (cursor) {
-      qb.andWhere('user.username > :cursorUsername', { cursorUsername: cursor });
+      qb.andWhere('user.username > :cursorUsername', {
+        cursorUsername: cursor,
+      });
     }
 
     let entities: User[];
-    let raw: { creator_bio?: string }[];
+    let raw: {
+      creator_bio?: string;
+      creator_is_verified?: boolean;
+      creator_followers_count?: number;
+    }[];
     try {
       const result = await qb.getRawAndEntities();
       entities = result.entities;
-      raw = result.raw as { creator_bio?: string }[];
+      raw = result.raw as typeof raw;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Creator search failed: ${message}`);
@@ -240,6 +265,12 @@ export class CreatorsService {
     const data = entities.map((user, index) => {
       const dto = new PublicCreatorDto(user, user.creator);
       dto.bio = raw[index]?.creator_bio ?? user.creator?.bio ?? null;
+      dto.is_verified =
+        raw[index]?.creator_is_verified ?? user.creator?.is_verified ?? false;
+      dto.followers_count =
+        raw[index]?.creator_followers_count ??
+        user.creator?.followers_count ??
+        0;
       return dto;
     });
 
@@ -254,5 +285,46 @@ export class CreatorsService {
     );
 
     return new PaginatedResponseDto(data, limit, nextCursor, hasMore);
+  }
+
+  /**
+   * Look up a single public creator profile by exact username match.
+   * Used by the creator profile page to render real data (and 404 for
+   * unknown usernames) instead of the client-side prefix search used by
+   * discovery.
+   */
+  async getCreatorByUsername(
+    username: string,
+  ): Promise<PublicCreatorDto | null> {
+    const qb = this.userRepository
+      .createQueryBuilder('user')
+      .leftJoin('user.creator', 'creator')
+      .addSelect('creator.bio', 'creator_bio')
+      .addSelect('creator.is_verified', 'creator_is_verified')
+      .addSelect('creator.followers_count', 'creator_followers_count')
+      .where('user.is_creator = :isCreator', { isCreator: true })
+      .andWhere('LOWER(user.username) = :username', {
+        username: username.trim().toLowerCase(),
+      });
+
+    const result = await qb.getRawAndEntities();
+    const user = result.entities[0];
+    if (!user) return null;
+
+    const raw = result.raw[0] as
+      | {
+          creator_bio?: string;
+          creator_is_verified?: boolean;
+          creator_followers_count?: number;
+        }
+      | undefined;
+
+    const dto = new PublicCreatorDto(user, user.creator);
+    dto.bio = raw?.creator_bio ?? user.creator?.bio ?? null;
+    dto.is_verified =
+      raw?.creator_is_verified ?? user.creator?.is_verified ?? false;
+    dto.followers_count =
+      raw?.creator_followers_count ?? user.creator?.followers_count ?? 0;
+    return dto;
   }
 }

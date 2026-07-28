@@ -63,12 +63,16 @@ cargo test --all-features --manifest-path Cargo.toml
 ```
 
 **Key Step: Verify WASM artifacts**
-- Ensures all 5 expected contracts are built:
-  - subscription.wasm
+- Ensures all 9 production contracts are built and verified (magic bytes + non-empty):
   - myfans_token.wasm
-  - content_access.wasm
   - creator_registry.wasm
+  - creator_deposits.wasm
+  - creator_earnings.wasm
+  - subscription.wasm
+  - content_access.wasm
+  - content_likes.wasm
   - earnings.wasm
+  - treasury.wasm
 
 ### Secondary: `.github/workflows/ci.yml`
 

@@ -16,6 +16,8 @@ This contract manages user likes for content items, storing:
 | Code | Variant | Description |
 |------|---------|-------------|
 | 1 | `NotLiked` | User has not liked this content; `unlike` was called without a prior `like` |
+| 2 | `AlreadyInitialized` | Contract was already initialized |
+| 3 | `CapacityExceeded` | User has reached the maximum number of likes (100) |
 
 ---
 
@@ -165,10 +167,10 @@ if next1 > 0 {
 
 ## Storage Model
 
-**Keys:**
-- `("likes", content_id)` → `Map<Address, bool>` — Set of users who liked this content
-- `("count", content_id)` → `u32` — Aggregate count of likes
-- `("user_likes", user)` → `Vec<u32>` — List of content IDs liked by user (for pagination)
+**Keys (DataKey enum):**
+- `DataKey::LikesMap(content_id)` → `Map<Address, bool>` — Set of users who liked this content
+- `DataKey::Count(content_id)` → `u32` — Aggregate count of likes
+- `DataKey::UserLikes(user)` → `Vec<u32>` — List of content IDs liked by user (for pagination, max 100 per user)
 
 **Rationale:**
 - Separate count storage enables O(1) `like_count()` queries
@@ -228,6 +230,7 @@ assert_eq!(client.like_count(&content_id), 0);
 **Current Limits:**
 - Soroban storage: ~1MB per contract instance
 - Map operations: O(log n) complexity
+- Per-user like list: max 100 items (`MAX_USER_LIKES`)
 - Recommended: < 100k total likes per contract instance
 
 ---

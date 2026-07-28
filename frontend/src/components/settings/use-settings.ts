@@ -15,6 +15,7 @@ const creatorSections: SettingsNavItem[] = [
   { id: "payout", label: "Payout Settings" },
   { id: "content", label: "Content Preferences" },
   { id: "visibility", label: "Creator Visibility" },
+  { id: "referral", label: "Referral Code" },
 ];
 
 const fanSections: SettingsNavItem[] = [

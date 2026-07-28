@@ -4,6 +4,20 @@ use soroban_sdk::{
     Symbol,
 };
 
+/// ── Event topic constants ──────────────────────────────────────────────
+/// Stable strings used as the first topic in Soroban events emitted by this
+/// contract.  Indexers should key on these constants rather than raw string
+/// literals so that renaming only requires a single point of change.
+///
+/// | Topic                     | Emitted from  | Data              |
+/// |---------------------------|---------------|-------------------|
+/// | `ContractInitialized`     | `init`        | `()`              |
+/// | `PlatformFeeUpdated`      | `set_platform_fee` | updated bps  |
+/// | `EarningsDeposited`       | `deposit`     | net deposit amount|
+/// | `EarningsWithdrawn`       | `withdraw`    | withdrawal amount |
+const TOPIC_INITIALIZED: &str = "ContractInitialized";
+const TOPIC_FEE_UPDATED: &str = "PlatformFeeUpdated";
+
 #[derive(Clone)]
 #[contracttype]
 pub enum DataKey {
@@ -112,6 +126,9 @@ impl CreatorDeposits {
         if fee > 0 {
             token_client.transfer(&creator, &treasury, &fee);
         }
+        if net > 0 {
+            token_client.transfer(&creator, &env.current_contract_address(), &net);
+        }
 
         // Optimization: Read balance once and update in single write;
         // use unwrap_or(0) to avoid panicking on first deposit.
@@ -171,6 +188,9 @@ impl CreatorDeposits {
             panic_with_error!(&env, Error::InvalidFeeBps);
         }
         env.storage().instance().set(&DataKey::PlatformFeeBps, &bps);
+
+        env.events()
+            .publish((Symbol::new(&env, TOPIC_FEE_UPDATED),), bps);
     }
 
     pub fn get_balance(env: Env, creator: Address) -> i128 {
@@ -193,9 +213,10 @@ mod test {
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Events, MockAuth, MockAuthInvoke},
+        token::StellarAssetClient,
         vec,
-        xdr::SorobanAuthorizationEntry,
-        Env, IntoVal, Symbol, TryFromVal,
+        xdr::{ScAddress, SorobanAuthorizationEntry},
+        Env, Error as SorobanError, IntoVal, Symbol, TryFromVal, TryIntoVal,
     };
 
     const EMPTY_AUTHS: &[SorobanAuthorizationEntry] = &[];
@@ -230,22 +251,20 @@ mod test {
         assert_eq!(client.get_balance(&creator), 950); // 1000 - 50 fee
 
         let events = env.events().all();
-        assert_eq!(
-            events,
-            vec![
-                &env,
-                (
-                    contract_id.clone(),
-                    (
-                        Symbol::new(&env, "EarningsDeposited"),
-                        creator.clone(),
-                        token.clone()
-                    )
-                        .into_val(&env),
-                    950i128.into_val(&env)
-                )
-            ]
-        );
+        // events[0] is the ContractInitialized event from init()
+        // events[1] is the EarningsDeposited event
+        assert!(events.len() >= 2);
+        let deposit_event = events.get(events.len() - 1).unwrap();
+        assert_eq!(deposit_event.0, contract_id.clone());
+        let expected_topics = (
+            Symbol::new(&env, "EarningsDeposited"),
+            creator.clone(),
+            token.clone(),
+        )
+            .into_val(&env);
+        assert_eq!(deposit_event.1, expected_topics);
+        let data: i128 = i128::try_from_val(&env, &deposit_event.2).unwrap();
+        assert_eq!(data, 950);
     }
 
     #[test]
@@ -360,28 +379,19 @@ mod test {
 
         assert_eq!(client.get_balance(&creator), 1000);
 
-        // Let's test the event being output from deposit before clearing it
-        let events_deposit = env.events().all();
-        assert_eq!(
-            events_deposit,
-            vec![
-                &env,
-                (
-                    contract_id.clone(),
-                    (
-                        Symbol::new(&env, "EarningsDeposited"),
-                        creator.clone(),
-                        token.clone()
-                    )
-                        .into_val(&env),
-                    1000i128.into_val(&env)
-                )
-            ]
-        );
-
-        // Reset the event buffer or we just have two events
-        let mut events_vec = env.events().all();
-        events_vec.remove(0); // This just shows how you can clear, better to check length
+        // Verify deposit event (last event = EarningsDeposited since init also emits an event)
+        let events = env.events().all();
+        assert!(events.len() >= 2);
+        let dep_event = events.get(events.len() - 1).unwrap();
+        let expected_dep_topics = (
+            Symbol::new(&env, "EarningsDeposited"),
+            creator.clone(),
+            token.clone(),
+        )
+            .into_val(&env);
+        assert_eq!(dep_event.1, expected_dep_topics);
+        let dep_data: i128 = i128::try_from_val(&env, &dep_event.2).unwrap();
+        assert_eq!(dep_data, 1000);
 
         client.withdraw(&creator, &token, &500);
 
@@ -508,3 +518,7 @@ mod test {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "property_tests.rs"]
+mod property_tests;

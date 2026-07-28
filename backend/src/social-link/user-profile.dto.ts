@@ -5,23 +5,38 @@ import { Expose } from 'class-transformer';
  * SocialLinksResponseDto
  *
  * Nested object returned inside profile responses.
+ * All fields are optional because create/update endpoints return only the
+ * fields that were supplied in the request body.
  */
 export class SocialLinksResponseDto {
-  @ApiPropertyOptional({ example: 'https://johndoe.com' })
+  @ApiPropertyOptional({ example: 'https://johndoe.com', nullable: true })
   @Expose()
   websiteUrl: string | null;
 
-  @ApiPropertyOptional({ example: 'johndoe' })
+  @ApiPropertyOptional({ example: 'johndoe', nullable: true })
   @Expose()
   twitterHandle: string | null;
 
-  @ApiPropertyOptional({ example: 'johndoe' })
+  @ApiPropertyOptional({ example: 'johndoe', nullable: true })
   @Expose()
   instagramHandle: string | null;
 
-  @ApiPropertyOptional({ example: 'https://linktr.ee/johndoe' })
+  @ApiPropertyOptional({ example: 'https://linktr.ee/johndoe', nullable: true })
   @Expose()
   otherLink: string | null;
+}
+
+/**
+ * SocialLinksListItemDto
+ *
+ * Shape of each item returned by the GET /social-links list endpoint.
+ * Extends SocialLinksResponseDto with a stable record ID. All link fields
+ * are always present (never omitted), though each may be null.
+ */
+export class SocialLinksListItemDto extends SocialLinksResponseDto {
+  @ApiProperty({ example: '1', description: 'Record ID' })
+  @Expose()
+  id: string;
 }
 
 /**

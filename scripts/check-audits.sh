@@ -211,9 +211,11 @@ done
 echo ""
 if [ $FAILED -eq 1 ]; then
   echo -e "${RED}❌ Audit check FAILED - Critical or high severity vulnerabilities detected${NC}"
+  echo "::error::Audit check failed — critical or high severity vulnerabilities detected"
   echo -e "${YELLOW}💡 To document exceptions, add them to an audit ignore file.${NC}"
   exit 1
 else
   echo -e "${GREEN}✅ Audit check PASSED${NC}"
+  echo "::warning::Audit check passed — review any moderate vulnerabilities in the summary"
   exit 0
 fi
