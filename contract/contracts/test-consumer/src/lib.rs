@@ -441,10 +441,11 @@ mod test {
             env: &'a Env,
             admin: &Address,
             treasury: &Address,
+            canonical_token: &Address,
         ) -> CreatorDepositsClient<'a> {
             let id = env.register_contract(None, CreatorDeposits);
             let client = CreatorDepositsClient::new(env, &id);
-            client.init(admin, &500u32, treasury); // 5% fee
+            client.init(admin, &500u32, treasury, canonical_token); // 5% fee
             client
         }
 
@@ -458,7 +459,7 @@ mod test {
             let admin = Address::generate(&env);
             let treasury = Address::generate(&env);
             let creator = Address::generate(&env);
-            let deposits = deploy_creator_deposits(&env, &admin, &treasury);
+            let deposits = deploy_creator_deposits(&env, &admin, &treasury, &token.address);
 
             // Mint tokens to creator so they can deposit
             token.mint(&creator, &10_000i128);
@@ -489,7 +490,7 @@ mod test {
             let admin = Address::generate(&env);
             let treasury = Address::generate(&env);
             let creator = Address::generate(&env);
-            let deposits = deploy_creator_deposits(&env, &admin, &treasury);
+            let deposits = deploy_creator_deposits(&env, &admin, &treasury, &token.address);
 
             token.mint(&creator, &1000i128);
             deposits.deposit(&creator, &token.address, &1000i128);
@@ -514,10 +515,10 @@ mod test {
             let env = Env::default();
             env.mock_all_auths();
 
-            let (_, _) = deploy_token(&env);
+            let (token, _) = deploy_token(&env);
             let admin = Address::generate(&env);
             let treasury = Address::generate(&env);
-            let deposits = deploy_creator_deposits(&env, &admin, &treasury);
+            let deposits = deploy_creator_deposits(&env, &admin, &treasury, &token.address);
 
             // Try to set fee to 10000 (100%) which is invalid
             let result = deposits.try_set_platform_fee(&10000u32);
@@ -540,7 +541,7 @@ mod test {
             let admin = Address::generate(&env);
             let treasury = Address::generate(&env);
             let creator = Address::generate(&env);
-            let deposits = deploy_creator_deposits(&env, &admin, &treasury);
+            let deposits = deploy_creator_deposits(&env, &admin, &treasury, &token.address);
 
             token.mint(&creator, &10_000i128);
 
@@ -571,7 +572,7 @@ mod test {
             // Deploy with 0% fee
             let id = env.register_contract(None, CreatorDeposits);
             let deposits = CreatorDepositsClient::new(&env, &id);
-            deposits.init(&admin, &0u32, &treasury);
+            deposits.init(&admin, &0u32, &treasury, &token.address);
 
             token.mint(&creator, &1000i128);
             deposits.deposit(&creator, &token.address, &1000i128);

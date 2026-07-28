@@ -94,9 +94,7 @@ pub mod creator_earnings {
 pub mod creator_deposits {
     pub const INVALID_FEE_BPS: u32 = 1;
     pub const INSUFFICIENT_BALANCE: u32 = 2;
-    pub const ADMIN_NOT_INITIALIZED: u32 = 3;
-    pub const PLATFORM_FEE_NOT_INITIALIZED: u32 = 4;
-    pub const PLATFORM_TREASURY_NOT_INITIALIZED: u32 = 5;
+    pub const TOKEN_NOT_ALLOWED: u32 = 6;
 }
 
 /// Error codes for the **myfans-contract** (main contract).
