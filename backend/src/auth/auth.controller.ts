@@ -16,10 +16,10 @@ import { WalletAuthService } from './wallet-auth.service';
 import { RequestChallengeDto, VerifyChallengeDto } from './wallet-auth.dto';
 import { WalletAddressDto } from './wallet-address.dto';
 import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
-import { PublicGuard } from '../auth-module/guards/public.guard';
-import { IS_PUBLIC_KEY } from '../common/decorators/public.decorator';
+import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('auth')
+@Public()
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
   private readonly serverNetwork = process.env.STELLAR_NETWORK ?? 'testnet';
