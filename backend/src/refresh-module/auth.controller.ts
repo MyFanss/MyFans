@@ -13,14 +13,19 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { RefreshTokenService, TokenPair } from './refresh-token.service';
-import { RefreshTokenDto, LogoutDto, TokenResponseDto } from './refresh-token.dto';
+import { RefreshTokenService } from './refresh-token.service';
+import {
+  RefreshTokenDto,
+  LogoutDto,
+  TokenResponseDto,
+} from './refresh-token.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('auth')
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
-  constructor(private readonly refreshTokenService: RefreshTokenService) { }
+  constructor(private readonly refreshTokenService: RefreshTokenService) {}
 
   /**
    * POST /auth/refresh
@@ -28,6 +33,7 @@ export class AuthController {
    * The old refresh token is invalidated (rotation).
    */
   @Post('refresh')
+  @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access token using a refresh token' })
   @ApiResponse({ status: 200, type: TokenResponseDto })
@@ -50,7 +56,10 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Invalidate refresh token (logout)' })
   @ApiResponse({ status: 204, description: 'Logged out successfully' })
-  async logout(@Body() dto: LogoutDto, @Request() req: any): Promise<void> {
+  async logout(
+    @Body() dto: LogoutDto,
+    @Request() req: { user: { userId: string } },
+  ): Promise<void> {
     if (dto.all_devices) {
       await this.refreshTokenService.invalidateAll(req.user.userId);
     } else {

@@ -19,7 +19,18 @@ Advanced subscription with ledger expiry.
 | `set_fee_bps` | `new_fee_bps: u32` | `()` | admin | `soroban contract invoke ... set_fee_bps -- 250` | `("fee_updated",) -> (old, new)` |
 | `is_paused` | `()` | `bool` | none | `soroban contract invoke ... is_paused` | None |
 | `get_expiry_unix` | `fan: Address, creator: Address` | `(u64, u64)` | none | `soroban contract invoke ... get_expiry_unix -- FAN CREATOR` | None |
+| `ping` | `()` | `u32` (ledger sequence) | none | `soroban contract invoke ... ping` | None |
 
 ## Overview
 Subscription plans with extend/cancel; overlaps main contract. Uses ledger seq for expiry.
+
+## Health Check
+
+`ping()` is a zero-auth, read-only function that returns the current ledger sequence number.
+It is the recommended probe for verifying Soroban RPC / contract connectivity:
+
+- **200 OK** — any successful invocation means the RPC node is reachable and the contract is live.
+- **503 Service Unavailable** — an invocation error or network failure means the RPC is unreachable.
+
+A returned sequence of `0` that never advances may indicate a stale or forked node.
 

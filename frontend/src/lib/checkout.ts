@@ -2,8 +2,11 @@
  * Checkout API Service
  * Handles all checkout-related API calls to the backend
  */
+import { getApiBaseUrl } from '@/lib/api/base-url';
+import { getCsrfToken } from '@/lib/csrf';
+import { getAuthHeaders } from '@/lib/api-utils';
 
-const API_BASE_URL = "http://localhost:3000";
+const API_BASE_URL = getApiBaseUrl();
 
 export interface CreateCheckoutRequest {
   fanAddress: string;
@@ -102,10 +105,14 @@ export interface BalanceValidation {
 export async function createCheckout(
   request: CreateCheckoutRequest
 ): Promise<CheckoutResponse> {
+  const csrfToken = await getCsrfToken();
   const response = await fetch(`${API_BASE_URL}/subscriptions/checkout`, {
     method: "POST",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      "x-csrf-token": csrfToken,
+      ...getAuthHeaders(),
     },
     body: JSON.stringify(request),
   });
@@ -226,12 +233,16 @@ export async function validateBalance(
   assetCode: string,
   amount: string
 ): Promise<BalanceValidation> {
+  const csrfToken = await getCsrfToken();
   const response = await fetch(
     `${API_BASE_URL}/subscriptions/checkout/${checkoutId}/validate`,
     {
       method: "POST",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
+        "x-csrf-token": csrfToken,
+        ...getAuthHeaders(),
       },
       body: JSON.stringify({ assetCode, amount }),
     }
@@ -254,12 +265,16 @@ export async function confirmSubscription(
   checkoutId: string,
   txHash?: string
 ): Promise<CheckoutResult> {
+  const csrfToken = await getCsrfToken();
   const response = await fetch(
     `${API_BASE_URL}/subscriptions/checkout/${checkoutId}/confirm`,
     {
       method: "POST",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
+        "x-csrf-token": csrfToken,
+        ...getAuthHeaders(),
       },
       body: JSON.stringify({ checkoutId, txHash }),
     }
@@ -283,12 +298,16 @@ export async function failCheckout(
   error: string,
   rejected: boolean = false
 ): Promise<CheckoutResult> {
+  const csrfToken = await getCsrfToken();
   const response = await fetch(
     `${API_BASE_URL}/subscriptions/checkout/${checkoutId}/fail`,
     {
       method: "POST",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
+        "x-csrf-token": csrfToken,
+        ...getAuthHeaders(),
       },
       body: JSON.stringify({ error, rejected }),
     }

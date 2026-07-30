@@ -85,6 +85,10 @@ chmod +x setup.sh
 - **Backend:** `cd backend && npm test`
 - **Contracts:** `cd contract && cargo test`
 
+## API Reference
+
+For a hands-on guide to running the backend, authenticating, and making your first API calls, see [`backend/docs/API_QUICKSTART.md`](backend/docs/API_QUICKSTART.md).
+
 ## Code Style
 
 - Follow existing patterns in the repository

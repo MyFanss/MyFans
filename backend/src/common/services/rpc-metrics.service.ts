@@ -24,12 +24,21 @@ export interface RpcMetricsSnapshot {
   endpoints: RpcEndpointSummary[];
 }
 
+interface RpcMetricBucket {
+  records: RpcCallRecord[];
+  calls: number;
+  successes: number;
+  failures: number;
+  totalLatencyMs: number;
+  lastCallAt: string;
+}
+
 /** Max RPC call samples kept per method (reservoir sampling keeps memory bounded) */
 const SAMPLE_CAP = 1024;
 
 @Injectable()
 export class RpcMetricsService {
-  private readonly records = new Map<string, RpcCallRecord[]>();
+  private readonly buckets = new Map<string, RpcMetricBucket>();
 
   /**
    * Record a completed Soroban RPC call.
@@ -38,22 +47,32 @@ export class RpcMetricsService {
    * @param latencyMs  Wall-clock duration in milliseconds
    */
   record(method: string, success: boolean, latencyMs: number): void {
-    const key = method;
-    let bucket = this.records.get(key);
+    const timestamp = new Date().toISOString();
+    let bucket = this.buckets.get(method);
 
     if (!bucket) {
-      bucket = [];
-      this.records.set(key, bucket);
+      bucket = {
+        records: [],
+        calls: 0,
+        successes: 0,
+        failures: 0,
+        totalLatencyMs: 0,
+        lastCallAt: '',
+      };
+      this.buckets.set(method, bucket);
     }
 
-    // Reservoir sampling to keep memory bounded
-    if (bucket.length < SAMPLE_CAP) {
-      bucket.push({ method, success, latencyMs, timestamp: new Date().toISOString() });
+    bucket.calls += 1;
+    bucket.successes += success ? 1 : 0;
+    bucket.failures += success ? 0 : 1;
+    bucket.totalLatencyMs += latencyMs;
+    bucket.lastCallAt = timestamp;
+
+    if (bucket.records.length < SAMPLE_CAP) {
+      bucket.records.push({ method, success, latencyMs, timestamp });
     } else {
-      const idx = Math.floor(Math.random() * (bucket.length + 1));
-      if (idx < SAMPLE_CAP) {
-        bucket[idx] = { method, success, latencyMs, timestamp: new Date().toISOString() };
-      }
+      const idx = Math.floor(Math.random() * bucket.records.length);
+      bucket.records[idx] = { method, success, latencyMs, timestamp };
     }
   }
 
@@ -62,24 +81,20 @@ export class RpcMetricsService {
     const endpoints: RpcEndpointSummary[] = [];
     let totalCalls = 0;
 
-    for (const [method, bucket] of this.records) {
-      const successes = bucket.filter((r) => r.success).length;
-      const failures = bucket.filter((r) => !r.success).length;
-      const totalLatencyMs = bucket.reduce((sum, r) => sum + r.latencyMs, 0);
-      const calls = bucket.length;
-
+    for (const [method, bucket] of this.buckets) {
       endpoints.push({
         method,
-        calls,
-        successes,
-        failures,
-        totalLatencyMs,
-        avgLatencyMs: calls > 0 ? Math.round(totalLatencyMs / calls) : 0,
-        errorRate: calls > 0 ? failures / calls : 0,
-        lastCallAt: bucket.length > 0 ? bucket[bucket.length - 1].timestamp : '',
+        calls: bucket.calls,
+        successes: bucket.successes,
+        failures: bucket.failures,
+        totalLatencyMs: bucket.totalLatencyMs,
+        avgLatencyMs:
+          bucket.calls > 0 ? Math.round(bucket.totalLatencyMs / bucket.calls) : 0,
+        errorRate: bucket.calls > 0 ? bucket.failures / bucket.calls : 0,
+        lastCallAt: bucket.lastCallAt,
       });
 
-      totalCalls += calls;
+      totalCalls += bucket.calls;
     }
 
     endpoints.sort((a, b) => b.calls - a.calls);
@@ -89,6 +104,6 @@ export class RpcMetricsService {
 
   /** Reset all counters (useful in tests). */
   reset(): void {
-    this.records.clear();
+    this.buckets.clear();
   }
 }

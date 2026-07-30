@@ -210,6 +210,34 @@ describe('CorsService', () => {
                     done();
                 });
             });
+
+            it('should block origin whose host is not in CORS_ALLOWED_HOSTS', (done) => {
+                process.env.CORS_ALLOWED_ORIGINS = 'https://app.example.com';
+                process.env.CORS_ALLOWED_HOSTS = 'example.com';
+                corsService = new CorsService();
+                const options = corsService.getCorsOptions();
+                const originFunction = options.origin as (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => void;
+
+                originFunction('https://evil.com', (err, allow) => {
+                    expect(err).toBeNull();
+                    expect(allow).toBe(false);
+                    done();
+                });
+            });
+
+            it('should allow subdomain when host matches allowedHosts entry', (done) => {
+                process.env.CORS_ALLOWED_ORIGINS = 'https://app.example.com';
+                process.env.CORS_ALLOWED_HOSTS = 'example.com';
+                corsService = new CorsService();
+                const options = corsService.getCorsOptions();
+                const originFunction = options.origin as (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => void;
+
+                originFunction('https://app.example.com', (err, allow) => {
+                    expect(err).toBeNull();
+                    expect(allow).toBe(true);
+                    done();
+                });
+            });
         });
     });
 });

@@ -231,4 +231,49 @@ describe('SecurityHeadersMiddleware', () => {
             );
         });
     });
+
+    describe('helmet integration contract', () => {
+        /**
+         * These tests verify that SecurityHeadersMiddleware covers the same
+         * header surface that helmet provides, so the two layers are
+         * complementary rather than conflicting.  The actual helmet middleware
+         * is applied in main.ts before SecurityHeadersMiddleware; here we
+         * assert that our custom layer sets (or removes) every header that
+         * helmet would also touch, ensuring no header is left unset if helmet
+         * were ever removed.
+         */
+
+        it('should set X-Frame-Options to DENY (helmet frameguard equivalent)', () => {
+            middleware.use(mockRequest as Request, mockResponse as Response, mockNext);
+            expect(mockResponse.setHeader).toHaveBeenCalledWith('X-Frame-Options', 'DENY');
+        });
+
+        it('should set X-Content-Type-Options to nosniff (helmet noSniff equivalent)', () => {
+            middleware.use(mockRequest as Request, mockResponse as Response, mockNext);
+            expect(mockResponse.setHeader).toHaveBeenCalledWith('X-Content-Type-Options', 'nosniff');
+        });
+
+        it('should remove X-Powered-By (helmet hidePoweredBy equivalent)', () => {
+            middleware.use(mockRequest as Request, mockResponse as Response, mockNext);
+            expect(mockResponse.removeHeader).toHaveBeenCalledWith('X-Powered-By');
+        });
+
+        it('should set Referrer-Policy (helmet referrerPolicy equivalent)', () => {
+            middleware.use(mockRequest as Request, mockResponse as Response, mockNext);
+            expect(mockResponse.setHeader).toHaveBeenCalledWith(
+                'Referrer-Policy',
+                'strict-origin-when-cross-origin',
+            );
+        });
+
+        it('should set Content-Security-Policy (helmet CSP equivalent — env-aware override)', () => {
+            middleware.use(mockRequest as Request, mockResponse as Response, mockNext);
+            const cspCall = (mockResponse.setHeader as jest.Mock).mock.calls.find(
+                (call: string[]) => call[0] === 'Content-Security-Policy',
+            );
+            expect(cspCall).toBeDefined();
+            expect(typeof cspCall[1]).toBe('string');
+            expect(cspCall[1].length).toBeGreaterThan(0);
+        });
+    });
 });

@@ -8,14 +8,13 @@ import {
   markAllNotificationsRead,
   deleteNotification,
   MOCK_NOTIFICATIONS,
+  shouldUseMockNotifications,
 } from '@/lib/notifications';
 import NotificationItem from './NotificationItem';
 import NotificationDetail from './NotificationDetail';
 import NotificationSkeleton from '../ui/NotificationSkeleton';
 
 type Filter = 'all' | 'unread';
-
-// USE_MOCK is evaluated dynamically to allow tests to override it.
 
 export default function NotificationInbox() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -28,7 +27,7 @@ export default function NotificationInbox() {
     setLoading(true);
     setError(null);
     try {
-      const useMock = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS !== 'false';
+      const useMock = shouldUseMockNotifications();
       const data = useMock
         ? MOCK_NOTIFICATIONS
         : await fetchNotifications(filter === 'unread');
@@ -48,24 +47,21 @@ export default function NotificationInbox() {
       prev.map((n: Notification) => (n.id === id ? { ...n, is_read: isRead } : n)),
     );
     if (selected?.id === id) setSelected((s: Notification | null) => s ? { ...s, is_read: isRead } : s);
-    const useMock = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS !== 'false';
-    if (!useMock) {
+    if (!shouldUseMockNotifications()) {
       await markNotificationRead(id, isRead).catch(() => load());
     }
   }, [selected, load]);
 
   const handleMarkAllRead = useCallback(async () => {
     setNotifications((prev: Notification[]) => prev.map((n: Notification) => ({ ...n, is_read: true })));
-    const useMock = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS !== 'false';
-    if (!useMock) {
+    if (!shouldUseMockNotifications()) {
       await markAllNotificationsRead().catch(() => load());
     }
   }, [load]);
 
   const handleDelete = useCallback(async (id: string) => {
     setNotifications((prev: Notification[]) => prev.filter((n: Notification) => n.id !== id));
-    const useMock = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS !== 'false';
-    if (!useMock) {
+    if (!shouldUseMockNotifications()) {
       await deleteNotification(id).catch(() => load());
     }
   }, [load]);

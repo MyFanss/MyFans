@@ -91,71 +91,43 @@ export class CorsService {
     } = this.config;
 
     return {
-      origin: this.getOriginFunction(allowedOrigins),
+      origin: this.buildOriginChecker(allowedOrigins, allowedHosts),
       methods: allowedMethods,
       allowedHeaders,
       exposedHeaders,
       credentials,
       maxAge,
-      // Host-based filtering for additional protection
-      ...(allowedHosts && {
-        origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-          // Always allow requests without origin (e.g., mobile apps, curl)
-          if (!origin) {
-            return callback(null, true);
-          }
-
-          try {
-            const url = new URL(origin);
-            const host = url.hostname;
-
-            // Check if host is in allowed list
-            if (allowedHosts && allowedHosts.length > 0) {
-              const isAllowed = allowedHosts.some(
-                (allowedHost) => host === allowedHost || host.endsWith(`.${allowedHost}`),
-              );
-              if (!isAllowed) {
-                return callback(null, false);
-              }
-            }
-
-            // Check if origin is in allowed origins (for more granular control)
-            if (allowedOrigins && allowedOrigins.length > 0) {
-              const isAllowed = allowedOrigins.includes(origin);
-              return callback(null, isAllowed);
-            }
-
-            return callback(null, true);
-          } catch {
-            // Invalid URL - block the request
-            return callback(null, false);
-          }
-        },
-      }),
     };
   }
 
-  private getOriginFunction(allowedOrigins: string[]): CorsOptions['origin'] {
-    // If no allowed origins specified in production, block all CORS requests
+  private buildOriginChecker(
+    allowedOrigins: string[],
+    allowedHosts: string[] | undefined,
+  ): CorsOptions['origin'] {
     if (allowedOrigins.length === 0 && process.env.NODE_ENV === 'production') {
       return false;
     }
 
-    // Return function for dynamic origin checking
     return (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      // Always allow requests without origin (e.g., mobile apps, curl)
-      if (!origin) {
-        return callback(null, true);
+      if (!origin) return callback(null, true);
+
+      if (process.env.NODE_ENV !== 'production') return callback(null, true);
+
+      // Host-level check (when configured)
+      if (allowedHosts && allowedHosts.length > 0) {
+        try {
+          const host = new URL(origin).hostname;
+          const hostAllowed = allowedHosts.some(
+            (h) => host === h || host.endsWith(`.${h}`),
+          );
+          if (!hostAllowed) return callback(null, false);
+        } catch {
+          return callback(null, false);
+        }
       }
 
-      // In development, be permissive
-      if (process.env.NODE_ENV !== 'production') {
-        return callback(null, true);
-      }
-
-      // In production, check against allowlist
-      const isAllowed = allowedOrigins.includes(origin);
-      callback(null, isAllowed);
+      // Origin-level check
+      callback(null, allowedOrigins.includes(origin));
     };
   }
 

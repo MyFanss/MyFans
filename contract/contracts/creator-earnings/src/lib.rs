@@ -4,6 +4,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
     Symbol,
 };
+use myfans_lib::auth as myfans_auth;
 
 #[contracttype]
 pub enum DataKey {
@@ -40,7 +41,36 @@ pub enum Error {
     InvalidAmount = 5,
 }
 
-/// -------- Events (INLINE) --------
+/// -------- Events --------
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InitializedEvent {
+    pub admin: Address,
+    pub token: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthorizedAddedEvent {
+    pub depositor: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthorizedRemovedEvent {
+    pub depositor: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DepositEvent {
+    pub from: Address,
+    pub creator: Address,
+    pub amount: i128,
+    pub token: Address,
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WithdrawEvent {
@@ -50,6 +80,10 @@ pub struct WithdrawEvent {
 }
 
 /// Avoid magic strings
+const INITIALIZED_EVENT: &str = "initialized";
+const AUTHORIZED_ADDED_EVENT: &str = "authorized_added";
+const AUTHORIZED_REMOVED_EVENT: &str = "authorized_removed";
+const DEPOSIT_EVENT: &str = "deposit";
 const WITHDRAW_EVENT: &str = "withdraw";
 
 #[contract]
@@ -69,6 +103,14 @@ impl CreatorEarnings {
         env.storage()
             .instance()
             .set(&DataKey::Token, &token_address);
+
+        env.events().publish(
+            (Symbol::new(&env, INITIALIZED_EVENT),),
+            InitializedEvent {
+                admin,
+                token: token_address,
+            },
+        );
     }
 
     /// Add authorized depositor contract (admin only)
@@ -78,7 +120,31 @@ impl CreatorEarnings {
 
         env.storage()
             .instance()
-            .set(&DataKey::AuthorizedDepositor(contract), &true);
+            .set(&DataKey::AuthorizedDepositor(contract.clone()), &true);
+
+        env.events().publish(
+            (Symbol::new(&env, AUTHORIZED_ADDED_EVENT),),
+            AuthorizedAddedEvent {
+                depositor: contract,
+            },
+        );
+    }
+
+    /// Remove authorized depositor contract (admin only)
+    pub fn remove_authorized(env: Env, contract: Address) {
+        let admin: Address = Self::get_admin(&env);
+        admin.require_auth();
+
+        env.storage()
+            .instance()
+            .remove(&DataKey::AuthorizedDepositor(contract.clone()));
+
+        env.events().publish(
+            (Symbol::new(&env, AUTHORIZED_REMOVED_EVENT),),
+            AuthorizedRemovedEvent {
+                depositor: contract,
+            },
+        );
     }
 
     /// Deposit earnings for creator
@@ -97,11 +163,39 @@ impl CreatorEarnings {
         token_client.transfer(&from, &env.current_contract_address(), &amount);
 
         let balance = Self::balance(env.clone(), creator.clone());
-        let new_balance = balance + amount;
+        let new_balance = balance
+            .checked_add(amount)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::InvalidAmount));
 
         env.storage()
             .instance()
             .set(&DataKey::Balance(creator.clone()), &new_balance);
+
+        env.events().publish(
+            (Symbol::new(&env, DEPOSIT_EVENT),),
+            DepositEvent {
+                from,
+                creator,
+                amount,
+                token: token_address,
+            },
+        );
+    }
+
+    /// Get admin address (view function)
+    pub fn admin(env: Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)
+    }
+
+    /// Get token address (view function)
+    pub fn token(env: Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Token)
+            .ok_or(Error::NotInitialized)
     }
 
     /// Get creator balance
@@ -112,7 +206,7 @@ impl CreatorEarnings {
             .unwrap_or(0)
     }
 
-    /// Withdraw earnings (WITH EVENT)
+    /// Withdraw earnings
     pub fn withdraw(env: Env, creator: Address, amount: i128) {
         if amount <= 0 {
             panic_with_error!(&env, Error::InvalidAmount);
@@ -120,13 +214,12 @@ impl CreatorEarnings {
 
         creator.require_auth();
 
+        let token_address = Self::get_token(&env);
         let current_balance = Self::balance(env.clone(), creator.clone());
 
         if current_balance < amount {
             panic_with_error!(&env, Error::InsufficientBalance);
         }
-
-        let token_address = Self::get_token(&env);
         let token_client = token::Client::new(&env, &token_address);
 
         // transfer first (fail-fast if token fails)
@@ -141,7 +234,6 @@ impl CreatorEarnings {
             .instance()
             .set(&DataKey::Balance(creator.clone()), &new_balance);
 
-        // ✅ Typed event emission
         env.events().publish(
             (Symbol::new(&env, WITHDRAW_EVENT),),
             WithdrawEvent {
@@ -183,9 +275,13 @@ impl CreatorEarnings {
             return;
         }
 
+        // Emit unauthorized event using myfans-lib helper
+        myfans_auth::emit_unauthorized_caller_event(env, caller, &Symbol::new(env, "deposit"));
         panic_with_error!(env, Error::NotAuthorized);
     }
 }
 
+#[cfg(test)]
+mod property_tests;
 #[cfg(test)]
 mod test;

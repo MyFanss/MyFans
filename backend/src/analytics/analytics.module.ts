@@ -7,5 +7,6 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
   imports: [SubscriptionsModule],
   controllers: [AnalyticsController],
   providers: [AnalyticsService],
+  exports: [AnalyticsService],
 })
 export class AnalyticsModule {}

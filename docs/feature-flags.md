@@ -2,6 +2,23 @@
 
 Frontend feature flags in `frontend/` are resolved at runtime and fail closed by default. If a flag is missing, the remote endpoint is unavailable, or a value is invalid, the feature stays off.
 
+## Single source of truth
+
+**Use only** `frontend/src/lib/feature-flags.ts`.
+
+The legacy duplicate module `frontend/src/lib/featureFlags.ts` was removed. All imports must use:
+
+```ts
+import { FeatureFlag, isFeatureEnabled } from '@/lib/feature-flags';
+```
+
+Do not reintroduce a second flag registry. The React gate components both read this module:
+
+| Component | Path | When to use |
+| --- | --- | --- |
+| `FeatureGate` | `frontend/src/components/FeatureGate.tsx` | Preferred — uses `FeatureFlagsProvider` / `useFeatureFlag` |
+| `FeatureFlag` | `frontend/src/components/FeatureFlag.tsx` | Thin sync gate for simple examples; still backed by `feature-flags.ts` |
+
 ## Architecture
 
 - Central flag registry: `frontend/src/lib/feature-flags.ts`
@@ -12,7 +29,7 @@ Frontend feature flags in `frontend/` are resolved at runtime and fail closed by
 Resolution order for each flag:
 
 1. Remote JSON from `NEXT_PUBLIC_FEATURE_FLAGS_URL`
-2. Environment variable `NEXT_PUBLIC_FLAG_<FLAG_NAME>`
+2. Environment variable `NEXT_PUBLIC_FLAG_<FLAG_NAME>` (or the flag's documented `envKey`)
 3. `localStorage` override `flags:<flag-name>` when local overrides are allowed
 4. Default `false`
 
@@ -20,11 +37,15 @@ When `NEXT_PUBLIC_FEATURE_FLAGS_URL` is configured, the client re-fetches the re
 
 ## Current Flags
 
-| Flag key | Purpose | Default |
-| --- | --- | --- |
-| `bookmarks` | Shows bookmark controls on creator discovery and subscribe flows | `false` |
-| `earnings_withdrawals` | Enables the earnings withdrawal panel | `false` |
-| `earnings_fee_transparency` | Enables the fee transparency card on the earnings page | `false` |
+| Flag key | Purpose | Default | Env key |
+| --- | --- | --- | --- |
+| `bookmarks` | Shows bookmark controls on creator discovery and subscribe flows | `false` | `NEXT_PUBLIC_FLAG_BOOKMARKS` |
+| `earnings_withdrawals` | Enables the earnings withdrawal panel | `false` | `NEXT_PUBLIC_FLAG_EARNINGS_WITHDRAWALS` |
+| `earnings_fee_transparency` | Enables the fee transparency card on the earnings page | `false` | `NEXT_PUBLIC_FLAG_EARNINGS_FEE_TRANSPARENCY` |
+| `referral_codes` | Enables referral / invite code input during checkout | `false` | `NEXT_PUBLIC_FLAG_REFERRAL_CODES` |
+| `newSubscriptionFlow` | Enables the new subscription checkout flow | `false` | `NEXT_PUBLIC_FEATURE_NEW_SUBSCRIPTION_FLOW` |
+| `cryptoPayments` | Enables crypto payment options in checkout | `false` | `NEXT_PUBLIC_FEATURE_CRYPTO_PAYMENTS` |
+| `walletConnect` | Enables WalletConnect option (stubbed until provider lands) | `false` | `NEXT_PUBLIC_FEATURE_WALLET_CONNECT` |
 
 ## Remote JSON Format
 
@@ -34,7 +55,8 @@ Point `NEXT_PUBLIC_FEATURE_FLAGS_URL` at a JSON document with either shape:
 {
   "bookmarks": true,
   "earnings_withdrawals": false,
-  "earnings_fee_transparency": true
+  "earnings_fee_transparency": true,
+  "walletConnect": false
 }
 ```
 
@@ -45,7 +67,8 @@ or:
   "flags": {
     "bookmarks": true,
     "earnings_withdrawals": false,
-    "earnings_fee_transparency": true
+    "earnings_fee_transparency": true,
+    "walletConnect": false
   }
 }
 ```

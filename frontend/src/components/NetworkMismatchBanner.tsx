@@ -45,7 +45,7 @@ export default function NetworkMismatchBanner({
             <span className="font-mono font-medium">{detected}</span> but this
             app requires{' '}
             <span className="font-mono font-medium">{expected}</span>. Switch
-            networks in Freighter to continue.
+            networks in your wallet to continue.
           </p>
         </div>
       </div>

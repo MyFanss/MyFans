@@ -1,6 +1,5 @@
 import { createAppError } from '@/types/errors';
-
-declare const process: { env: { NEXT_PUBLIC_API_URL?: string } };
+import { getVersionedApiBaseUrl } from '@/lib/api/base-url';
 
 export interface EarningsSummary {
   total_earnings: string;
@@ -87,12 +86,11 @@ export interface ReconciliationReport {
   total_pages: number;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
   try {
-    const response = await fetch(`${API_BASE}${endpoint}`, {
+    const response = await fetch(`${getVersionedApiBaseUrl()}${endpoint}`, {
       ...options,
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         ...options?.headers,

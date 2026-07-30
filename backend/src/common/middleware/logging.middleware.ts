@@ -24,6 +24,30 @@ export class LoggingMiddleware implements NestMiddleware {
       `[${correlationId}] [${requestId}] Incoming Request: ${method} ${originalUrl} - IP: ${ip ?? ''} - Headers: ${JSON.stringify(redactedHeaders)} - Body: ${JSON.stringify(redactedBody)}`,
     );
 
+    // Store response data by intercepting json() and send() methods
+    let responseBody: unknown = undefined;
+    const originalJson = res.json.bind(res);
+    const originalSend = res.send.bind(res);
+
+    res.json = function (data: any) {
+      responseBody = data;
+      return originalJson(data);
+    };
+
+    res.send = function (data: any) {
+      // Try to parse if string looks like JSON
+      if (typeof data === 'string' && data.startsWith('{')) {
+        try {
+          responseBody = JSON.parse(data);
+        } catch {
+          responseBody = data;
+        }
+      } else {
+        responseBody = data;
+      }
+      return originalSend(data);
+    };
+
     // Set up cleanup on response finish
     res.on('finish', () => {
       const { statusCode } = res;
@@ -31,7 +55,14 @@ export class LoggingMiddleware implements NestMiddleware {
       const user = (req as Request & { user?: { id?: string } }).user;
       const userId = user?.id ?? 'anonymous';
 
-      const message = `[${correlationId}] [${requestId}] Outgoing Response: ${method} ${originalUrl} - Status: ${statusCode} - Duration: ${duration}ms - User: ${userId}`;
+      // Redact response body if available
+      const redactedResponse = responseBody !== undefined ? redact(responseBody) : undefined;
+      const responseLog =
+        redactedResponse !== undefined
+          ? `${JSON.stringify(redactedResponse)}`
+          : '(no body)';
+
+      const message = `[${correlationId}] [${requestId}] Outgoing Response: ${method} ${originalUrl} - Status: ${statusCode} - Duration: ${duration}ms - User: ${userId} - Body: ${responseLog}`;
 
       if (statusCode >= 500) {
         this.logger.error(message);

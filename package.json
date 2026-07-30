@@ -1,0 +1,25 @@
+{
+  "name": "myfans",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MyFans monorepo — frontend, backend, and Soroban contracts",
+  "scripts": {
+    "install:all": "npm ci --prefix backend && npm ci --prefix frontend && npm ci --prefix contract",
+    "build": "npm run build:contract && npm run build:backend && npm run build:frontend",
+    "build:backend": "npm run build --prefix backend",
+    "build:frontend": "npm run build --prefix frontend",
+    "build:contract": "npm run build --prefix contract",
+    "build:contract:wasm": "npm run build --prefix contract",
+    "dev:backend": "npm run start:dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "lint:backend": "npm run lint --prefix backend",
+    "lint:frontend": "npm run lint --prefix frontend",
+    "test": "npm run test:backend && npm run test:frontend && npm run test:contract",
+    "test:backend": "npm test --prefix backend",
+    "test:frontend": "npm test --prefix frontend",
+    "test:contract": "npm test --prefix contract",
+    "check": "npm run lint && npm run test && npm run build",
+    "prepare": "npm ci --prefix backend && cd backend && npx husky install .husky"
+  }
+}

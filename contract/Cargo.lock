@@ -158,6 +158,7 @@ name = "content-access"
 version = "0.1.1"
 dependencies = [
  "myfans-lib",
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -165,6 +166,8 @@ dependencies = [
 name = "content-likes"
 version = "0.1.1"
 dependencies = [
+ "myfans-lib",
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -198,6 +201,7 @@ dependencies = [
 name = "creator-deposits"
 version = "0.1.1"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -205,6 +209,7 @@ dependencies = [
 name = "creator-earnings"
 version = "0.1.1"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -212,6 +217,8 @@ dependencies = [
 name = "creator-registry"
 version = "0.1.1"
 dependencies = [
+ "myfans-lib",
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -403,6 +410,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 name = "earnings"
 version = "0.1.1"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -752,6 +760,7 @@ dependencies = [
 name = "myfans-lib"
 version = "0.1.1"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -1459,6 +1468,7 @@ dependencies = [
  "earnings",
  "myfans-lib",
  "myfans-token",
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -1492,6 +1502,7 @@ dependencies = [
  "myfans-contract",
  "myfans-lib",
  "myfans-token",
+ "proptest",
  "soroban-sdk",
  "subscription",
  "treasury",
@@ -1552,6 +1563,7 @@ dependencies = [
 name = "treasury"
 version = "0.1.1"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 

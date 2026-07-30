@@ -24,12 +24,13 @@ mod cases {
         let client = MyFansTokenClient::new(env, &contract_id);
 
         let admin = Address::generate(env);
-        client.initialize(
+        let _ = client.initialize(
             &admin,
             &String::from_str(env, "MyFans Token"),
             &String::from_str(env, "MFAN"),
             &7,
             &0,
+            &admin,
         );
 
         let owner = Address::generate(env);

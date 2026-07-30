@@ -21,10 +21,10 @@ export class CreateContentDto {
   @MaxLength(2000)
   description?: string;
 
-  @ApiProperty({ description: 'IPFS CID of the content' })
+  @ApiPropertyOptional({ description: 'IPFS CID of the content — omit to auto-pin metadata' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  ipfs_cid: string;
+  ipfs_cid?: string;
 
   @ApiPropertyOptional({ description: 'Full IPFS gateway URL' })
   @IsOptional()

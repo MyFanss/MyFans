@@ -19,7 +19,18 @@ Core subscription and creator registry.
 | `cancel` | `fan: Address, creator: Address` | `()` | fan | `soroban contract invoke ... cancel -- FAN CREATOR` | `("cancelled",) -> fan` |
 | `pause` / `unpause` | `()` | `()` | admin | `soroban contract invoke ... pause --` | `("paused" / "unpaused",) -> admin` |
 | `is_paused` | `()` | `bool` | none | `soroban contract invoke ... is_paused` | None |
+| `ping` | `()` | `u32` (ledger sequence) | none | `soroban contract invoke ... ping` | None |
 
 ## Overview
 Handles creator registration, subscription plans, and basic state management. Paused state blocks mutations. Uses instance storage.
+
+## Health Check
+
+`ping()` is a zero-auth, read-only function that returns the current ledger sequence number.
+It is the recommended probe for verifying Soroban RPC / contract connectivity:
+
+- **200 OK** — any successful invocation means the RPC node is reachable and the contract is live.
+- **503 Service Unavailable** — an invocation error or network failure means the RPC is unreachable.
+
+A returned sequence of `0` that never advances may indicate a stale or forked node.
 

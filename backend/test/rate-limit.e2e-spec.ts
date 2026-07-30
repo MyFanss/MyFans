@@ -11,7 +11,17 @@
  * throttle tier so we can trigger 429 with just two requests, keeping the
  * test fast and deterministic without needing real Redis or long sleeps.
  */
-import { INestApplication, Module, Controller, Post, Body, Get, HttpCode, HttpStatus, VersioningType } from '@nestjs/common';
+import {
+  INestApplication,
+  Module,
+  Controller,
+  Post,
+  Body,
+  Get,
+  HttpCode,
+  HttpStatus,
+  VersioningType,
+} from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerModule, Throttle } from '@nestjs/throttler';
@@ -40,33 +50,41 @@ class StubAuthController {
 @Controller({ path: 'health', version: '1' })
 class StubHealthController {
   @Get()
-  check() { return { status: 'ok' }; }
+  check() {
+    return { status: 'ok' };
+  }
 
   @Get('db')
-  db() { return { status: 'ok' }; }
+  db() {
+    return { status: 'ok' };
+  }
 }
 
 @Controller({ path: 'creators', version: '1' })
 class StubCreatorsController {
   @Get()
   // Uses the default "long" tier (limit: 5 in test config below)
-  list() { return { data: [] }; }
+  list() {
+    return { data: [] };
+  }
 }
 
 @Module({
   imports: [
     ThrottlerModule.forRoot([
       // Keep limits tiny so tests are fast; mirrors the real tier names
-      { name: 'auth',   ttl: 60_000, limit: 2  },
-      { name: 'short',  ttl: 60_000, limit: 3  },
-      { name: 'medium', ttl: 60_000, limit: 4  },
-      { name: 'long',   ttl: 60_000, limit: 5  },
+      { name: 'auth', ttl: 60_000, limit: 2 },
+      { name: 'short', ttl: 60_000, limit: 3 },
+      { name: 'medium', ttl: 60_000, limit: 4 },
+      { name: 'long', ttl: 60_000, limit: 5 },
     ]),
   ],
-  controllers: [StubAuthController, StubHealthController, StubCreatorsController],
-  providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  controllers: [
+    StubAuthController,
+    StubHealthController,
+    StubCreatorsController,
   ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 class RateLimitTestModule {}
 
@@ -151,17 +169,13 @@ describe('Rate Limiting (integration)', () => {
     it('GET /v1/health is never throttled regardless of request count', async () => {
       // Fire well above any limit; all must succeed
       for (let i = 0; i < 10; i++) {
-        await request(app.getHttpServer())
-          .get('/v1/health')
-          .expect(200);
+        await request(app.getHttpServer()).get('/v1/health').expect(200);
       }
     });
 
     it('GET /v1/health/db is never throttled', async () => {
       for (let i = 0; i < 10; i++) {
-        await request(app.getHttpServer())
-          .get('/v1/health/db')
-          .expect(200);
+        await request(app.getHttpServer()).get('/v1/health/db').expect(200);
       }
     });
   });
@@ -171,16 +185,12 @@ describe('Rate Limiting (integration)', () => {
   describe('GET /v1/creators — long tier (limit: 5)', () => {
     it('allows requests up to the limit', async () => {
       for (let i = 0; i < 5; i++) {
-        await request(app.getHttpServer())
-          .get('/v1/creators')
-          .expect(200);
+        await request(app.getHttpServer()).get('/v1/creators').expect(200);
       }
     });
 
     it('returns 429 on the request that exceeds the limit', async () => {
-      await request(app.getHttpServer())
-        .get('/v1/creators')
-        .expect(429);
+      await request(app.getHttpServer()).get('/v1/creators').expect(429);
     });
   });
 

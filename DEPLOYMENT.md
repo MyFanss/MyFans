@@ -4,6 +4,8 @@
 
 ### 1. Contract Deployment
 
+> For the full step-by-step runbook including identity setup, dry-run validation, post-deploy verification, and rollback procedures, see [`contract/docs/CONTRACT_DEPLOY_RUNBOOK.md`](contract/docs/CONTRACT_DEPLOY_RUNBOOK.md).
+
 ```bash
 cd contract
 

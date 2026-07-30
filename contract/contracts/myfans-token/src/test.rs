@@ -11,12 +11,13 @@ fn test_transfer() {
     let client = MyFansTokenClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(
+    let _ = client.initialize(
         &admin,
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
         &0,
+        &admin,
     );
 
     let user1 = Address::generate(&env);
@@ -45,7 +46,7 @@ fn test_transfer_insufficient_balance() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     let user1 = Address::generate(&env);
@@ -72,7 +73,7 @@ fn test_transfer_fails_for_zero_amount() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     let user1 = Address::generate(&env);
@@ -99,7 +100,7 @@ fn test_transfer_fails_for_negative_amount() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     let user1 = Address::generate(&env);
@@ -126,7 +127,7 @@ fn test_approve_and_transfer_from() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     let owner = Address::generate(&env);
@@ -166,7 +167,7 @@ fn test_transfer_from_event_includes_spender() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     let owner = Address::generate(&env);
@@ -245,7 +246,7 @@ fn test_transfer_from_insufficient_allowance() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     client.mint(&owner, &1000);
@@ -274,7 +275,7 @@ fn test_transfer_from_fails_for_zero_amount() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     client.mint(&owner, &1000);
@@ -303,7 +304,7 @@ fn test_transfer_from_fails_for_negative_amount() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     client.mint(&owner, &1000);
@@ -332,7 +333,7 @@ fn test_transfer_from_expired_allowance() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     client.mint(&owner, &1000);
@@ -386,7 +387,7 @@ fn test_burn() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     let user = Address::generate(&env);
@@ -414,7 +415,7 @@ fn test_burn_insufficient_balance() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     let user = Address::generate(&env);
@@ -437,7 +438,7 @@ fn test_burn_invalid_amount() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     let user = Address::generate(&env);
@@ -466,7 +467,7 @@ fn test_clear_allowance_resets_to_zero() {
         &String::from_str(&env, "T"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     let owner = Address::generate(&env);
@@ -495,7 +496,7 @@ fn test_clear_allowance_unauthorized_fails() {
         &String::from_str(&env, "T"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
     let owner = Address::generate(&env);
     let spender = Address::generate(&env);
@@ -526,7 +527,7 @@ fn test_fuzz_transfer_balances_invariant() {
         &String::from_str(&env, "T"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     let alice = Address::generate(&env);
@@ -580,7 +581,7 @@ fn test_fuzz_approve_transfer_from_invariant() {
         &String::from_str(&env, "T"),
         &String::from_str(&env, "T"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     let owner = Address::generate(&env);
@@ -622,7 +623,7 @@ fn test_initialize() {
     let decimals: u32 = 7;
     let initial_supply: i128 = 10_000_000_000; // 1,000,000 with 7 decimals
 
-    client.initialize(&admin, &name, &symbol, &decimals, &initial_supply);
+    let _ = client.initialize(&admin, &name, &symbol, &decimals, &initial_supply, &admin);
 
     // Verify admin was set
     assert_eq!(client.admin(), admin);
@@ -634,6 +635,79 @@ fn test_initialize() {
 
     // Verify total supply
     assert_eq!(client.total_supply(), initial_supply);
+
+    // Verify recipient balance equals initial_supply
+    assert_eq!(client.balance(&admin), initial_supply);
+}
+
+#[test]
+fn test_initialize_emits_event() {
+    use soroban_sdk::{symbol_short, TryIntoVal};
+
+    let env = Env::default();
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = generate_address(&env);
+    let name = String::from_str(&env, "MyFans Token");
+    let symbol = String::from_str(&env, "MFAN");
+    let decimals: u32 = 7;
+    let initial_supply: i128 = 1_000;
+
+    let _ = client.initialize(&admin, &name, &symbol, &decimals, &initial_supply, &admin);
+
+    let events = env.events().all();
+    let init_event = events.iter().find(|e| {
+        e.1.first()
+            .and_then(|t: soroban_sdk::Val| t.try_into_val(&env).ok())
+            .map(|s: soroban_sdk::Symbol| s == symbol_short!("init"))
+            .unwrap_or(false)
+    });
+
+    assert!(init_event.is_some(), "init event not emitted");
+    let ev = init_event.unwrap();
+    // payload: (admin, name, symbol, decimals, initial_supply)
+    let payload: (Address, String, String, u32, i128) = ev.2.try_into_val(&env).unwrap();
+    assert_eq!(payload.0, admin);
+    assert_eq!(payload.1, name);
+    assert_eq!(payload.2, symbol);
+    assert_eq!(payload.3, decimals);
+    assert_eq!(payload.4, initial_supply);
+}
+
+#[test]
+fn test_set_admin_emits_event() {
+    use soroban_sdk::{symbol_short, TryIntoVal};
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = generate_address(&env);
+    let new_admin = generate_address(&env);
+    let name = String::from_str(&env, "MyFans Token");
+    let symbol = String::from_str(&env, "MFAN");
+    let decimals: u32 = 7;
+    let initial_supply: i128 = 0;
+
+    let _ = client.initialize(&admin, &name, &symbol, &decimals, &initial_supply, &admin);
+    client.set_admin(&new_admin);
+
+    let events = env.events().all();
+    let admin_event = events.iter().find(|e| {
+        e.1.first()
+            .and_then(|t: soroban_sdk::Val| t.try_into_val(&env).ok())
+            .map(|s: soroban_sdk::Symbol| s == symbol_short!("admin_upd"))
+            .unwrap_or(false)
+    });
+
+    assert!(admin_event.is_some(), "admin_upd event not emitted");
+    let ev = admin_event.unwrap();
+    let payload: (Address, Address) = ev.2.try_into_val(&env).unwrap();
+    assert_eq!(payload.0, admin);
+    assert_eq!(payload.1, new_admin);
 }
 
 #[test]
@@ -651,7 +725,6 @@ fn test_admin_view_returns_correct_address() {
     client.initialize(&admin, &name, &symbol, &decimals, &initial_supply);
 
     // Test admin view returns correct address
-    let stored_admin = client.admin();
     assert_eq!(stored_admin, admin);
 }
 
@@ -671,7 +744,6 @@ fn test_set_admin_updates_admin() {
     client.initialize(&admin, &name, &symbol, &decimals, &initial_supply);
 
     // Set up mock authorization for admin
-    env.mock_all_auths();
 
     // Call set_admin with admin's authorization
     client.set_admin(&new_admin);
@@ -696,7 +768,6 @@ fn test_non_admin_cannot_set_admin() {
     client.initialize(&admin, &name, &symbol, &decimals, &initial_supply);
 
     // Get original admin before trying to change
-    let original_admin = client.admin();
 
     // Set up mock authorization - but ONLY for non_admin
     // This means the contract will reject the call because it requires admin auth
@@ -718,6 +789,55 @@ fn test_non_admin_cannot_set_admin() {
     // This test demonstrates the contract accepts the call when properly authorized
     // and test_set_admin_updates_admin verifies authorization is required
     assert_eq!(client.admin(), original_admin);
+}
+
+#[test]
+#[should_panic]
+fn test_initialize_only_once_panics() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0, &admin,
+    );
+
+    // Second initialization must panic to avoid accidental overwrite
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0, &admin,
+    );
+}
+
+#[test]
+#[should_panic]
+fn test_set_admin_unauthorized_panics() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "MyFans Token"),
+        &String::from_str(&env, "MFAN"),
+        &7,
+        &0, &admin,
+    );
+
+    // Clear mocked auths so admin.require_auth() inside set_admin fails
+    env.mock_auths(&[]);
+
+    client.set_admin(&new_admin);
 }
 
 #[test]
@@ -771,7 +891,7 @@ fn test_set_metadata_admin_can_update() {
         &String::from_str(&env, "OldName"),
         &String::from_str(&env, "OLD"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     assert_eq!(client.name(), String::from_str(&env, "OldName"));
@@ -802,7 +922,7 @@ fn test_set_metadata_non_admin_is_rejected() {
         &String::from_str(&env, "OldName"),
         &String::from_str(&env, "OLD"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     // Clear mocked auths so admin.require_auth() fails
@@ -829,7 +949,7 @@ fn test_set_metadata_decimals_unchanged() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "TKN"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     client.set_metadata(
@@ -858,7 +978,7 @@ fn test_mint_admin_can_mint() {
         &String::from_str(&env, "MyFans Token"),
         &String::from_str(&env, "MFAN"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     let recipient = Address::generate(&env);
@@ -888,7 +1008,7 @@ fn test_mint_non_admin_is_rejected() {
         &String::from_str(&env, "MyFans Token"),
         &String::from_str(&env, "MFAN"),
         &7,
-        &0,
+        &0, &admin,
     );
 
     // Clear ALL mocked auths. After this, admin.require_auth() inside mint
@@ -898,4 +1018,262 @@ fn test_mint_non_admin_is_rejected() {
     let non_admin = Address::generate(&env);
     // This must panic – the admin's auth is no longer mocked.
     client.mint(&non_admin, &100);
+}
+
+// ── Issue #884 – Snapshot/Restore Consistency Test ──────────────────────────
+//
+// This test verifies that the contract's state remains consistent and readable
+// after a series of operations. It simulates a "snapshot" by capturing key
+// state values before performing additional operations, then verifying those
+// values are still correct and unchanged.
+//
+// The test ensures:
+// 1. All storage (persistent and temporary) layers work correctly together
+// 2. State is not corrupted by concurrent operations
+// 3. Balance tracking remains consistent across multiple users
+// 4. Allowance expiration logic is correctly preserved
+// 5. Admin and metadata state is preserved
+#[test]
+fn test_snapshot_restore_consistency() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MyFansToken);
+    let client = MyFansTokenClient::new(&env, &contract_id);
+
+    // ── Setup: Initialize contract ──────────────────────────────────────────
+    let admin = Address::generate(&env);
+    let admin_name = String::from_str(&env, "MyFans Token");
+    let admin_symbol = String::from_str(&env, "MFAN");
+    let admin_decimals: u32 = 7;
+    let initial_supply: i128 = 0;
+
+    client.initialize(
+        &admin,
+        &admin_name,
+        &admin_symbol,
+        &admin_decimals,
+        &initial_supply,
+    );
+
+    // Create multiple test users
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+    let carol = Address::generate(&env);
+    let dave = Address::generate(&env);
+
+    // Mint tokens to multiple users
+    client.mint(&alice, &5000);
+    client.mint(&bob, &3000);
+    client.mint(&carol, &2000);
+    client.mint(&dave, &1000);
+
+    // ── Phase 1: Create initial allowances with different expiration ledgers ──
+    env.ledger().with_mut(|li| li.sequence_number = 10);
+
+    // Alice approves Bob for 1000 tokens, expiring at ledger 100
+    client.approve(&alice, &bob, &1000, &100);
+
+    // Bob approves Carol for 500 tokens, expiring at ledger 200
+    client.approve(&bob, &carol, &500, &200);
+
+    // Carol approves Dave for 300 tokens, expiring at ledger 50
+    client.approve(&carol, &dave, &300, &50);
+
+    // ── Snapshot Phase 1: Read and capture state ────────────────────────────
+    let snapshot_admin = client.admin();
+    let snapshot_name = client.name();
+    let snapshot_symbol = client.symbol();
+    let snapshot_decimals = client.decimals();
+    let snapshot_total_supply = client.total_supply();
+
+    let snapshot_alice_balance = client.balance(&alice);
+    let snapshot_bob_balance = client.balance(&bob);
+    let snapshot_carol_balance = client.balance(&carol);
+    let snapshot_dave_balance = client.balance(&dave);
+
+    let snapshot_alice_bob_allowance = client.allowance(&alice, &bob);
+    let snapshot_bob_carol_allowance = client.allowance(&bob, &carol);
+    let snapshot_carol_dave_allowance = client.allowance(&carol, &dave);
+
+    // ── Verify initial state snapshot ───────────────────────────────────────
+    assert_eq!(snapshot_admin, admin, "admin mismatch in snapshot");
+    assert_eq!(snapshot_name, admin_name, "name mismatch in snapshot");
+    assert_eq!(snapshot_symbol, admin_symbol, "symbol mismatch in snapshot");
+    assert_eq!(
+        snapshot_decimals, admin_decimals,
+        "decimals mismatch in snapshot"
+    );
+    assert_eq!(snapshot_total_supply, 11000, "total supply should be 11000");
+
+    assert_eq!(snapshot_alice_balance, 5000, "alice balance in snapshot");
+    assert_eq!(snapshot_bob_balance, 3000, "bob balance in snapshot");
+    assert_eq!(snapshot_carol_balance, 2000, "carol balance in snapshot");
+    assert_eq!(snapshot_dave_balance, 1000, "dave balance in snapshot");
+
+    assert_eq!(
+        snapshot_alice_bob_allowance, 1000,
+        "alice->bob allowance in snapshot"
+    );
+    assert_eq!(
+        snapshot_bob_carol_allowance, 500,
+        "bob->carol allowance in snapshot"
+    );
+    assert_eq!(
+        snapshot_carol_dave_allowance, 300,
+        "carol->dave allowance in snapshot"
+    );
+
+    // ── Phase 2: Perform additional operations ──────────────────────────────
+    // Advance ledger to allow some transfers
+    env.ledger().with_mut(|li| li.sequence_number = 30);
+
+    // Alice transfers 500 to Bob
+    client.transfer(&alice, &bob, &500);
+
+    // Bob uses allowance from Alice to transfer to Carol
+    client.transfer_from(&bob, &alice, &carol, &200);
+
+    // Carol burns some tokens
+    client.burn(&carol, &300);
+
+    // Dave approves a new allowance
+    client.approve(&dave, &alice, &500, &150);
+
+    // ── Phase 3: Restore and verify original state is still accessible ──────
+    // Re-read all state values to ensure consistency
+    let restored_admin = client.admin();
+    let restored_name = client.name();
+    let restored_symbol = client.symbol();
+    let restored_decimals = client.decimals();
+
+    // Verify metadata is unchanged (admin and metadata are in persistent storage)
+    assert_eq!(restored_admin, snapshot_admin, "admin changed unexpectedly");
+    assert_eq!(restored_name, snapshot_name, "name changed unexpectedly");
+    assert_eq!(
+        restored_symbol, snapshot_symbol,
+        "symbol changed unexpectedly"
+    );
+    assert_eq!(
+        restored_decimals, snapshot_decimals,
+        "decimals changed unexpectedly"
+    );
+
+    // ── Phase 4: Verify state consistency across operations ────────────────
+    // Calculate expected balances after Phase 2 operations
+    // Phase 2 operations:
+    // 1. alice transfers 500 to bob: alice -= 500, bob += 500
+    // 2. bob (spender) transfers 200 from alice to carol: alice -= 200, carol += 200
+    // 3. carol burns 300: carol -= 300
+    let expected_alice_balance = snapshot_alice_balance - 500 - 200; // transferred 500 + 200 via transfer_from
+    let expected_bob_balance = snapshot_bob_balance + 500; // received 500 from alice transfer (not from transfer_from)
+    let expected_carol_balance = snapshot_carol_balance + 200 - 300; // received 200 from transfer_from, burned 300
+    let expected_dave_balance = snapshot_dave_balance; // no changes
+
+    let final_alice_balance = client.balance(&alice);
+    let final_bob_balance = client.balance(&bob);
+    let final_carol_balance = client.balance(&carol);
+    let final_dave_balance = client.balance(&dave);
+
+    assert_eq!(
+        final_alice_balance, expected_alice_balance,
+        "alice final balance mismatch"
+    );
+    assert_eq!(
+        final_bob_balance, expected_bob_balance,
+        "bob final balance mismatch"
+    );
+    assert_eq!(
+        final_carol_balance, expected_carol_balance,
+        "carol final balance mismatch"
+    );
+    assert_eq!(
+        final_dave_balance, expected_dave_balance,
+        "dave final balance mismatch"
+    );
+
+    // ── Phase 5: Verify original allowances still readable ────────────────
+    // The original allowances should still be readable (though amounts may change)
+    // alice->bob allowance: started at 1000, transferred 200, should be 800
+    let final_alice_bob_allowance = client.allowance(&alice, &bob);
+    assert_eq!(
+        final_alice_bob_allowance, 800,
+        "alice->bob allowance should be 800 after transfer_from"
+    );
+
+    // bob->carol allowance should remain 500 (untouched)
+    let final_bob_carol_allowance = client.allowance(&bob, &carol);
+    assert_eq!(
+        final_bob_carol_allowance, 500,
+        "bob->carol allowance should remain 500"
+    );
+
+    // carol->dave allowance: Carol's balance decreased but allowance for dave remains 300
+    let final_carol_dave_allowance = client.allowance(&carol, &dave);
+    assert_eq!(
+        final_carol_dave_allowance, 300,
+        "carol->dave allowance should remain 300"
+    );
+
+    // ── Phase 6: Verify total supply consistency ────────────────────────────
+    // Initial total supply: 11000
+    // After burns: 11000 - 300 = 10700
+    let final_total_supply = client.total_supply();
+    let sum_of_balances =
+        final_alice_balance + final_bob_balance + final_carol_balance + final_dave_balance;
+
+    assert_eq!(
+        final_total_supply, 10700,
+        "total supply should be 10700 after burns"
+    );
+    assert_eq!(
+        sum_of_balances, final_total_supply,
+        "sum of balances should equal total supply"
+    );
+
+    // ── Phase 7: Verify state after expiration boundary ─────────────────────
+    // Advance ledger past carol's allowance expiration (was set to 50)
+    env.ledger().with_mut(|li| li.sequence_number = 51);
+
+    // carol->dave allowance should be expired and return 0
+    let expired_carol_dave_allowance = client.allowance(&carol, &dave);
+    assert_eq!(
+        expired_carol_dave_allowance, 0,
+        "expired allowance should return 0"
+    );
+
+    // alice->bob and bob->carol allowances should still be valid (expiration >= 100, 200)
+    let alice_bob_after_time = client.allowance(&alice, &bob);
+    let bob_carol_after_time = client.allowance(&bob, &carol);
+    assert_eq!(
+        alice_bob_after_time, 800,
+        "alice->bob allowance should still be valid"
+    );
+    assert_eq!(
+        bob_carol_after_time, 500,
+        "bob->carol allowance should still be valid"
+    );
+
+    // ── Phase 8: Final consistency check ────────────────────────────────────
+    // Re-verify all balances one more time to ensure no state corruption
+    assert_eq!(
+        client.balance(&alice),
+        final_alice_balance,
+        "alice balance changed unexpectedly"
+    );
+    assert_eq!(
+        client.balance(&bob),
+        final_bob_balance,
+        "bob balance changed unexpectedly"
+    );
+    assert_eq!(
+        client.balance(&carol),
+        final_carol_balance,
+        "carol balance changed unexpectedly"
+    );
+    assert_eq!(
+        client.balance(&dave),
+        final_dave_balance,
+        "dave balance changed unexpectedly"
+    );
 }

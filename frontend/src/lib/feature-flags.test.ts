@@ -75,6 +75,29 @@ describe('feature-flags', () => {
     expect(getFeatureFlags()).toEqual(defaultFeatureFlags);
   });
 
+  it('returns false for new subscription flow by default', () => {
+    expect(isFeatureEnabled(FeatureFlag.NEW_SUBSCRIPTION_FLOW)).toBe(false);
+  });
+
+  it('supports enabling new subscription flow from remote flags', async () => {
+    vi.stubEnv('NEXT_PUBLIC_FEATURE_FLAGS_URL', 'https://flags.example.com/flags.json');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          flags: {
+            [FeatureFlag.NEW_SUBSCRIPTION_FLOW]: true,
+          },
+        }),
+      }),
+    );
+
+    await loadFeatureFlags();
+
+    expect(isFeatureEnabled(FeatureFlag.NEW_SUBSCRIPTION_FLOW)).toBe(true);
+  });
+
   it('prefers remote flags over env and local overrides', async () => {
     vi.stubEnv('NEXT_PUBLIC_FEATURE_FLAGS_URL', 'https://flags.example.com/flags.json');
     vi.stubEnv('NEXT_PUBLIC_FLAG_BOOKMARKS', 'false');

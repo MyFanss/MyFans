@@ -59,6 +59,29 @@ describe('SubscriptionLifecycleIndexerService', () => {
     );
   });
 
+  it('publishes renewal_failed indexer events onto the event bus', async () => {
+    const handler = jest.fn();
+    eventBus.subscribe('subscription.renewal_failed', handler);
+
+    await service.handleEvent({
+      event: 'renewal_failed',
+      subscriptionId: 'sub-3',
+      userId: 'user-3',
+      creatorId: 'creator-3',
+      planId: 4,
+      reason: 'insufficient_funds',
+    });
+
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'subscription.renewal_failed',
+        subscriptionId: 'sub-3',
+        fan: 'user-3',
+        reason: 'insufficient_funds',
+      }),
+    );
+  });
+
   it('publishes cancelled indexer events onto the event bus', async () => {
     const handler = jest.fn();
     eventBus.subscribe('subscription.cancelled', handler);

@@ -10,6 +10,9 @@ interface WalletOptionProps {
   isConnecting: boolean;
   isInstalled: boolean;
   installUrl?: string;
+  /** When true, wallet is known but not available yet (stub / feature-flagged off). */
+  unsupported?: boolean;
+  unsupportedLabel?: string;
   onSelect: () => void;
   onInstall?: () => void;
   disabled: boolean;
@@ -22,27 +25,35 @@ export function WalletOption({
   isConnecting,
   isInstalled,
   installUrl,
+  unsupported = false,
+  unsupportedLabel = 'Coming soon',
   onSelect,
   onInstall,
   disabled,
 }: WalletOptionProps) {
-  const showInstallButton = !isInstalled && installUrl && onInstall;
-  
+  const showInstallButton = !unsupported && !isInstalled && installUrl && onInstall;
+  const isUnavailable = unsupported;
+
   return (
     <div className="relative">
       <button
         onClick={showInstallButton ? onInstall : onSelect}
         disabled={disabled || isConnecting}
         className={`w-full rounded-lg border p-4 text-left transition-all ${
-          showInstallButton
+          isUnavailable
+            ? 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60'
+            : showInstallButton
             ? 'border-amber-200 bg-amber-50 hover:border-amber-300 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-900/20 dark:hover:border-amber-700 dark:hover:bg-amber-900/30'
             : 'border-slate-200 bg-white hover:border-primary-500 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-primary-600'
         } disabled:cursor-not-allowed disabled:opacity-50`}
         aria-busy={isConnecting}
+        aria-disabled={isUnavailable || undefined}
       >
         <div className="flex items-center gap-4">
           <div className={`flex h-12 w-12 items-center justify-center rounded-lg text-2xl ${
-            showInstallButton
+            isUnavailable
+              ? 'bg-slate-200 dark:bg-slate-800'
+              : showInstallButton
               ? 'bg-amber-100 dark:bg-amber-800'
               : 'bg-slate-100 dark:bg-slate-800'
           }`}>
@@ -51,18 +62,42 @@ export function WalletOption({
           <div className="flex-1">
             <h3 className="font-semibold text-slate-900 dark:text-white">
               {name}
-              {!isInstalled && (
+              {isUnavailable && (
+                <span className="ml-2 inline-flex items-center rounded-full bg-slate-200 px-2 py-1 text-xs font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                  {unsupportedLabel}
+                </span>
+              )}
+              {!isUnavailable && !isInstalled && (
                 <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-800 dark:text-amber-200">
                   Not Installed
                 </span>
               )}
             </h3>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              {showInstallButton ? `Install ${name} to connect` : description}
+              {isUnavailable
+                ? 'Not supported yet — use Freighter or Lobstr'
+                : showInstallButton
+                ? `Install ${name} to connect`
+                : description}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {showInstallButton ? (
+            {isUnavailable ? (
+              <svg
+                className="h-5 w-5 text-slate-400 dark:text-slate-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            ) : showInstallButton ? (
               <svg
                 className="h-5 w-5 text-amber-600 dark:text-amber-400"
                 fill="none"

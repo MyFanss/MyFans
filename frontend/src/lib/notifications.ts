@@ -1,6 +1,7 @@
 /**
  * Notification inbox API integration.
  */
+import { getApiBaseUrl } from '@/lib/api/base-url';
 
 export type NotificationType =
   | 'new_subscriber'
@@ -26,7 +27,16 @@ export interface Notification {
   digest_event_times: string[] | null;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
+const API_BASE = `${getApiBaseUrl()}/api/v1`;
+
+/**
+ * Mock inbox is opt-in only.
+ * Production / default: hit the API.
+ * Set `NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS=true` to use MOCK_NOTIFICATIONS.
+ */
+export function shouldUseMockNotifications(): boolean {
+  return process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS === 'true';
+}
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {

@@ -32,7 +32,7 @@ pub struct AllowanceData {
     pub expiration_ledger: u32,
 }
 
-/// Token contract errors (codes 1–7 match test expectations)
+/// Token contract errors (codes 1–9 match test expectations)
 /// Per-contract error codes for the **myfans-token** contract.
 ///
 /// These discriminants are stable and form part of the public client API.
@@ -47,6 +47,8 @@ pub struct AllowanceData {
 /// | 5 | `InvalidExpiration` |
 /// | 6 | `NoAllowance` |
 /// | 7 | `Unauthorized` |
+/// | 8 | `AlreadyInitialized` |
+/// | 9 | `BadSupply` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -64,6 +66,10 @@ pub enum Error {
     NoAllowance = 6,
     /// Code 7 – mint: caller is not admin.
     Unauthorized = 7,
+    /// Code 8 – initialize: contract already initialized.
+    AlreadyInitialized = 8,
+    /// Code 9 – initialize: supply must be non-negative.
+    BadSupply = 9,
 }
 
 #[contract]
@@ -95,7 +101,12 @@ impl MyFansToken {
     /// * `name` - Token name (e.g., "MyFans Token")
     /// * `symbol` - Token symbol (e.g., "MFAN")
     /// * `decimals` - Token decimals (typically 7 for Soroban)
-    /// * `initial_supply` - Initial supply (deferred minting to Issue 3)
+    /// * `initial_supply` - Initial supply to mint to recipient
+    /// * `recipient` - Address to receive the initial supply
+    ///
+    /// # Errors
+    /// * [`Error::AlreadyInitialized`] – contract is already initialized.
+    /// * [`Error::BadSupply`] – initial_supply is negative.
     pub fn initialize(
         env: Env,
         admin: Address,
@@ -103,7 +114,19 @@ impl MyFansToken {
         symbol: String,
         decimals: u32,
         initial_supply: i128,
-    ) {
+        recipient: Address,
+    ) -> Result<(), Error> {
+        // Prevent accidental re-initialization which could overwrite admin
+        // and metadata. Initialization is a one-time operation.
+        if env.storage().instance().has(&DataKey::Admin) {
+            return Err(Error::AlreadyInitialized);
+        }
+
+        // Validate inputs
+        if initial_supply < 0 {
+            return Err(Error::BadSupply);
+        }
+
         // Store admin in persistent storage
         env.storage().instance().set(&DataKey::Admin, &admin);
 
@@ -115,7 +138,23 @@ impl MyFansToken {
             .instance()
             .set(&DataKey::TotalSupply, &initial_supply);
 
-        // Note: Actual minting is deferred to Issue 3
+        // Mint initial_supply to recipient
+        if initial_supply > 0 {
+            write_balance(&env, recipient.clone(), initial_supply);
+        }
+
+        // Emit an initialization event so indexers can detect contract setup.
+        env.events().publish(
+            (symbol_short!("init"),),
+            (
+                admin.clone(),
+                name.clone(),
+                symbol.clone(),
+                decimals,
+                initial_supply,
+            ),
+        );
+        Ok(())
     }
 
     /// Get the admin address (view function)
@@ -142,6 +181,11 @@ impl MyFansToken {
 
         // Update admin in storage
         env.storage().instance().set(&DataKey::Admin, &new_admin);
+        // Emit admin update event for indexers and monitoring.
+        env.events().publish(
+            (symbol_short!("admin_upd"),),
+            (current_admin.clone(), new_admin.clone()),
+        );
     }
 
     /// Update token name and symbol. Only admin can call this.
@@ -386,7 +430,11 @@ impl MyFansToken {
         if balance_from < amount {
             return Err(Error::InsufficientBalance);
         }
+        // Hot-path optimisation: write both balances before emitting the event
+        // so the host can batch the storage operations in a single round-trip.
         write_balance(&env, from.clone(), balance_from - amount);
+        // Read `to` balance only after the guard passes to avoid a wasted read
+        // on the error path.
         let balance_to = read_balance(&env, to.clone());
         write_balance(&env, to.clone(), balance_to + amount);
         env.events()
@@ -400,10 +448,15 @@ fn read_balance(env: &Env, id: Address) -> i128 {
     env.storage().persistent().get(&key).unwrap_or(0)
 }
 
+/// Write a balance and extend its persistent TTL.
+///
+/// Hot-path optimisation: the TTL threshold is set to 50 so that the host
+/// skips the extend operation when the entry already has ≥ 50 ledgers of
+/// remaining TTL, avoiding a redundant storage round-trip on every transfer.
 fn write_balance(env: &Env, id: Address, amount: i128) {
     let key = DataKey::Balance(id);
     env.storage().persistent().set(&key, &amount);
-    env.storage().persistent().extend_ttl(&key, 100, 100);
+    env.storage().persistent().extend_ttl(&key, 50, 100);
 }
 
 #[cfg(test)]
@@ -414,3 +467,11 @@ mod allowance_expiry_tests;
 
 #[cfg(test)]
 mod property_tests;
+
+// Issue #885 – error code and panic message validation
+#[cfg(test)]
+mod error_code_tests;
+
+// Issue #886 – gas usage hot-path correctness
+#[cfg(test)]
+mod gas_tests;

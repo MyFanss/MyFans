@@ -10,6 +10,10 @@ import { AddQueuedAtToModerationFlags1745000000000 } from './moderation/17450000
 import { CreateReferralTables1745000000000 } from './referral/1745000000000-CreateReferralTables';
 import { AddDigestColumnsToNotifications1745100000000 } from './notifications/1745100000000-AddDigestColumnsToNotifications';
 import { AddOnboardingStateToUsers1745200000000 } from './users/1745200000000-AddOnboardingStateToUsers';
+import { AddRoleToUsers1747000000000 } from './users/1747000000000-AddRoleToUsers';
+import { CreateSocialLinksTable1748000000000 } from './social-link/1748000000000-CreateSocialLinksTable';
+import { CreateCreatorOnchainMappings1749000000000 } from './creators/1749000000000-CreateCreatorOnchainMappings';
+import { CreateNotificationDurableState1750000000000 } from './notifications/1750000000000-CreateNotificationDurableState';
 
 export const migrationDataSource = new DataSource({
   type: 'postgres',
@@ -29,5 +33,9 @@ export const migrationDataSource = new DataSource({
     CreateReferralTables1745000000000,
     AddDigestColumnsToNotifications1745100000000,
     AddOnboardingStateToUsers1745200000000,
+    AddRoleToUsers1747000000000,
+    CreateSocialLinksTable1748000000000,
+    CreateCreatorOnchainMappings1749000000000,
+    CreateNotificationDurableState1750000000000,
   ],
 });

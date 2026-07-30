@@ -75,6 +75,16 @@ export class PostDeletedEvent {
   ) {}
 }
 
+// Comment events
+export class CommentDeletedEvent {
+  readonly type = 'comment.deleted' as const;
+  constructor(
+    public readonly commentId: string,
+    public readonly deletedBy: string,
+    public readonly timestamp: number = Date.now(),
+  ) {}
+}
+
 export class SubscriptionRenewalFailedEvent {
   readonly type = 'subscription.renewal_failed' as const;
   constructor(
@@ -95,4 +105,5 @@ export type DomainEvent =
   | SubscriptionExpiredEvent
   | SubscriptionRenewalFailedEvent
   | PlanCreatedEvent
-  | PostDeletedEvent;
+  | PostDeletedEvent
+  | CommentDeletedEvent;

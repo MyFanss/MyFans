@@ -9,15 +9,15 @@
  * Also verifies graceful handling of: network errors, missing retval,
  * and the restore (archived entry) path.
  */
-import { rpc, xdr, nativeToScVal } from '@stellar/stellar-sdk';
+import { rpc, xdr, nativeToScVal, Keypair } from '@stellar/stellar-sdk';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
 import { LedgerClockService } from './ledger-clock.service';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 const CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM';
-const FAN     = 'GFAN1111111111111111111111111111111111111111111111111111';
-const CREATOR = 'GCREATOR111111111111111111111111111111111111111111111111';
+const FAN = Keypair.random().publicKey();
+const CREATOR = Keypair.random().publicKey();
 
 function makeService(simResult: rpc.Api.SimulateTransactionResponse): SubscriptionChainReaderService {
   const ledgerClock = {
@@ -178,7 +178,7 @@ describe('SubscriptionChainReaderService.readPlan', () => {
     if (result.ok) {
       expect(result.plan.creator).toBe(CREATOR);
       expect(result.plan.amount).toBe('10000000');
-      expect(result.plan.intervalDays).toBe(30);
+      expect(result.plan.intervalDays).toBe(30n);
     }
   });
 

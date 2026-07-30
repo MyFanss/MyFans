@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
+import { IsString, IsNotEmpty } from 'class-validator';
 
 export class ConversationDto {
   @ApiProperty()
@@ -55,10 +56,14 @@ export class MessageDto {
 
 export class CreateConversationDto {
   @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
   participant2Id: string;
 }
 
 export class SendMessageDto {
   @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
   content: string;
 }

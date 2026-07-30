@@ -48,9 +48,8 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
   let app: INestApplication;
   let currentSubs: SubscriptionIndexEntity[];
   const mockRepo = {
-    create: jest.fn(
-      (data: Partial<SubscriptionIndexEntity>) =>
-        makeSubscription(data as Partial<SubscriptionIndexEntity>),
+    create: jest.fn((data: Partial<SubscriptionIndexEntity>) =>
+      makeSubscription(data),
     ),
     save: jest.fn(async (entity: SubscriptionIndexEntity) => {
       const existingIndex = currentSubs.findIndex(
@@ -68,14 +67,11 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       return next;
     }),
     findOne: jest.fn(
-      async ({
-        where,
-      }: {
-        where: Partial<SubscriptionIndexEntity>;
-      }) =>
+      async ({ where }: { where: Partial<SubscriptionIndexEntity> }) =>
         currentSubs.find((sub) =>
           Object.entries(where).every(
-            ([key, value]) => sub[key as keyof SubscriptionIndexEntity] === value,
+            ([key, value]) =>
+              sub[key as keyof SubscriptionIndexEntity] === value,
           ),
         ) ?? null,
     ),
@@ -91,7 +87,8 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       }) => {
         const filtered = currentSubs.filter((sub) =>
           Object.entries(where ?? {}).every(
-            ([key, value]) => sub[key as keyof SubscriptionIndexEntity] === value,
+            ([key, value]) =>
+              sub[key as keyof SubscriptionIndexEntity] === value,
           ),
         );
         return [filtered.slice(skip, skip + take), filtered.length];
@@ -105,7 +102,8 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       } = {}) =>
         currentSubs.filter((sub) =>
           Object.entries(where ?? {}).every(
-            ([key, value]) => sub[key as keyof SubscriptionIndexEntity] === value,
+            ([key, value]) =>
+              sub[key as keyof SubscriptionIndexEntity] === value,
           ),
         ),
     ),
@@ -116,7 +114,8 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
       ) => {
         currentSubs = currentSubs.map((sub) =>
           Object.entries(criteria).every(
-            ([key, value]) => sub[key as keyof SubscriptionIndexEntity] === value,
+            ([key, value]) =>
+              sub[key as keyof SubscriptionIndexEntity] === value,
           )
             ? makeSubscription({ ...sub, ...partial })
             : sub,
@@ -153,7 +152,8 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
         select: () => builder,
         getRawOne: async () => ({
           maxLedger:
-            currentSubs.reduce((max, sub) => Math.max(max, sub.ledgerSeq), 0) || 0,
+            currentSubs.reduce((max, sub) => Math.max(max, sub.ledgerSeq), 0) ||
+            0,
         }),
         getMany: async () => {
           const filtered = currentSubs.filter(
@@ -298,6 +298,199 @@ describe('SubscriptionsController (integration, RPC-mocked)', () => {
         expect(res.body.status).toBe('completed');
         expect(res.body.txHash).toBe('tx-101');
       });
+  });
+
+  describe('GET /v1/subscriptions/me/subscription-state', () => {
+    function bearerToken(address: string): string {
+      return `Bearer ${Buffer.from(address, 'utf8').toString('base64')}`;
+    }
+
+    it('returns subscription state for authenticated fan', async () => {
+      const fanAddr = `G${'A'.repeat(55)}`;
+
+      await request(app.getHttpServer())
+        .get('/v1/subscriptions/me/subscription-state')
+        .set('Authorization', bearerToken(fanAddr))
+        .query({ creator: `G${'B'.repeat(55)}` })
+        .expect(200)
+        .expect((res) => {
+          expect(res.body).toHaveProperty('fan', fanAddr);
+          expect(res.body).toHaveProperty('active');
+          expect(res.body).toHaveProperty('indexedStatus');
+          expect(res.body).toHaveProperty('chain');
+        });
+    });
+
+    it('returns 401 without Authorization header', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/subscriptions/me/subscription-state')
+        .query({ creator: `G${'B'.repeat(55)}` })
+        .expect(401);
+    });
+
+    it('returns active state after subscription is created', async () => {
+      const fanAddr = `G${'C'.repeat(55)}`;
+      const creatorAddr = 'GAAAAAAAAAAAAAAA';
+
+      const createRes = await request(app.getHttpServer())
+        .post('/v1/subscriptions/checkout')
+        .send({ fanAddress: fanAddr, creatorAddress: creatorAddr, planId: 1 })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/v1/subscriptions/checkout/${createRes.body.id}/confirm`)
+        .send({ txHash: 'tx-e2e-state' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .get('/v1/subscriptions/me/subscription-state')
+        .set('Authorization', bearerToken(fanAddr))
+        .query({ creator: creatorAddr })
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.active).toBe(true);
+          expect(res.body.indexedStatus).toBe('active');
+          expect(res.body.indexed).not.toBeNull();
+          expect(res.body.indexed.planId).toBe(1);
+        });
+    });
+  });
+
+  describe('GET /v1/subscriptions/me/list', () => {
+    function bearerToken(address: string): string {
+      return `Bearer ${Buffer.from(address, 'utf8').toString('base64')}`;
+    }
+
+    it('returns paginated subscription list for authenticated fan', async () => {
+      const fanAddr = `G${'D'.repeat(55)}`;
+
+      await request(app.getHttpServer())
+        .get('/v1/subscriptions/me/list')
+        .set('Authorization', bearerToken(fanAddr))
+        .expect(200)
+        .expect((res) => {
+          expect(res.body).toHaveProperty('data');
+          expect(res.body).toHaveProperty('limit');
+          expect(res.body).toHaveProperty('hasMore');
+          expect(Array.isArray(res.body.data)).toBe(true);
+        });
+    });
+
+    it('returns 401 without Authorization header', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/subscriptions/me/list')
+        .expect(401);
+    });
+
+    it('respects limit query parameter', async () => {
+      const fanAddr = `G${'E'.repeat(55)}`;
+
+      await request(app.getHttpServer())
+        .get('/v1/subscriptions/me/list')
+        .set('Authorization', bearerToken(fanAddr))
+        .query({ limit: 5 })
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.limit).toBe(5);
+        });
+    });
+
+    it('includes subscriptions after checkout confirmation', async () => {
+      const fanAddr = `G${'F'.repeat(55)}`;
+      const creatorAddr = 'GAAAAAAAAAAAAAAA';
+
+      const createRes = await request(app.getHttpServer())
+        .post('/v1/subscriptions/checkout')
+        .send({ fanAddress: fanAddr, creatorAddress: creatorAddr, planId: 1 })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/v1/subscriptions/checkout/${createRes.body.id}/confirm`)
+        .send({ txHash: 'tx-e2e-list' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .get('/v1/subscriptions/me/list')
+        .set('Authorization', bearerToken(fanAddr))
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+          expect(res.body.data[0].creatorId).toBe(creatorAddr);
+        });
+    });
+  });
+
+  describe('POST /v1/subscriptions/cancel', () => {
+    it('cancels an existing subscription', async () => {
+      const createRes = await request(app.getHttpServer())
+        .post('/v1/subscriptions/checkout')
+        .send({ fanAddress: 'GTESTFAN_CANCEL1', creatorAddress: 'GAAAAAAAAAAAAAAA', planId: 1 })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/v1/subscriptions/checkout/${createRes.body.id}/confirm`)
+        .send({ txHash: 'tx-cancel' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/v1/subscriptions/cancel')
+        .send({ fanAddress: 'GTESTFAN_CANCEL1', creatorAddress: 'GAAAAAAAAAAAAAAA' })
+        .expect(201)
+        .expect((res) => {
+          expect(res.body.success).toBe(true);
+          expect(res.body.status).toBe('cancelled');
+        });
+    });
+
+    it('returns 404 when subscription does not exist', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/subscriptions/cancel')
+        .send({ fanAddress: 'GNONEXISTENT', creatorAddress: 'GNOONE' })
+        .expect(404);
+    });
+  });
+
+  describe('GET /v1/subscriptions/me/dashboard', () => {
+    function bearerToken(address: string): string {
+      return `Bearer ${Buffer.from(address, 'utf8').toString('base64')}`;
+    }
+
+    it('returns paginated dashboard for authenticated fan', async () => {
+      const fanAddr = `G${'H'.repeat(55)}`;
+
+      await request(app.getHttpServer())
+        .get('/v1/subscriptions/me/dashboard')
+        .set('Authorization', bearerToken(fanAddr))
+        .expect(200)
+        .expect((res) => {
+          expect(res.body).toHaveProperty('fan', fanAddr);
+          expect(res.body).toHaveProperty('totalActive');
+          expect(res.body).toHaveProperty('subscriptions');
+          expect(res.body).toHaveProperty('page');
+          expect(res.body).toHaveProperty('limit');
+          expect(Array.isArray(res.body.subscriptions)).toBe(true);
+        });
+    });
+
+    it('returns 401 without Authorization header', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/subscriptions/me/dashboard')
+        .expect(401);
+    });
+
+    it('respects page and limit query parameters', async () => {
+      const fanAddr = `G${'I'.repeat(55)}`;
+
+      await request(app.getHttpServer())
+        .get('/v1/subscriptions/me/dashboard')
+        .set('Authorization', bearerToken(fanAddr))
+        .query({ page: 2, limit: 5 })
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.page).toBe(2);
+          expect(res.body.limit).toBe(5);
+        });
+    });
   });
 
   it('handles failed checkout path', async () => {

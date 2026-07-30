@@ -23,7 +23,9 @@ describe('CORS and Security Headers (e2e)', () => {
 
   describe('Security Headers', () => {
     it('/v1 (GET) - should include security headers', async () => {
-      const response = await request(app.getHttpServer()).get('/v1').expect(200);
+      const response = await request(app.getHttpServer())
+        .get('/v1')
+        .expect(200);
 
       // Check security headers are present
       expect(response.headers['x-frame-options']).toBe('DENY');
@@ -48,7 +50,9 @@ describe('CORS and Security Headers (e2e)', () => {
     });
 
     it('/v1 (GET) - should not expose X-Powered-By header', async () => {
-      const response = await request(app.getHttpServer()).get('/v1').expect(200);
+      const response = await request(app.getHttpServer())
+        .get('/v1')
+        .expect(200);
 
       expect(response.headers['x-powered-by']).toBeUndefined();
     });
@@ -60,8 +64,12 @@ describe('CORS and Security Headers (e2e)', () => {
         .set('X-Request-ID', 'b2c3d4e5-f6a7-4890-9bcd-ef0123456789')
         .expect(200);
 
-      expect(response.headers['x-correlation-id']).toBe('a1b2c3d4-e5f6-4789-8abc-def012345678');
-      expect(response.headers['x-request-id']).toBe('b2c3d4e5-f6a7-4890-9bcd-ef0123456789');
+      expect(response.headers['x-correlation-id']).toBe(
+        'a1b2c3d4-e5f6-4789-8abc-def012345678',
+      );
+      expect(response.headers['x-request-id']).toBe(
+        'b2c3d4e5-f6a7-4890-9bcd-ef0123456789',
+      );
     });
   });
 
@@ -98,7 +106,9 @@ describe('CORS and Security Headers (e2e)', () => {
     });
 
     it('should handle requests without Origin header', async () => {
-      const response = await request(app.getHttpServer()).get('/v1').expect(200);
+      const response = await request(app.getHttpServer())
+        .get('/v1')
+        .expect(200);
 
       // Should still work without Origin header
       expect(response.status).toBe(200);

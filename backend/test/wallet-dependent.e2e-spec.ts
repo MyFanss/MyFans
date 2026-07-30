@@ -139,9 +139,9 @@ describe('Wallet-dependent endpoints (integration)', () => {
         .expect(200);
 
       const { nonce } = challengeRes.body as { nonce: string };
-      const sigHex = Buffer.from(keypair.sign(Buffer.from(nonce, 'utf8'))).toString(
-        'hex',
-      );
+      const sigHex = Buffer.from(
+        keypair.sign(Buffer.from(nonce, 'utf8')),
+      ).toString('hex');
 
       await request(app.getHttpServer())
         .post('/v1/auth/challenge/verify')

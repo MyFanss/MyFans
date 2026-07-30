@@ -6,6 +6,13 @@ This document describes the CORS (Cross-Origin Resource Sharing) and security he
 
 The backend implements secure CORS and response headers to protect against common web vulnerabilities while maintaining flexibility for different environments (development, staging, production).
 
+Security headers are applied in two layers:
+
+1. **[helmet](https://helmetjs.github.io/) (baseline)** — wired in `main.ts` via `app.use(helmet(...))`. Covers `X-DNS-Prefetch-Control`, `X-Frame-Options`, `X-Powered-By` removal, `X-Download-Options`, `X-Permitted-Cross-Domain-Policies`, `Referrer-Policy`, and `X-XSS-Protection` out of the box.
+2. **`SecurityHeadersMiddleware` (project-specific overrides)** — applied immediately after helmet. Manages environment-aware CSP, HSTS, and the Cross-Origin-* family (`COEP`, `COOP`, `CORP`) with production vs. development distinctions.
+
+This layered approach means helmet handles the well-known defaults while the custom middleware retains full control over the headers that need per-environment tuning.
+
 ## Security Headers
 
 The following security headers are applied to all responses:

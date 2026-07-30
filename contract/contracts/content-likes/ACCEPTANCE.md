@@ -54,12 +54,22 @@
 - [x] like_count returns 0 for never-liked content
 - [x] has_liked returns false for never-liked content
 
+#### ✅ Test: Snapshot/Restore Consistency (Issue #924)
+- [x] Like counts preserved across snapshot/restore
+- [x] User like lists preserved and queryable
+- [x] Individual like status (has_liked) consistent
+- [x] Pagination state correct after restore
+- [x] Multiple users' likes remain independent
+- [x] State integrity maintained across environment boundaries
+
 ### Gas & Scalability
 
 #### Storage Model
-- **Like Set**: `("likes", content_id)` → Set<Address>
-- **Like Count**: `("count", content_id)` → u32
-- **Rationale**: Separate count enables O(1) queries; Set enables O(1) membership checks
+- **Like Map**: `DataKey::LikesMap(content_id)` → Map<Address, bool>
+- **Like Count**: `DataKey::Count(content_id)` → u32
+- **User Likes**: `DataKey::UserLikes(user)` → Vec<u32>
+- **Max Likes Per User**: 100 (`MAX_USER_LIKES`)
+- **Rationale**: Separate count enables O(1) queries; Map enables O(log n) membership checks; DataKey enum follows project conventions
 
 #### Complexity Analysis
 - `like()`: O(log n) where n = likes on content (Set insert)

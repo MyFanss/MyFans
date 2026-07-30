@@ -3,14 +3,30 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ContentService } from './content.service';
 import { ContentMetadata, ContentType } from './entities/content.entity';
+import { IpfsService } from './ipfs.service';
 
-const mockRepo = () => ({
-  create: jest.fn(),
-  save: jest.fn(),
-  findAndCount: jest.fn(),
-  findOne: jest.fn(),
-  remove: jest.fn(),
-});
+const mockIpfsService = {
+  uploadMetadata: jest.fn().mockResolvedValue({ cid: 'QmMock', url: 'https://gateway/QmMock' }),
+};
+
+const mockRepo = () => {
+  const queryBuilder = {
+    orderBy: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
+    getMany: jest.fn(),
+  };
+  return {
+    create: jest.fn(),
+    save: jest.fn(),
+    findAndCount: jest.fn(),
+    findOne: jest.fn(),
+    remove: jest.fn(),
+    createQueryBuilder: jest.fn(() => queryBuilder),
+    _queryBuilder: queryBuilder,
+  };
+};
 
 const makeContent = (overrides: Partial<ContentMetadata> = {}): ContentMetadata =>
   ({
@@ -37,6 +53,7 @@ describe('ContentService', () => {
       providers: [
         ContentService,
         { provide: getRepositoryToken(ContentMetadata), useFactory: mockRepo },
+        { provide: IpfsService, useValue: mockIpfsService },
       ],
     }).compile();
 
@@ -47,7 +64,7 @@ describe('ContentService', () => {
   afterEach(() => jest.clearAllMocks());
 
   describe('create', () => {
-    it('creates and saves content with creator_id', async () => {
+    it('creates and saves content with provided ipfs_cid (no upload)', async () => {
       const dto = { title: 'My Content', ipfs_cid: 'QmAbc' };
       const entity = makeContent();
       repo.create.mockReturnValue(entity);
@@ -55,33 +72,46 @@ describe('ContentService', () => {
 
       const result = await service.create('creator-1', dto as any);
 
-      expect(repo.create).toHaveBeenCalledWith({ ...dto, creator_id: 'creator-1' });
+      expect(mockIpfsService.uploadMetadata).not.toHaveBeenCalled();
       expect(repo.save).toHaveBeenCalledWith(entity);
       expect(result).toBe(entity);
+    });
+
+    it('auto-pins metadata when ipfs_cid is omitted', async () => {
+      const dto = { title: 'My Content' };
+      const entity = makeContent({ ipfs_cid: 'QmMock', ipfs_url: 'https://gateway/QmMock' });
+      repo.create.mockReturnValue(entity);
+      repo.save.mockResolvedValue(entity);
+
+      const result = await service.create('creator-1', dto as any);
+
+      expect(mockIpfsService.uploadMetadata).toHaveBeenCalled();
+      expect(result.ipfs_cid).toBe('QmMock');
     });
   });
 
   describe('findAll', () => {
     it('returns paginated results', async () => {
       const items = [makeContent()];
-      repo.findAndCount.mockResolvedValue([items, 1]);
+      repo._queryBuilder.getMany.mockResolvedValue(items);
 
-      const result = await service.findAll({ page: 1, limit: 10 });
+      const result = await service.findAll({ limit: 10 });
 
       expect(result.data).toEqual(items);
-      expect(result.total).toBe(1);
-      expect(result.page).toBe(1);
+      expect(result.hasMore).toBe(false);
     });
   });
 
   describe('findByCreator', () => {
     it('filters by creator_id', async () => {
-      repo.findAndCount.mockResolvedValue([[], 0]);
+      repo._queryBuilder.getMany.mockResolvedValue([]);
 
-      await service.findByCreator('creator-1', { page: 1, limit: 10 });
+      await service.findByCreator('creator-1', { limit: 10 });
 
-      expect(repo.findAndCount).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { creator_id: 'creator-1' } }),
+      expect(repo.createQueryBuilder).toHaveBeenCalledWith('content');
+      expect(repo._queryBuilder.where).toHaveBeenCalledWith(
+        'content.creator_id = :creatorId',
+        { creatorId: 'creator-1' },
       );
     });
   });

@@ -13,7 +13,7 @@
 ## Test Results
 
 ```
-running 7 tests
+running 8 tests
 ✅ test::test_like_and_unlike ... ok
 ✅ test::test_like_count_accuracy ... ok
 ✅ test::test_double_like_idempotent ... ok
@@ -21,8 +21,9 @@ running 7 tests
 ✅ test::test_unlike_twice_reverts - should panic ... ok
 ✅ test::test_multiple_content_items ... ok
 ✅ test::test_zero_likes_queries ... ok
+✅ test::test_snapshot_restore_consistency ... ok
 
-test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ```
 
 ## Acceptance Criteria Verification
@@ -78,6 +79,14 @@ test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 #### ✅ Zero Likes Queries
 - [x] like_count returns 0 for never-liked content
 - [x] has_liked returns false for never-liked content
+
+#### ✅ Snapshot/Restore Consistency (Issue #924)
+- [x] Like counts preserved across snapshot/restore
+- [x] User like lists preserved and queryable
+- [x] Individual like status (has_liked) consistent
+- [x] Pagination state correct after restore
+- [x] Multiple users' likes remain independent
+- [x] State integrity maintained across environment boundaries
 
 ### Code Quality
 

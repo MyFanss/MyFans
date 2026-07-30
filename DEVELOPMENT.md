@@ -6,6 +6,11 @@ One-command local stack using Docker Compose with the `dev` profile.
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine + Compose plugin)
 - Git
+- **For contract development**: Rust stable with wasm32 target
+  ```bash
+  rustup install stable
+  rustup target add wasm32-unknown-unknown
+  ```
 
 ## Quick Start
 
@@ -48,6 +53,141 @@ curl http://localhost:3001/v1/health
 ```
 
 Or open `http://localhost:3001/v1/health` in your browser.
+
+---
+
+## Frontend API base URL (`NEXT_PUBLIC_API_URL`)
+
+All frontend API clients resolve the backend origin through the shared
+`getApiBaseUrl()` helper in `frontend/src/lib/api/base-url.ts`, instead of
+each module hardcoding its own `localhost` host/port fallback.
+
+- Set `NEXT_PUBLIC_API_URL` to override the backend origin, e.g. in
+  `frontend/.env.local`:
+  ```bash
+  NEXT_PUBLIC_API_URL=http://localhost:3001
+  ```
+- When unset, it defaults to `http://localhost:3001` (matching the backend's
+  `docker-compose.yml`/`docker-compose.dev.yml` port), so local dev works out
+  of the box without any frontend env file.
+- `NEXT_PUBLIC_API_URL` should be the bare origin (protocol + host + optional
+  port) — individual clients append their own resource paths (e.g. `/v1/...`,
+  `/api/v1/...`, `/favorites`) on top of it. Do not include a trailing slash.
+- If you add a new frontend module that calls the backend, import
+  `getApiBaseUrl()` (or `getConfiguredApiBaseUrl()` / `getVersionedApiBaseUrl()`
+  if you need a different fallback or a `/v1`-prefixed root) from
+  `@/lib/api/base-url` rather than reading `process.env.NEXT_PUBLIC_API_URL`
+  directly.
+
+### Next.js `/api/v1` proxy rewrites
+
+Browser code often calls same-origin paths like `/api/v1/subscriptions/...`.
+`frontend/next.config.ts` rewrites those to the Nest backend:
+
+| Browser request | Proxied to (Nest) |
+| --- | --- |
+| `/api/v1/:path*` | `${NEXT_PUBLIC_API_URL}/v1/:path*` |
+
+Smoke check (with backend on `:3001` and `npm run dev` in `frontend/`):
+
+```bash
+# Same-origin via Next (typical frontend port 3000)
+curl -s http://localhost:3000/api/v1/health
+# Expected: {"status":"ok",...} (same as Nest /v1/health)
+```
+
+Start order for local UI work:
+
+1. Backend: `docker compose -f docker-compose.dev.yml --profile dev up` (or Nest on `:3001`)
+2. Frontend: `cd frontend && npm run dev`
+3. Prefer same-origin `/api/v1/...` fetches (or `getVersionedApiBaseUrl()`) so cookies/CSRF stay on the Next origin.
+
+### Content library upload
+
+The dashboard content library lists items from `GET /api/v1/content` (rewritten to Nest
+`GET /v1/content`). **Direct multipart file upload is not available yet** — the UI
+disables the dropzone and shows a clear message.
+
+To add content today, create metadata via the API:
+
+```bash
+# After obtaining a CSRF token + auth cookie/JWT
+curl -X POST http://localhost:3000/api/v1/content \
+  -H 'Content-Type: application/json' \
+  -H "X-CSRF-Token: $CSRF_TOKEN" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"title":"My post","content_type":"image","is_published":true}'
+```
+
+When a file upload endpoint ships, wire `uploadContentFiles` in
+`frontend/src/lib/content-api.ts` and clear `uploadDisabledMessage` from the page hook.
+
+---
+
+## Contract Development
+
+Contracts are in the `contract/` directory and use Soroban SDK.
+
+### Running Tests
+
+Test contract code before committing:
+
+```bash
+cd contract
+
+# Run all tests
+cargo test --all-features
+
+# Run tests for a specific contract
+cd contract/contracts/myfans-token && cargo test
+
+# Run with output for debugging
+cargo test -- --nocapture
+
+# Watch mode (requires cargo-watch: cargo install cargo-watch)
+cargo watch -x test
+```
+
+### Pre-commit Verification
+
+Before pushing contract changes, run all CI checks locally:
+
+```bash
+cd contract && \
+  cargo fmt --all --check && \
+  cargo clippy --all-targets --all-features -- -D warnings && \
+  cargo test --all-features && \
+  cargo build --release --target wasm32-unknown-unknown
+```
+
+### Building WASM Artifacts
+
+To build optimized WASM files for deployment:
+
+```bash
+cd contract
+cargo build --release --target wasm32-unknown-unknown
+```
+
+Artifacts appear in: `contract/target/wasm32-unknown-unknown/release/`
+
+### Contract Testing Guide
+
+For comprehensive testing patterns, see [contract/TESTING.md](./contract/TESTING.md)
+
+Key points:
+- All tests use the Soroban test environment (no network access required)
+- Tests cover happy path, error conditions, and edge cases
+- Authorization and cross-contract interactions are tested
+- Every PR requires passing contract tests in CI
+
+### Regression Prevention
+
+Use the [Regression Prevention Checklist](./contract/REGRESSION_CHECKLIST.md) when:
+- Adding new contracts
+- Modifying contract interfaces
+- Adding new contract methods
+- Changing authorization rules
 
 ---
 
@@ -118,3 +258,17 @@ Force a rebuild:
 ```bash
 docker compose -f docker-compose.dev.yml --profile dev up --build
 ```
+
+**Contract tests failing locally but passing in CI**
+Ensure you're using the same workspace manifest:
+```bash
+cd contract && cargo test --all-features --manifest-path Cargo.toml
+```
+
+**Rust toolchain not found**
+Install Rust and add the wasm32 target:
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+rustup target add wasm32-unknown-unknown
+```
+

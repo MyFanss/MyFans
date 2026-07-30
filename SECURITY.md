@@ -23,7 +23,7 @@ If you discover a security vulnerability in MyFans, please report it responsibly
 | Component | Last Tested | Status | Critical Issues | High Issues | Medium Issues |
 |-----------|-------------|--------|-----------------|-------------|---------------|
 | Frontend  | -           | Pending | 0              | 0           | 0             |
-| Backend   | -           | Pending | 0              | 0           | 0             |
+| Backend   | 2026-07-25  | Reviewed | 0            | 0           | 3             |
 | Contracts | -           | Pending | 0              | 0           | 0             |
 
 ### Findings Log
@@ -45,13 +45,117 @@ If you discover a security vulnerability in MyFans, please report it responsibly
 
 ### Active Findings
 
-*No active findings at this time*
+```
+### Finding #6 - Low - 2026-07-25
+**Component**: Backend
+**Category**: Dead Code / Attack Surface
+**Description**: Deprecated duplicate auth stacks (`src/auth`, `src/refresh-module`,
+  `src/users-module`) remain in the tree alongside the canonical `src/auth-module` +
+  `src/users` stack, each with their own JWT signing/expiry configuration
+  (`backend/src/auth-module/auth.module.ts` vs `backend/src/users/users.module.ts`).
+  They are not wired into `AppModule` (see the comment at the top of
+  `backend/src/app.module.ts`), so they are not reachable at runtime today.
+**Impact**: Divergent, largely untested duplicate auth code increases the chance
+  that a future refactor or module-wiring change accidentally reintroduces one of
+  these stacks (or a bypass) into the request path.
+**Status**: Open
+**Assigned To**: Backend team
+**Resolution**: Pending — delete the deprecated modules once call sites are confirmed
+  fully migrated to `auth-module`.
+**Resolved Date**: -
+```
 
 ---
 
 ### Resolved Findings
 
-*No resolved findings yet*
+```
+### Finding #1 - Medium - 2026-07-25
+**Component**: Backend
+**Category**: Access Control / Observability (shallow liveness)
+**Description**: `HealthService.getHealth()` (`backend/src/health/health.service.ts`)
+  always returned a static `up` without probing the database or any other
+  subsystem, and it was the only liveness/readiness signal exposed.
+**Impact**: An orchestrator (k8s liveness/readiness probe, load balancer health
+  check) polling `GET /health` would see a healthy instance even when its database
+  connection was completely down, keeping traffic routed to a non-functional pod
+  instead of failing over.
+**Status**: Resolved
+**Assigned To**: Backend team
+**Resolution**: Added `GET /v1/health/ready`, which probes the database
+  (mandatory — 503 on failure) and Soroban RPC (optional, reported only).
+  `GET /v1/health` remains a pure liveness check by design (see issue #1443).
+**Resolved Date**: 2026-07-25
+
+### Finding #2 - Medium - 2026-07-25
+**Component**: Backend
+**Category**: CI/CD Gap
+**Description**: CI (`.github/workflows/ci.yml`) ran only the unit test suite
+  (`npm test`) on PRs. The e2e suite — which includes the access-control and
+  transport-security regression tests in `backend/test/rbac.e2e-spec.ts`,
+  `cors-security.e2e-spec.ts`, and `security-hardening.e2e-spec.ts` — was never
+  executed automatically.
+**Impact**: A regression in RBAC enforcement, CORS policy, or other
+  security-hardening behavior covered only by e2e tests could be merged to `main`
+  without CI catching it.
+**Status**: Resolved
+**Assigned To**: Backend team
+**Resolution**: Added a `Backend E2E` job with a Postgres service to
+  `.github/workflows/ci.yml`, running `npm run test:e2e` on every PR; local run
+  steps documented in `DEVELOPMENT.md` (see issue #1444).
+**Resolved Date**: 2026-07-25
+
+### Finding #3 - Low - 2026-07-25
+**Component**: Backend
+**Category**: Process
+**Description**: This `SECURITY.md` findings tracker existed only as an empty
+  template despite known, addressable exposures already present in the backend.
+**Impact**: Prior and ongoing security work was not discoverable from the
+  document meant to track it, undermining the audit trail for reviewers.
+**Status**: Resolved
+**Assigned To**: Backend team
+**Resolution**: Populated with the findings in this section (see issue #1445).
+**Resolved Date**: 2026-07-25
+
+### Finding #4 - Medium - 2026-07-25
+**Component**: Backend
+**Category**: Access Control (missing authorization boundary)
+**Description**: The frontend expects creator-scoped `/earnings/*` endpoints,
+  but the only server-side aggregation was `AnalyticsController`
+  (`GET /v1/analytics/*`), which is shared between admins and creators, gated
+  by a manual `scopeToOwner` check, and was not even registered in `AppModule`.
+**Impact**: Without a dedicated, strictly-scoped earnings surface, there was
+  pressure to either bypass the backend for financial data or hand-roll a new
+  endpoint without the existing admin/creator scoping discipline.
+**Status**: Resolved
+**Assigned To**: Backend team
+**Resolution**: Added `EarningsModule` (`backend/src/earnings/`), gated by
+  `@Roles(UserRole.CREATOR)` with every query always scoped to
+  `req.user.userId` — no cross-creator or admin override path exists on this
+  controller (see issue #1438).
+**Resolved Date**: 2026-07-25
+```
+
+---
+
+### Accepted Risks
+
+```
+### Finding #5 - Low - 2026-07-25
+**Component**: Backend
+**Category**: Data Exposure (credentials in transit)
+**Description**: The Redis health probe (`pingRedis` in
+  `backend/src/health/health.service.ts`) sends `AUTH <password>` in the clear
+  when `REDIS_URL` uses the non-TLS `redis://` scheme instead of `rediss://`.
+**Impact**: On a network segment an attacker can observe, the Redis credential
+  used for the health check could be captured.
+**Status**: Accepted Risk
+**Assigned To**: Backend team
+**Resolution**: Accepted — the probe only runs over the internal
+  Docker/VPC network in current deployments. Recommend switching to `rediss://`
+  in any environment where that network boundary is not trusted.
+**Resolved Date**: -
+```
 
 ---
 
@@ -143,4 +247,4 @@ MyFans adheres to:
 
 This document is reviewed and updated quarterly or after significant security events.
 
-**Last Updated**: 2026-04-22
+**Last Updated**: 2026-07-25

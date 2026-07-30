@@ -1,8 +1,13 @@
+import { getConfiguredApiBaseUrl, trimTrailingSlash } from '@/lib/api/base-url';
+
 export const FeatureFlag = {
   BOOKMARKS: 'bookmarks',
   EARNINGS_WITHDRAWALS: 'earnings_withdrawals',
   EARNINGS_FEE_TRANSPARENCY: 'earnings_fee_transparency',
   REFERRAL_CODES: 'referral_codes',
+  NEW_SUBSCRIPTION_FLOW: 'newSubscriptionFlow',
+  CRYPTO_PAYMENTS: 'cryptoPayments',
+  WALLET_CONNECT: 'walletConnect',
 } as const;
 
 export type FeatureFlag = (typeof FeatureFlag)[keyof typeof FeatureFlag];
@@ -38,6 +43,18 @@ export const featureFlagDefinitions: Record<FeatureFlag, FeatureFlagDefinition> 
     description: 'Enables referral / invite code input during checkout and share panel in settings.',
     envKey: 'NEXT_PUBLIC_FLAG_REFERRAL_CODES',
   },
+  [FeatureFlag.NEW_SUBSCRIPTION_FLOW]: {
+    description: 'Enables the new subscription checkout flow in the application.',
+    envKey: 'NEXT_PUBLIC_FEATURE_NEW_SUBSCRIPTION_FLOW',
+  },
+  [FeatureFlag.CRYPTO_PAYMENTS]: {
+    description: 'Enables crypto payment options in the checkout flow.',
+    envKey: 'NEXT_PUBLIC_FEATURE_CRYPTO_PAYMENTS',
+  },
+  [FeatureFlag.WALLET_CONNECT]: {
+    description: 'Enables WalletConnect as a wallet connection option. Disabled by default until the provider is fully integrated.',
+    envKey: 'NEXT_PUBLIC_FEATURE_WALLET_CONNECT',
+  },
 };
 
 export const defaultFeatureFlags: FeatureFlagSnapshot = Object.freeze({
@@ -45,6 +62,9 @@ export const defaultFeatureFlags: FeatureFlagSnapshot = Object.freeze({
   [FeatureFlag.EARNINGS_WITHDRAWALS]: false,
   [FeatureFlag.EARNINGS_FEE_TRANSPARENCY]: false,
   [FeatureFlag.REFERRAL_CODES]: false,
+  [FeatureFlag.NEW_SUBSCRIPTION_FLOW]: false,
+  [FeatureFlag.CRYPTO_PAYMENTS]: false,
+  [FeatureFlag.WALLET_CONNECT]: false,
 });
 
 let cachedRemoteFlags: FeatureFlagOverrides = {};
@@ -92,17 +112,16 @@ function sanitizeFlagOverrides(value: unknown): FeatureFlagOverrides {
   }, {});
 }
 
-function trimTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, '');
-}
-
 export function getRemoteFlagsUrl(): string | undefined {
   const explicitUrl = process.env[FEATURE_FLAGS_URL_ENV_KEY];
   if (explicitUrl) {
     return explicitUrl;
   }
 
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+  // Uses getConfiguredApiBaseUrl() (undefined when unset) rather than
+  // getApiBaseUrl(), since this function's fallback is a same-origin
+  // relative path rather than the shared absolute localhost default (#1455).
+  const apiBaseUrl = getConfiguredApiBaseUrl();
   if (apiBaseUrl) {
     const normalizedApiBaseUrl = trimTrailingSlash(apiBaseUrl);
 

@@ -23,6 +23,10 @@ describe('FeatureFlagsService', () => {
     delete process.env.NEXT_PUBLIC_FLAG_EARNINGS_WITHDRAWALS;
     delete process.env.FEATURE_FLAG_EARNINGS_FEE_TRANSPARENCY;
     delete process.env.NEXT_PUBLIC_FLAG_EARNINGS_FEE_TRANSPARENCY;
+    delete process.env.FEATURE_NEW_SUBSCRIPTION_FLOW;
+    delete process.env.FEATURE_CRYPTO_PAYMENTS;
+    delete process.env.FEATURE_REFERRAL_CODES;
+    delete process.env.FEATURE_SOROBAN_POLLER;
   });
 
   it('returns false when a flag is not set', () => {
@@ -47,17 +51,23 @@ describe('FeatureFlagsService', () => {
     expect(service.isEnabled('earnings_fee_transparency')).toBe(false);
   });
 
-  it('returns the frontend-compatible feature flag payload', () => {
+  it('returns the full feature flag payload', () => {
     process.env.FEATURE_FLAG_BOOKMARKS = 'true';
     process.env.FEATURE_FLAG_EARNINGS_WITHDRAWALS = 'false';
     process.env.FEATURE_FLAG_EARNINGS_FEE_TRANSPARENCY = '1';
+    process.env.FEATURE_NEW_SUBSCRIPTION_FLOW = 'true';
+    process.env.FEATURE_CRYPTO_PAYMENTS = 'true';
+    process.env.FEATURE_REFERRAL_CODES = 'true';
+    process.env.FEATURE_SOROBAN_POLLER = 'true';
 
     expect(service.getAllFlags()).toEqual({
-      flags: {
-        bookmarks: true,
-        earnings_withdrawals: false,
-        earnings_fee_transparency: true,
-      },
+      bookmarks: true,
+      earnings_withdrawals: false,
+      earnings_fee_transparency: true,
+      newSubscriptionFlow: true,
+      cryptoPayments: true,
+      referralCodes: true,
+      sorobanPoller: true,
     });
   });
 });

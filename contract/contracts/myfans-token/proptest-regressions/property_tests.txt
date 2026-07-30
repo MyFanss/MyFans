@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 4856bc666cdb166cd7e9eee33878144e4f9cd48d5f19de9eb9e28045d2a9f774 # shrinks to mint_amount = 1, spend_amount = 1, expiry = 2, past_offset = 16
+cc dcce8d80d04f8e5106e2d64df6282cd4475a45e48687a98597ef37b287ddd393 # shrinks to mint_amount = 1, spend_amount = 1, expiry = 11, past_offset = 7

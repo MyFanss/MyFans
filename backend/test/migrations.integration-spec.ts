@@ -140,8 +140,12 @@ describe('Database migrations (integration)', () => {
 
   it('CreateWalletChallenges: wallet_challenges table exists with expected columns', async () => {
     expect(await tableExists(qr, 'wallet_challenges')).toBe(true);
-    expect(await columnExists(qr, 'wallet_challenges', 'stellar_address'  )).toBe(false); // camelCase stored as "stellarAddress"
-    expect(await columnExists(qr, 'wallet_challenges', 'stellarAddress')).toBe(true);
+    expect(await columnExists(qr, 'wallet_challenges', 'stellar_address')).toBe(
+      false,
+    ); // camelCase stored as "stellarAddress"
+    expect(await columnExists(qr, 'wallet_challenges', 'stellarAddress')).toBe(
+      true,
+    );
     expect(await columnExists(qr, 'wallet_challenges', 'nonce')).toBe(true);
     expect(await columnExists(qr, 'wallet_challenges', 'expiresAt')).toBe(true);
   });
@@ -149,7 +153,9 @@ describe('Database migrations (integration)', () => {
   it('CreateIdempotencyKeys: idempotency_keys table exists with expected columns', async () => {
     expect(await tableExists(qr, 'idempotency_keys')).toBe(true);
     expect(await columnExists(qr, 'idempotency_keys', 'key')).toBe(true);
-    expect(await columnExists(qr, 'idempotency_keys', 'fingerprint')).toBe(true);
+    expect(await columnExists(qr, 'idempotency_keys', 'fingerprint')).toBe(
+      true,
+    );
     expect(await columnExists(qr, 'idempotency_keys', 'expires_at')).toBe(true);
   });
 
@@ -161,7 +167,9 @@ describe('Database migrations (integration)', () => {
     expect(await tableExists(qr, 'referral_codes')).toBe(true);
     expect(await tableExists(qr, 'referral_redemptions')).toBe(true);
     expect(await columnExists(qr, 'referral_codes', 'code')).toBe(true);
-    expect(await columnExists(qr, 'referral_redemptions', 'redeemer_id')).toBe(true);
+    expect(await columnExists(qr, 'referral_redemptions', 'redeemer_id')).toBe(
+      true,
+    );
   });
 
   it('migrations table records all 6 migrations', async () => {
