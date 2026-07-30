@@ -1,4 +1,4 @@
-# 0.1.0 (2026-07-28)
+# 0.1.0 (2026-07-30)
 
 
 ### Bug Fixes
@@ -62,6 +62,7 @@
 * failed workflows in backend and contracts ([0ffb81c](https://github.com/MyFanss/MyFans/commit/0ffb81c2ccf3c6beaf0ff9472e2b3bfe13d20a4e))
 * failed workflows in backend and contracts and add audit.toml in contracts folder ([32861ad](https://github.com/MyFanss/MyFans/commit/32861ad155d13b7770533b731956c34588169750))
 * fix ci errors ([92c56bf](https://github.com/MyFanss/MyFans/commit/92c56bf9dc0cbdb1320fc35411b12addeff5f37b))
+* fix PublicGuard semantics and annotate public routes ([7529561](https://github.com/MyFanss/MyFans/commit/75295611c2917a4fa88324890d491719ecb054a9)), closes [#705](https://github.com/MyFanss/MyFans/issues/705) [#707](https://github.com/MyFanss/MyFans/issues/707) [#708](https://github.com/MyFanss/MyFans/issues/708) [#713](https://github.com/MyFanss/MyFans/issues/713)
 * **frontend:** add missing copyFeedback state declaration ([fb2c15d](https://github.com/MyFanss/MyFans/commit/fb2c15dcf93719221670d267ce89c74981088a94))
 * **frontend:** add missing createCreatorMetadata import from @/lib/metadata ([936a1ea](https://github.com/MyFanss/MyFans/commit/936a1eab2f6271e9bf4f9a52e0b34fc25444194c))
 * **frontend:** add missing useConsent import from ConsentContext ([6488778](https://github.com/MyFanss/MyFans/commit/64887783951c7e603a077c5297166b68297660d4))
