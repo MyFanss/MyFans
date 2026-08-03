@@ -592,7 +592,10 @@ fn set_rate_limit_reverts_if_not_admin() {
     env.set_auths(empty);
 
     let result = client.try_set_rate_limit(&20u32);
-    assert!(result.is_err(), "set_rate_limit without admin auth must revert");
+    assert!(
+        result.is_err(),
+        "set_rate_limit without admin auth must revert"
+    );
 }
 
 #[test]
@@ -737,8 +740,8 @@ fn initialize_emits_initialized_event() {
 
     client.initialize(&admin);
 
-    let event = find_event(&env, &contract_id, "initialized")
-        .expect("initialized event must be emitted");
+    let event =
+        find_event(&env, &contract_id, "initialized").expect("initialized event must be emitted");
     let data: InitializedEvent = event.2.try_into_val(&env).unwrap();
     assert_eq!(data.admin, admin);
 }
@@ -811,8 +814,8 @@ fn set_spam_fee_emits_spam_fee_set_event() {
     client.initialize(&admin);
     client.set_spam_fee(&token_id, &200i128);
 
-    let event = find_event(&env, &contract_id, "spam_fee_set")
-        .expect("spam_fee_set event must be emitted");
+    let event =
+        find_event(&env, &contract_id, "spam_fee_set").expect("spam_fee_set event must be emitted");
     let data: SpamFeeSetEvent = event.2.try_into_val(&env).unwrap();
     assert_eq!(data.token, token_id);
     assert_eq!(data.amount, 200i128);

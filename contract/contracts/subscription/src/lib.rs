@@ -1,9 +1,9 @@
 #![no_std]
+use myfans_lib::auth;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
     String, Symbol,
 };
-use myfans_lib::auth;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -524,7 +524,12 @@ impl MyfansContract {
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
         let caller = env.invoker();
-        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "set_fee_recipient"));
+        auth::require_authorized(
+            &env,
+            &caller,
+            &admin,
+            &Symbol::new(&env, "set_fee_recipient"),
+        );
 
         require_valid_fee_recipient(&env, &new_fee_recipient);
 

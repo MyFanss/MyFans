@@ -170,7 +170,9 @@ fn test_record_overflow_reverts_typed() {
     let result = client.try_record(&creator, &1);
     assert_eq!(
         result,
-        Err(Ok(SorobanError::from_contract_error(Error::Overflow as u32)))
+        Err(Ok(SorobanError::from_contract_error(
+            Error::Overflow as u32
+        )))
     );
     assert_eq!(
         client.get_earnings(&creator),

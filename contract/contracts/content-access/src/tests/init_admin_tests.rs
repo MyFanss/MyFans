@@ -366,8 +366,5 @@ fn set_paused_rejected_for_non_admin() {
 
     env.set_auths(EMPTY_AUTHS);
     let result = client.try_set_paused(&true);
-    assert!(
-        result.is_err(),
-        "set_paused must fail without admin auth"
-    );
+    assert!(result.is_err(), "set_paused must fail without admin auth");
 }

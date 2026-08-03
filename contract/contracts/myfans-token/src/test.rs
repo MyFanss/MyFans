@@ -46,7 +46,8 @@ fn test_transfer_insufficient_balance() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     let user1 = Address::generate(&env);
@@ -73,7 +74,8 @@ fn test_transfer_fails_for_zero_amount() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     let user1 = Address::generate(&env);
@@ -100,7 +102,8 @@ fn test_transfer_fails_for_negative_amount() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     let user1 = Address::generate(&env);
@@ -127,7 +130,8 @@ fn test_approve_and_transfer_from() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     let owner = Address::generate(&env);
@@ -167,7 +171,8 @@ fn test_transfer_from_event_includes_spender() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     let owner = Address::generate(&env);
@@ -246,7 +251,8 @@ fn test_transfer_from_insufficient_allowance() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     client.mint(&owner, &1000);
@@ -275,7 +281,8 @@ fn test_transfer_from_fails_for_zero_amount() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     client.mint(&owner, &1000);
@@ -304,7 +311,8 @@ fn test_transfer_from_fails_for_negative_amount() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     client.mint(&owner, &1000);
@@ -333,7 +341,8 @@ fn test_transfer_from_expired_allowance() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     client.mint(&owner, &1000);
@@ -387,7 +396,8 @@ fn test_burn() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     let user = Address::generate(&env);
@@ -415,7 +425,8 @@ fn test_burn_insufficient_balance() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     let user = Address::generate(&env);
@@ -438,7 +449,8 @@ fn test_burn_invalid_amount() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     let user = Address::generate(&env);
@@ -467,7 +479,8 @@ fn test_clear_allowance_resets_to_zero() {
         &String::from_str(&env, "T"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     let owner = Address::generate(&env);
@@ -496,7 +509,8 @@ fn test_clear_allowance_unauthorized_fails() {
         &String::from_str(&env, "T"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
     let owner = Address::generate(&env);
     let spender = Address::generate(&env);
@@ -527,7 +541,8 @@ fn test_fuzz_transfer_balances_invariant() {
         &String::from_str(&env, "T"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     let alice = Address::generate(&env);
@@ -581,7 +596,8 @@ fn test_fuzz_approve_transfer_from_invariant() {
         &String::from_str(&env, "T"),
         &String::from_str(&env, "T"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     let owner = Address::generate(&env);
@@ -804,7 +820,8 @@ fn test_initialize_only_once_panics() {
         &String::from_str(&env, "MyFans Token"),
         &String::from_str(&env, "MFAN"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     // Second initialization must panic to avoid accidental overwrite
@@ -813,7 +830,8 @@ fn test_initialize_only_once_panics() {
         &String::from_str(&env, "MyFans Token"),
         &String::from_str(&env, "MFAN"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 }
 
@@ -831,7 +849,8 @@ fn test_set_admin_unauthorized_panics() {
         &String::from_str(&env, "MyFans Token"),
         &String::from_str(&env, "MFAN"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     // Clear mocked auths so admin.require_auth() inside set_admin fails
@@ -891,7 +910,8 @@ fn test_set_metadata_admin_can_update() {
         &String::from_str(&env, "OldName"),
         &String::from_str(&env, "OLD"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     assert_eq!(client.name(), String::from_str(&env, "OldName"));
@@ -922,7 +942,8 @@ fn test_set_metadata_non_admin_is_rejected() {
         &String::from_str(&env, "OldName"),
         &String::from_str(&env, "OLD"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     // Clear mocked auths so admin.require_auth() fails
@@ -949,7 +970,8 @@ fn test_set_metadata_decimals_unchanged() {
         &String::from_str(&env, "Token"),
         &String::from_str(&env, "TKN"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     client.set_metadata(
@@ -978,7 +1000,8 @@ fn test_mint_admin_can_mint() {
         &String::from_str(&env, "MyFans Token"),
         &String::from_str(&env, "MFAN"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     let recipient = Address::generate(&env);
@@ -1008,7 +1031,8 @@ fn test_mint_non_admin_is_rejected() {
         &String::from_str(&env, "MyFans Token"),
         &String::from_str(&env, "MFAN"),
         &7,
-        &0, &admin,
+        &0,
+        &admin,
     );
 
     // Clear ALL mocked auths. After this, admin.require_auth() inside mint

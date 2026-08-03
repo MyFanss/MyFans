@@ -103,10 +103,16 @@ impl ContentLikes {
         if !already_liked {
             // Add user to map
             likes.set(user.clone(), true);
-            env.storage().instance().set(&DataKey::LikesMap(content_id), &likes);
+            env.storage()
+                .instance()
+                .set(&DataKey::LikesMap(content_id), &likes);
 
             // Increment count
-            let current_count: u32 = env.storage().instance().get(&DataKey::Count(content_id)).unwrap_or(0);
+            let current_count: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::Count(content_id))
+                .unwrap_or(0);
             env.storage()
                 .instance()
                 .set(&DataKey::Count(content_id), &(current_count + 1));
@@ -124,7 +130,9 @@ impl ContentLikes {
             }
 
             list.push_back(content_id);
-            env.storage().instance().set(&DataKey::UserLikes(user.clone()), &list);
+            env.storage()
+                .instance()
+                .set(&DataKey::UserLikes(user.clone()), &list);
 
             // Publish event
             env.events().publish(
@@ -171,10 +179,16 @@ impl ContentLikes {
 
         // Remove user from map
         likes.remove(user.clone());
-        env.storage().instance().set(&DataKey::LikesMap(content_id), &likes);
+        env.storage()
+            .instance()
+            .set(&DataKey::LikesMap(content_id), &likes);
 
         // Decrement count
-        let current_count: u32 = env.storage().instance().get(&DataKey::Count(content_id)).unwrap_or(0);
+        let current_count: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::Count(content_id))
+            .unwrap_or(0);
         if current_count > 0 {
             env.storage()
                 .instance()
@@ -194,7 +208,9 @@ impl ContentLikes {
                 new_list.push_back(id);
             }
         }
-        env.storage().instance().set(&DataKey::UserLikes(user.clone()), &new_list);
+        env.storage()
+            .instance()
+            .set(&DataKey::UserLikes(user.clone()), &new_list);
 
         // Publish event
         env.events().publish(
@@ -218,7 +234,10 @@ impl ContentLikes {
     /// # Gas optimization
     /// - Single storage read; O(1) operation
     pub fn like_count(env: Env, content_id: u32) -> u32 {
-        env.storage().instance().get(&DataKey::Count(content_id)).unwrap_or(0)
+        env.storage()
+            .instance()
+            .get(&DataKey::Count(content_id))
+            .unwrap_or(0)
     }
 
     /// Check if a user has liked a content item

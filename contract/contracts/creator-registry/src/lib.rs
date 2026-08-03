@@ -1,9 +1,9 @@
 #![no_std]
 
+use myfans_lib::auth as myfans_auth;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env, Symbol,
 };
-use myfans_lib::auth as myfans_auth;
 
 use soroban_sdk::token::Client;
 
@@ -143,9 +143,7 @@ impl CreatorRegistryContract {
 
         env.events().publish(
             (Symbol::new(&env, INITIALIZED_EVENT),),
-            InitializedEvent {
-                admin,
-            },
+            InitializedEvent { admin },
         );
     }
     // set the number of ledgers for rate limiting (admin only)
@@ -175,10 +173,7 @@ impl CreatorRegistryContract {
 
         env.events().publish(
             (Symbol::new(&env, SPAM_FEE_SET_EVENT),),
-            SpamFeeSetEvent {
-                token,
-                amount,
-            },
+            SpamFeeSetEvent { token, amount },
         );
     }
 
@@ -196,7 +191,11 @@ impl CreatorRegistryContract {
 
         if caller != admin && caller != creator_address {
             // Emit unauthorized event using myfans-lib helper
-            myfans_auth::emit_unauthorized_caller_event(&env, &caller, &Symbol::new(&env, "register_creator"));
+            myfans_auth::emit_unauthorized_caller_event(
+                &env,
+                &caller,
+                &Symbol::new(&env, "register_creator"),
+            );
             panic_with_error!(&env, Error::Unauthorized);
         }
 

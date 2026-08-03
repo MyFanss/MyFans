@@ -209,6 +209,7 @@ dependencies = [
 name = "creator-earnings"
 version = "0.1.1"
 dependencies = [
+ "myfans-lib",
  "proptest",
  "soroban-sdk",
 ]

@@ -1032,7 +1032,11 @@ fn test_set_admin_transfers_admin_role() {
     let treasury_client = TreasuryClient::new(&env, &treasury_id);
 
     treasury_client.initialize(&admin, &token_address);
-    assert_eq!(treasury_client.admin(), admin, "admin must be initial admin");
+    assert_eq!(
+        treasury_client.admin(),
+        admin,
+        "admin must be initial admin"
+    );
 
     treasury_client.set_admin(&new_admin);
     assert_eq!(
@@ -1121,7 +1125,10 @@ fn test_set_admin_emits_event() {
             topic.try_into_val(&env).ok() == Some(Symbol::new(&env, "admin_transferred"))
         })
     });
-    assert!(at_event.is_some(), "admin_transferred event must be emitted");
+    assert!(
+        at_event.is_some(),
+        "admin_transferred event must be emitted"
+    );
 
     let event = at_event.unwrap();
     let (old, new): (Address, Address) = event.2.try_into_val(&env).unwrap();

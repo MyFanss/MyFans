@@ -131,13 +131,25 @@ fn test_init_requires_admin_auth_without_persisting_state() {
     env.set_auths(empty);
     assert!(
         client
-            .try_init(&admin, &500u32, &fee_recipient, &token_client.address, &1000i128)
+            .try_init(
+                &admin,
+                &500u32,
+                &fee_recipient,
+                &token_client.address,
+                &1000i128
+            )
             .is_err(),
         "init must require admin auth"
     );
 
     env.mock_all_auths();
-    client.init(&admin, &500u32, &fee_recipient, &token_client.address, &1000i128);
+    client.init(
+        &admin,
+        &500u32,
+        &fee_recipient,
+        &token_client.address,
+        &1000i128,
+    );
     assert_eq!(client.admin(), admin);
 }
 

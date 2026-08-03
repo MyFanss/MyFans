@@ -1,6 +1,6 @@
 #![no_std]
 use myfans_lib::{ContentType, MyfansError, SubscriptionStatus};
-use soroban_sdk::{contract, contractimpl, Env, Address, Symbol};
+use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
 
 /// Data keys for contract storage
 #[derive(Clone, Copy)]
@@ -25,33 +25,33 @@ pub struct TestConsumer;
 #[contractimpl]
 impl TestConsumer {
     /// Initialize the contract with an admin address.
-    /// 
+    ///
     /// Must be called once per contract instance to set up admin privileges.
     /// Can only be called once; subsequent calls will fail with AlreadyInitialized.
     pub fn initialize(env: Env, admin: Address) -> Result<(), MyfansError> {
         let storage = env.storage().instance();
-        
+
         // Check if already initialized
         if storage.has(&DataKey::Admin.to_symbol()) {
             return Err(MyfansError::AlreadyInitialized);
         }
-        
+
         // Set the admin
         storage.set(&DataKey::Admin.to_symbol(), &admin);
-        
+
         // Initialize paused to false
         storage.set(&DataKey::Paused.to_symbol(), &false);
-        
+
         Ok(())
     }
 
     /// Get the current admin address.
-    /// 
+    ///
     /// Returns the admin address set during initialization.
     /// Fails with NotInitialized if initialize was not called first.
     pub fn admin(env: Env) -> Result<Address, MyfansError> {
         let storage = env.storage().instance();
-        
+
         storage
             .get::<_, Address>(&DataKey::Admin.to_symbol())
             .ok_or(MyfansError::NotInitialized)
@@ -81,7 +81,7 @@ impl TestConsumer {
     /// Get the current paused status.
     pub fn is_paused(env: Env) -> Result<bool, MyfansError> {
         let storage = env.storage().instance();
-        
+
         Ok(storage
             .get::<_, bool>(&DataKey::Paused.to_symbol())
             .unwrap_or(false))
@@ -116,7 +116,7 @@ impl TestConsumer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{Env, Address};
+    use soroban_sdk::{Address, Env};
 
     // ── Unauthorized Caller Tests (Admin-Protected Functions) ────────────
 
@@ -124,20 +124,20 @@ mod test {
     fn test_set_paused_admin_authorization() {
         let env = Env::default();
         env.mock_all_auths();
-        
+
         let id = env.register_contract(None, TestConsumer);
         let client = TestConsumerClient::new(&env, &id);
-        
+
         let admin = Address::generate(&env);
-        
+
         // Initialize
         let result = client.initialize(&admin);
         assert_eq!(result, Ok(()));
-        
+
         // Admin should be able to set paused
         let result = client.set_paused(&true);
         assert_eq!(result, Ok(()));
-        
+
         // Verify paused is set
         let is_paused = client.is_paused();
         assert_eq!(is_paused, Ok(true));
@@ -147,17 +147,17 @@ mod test {
     fn test_set_paused_unauthorized_caller_revert() {
         let env = Env::default();
         env.mock_all_auths();
-        
+
         let id = env.register_contract(None, TestConsumer);
         let client = TestConsumerClient::new(&env, &id);
-        
+
         let admin = Address::generate(&env);
         let unauthorized = Address::generate(&env);
-        
+
         // Initialize with admin
         let result = client.initialize(&admin);
         assert_eq!(result, Ok(()));
-        
+
         // Unauthorized caller tries to set paused
         let result = client.try_set_paused(&true);
         assert_eq!(
@@ -166,7 +166,7 @@ mod test {
                 MyfansError::NotAuthorized as u32
             )))
         );
-        
+
         // Paused should still be false
         let is_paused = client.is_paused();
         assert_eq!(is_paused, Ok(false));
@@ -176,16 +176,16 @@ mod test {
     fn test_set_paused_multiple_unauthorized_callers() {
         let env = Env::default();
         env.mock_all_auths();
-        
+
         let id = env.register_contract(None, TestConsumer);
         let client = TestConsumerClient::new(&env, &id);
-        
+
         let admin = Address::generate(&env);
-        
+
         // Initialize with admin
         let result = client.initialize(&admin);
         assert_eq!(result, Ok(()));
-        
+
         // Multiple unauthorized callers should all be rejected
         for _ in 0..3 {
             let unauthorized = Address::generate(&env);
@@ -197,7 +197,7 @@ mod test {
                 )))
             );
         }
-        
+
         // Paused should still be false
         let is_paused = client.is_paused();
         assert_eq!(is_paused, Ok(false));
@@ -207,26 +207,26 @@ mod test {
     fn test_set_paused_admin_can_toggle() {
         let env = Env::default();
         env.mock_all_auths();
-        
+
         let id = env.register_contract(None, TestConsumer);
         let client = TestConsumerClient::new(&env, &id);
-        
+
         let admin = Address::generate(&env);
-        
+
         // Initialize with admin
         let result = client.initialize(&admin);
         assert_eq!(result, Ok(()));
-        
+
         // Admin sets paused to true
         let result = client.set_paused(&true);
         assert_eq!(result, Ok(()));
         assert_eq!(client.is_paused(), Ok(true));
-        
+
         // Admin sets paused to false
         let result = client.set_paused(&false);
         assert_eq!(result, Ok(()));
         assert_eq!(client.is_paused(), Ok(false));
-        
+
         // Admin sets paused to true again
         let result = client.set_paused(&true);
         assert_eq!(result, Ok(()));
@@ -1204,7 +1204,10 @@ mod test {
             ];
             for i in 0..all.len() {
                 for j in (i + 1)..all.len() {
-                    assert_ne!(all[i], all[j], "two SubscriptionStatus variants must not share a code");
+                    assert_ne!(
+                        all[i], all[j],
+                        "two SubscriptionStatus variants must not share a code"
+                    );
                 }
             }
         }
@@ -1258,8 +1261,14 @@ mod test {
             let not_authorized = client.error_code(&MyfansError::NotAuthorized);
 
             assert_eq!(already_init, error_codes::subscription::ALREADY_INITIALIZED);
-            assert_eq!(already_init, error_codes::content_access::ALREADY_INITIALIZED);
-            assert_eq!(already_init, error_codes::creator_registry::ALREADY_INITIALIZED);
+            assert_eq!(
+                already_init,
+                error_codes::content_access::ALREADY_INITIALIZED
+            );
+            assert_eq!(
+                already_init,
+                error_codes::creator_registry::ALREADY_INITIALIZED
+            );
             assert_eq!(not_init, error_codes::creator_registry::NOT_INITIALIZED);
             // treasury NOT_INITIALIZED is 5 (its own numbering), not shared with MyfansError::NotInitialized.
             assert_eq!(error_codes::treasury::NOT_INITIALIZED, 5u32);
@@ -1535,8 +1544,8 @@ mod test {
 
     mod earnings_integration {
         use earnings::{Earnings, EarningsClient};
-        use soroban_sdk::{testutils::Address as _, Address, Env, Error as SorobanError};
         use proptest::proptest;
+        use soroban_sdk::{testutils::Address as _, Address, Env, Error as SorobanError};
 
         fn setup(env: &Env) -> (EarningsClient<'_>, Address, Address) {
             env.mock_all_auths();
@@ -1631,7 +1640,10 @@ mod test {
             client.record(&creator, &500);
 
             let result = client.try_withdraw(&creator, &600);
-            assert!(result.is_err(), "expected withdraw to fail with insufficient balance");
+            assert!(
+                result.is_err(),
+                "expected withdraw to fail with insufficient balance"
+            );
         }
 
         /// Withdraw from zero balance returns error.

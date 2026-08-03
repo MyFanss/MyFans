@@ -35,7 +35,11 @@ mod props {
         let addr = env
             .register_stellar_asset_contract_v2(admin.clone())
             .address();
-        (addr.clone(), TokenClient::new(env, &addr), StellarAssetClient::new(env, &addr))
+        (
+            addr.clone(),
+            TokenClient::new(env, &addr),
+            StellarAssetClient::new(env, &addr),
+        )
     }
 
     fn setup_with_balance(

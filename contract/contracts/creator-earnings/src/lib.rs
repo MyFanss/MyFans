@@ -1,10 +1,10 @@
 #![no_std]
 
+use myfans_lib::auth as myfans_auth;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
     Symbol,
 };
-use myfans_lib::auth as myfans_auth;
 
 #[contracttype]
 pub enum DataKey {
