@@ -130,7 +130,9 @@ export function WalletSettingsPanel({
       <WalletSelectionModal
         isOpen={isModalOpen}
         onClose={closeModal}
-        onConnect={connect}
+        onConnect={(_address, walletType) => {
+          void connect(walletType);
+        }}
       />
     </section>
   );

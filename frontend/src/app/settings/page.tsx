@@ -10,6 +10,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FeatureFlag } from "@/lib/feature-flags";
 import { ProfileSettingsPanel } from "@/components/settings/profile-settings-panel";
+import { WalletSettingsPanel } from "@/components/settings/WalletSettingsPanel";
 import { ReferralSharePanel } from "@/components/referral/ReferralSharePanel";
 
 export default function SettingsPage() {

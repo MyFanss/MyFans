@@ -21,6 +21,21 @@ function rangeToDays(range: EarningsTimeRange): number {
   return range === '7d' ? 7 : range === '30d' ? 30 : 90;
 }
 
+function generateMockData(range: EarningsTimeRange): EarningsDataPoint[] {
+  const days = rangeToDays(range);
+  const data: EarningsDataPoint[] = [];
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const earnings = Math.round((Math.random() * 80 + 20) * 100) / 100;
+    data.push({ date: dateStr, earnings, label });
+  }
+  return data;
+}
+
 function mapBreakdownToPoints(breakdown: EarningsBreakdown): EarningsDataPoint[] {
   return (breakdown.by_time ?? []).map((row) => {
     const date = row.date.slice(0, 10);

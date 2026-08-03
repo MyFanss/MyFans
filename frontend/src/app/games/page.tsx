@@ -1,9 +1,9 @@
 import Link from 'next/link';
-import { listGames } from '@/lib/api/games';
+import { listGames, type Game } from '@/lib/api/games';
 
 export default async function GamesPage() {
-  let games = [];
-  let error = null;
+  let games: Game[] = [];
+  let error: string | null = null;
 
   try {
     const result = await listGames({ limit: 20 });

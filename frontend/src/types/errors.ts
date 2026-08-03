@@ -57,7 +57,8 @@ export type ErrorCode =
   | 'PROFILE_ERROR'
   | 'WALLET_NOT_INSTALLED'
   | 'UNSUPPORTED_WALLET'
-  | 'WALLET_CONNECTION_REJECTED';
+  | 'WALLET_CONNECTION_REJECTED'
+  | 'NETWORK_MISMATCH';
 
 /** Error severity levels */
 export type ErrorSeverity = 'error' | 'warning' | 'info';
@@ -588,6 +589,18 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       category: 'wallet',
       recoverable: true,
       actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    NETWORK_MISMATCH: {
+      message: 'Wrong network',
+      description:
+        'Your wallet is on a different network than this app expects. Switch networks in your wallet, then try again.',
+      severity: 'error',
+      category: 'wallet',
+      recoverable: true,
+      actions: [
+        { label: 'Try again', type: 'retry', primary: true },
+        { label: 'Go back', type: 'back' },
+      ],
     },
   };
 

@@ -10,6 +10,8 @@ import {
   type PreferenceKey,
 } from '@/lib/notification-preferences';
 
+const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS === 'true';
+
 // ── Toggle ─────────────────────────────────────────────────────────────────
 
 interface ToggleProps {

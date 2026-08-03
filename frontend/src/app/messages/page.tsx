@@ -1,9 +1,9 @@
 import Link from 'next/link';
-import { listConversations } from '@/lib/api/messages';
+import { listConversations, type Conversation } from '@/lib/api/messages';
 
 export default async function MessagesPage() {
-  let conversations = [];
-  let error = null;
+  let conversations: Conversation[] = [];
+  let error: string | null = null;
 
   try {
     const result = await listConversations({ limit: 20 });

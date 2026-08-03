@@ -6,7 +6,7 @@ import { publicPostToCreatorPost } from "@/lib/api/posts";
 import type { CreatorPost } from "@/lib/creator-profile";
 import { ContentCard } from "@/components/cards";
 import { usePrefetchCreatorRoute } from "@/hooks/usePrefetchCreatorRoute";
-import ContentCardSkeleton from "@/components/ui/ContentCardSkeleton";
+import { ContentCardSkeleton } from "@/components/ui/ContentCardSkeleton";
 
 const INITIAL_LOAD = 12;
 const LOAD_MORE_COUNT = 8;
