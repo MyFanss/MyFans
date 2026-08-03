@@ -48,5 +48,5 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add CHANGELOG.md
-          git commit -m "docs: update CHANGELOG.md [skip ci]"
+          git commit -m "docs: update CHANGELOG.md"
           git push
