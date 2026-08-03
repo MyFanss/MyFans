@@ -19,7 +19,8 @@ pub fn emit_unauthorized_caller_event(env: &Env, caller: &Address, action: &Symb
         caller: caller.clone(),
         action: action.clone(),
     };
-    env.events().publish((Symbol::new(env, "unauthorized_caller"),), event);
+    env.events()
+        .publish((Symbol::new(env, "unauthorized_caller"),), event);
 }
 
 /// Emits a shared primary state change event for on-chain indexing.
@@ -34,5 +35,6 @@ pub fn emit_primary_state_change_event(
         subject: subject.clone(),
         changed_by: changed_by.clone(),
     };
-    env.events().publish((Symbol::new(env, "primary_state_change"),), event);
+    env.events()
+        .publish((Symbol::new(env, "primary_state_change"),), event);
 }
