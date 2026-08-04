@@ -395,7 +395,7 @@ fn repeated_attempts_before_boundary_all_rejected() {
     );
 }
 
-fn setup_token(env: &Env) -> (Address, TokenClient, StellarAssetClient) {
+fn setup_token(env: &Env) -> (Address, TokenClient<'_>, StellarAssetClient<'_>) {
     let token_admin = Address::generate(env);
     let token_id = env
         .register_stellar_asset_contract_v2(token_admin.clone())

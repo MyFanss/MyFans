@@ -738,15 +738,16 @@ fn test_admin_view_returns_correct_address() {
     let decimals: u32 = 7;
     let initial_supply: i128 = 10_000_000_000;
 
-    client.initialize(&admin, &name, &symbol, &decimals, &initial_supply);
+    client.initialize(&admin, &name, &symbol, &decimals, &initial_supply, &admin);
 
     // Test admin view returns correct address
-    assert_eq!(stored_admin, admin);
+    assert_eq!(client.admin(), admin);
 }
 
 #[test]
 fn test_set_admin_updates_admin() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, MyFansToken);
     let client = MyFansTokenClient::new(&env, &contract_id);
 
@@ -757,14 +758,10 @@ fn test_set_admin_updates_admin() {
     let decimals: u32 = 7;
     let initial_supply: i128 = 10_000_000_000;
 
-    client.initialize(&admin, &name, &symbol, &decimals, &initial_supply);
+    client.initialize(&admin, &name, &symbol, &decimals, &initial_supply, &admin);
 
-    // Set up mock authorization for admin
-
-    // Call set_admin with admin's authorization
     client.set_admin(&new_admin);
 
-    // Verify admin was updated
     assert_eq!(client.admin(), new_admin);
 }
 
@@ -781,7 +778,7 @@ fn test_non_admin_cannot_set_admin() {
     let decimals: u32 = 7;
     let initial_supply: i128 = 10_000_000_000;
 
-    client.initialize(&admin, &name, &symbol, &decimals, &initial_supply);
+    client.initialize(&admin, &name, &symbol, &decimals, &initial_supply, &admin);
 
     // Get original admin before trying to change
 
@@ -804,7 +801,7 @@ fn test_non_admin_cannot_set_admin() {
 
     // This test demonstrates the contract accepts the call when properly authorized
     // and test_set_admin_updates_admin verifies authorization is required
-    assert_eq!(client.admin(), original_admin);
+    assert_eq!(client.admin(), admin);
 }
 
 #[test]
@@ -870,7 +867,7 @@ fn test_multiple_initializations_with_different_envs() {
     let name1 = String::from_str(&env1, "Token One");
     let symbol1 = String::from_str(&env1, "TK1");
 
-    client1.initialize(&admin1, &name1, &symbol1, &7, &1000);
+    client1.initialize(&admin1, &name1, &symbol1, &7, &1000, &admin1);
 
     // Second isolated environment
     let env2 = Env::default();
@@ -881,7 +878,7 @@ fn test_multiple_initializations_with_different_envs() {
     let name2 = String::from_str(&env2, "Token Two");
     let symbol2 = String::from_str(&env2, "TK2");
 
-    client2.initialize(&admin2, &name2, &symbol2, &8, &2000);
+    client2.initialize(&admin2, &name2, &symbol2, &8, &2000, &admin2);
 
     // Verify each contract has its own state
     assert_eq!(client1.admin(), admin1);
@@ -1078,6 +1075,7 @@ fn test_snapshot_restore_consistency() {
         &admin_symbol,
         &admin_decimals,
         &initial_supply,
+        &admin,
     );
 
     // Create multiple test users
