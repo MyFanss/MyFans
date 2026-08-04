@@ -24,10 +24,8 @@ import { CreateNotificationDto, MarkReadDto } from './dto/notification.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth-module/guards/roles.guard';
 import { Roles } from '../auth-module/decorators/roles.decorator';
-import {
-  CurrentUser,
-  JwtUserPayload,
-} from '../auth-module/decorators/current-user.decorator';
+import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
+import type { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 
 @ApiTags('notifications')

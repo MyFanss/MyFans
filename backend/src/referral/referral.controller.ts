@@ -21,7 +21,8 @@ import { ReferralService } from './referral.service';
 import { CreateReferralCodeDto } from './dto/create-referral-code.dto';
 import { RedeemReferralCodeDto } from './dto/redeem-referral-code.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
-import { CurrentUser, JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
+import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
+import type { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 
 @ApiTags('referral')
 @Controller({ path: 'referral', version: '1' })

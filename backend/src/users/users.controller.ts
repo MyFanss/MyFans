@@ -3,7 +3,6 @@ import {
   Get,
   Patch,
   Body,
-  Param,
   UseInterceptors,
   ClassSerializerInterceptor,
   UseGuards,
@@ -12,16 +11,24 @@ import {
   HttpStatus,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { UsersService } from './users.service';
-import { UpdateUserDto, UserProfileDto, DeleteAccountDto, UpdateOnboardingDto } from './dto';
+import {
+  UpdateUserDto,
+  UserProfileDto,
+  DeleteAccountDto,
+  UpdateOnboardingDto,
+} from './dto';
 import { plainToInstance } from 'class-transformer';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
-import { AuthGuard } from '../utils/auth.guard';
-import { User } from './entities/user.entity';
-import { Delete, HttpCode, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
-import { CurrentUser, JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
+import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
+import type { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 
 /**
  * UsersController
@@ -41,12 +48,16 @@ import { CurrentUser, JwtUserPayload } from '../auth-module/decorators/current-u
 @Controller({ path: 'users', version: '1' })
 @UseInterceptors(ClassSerializerInterceptor)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) { }
+  constructor(private readonly usersService: UsersService) {}
 
   @UseGuards(JwtAuthGuard)
   @Get('me')
   @ApiOperation({ summary: 'Get current authenticated user profile' })
-  @ApiResponse({ status: 200, description: 'Current user profile', type: UserProfileDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Current user profile',
+    type: UserProfileDto,
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getMe(@CurrentUser() user: JwtUserPayload): Promise<UserProfileDto> {
     const found = await this.usersService.findOne(user.userId);
@@ -56,7 +67,11 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @Patch('me')
   @ApiOperation({ summary: 'Update current user profile' })
-  @ApiResponse({ status: 200, description: 'Updated user profile', type: UserProfileDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Updated user profile',
+    type: UserProfileDto,
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async updateMe(
     @Body() updateUserDto: UpdateUserDto,
@@ -69,7 +84,11 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @Patch('me/onboarding')
   @ApiOperation({ summary: 'Update creator onboarding progress' })
-  @ApiResponse({ status: 200, description: 'Onboarding progress updated', type: UserProfileDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Onboarding progress updated',
+    type: UserProfileDto,
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async updateOnboarding(
     @CurrentUser() currentUser: JwtUserPayload,
@@ -115,7 +134,10 @@ export class UsersController {
     @CurrentUser() user: JwtUserPayload,
     @Body() deleteAccountDto: DeleteAccountDto,
   ): Promise<void> {
-    const isValid = await this.usersService.validatePassword(user.userId, deleteAccountDto.password);
+    const isValid = await this.usersService.validatePassword(
+      user.userId,
+      deleteAccountDto.password,
+    );
     if (!isValid) throw new UnauthorizedException('Invalid password');
     await this.usersService.remove(user.userId);
   }

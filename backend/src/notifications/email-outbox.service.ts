@@ -1,8 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { EmailOutboxEntry, EmailOutboxStatus } from './entities/email-outbox-entry.entity';
-import { EMAIL_ADAPTER, EmailAdapter } from './adapters/email-adapter.interface';
+import {
+  EmailOutboxEntry,
+  EmailOutboxStatus,
+} from './entities/email-outbox-entry.entity';
+import { EMAIL_ADAPTER } from './adapters/email-adapter.interface';
+import type { EmailAdapter } from './adapters/email-adapter.interface';
 
 export interface EnqueueEmailRequest {
   dedupeKey: string;
@@ -35,7 +39,9 @@ export class EmailOutboxService {
   ) {}
 
   async enqueue(request: EnqueueEmailRequest): Promise<EmailOutboxEntry> {
-    const existing = await this.repo.findOne({ where: { dedupe_key: request.dedupeKey } });
+    const existing = await this.repo.findOne({
+      where: { dedupe_key: request.dedupeKey },
+    });
     if (existing) {
       return existing;
     }
@@ -57,7 +63,9 @@ export class EmailOutboxService {
 
   /** Re-attempts delivery of every still-pending row. Intended for a scheduled worker tick. */
   async processPending(): Promise<void> {
-    const pending = await this.repo.find({ where: { status: EmailOutboxStatus.PENDING } });
+    const pending = await this.repo.find({
+      where: { status: EmailOutboxStatus.PENDING },
+    });
     for (const entry of pending) {
       await this.deliver(entry);
     }
@@ -69,7 +77,11 @@ export class EmailOutboxService {
 
   private async deliver(entry: EmailOutboxEntry): Promise<void> {
     try {
-      await this.adapter.send({ to: entry.to_user_id, subject: entry.subject, body: entry.body });
+      await this.adapter.send({
+        to: entry.to_user_id,
+        subject: entry.subject,
+        body: entry.body,
+      });
       entry.status = EmailOutboxStatus.SENT;
       entry.sent_at = new Date();
       entry.last_error = null;
@@ -78,7 +90,9 @@ export class EmailOutboxService {
       entry.attempts += 1;
       entry.last_error = error instanceof Error ? error.message : String(error);
       entry.status =
-        entry.attempts >= this.maxAttempts ? EmailOutboxStatus.FAILED : EmailOutboxStatus.PENDING;
+        entry.attempts >= this.maxAttempts
+          ? EmailOutboxStatus.FAILED
+          : EmailOutboxStatus.PENDING;
       await this.repo.save(entry);
       this.logger.warn(
         `Email delivery failed for ${entry.dedupe_key} (attempt ${entry.attempts}): ${entry.last_error}`,
