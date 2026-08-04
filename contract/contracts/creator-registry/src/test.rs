@@ -2,9 +2,7 @@ use super::Error as ContractError;
 use super::*;
 use soroban_sdk::token::Client as TokenClient;
 use soroban_sdk::{
-    testutils::{
-        storage::Persistent as _, Address as _, Events, Ledger, MockAuth, MockAuthInvoke,
-    },
+    testutils::{storage::Persistent as _, Address as _, Events, Ledger, MockAuth, MockAuthInvoke},
     token::StellarAssetClient,
     Address, Env, Error as SorobanError, IntoVal, Symbol, TryIntoVal,
 };
