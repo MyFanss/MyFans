@@ -8,11 +8,10 @@ import { CreatorsService } from '../creators/creators.service';
 import { User } from '../users/entities/user.entity';
 import { SubscriptionIndexRepository } from '../subscriptions/repositories/subscription-index.repository';
 import {
-  UserLoggedInEvent,
-  SubscriptionCreatedEvent,
-  SubscriptionExpiredEvent,
-  PlanCreatedEvent,
-} from './domain-events';
+  MockRpcAdapter,
+  RPC_BALANCE_ADAPTER,
+} from '../subscriptions/rpc-adapter';
+import { UserLoggedInEvent, SubscriptionCreatedEvent } from './domain-events';
 
 describe('InProcessEventBus', () => {
   let eventBus: InProcessEventBus;
@@ -48,7 +47,9 @@ describe('InProcessEventBus', () => {
   });
 
   it('continues publishing if one handler throws', () => {
-    const badHandler = jest.fn().mockImplementation(() => { throw new Error('boom'); });
+    const badHandler = jest.fn().mockImplementation(() => {
+      throw new Error('boom');
+    });
     const goodHandler = jest.fn();
     eventBus.subscribe('auth.user_logged_in', badHandler);
     eventBus.subscribe('auth.user_logged_in', goodHandler);
@@ -76,7 +77,7 @@ describe('AuthService events', () => {
   it('publishes UserLoggedInEvent on createSession', async () => {
     const handler = jest.fn();
     eventBus.subscribe('auth.user_logged_in', handler);
-    await authService.createSession('GABC1234567890123456789012345678901234567890123456');
+    await authService.createSession(`G${'A'.repeat(55)}`);
     expect(handler).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'auth.user_logged_in' }),
     );
@@ -107,6 +108,7 @@ describe('SubscriptionsService events', () => {
         SubscriptionsService,
         { provide: EventBus, useClass: InProcessEventBus },
         { provide: SubscriptionIndexRepository, useValue: repo },
+        { provide: RPC_BALANCE_ADAPTER, useClass: MockRpcAdapter },
       ],
     }).compile();
 
@@ -151,7 +153,10 @@ describe('CreatorsService events', () => {
       providers: [
         CreatorsService,
         { provide: EventBus, useClass: InProcessEventBus },
-        { provide: getRepositoryToken(User), useValue: { createQueryBuilder: jest.fn() } },
+        {
+          provide: getRepositoryToken(User),
+          useValue: { createQueryBuilder: jest.fn() },
+        },
       ],
     }).compile();
 

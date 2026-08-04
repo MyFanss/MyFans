@@ -1,14 +1,17 @@
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { GatedContentGuard } from './gated-content.guard';
 import { SubscriptionsService } from './subscriptions.service';
 import { SubscriptionCacheService } from './subscription-cache.service';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
-import { CREATOR_KEY } from './decorators/requires-subscription.decorator';
 
-const FAN = 'GFAN1111111111111111111111111111111111111111111111111111';
-const CREATOR = 'GCREATOR111111111111111111111111111111111111111111111111';
+const FAN = `G${'A'.repeat(55)}`;
+const CREATOR = `G${'B'.repeat(55)}`;
 const JWT_TOKEN = 'valid.jwt.token';
 
 function makeContext(overrides: {
@@ -19,7 +22,9 @@ function makeContext(overrides: {
 }): ExecutionContext {
   const req: any = {
     user: overrides.user,
-    headers: overrides.authHeader ? { authorization: overrides.authHeader } : {},
+    headers: overrides.authHeader
+      ? { authorization: overrides.authHeader }
+      : {},
     params: overrides.params ?? {},
   };
   return {
@@ -35,7 +40,10 @@ describe('GatedContentGuard', () => {
   let jwtService: { verify: jest.Mock };
   let subscriptionsService: { isSubscriber: jest.Mock };
   let cache: SubscriptionCacheService;
-  let chainReader: { getConfiguredContractId: jest.Mock; readIsSubscriber: jest.Mock };
+  let chainReader: {
+    getConfiguredContractId: jest.Mock;
+    readIsSubscriber: jest.Mock;
+  };
 
   beforeEach(() => {
     reflector = { getAllAndOverride: jest.fn() };
@@ -65,7 +73,9 @@ describe('GatedContentGuard', () => {
   it('throws UnauthorizedException when no token provided', async () => {
     reflector.getAllAndOverride.mockReturnValue(CREATOR);
     const ctx = makeContext({});
-    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 
   it('allows subscriber via cache hit (no DB/chain call)', async () => {
@@ -88,7 +98,10 @@ describe('GatedContentGuard', () => {
     reflector.getAllAndOverride.mockReturnValue(CREATOR);
     subscriptionsService.isSubscriber.mockReturnValue(false);
     chainReader.getConfiguredContractId.mockReturnValue('CONTRACT_ID');
-    chainReader.readIsSubscriber.mockResolvedValue({ ok: true, isSubscriber: true });
+    chainReader.readIsSubscriber.mockResolvedValue({
+      ok: true,
+      isSubscriber: true,
+    });
     const ctx = makeContext({ user: { sub: FAN } });
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
     expect(cache.get(FAN, CREATOR)).toBe(true);
@@ -98,24 +111,37 @@ describe('GatedContentGuard', () => {
     reflector.getAllAndOverride.mockReturnValue(CREATOR);
     subscriptionsService.isSubscriber.mockReturnValue(false);
     chainReader.getConfiguredContractId.mockReturnValue('CONTRACT_ID');
-    chainReader.readIsSubscriber.mockResolvedValue({ ok: true, isSubscriber: false });
+    chainReader.readIsSubscriber.mockResolvedValue({
+      ok: true,
+      isSubscriber: false,
+    });
     const ctx = makeContext({ user: { sub: FAN } });
-    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
   it('denies (fail-closed) when chain RPC fails', async () => {
     reflector.getAllAndOverride.mockReturnValue(CREATOR);
     subscriptionsService.isSubscriber.mockReturnValue(false);
     chainReader.getConfiguredContractId.mockReturnValue('CONTRACT_ID');
-    chainReader.readIsSubscriber.mockResolvedValue({ ok: false, error: 'timeout' });
+    chainReader.readIsSubscriber.mockResolvedValue({
+      ok: false,
+      error: 'timeout',
+    });
     const ctx = makeContext({ user: { sub: FAN } });
-    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
   it('resolves creator from route param when meta starts with ":"', async () => {
     reflector.getAllAndOverride.mockReturnValue(':creatorId');
     subscriptionsService.isSubscriber.mockReturnValue(true);
-    const ctx = makeContext({ user: { sub: FAN }, params: { creatorId: CREATOR } });
+    const ctx = makeContext({
+      user: { sub: FAN },
+      params: { creatorId: CREATOR },
+    });
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
   });
 

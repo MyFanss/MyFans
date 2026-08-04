@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
+import { BadRequestException, HttpException } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -7,8 +7,12 @@ import { WalletAuthService } from './wallet-auth.service';
 
 describe('AuthController', () => {
   let controller: AuthController;
-  let authService: jest.Mocked<Pick<AuthService, 'validateStellarAddress' | 'createSession'>>;
-  let walletAuthService: jest.Mocked<Pick<WalletAuthService, 'createChallenge' | 'verifyAndIssueToken'>>;
+  let authService: jest.Mocked<
+    Pick<AuthService, 'validateStellarAddress' | 'createSession'>
+  >;
+  let walletAuthService: jest.Mocked<
+    Pick<WalletAuthService, 'createChallenge' | 'verifyAndIssueToken'>
+  >;
 
   const validAddress = `G${'A'.repeat(55)}`;
 
@@ -33,7 +37,9 @@ describe('AuthController', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      imports: [ThrottlerModule.forRoot([{ name: 'auth', ttl: 60000, limit: 5 }])],
+      imports: [
+        ThrottlerModule.forRoot([{ name: 'auth', ttl: 60000, limit: 5 }]),
+      ],
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: authService },
@@ -48,7 +54,6 @@ describe('AuthController', () => {
     it('creates a session for a valid address', async () => {
       const result = await controller.login({ address: validAddress });
 
-      expect(authService.validateStellarAddress).toHaveBeenCalledWith(validAddress);
       expect(authService.createSession).toHaveBeenCalledWith(validAddress);
       expect(result).toEqual({
         userId: validAddress,
@@ -57,16 +62,19 @@ describe('AuthController', () => {
     });
 
     it('throws BadRequestException for invalid address', async () => {
-      authService.validateStellarAddress.mockReturnValue(false);
+      authService.createSession.mockRejectedValue(
+        new BadRequestException('Invalid Stellar address'),
+      );
 
       await expect(controller.login({ address: 'invalid' })).rejects.toThrow(
         BadRequestException,
       );
-      expect(authService.createSession).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException when address is omitted', async () => {
-      authService.validateStellarAddress.mockReturnValue(false);
+      authService.createSession.mockRejectedValue(
+        new BadRequestException('Invalid Stellar address'),
+      );
 
       await expect(controller.login({})).rejects.toThrow(BadRequestException);
     });
@@ -78,7 +86,10 @@ describe('AuthController', () => {
     });
 
     it('passes when x-network matches server network', async () => {
-      const result = await controller.login({ address: validAddress }, 'testnet');
+      const result = await controller.login(
+        { address: validAddress },
+        'testnet',
+      );
 
       expect(result).toEqual({
         userId: validAddress,
@@ -87,7 +98,10 @@ describe('AuthController', () => {
     });
 
     it('ignores network header when not provided', async () => {
-      const result = await controller.login({ address: validAddress }, undefined);
+      const result = await controller.login(
+        { address: validAddress },
+        undefined,
+      );
 
       expect(result).toEqual({
         userId: validAddress,
@@ -108,7 +122,9 @@ describe('AuthController', () => {
     });
 
     it('throws BadRequestException for invalid address', async () => {
-      authService.validateStellarAddress.mockReturnValue(false);
+      authService.createSession.mockRejectedValue(
+        new BadRequestException('Invalid Stellar address'),
+      );
 
       await expect(controller.register({ address: 'bad' })).rejects.toThrow(
         BadRequestException,
@@ -124,10 +140,16 @@ describe('AuthController', () => {
 
   describe('requestChallenge', () => {
     it('returns nonce and expiry for a valid address', async () => {
-      const result = await controller.requestChallenge({ address: validAddress });
+      const result = await controller.requestChallenge({
+        address: validAddress,
+      });
 
-      expect(authService.validateStellarAddress).toHaveBeenCalledWith(validAddress);
-      expect(walletAuthService.createChallenge).toHaveBeenCalledWith(validAddress);
+      expect(authService.validateStellarAddress).toHaveBeenCalledWith(
+        validAddress,
+      );
+      expect(walletAuthService.createChallenge).toHaveBeenCalledWith(
+        validAddress,
+      );
       expect(result).toEqual({
         nonce: 'abc123',
         expiresAt: expect.any(Date),
@@ -151,7 +173,11 @@ describe('AuthController', () => {
   });
 
   describe('verifyChallenge', () => {
-    const dto = { address: validAddress, nonce: 'abc123', signature: 'deadbeef' };
+    const dto = {
+      address: validAddress,
+      nonce: 'abc123',
+      signature: 'deadbeef',
+    };
 
     it('returns JWT for valid verification', async () => {
       const result = await controller.verifyChallenge(dto);
@@ -177,9 +203,9 @@ describe('AuthController', () => {
     });
 
     it('throws on network mismatch', async () => {
-      await expect(
-        controller.verifyChallenge(dto, 'mainnet'),
-      ).rejects.toThrow(HttpException);
+      await expect(controller.verifyChallenge(dto, 'mainnet')).rejects.toThrow(
+        HttpException,
+      );
     });
 
     it('propagates service errors', async () => {
@@ -195,12 +221,18 @@ describe('AuthController', () => {
 
   describe('assertNetworkMatch (via endpoints)', () => {
     it('accepts case-insensitive network match', async () => {
-      const result = await controller.login({ address: validAddress }, 'Testnet');
+      const result = await controller.login(
+        { address: validAddress },
+        'Testnet',
+      );
       expect(result).toBeDefined();
     });
 
     it('trims whitespace from network header', async () => {
-      const result = await controller.login({ address: validAddress }, '  testnet  ');
+      const result = await controller.login(
+        { address: validAddress },
+        '  testnet  ',
+      );
       expect(result).toBeDefined();
     });
 

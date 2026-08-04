@@ -19,7 +19,7 @@ import {
   LogoutDto,
   TokenResponseDto,
 } from './refresh-token.dto';
-import { JwtAuthGuard } from './jwt-auth.guard';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('auth')

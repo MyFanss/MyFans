@@ -17,7 +17,7 @@ describe('CreatorRegistrySyncService', () => {
   beforeEach(async () => {
     repo = {
       findOne: jest.fn(),
-      create: jest.fn((partial) => partial),
+      create: jest.fn((partial) => ({ ...partial })),
       save: jest.fn(async (entity) => entity),
       find: jest.fn(),
     };
@@ -75,14 +75,20 @@ describe('CreatorRegistrySyncService', () => {
         drift_detected_at: null,
       };
       repo.find.mockResolvedValue([mapping]);
-      jest.spyOn(service as any, 'queryOnchainCreatorId').mockResolvedValue('999');
+      jest
+        .spyOn(service as any, 'queryOnchainCreatorId')
+        .mockResolvedValue('999');
 
       const result = await service.reconcile(false);
 
       expect(result.totalScanned).toBe(1);
       expect(result.driftFound).toBe(1);
       expect(result.records[0]).toEqual(
-        expect.objectContaining({ creatorId: 'creator-1', drift: true, chainOnchainId: '999' }),
+        expect.objectContaining({
+          creatorId: 'creator-1',
+          drift: true,
+          chainOnchainId: '999',
+        }),
       );
       expect(repo.save).toHaveBeenCalledWith(
         expect.objectContaining({ drift_detected_at: expect.any(Date) }),
@@ -97,7 +103,9 @@ describe('CreatorRegistrySyncService', () => {
         drift_detected_at: null,
       };
       repo.find.mockResolvedValue([mapping]);
-      jest.spyOn(service as any, 'queryOnchainCreatorId').mockResolvedValue('999');
+      jest
+        .spyOn(service as any, 'queryOnchainCreatorId')
+        .mockResolvedValue('999');
 
       const result = await service.reconcile(true);
 
@@ -114,7 +122,9 @@ describe('CreatorRegistrySyncService', () => {
         drift_detected_at: null,
       };
       repo.find.mockResolvedValue([mapping]);
-      jest.spyOn(service as any, 'queryOnchainCreatorId').mockResolvedValue('456');
+      jest
+        .spyOn(service as any, 'queryOnchainCreatorId')
+        .mockResolvedValue('456');
 
       const result = await service.reconcile();
 
@@ -124,8 +134,18 @@ describe('CreatorRegistrySyncService', () => {
 
     it('counts errors from the chain read without aborting the scan', async () => {
       const mappings = [
-        { creator_id: 'creator-1', stellar_address: 'GADDR1', onchain_creator_id: '456', drift_detected_at: null },
-        { creator_id: 'creator-2', stellar_address: 'GADDR2', onchain_creator_id: '789', drift_detected_at: null },
+        {
+          creator_id: 'creator-1',
+          stellar_address: 'GADDR1',
+          onchain_creator_id: '456',
+          drift_detected_at: null,
+        },
+        {
+          creator_id: 'creator-2',
+          stellar_address: 'GADDR2',
+          onchain_creator_id: '789',
+          drift_detected_at: null,
+        },
       ];
       repo.find.mockResolvedValue(mappings);
       jest
