@@ -1,5 +1,4 @@
 #![no_std]
-use myfans_lib::auth;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
     String, Symbol,
@@ -489,8 +488,7 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        let caller = env.invoker();
-        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "pause"));
+        admin.require_auth();
 
         env.storage().instance().set(&DataKey::Paused, &true);
         env.events().publish((Symbol::new(&env, "paused"),), admin);
@@ -504,8 +502,7 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        let caller = env.invoker();
-        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "unpause"));
+        admin.require_auth();
 
         env.storage().instance().set(&DataKey::Paused, &false);
         env.events()
@@ -523,13 +520,7 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        let caller = env.invoker();
-        auth::require_authorized(
-            &env,
-            &caller,
-            &admin,
-            &Symbol::new(&env, "set_fee_recipient"),
-        );
+        admin.require_auth();
 
         require_valid_fee_recipient(&env, &new_fee_recipient);
 
@@ -562,8 +553,7 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        let caller = env.invoker();
-        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "set_fee_bps"));
+        admin.require_auth();
 
         require_valid_fee_bps(&env, new_fee_bps);
 

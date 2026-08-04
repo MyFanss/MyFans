@@ -2,7 +2,6 @@
 pub mod errors;
 
 pub use errors::TreasuryError as Error;
-use myfans_lib::auth;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, token, Address, Env, Symbol,
 };
@@ -56,8 +55,7 @@ impl Treasury {
     /// Requires authorization from the admin.
     pub fn set_paused(env: Env, paused: bool) {
         let admin = Self::get_admin(&env);
-        let caller = env.invoker();
-        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "set_paused"));
+        admin.require_auth();
         env.storage().instance().set(&DataKey::Paused, &paused);
 
         env.events()
