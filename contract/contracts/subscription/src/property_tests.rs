@@ -8,7 +8,7 @@ mod props {
     use proptest::prelude::*;
     use soroban_sdk::{
         testutils::{Address as _, Ledger},
-        token, Address, Env, String,
+        token, Address, Env,
     };
 
     // ── helpers ──────────────────────────────────────────────────────────────

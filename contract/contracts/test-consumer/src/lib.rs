@@ -786,8 +786,8 @@ mod test {
             }
         }
 
-        fn deploy_token(env: &Env) -> (Address) {
-            let admin = Address::generate(env);
+        fn deploy_token(env: &Env) -> Address {
+            let _admin = Address::generate(env);
             let id = env.register_contract(None, MockToken);
             id
         }
@@ -1330,7 +1330,7 @@ mod test {
         extern crate std;
 
         use soroban_sdk::{
-            testutils::{Address as _, Ledger},
+            testutils::Address as _,
             token::{StellarAssetClient, TokenClient},
             Address, Env,
         };
@@ -1527,7 +1527,6 @@ mod test {
 
     mod earnings_integration {
         use earnings::{Earnings, EarningsClient};
-        use proptest::proptest;
         use soroban_sdk::{
             testutils::{Address as _, Ledger},
             Address, Env, Error as SorobanError,

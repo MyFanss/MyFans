@@ -2,7 +2,9 @@ use super::Error as ContractError;
 use super::*;
 use soroban_sdk::token::Client as TokenClient;
 use soroban_sdk::{
-    testutils::{Address as _, Events, Ledger, MockAuth, MockAuthInvoke},
+    testutils::{
+        storage::Persistent as _, Address as _, Events, Ledger, MockAuth, MockAuthInvoke,
+    },
     token::StellarAssetClient,
     Address, Env, Error as SorobanError, IntoVal, Symbol, TryIntoVal,
 };
@@ -1001,13 +1003,15 @@ fn get_creator_id_refreshes_ttl_after_it_decays_below_threshold() {
 
     let creator_key = DataKey::Creator(creator.clone());
 
-    // Decay the key's TTL below the refresh threshold. Keep the contract
-    // instance itself alive across the jump so the invocation below can run.
-    advance(&env, CREATOR_TTL_EXTEND_TO - CREATOR_TTL_THRESHOLD + 1);
+    // Keep the contract instance alive across the ledger jump, then decay the
+    // Creator key TTL below the refresh threshold.
     env.as_contract(&contract_id, || {
         env.storage()
             .instance()
             .extend_ttl(CREATOR_TTL_EXTEND_TO, CREATOR_TTL_EXTEND_TO);
+    });
+    advance(&env, CREATOR_TTL_EXTEND_TO - CREATOR_TTL_THRESHOLD + 1);
+    env.as_contract(&contract_id, || {
         assert!(
             env.storage().persistent().get_ttl(&creator_key) < CREATOR_TTL_THRESHOLD,
             "test setup must decay the Creator key below the refresh threshold"

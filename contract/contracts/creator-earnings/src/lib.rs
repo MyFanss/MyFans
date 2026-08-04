@@ -157,15 +157,15 @@ impl CreatorEarnings {
         from.require_auth();
         Self::require_authorized(&env, &from);
 
-        let token_address: Address = Self::get_token(&env);
-        let token_client = token::Client::new(&env, &token_address);
-
-        token_client.transfer(&from, &env.current_contract_address(), &amount);
-
         let balance = Self::balance(env.clone(), creator.clone());
         let new_balance = balance
             .checked_add(amount)
             .unwrap_or_else(|| panic_with_error!(&env, Error::InvalidAmount));
+
+        let token_address: Address = Self::get_token(&env);
+        let token_client = token::Client::new(&env, &token_address);
+
+        token_client.transfer(&from, &env.current_contract_address(), &amount);
 
         env.storage()
             .instance()
