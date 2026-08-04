@@ -49,7 +49,7 @@ mod props {
 
         let contract_id = env.register_contract(None, CreatorDeposits);
         let client = CreatorDepositsClient::new(env, &contract_id);
-        client.init(&admin, &fee_bps, &treasury);
+        client.init(&admin, &fee_bps, &treasury, &token_id);
         (client, admin, token_client, sac)
     }
 
@@ -220,7 +220,10 @@ mod props {
             let contract_id = env.register_contract(None, CreatorDeposits);
             let client = CreatorDepositsClient::new(&env, &contract_id);
 
-            let result = client.try_init(&admin, &fee_bps, &treasury);
+            let token_id = env
+                .register_stellar_asset_contract_v2(Address::generate(&env))
+                .address();
+            let result = client.try_init(&admin, &fee_bps, &treasury, &token_id);
             prop_assert_eq!(
                 result,
                 Err(Ok(SorobanError::from_contract_error(Error::InvalidFeeBps as u32))),

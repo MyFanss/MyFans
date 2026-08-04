@@ -1,6 +1,6 @@
 #![no_std]
 use myfans_lib::{ContentType, MyfansError, SubscriptionStatus};
-use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol};
 
 /// Data keys for contract storage
 #[derive(Clone, Copy)]
@@ -12,12 +12,11 @@ pub enum DataKey {
 impl DataKey {
     pub fn to_symbol(&self) -> Symbol {
         match self {
-            DataKey::Admin => Symbol::short("admin"),
-            DataKey::Paused => Symbol::short("paused"),
+            DataKey::Admin => symbol_short!("admin"),
+            DataKey::Paused => symbol_short!("paused"),
         }
     }
 }
-use soroban_sdk::{contract, contractimpl, Env, Symbol};
 
 #[contract]
 pub struct TestConsumer;
@@ -91,7 +90,7 @@ impl TestConsumer {
     pub fn is_active(env: Env, status: SubscriptionStatus) -> bool {
         let active = status == SubscriptionStatus::Active;
         env.events()
-            .publish((Symbol::new(&env, "test_consumer:is_active"),), active);
+            .publish((Symbol::new(&env, "tc_is_active"),), active);
         active
     }
 
@@ -100,7 +99,7 @@ impl TestConsumer {
     pub fn error_code(env: Env, err: MyfansError) -> u32 {
         let code = err as u32;
         env.events()
-            .publish((Symbol::new(&env, "test_consumer:error_code"),), code);
+            .publish((Symbol::new(&env, "tc_error_code"),), code);
         code
     }
 
@@ -108,7 +107,7 @@ impl TestConsumer {
     pub fn content_code(env: Env, ct: ContentType) -> u32 {
         let code = ct as u32;
         env.events()
-            .publish((Symbol::new(&env, "test_consumer:content_code"),), code);
+            .publish((Symbol::new(&env, "tc_content_code"),), code);
         code
     }
 }
@@ -116,7 +115,7 @@ impl TestConsumer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{Address, Env};
+    use soroban_sdk::{testutils::Address as _, Address, Env};
 
     // ── Unauthorized Caller Tests (Admin-Protected Functions) ────────────
 
@@ -131,16 +130,13 @@ mod test {
         let admin = Address::generate(&env);
 
         // Initialize
-        let result = client.initialize(&admin);
-        assert_eq!(result, Ok(()));
+        client.initialize(&admin);
 
         // Admin should be able to set paused
-        let result = client.set_paused(&true);
-        assert_eq!(result, Ok(()));
+        client.set_paused(&true);
 
         // Verify paused is set
-        let is_paused = client.is_paused();
-        assert_eq!(is_paused, Ok(true));
+        assert!(client.is_paused());
     }
 
     #[test]
@@ -152,24 +148,18 @@ mod test {
         let client = TestConsumerClient::new(&env, &id);
 
         let admin = Address::generate(&env);
-        let unauthorized = Address::generate(&env);
 
         // Initialize with admin
-        let result = client.initialize(&admin);
-        assert_eq!(result, Ok(()));
+        client.initialize(&admin);
 
-        // Unauthorized caller tries to set paused
+        // Clear auths so admin.require_auth() fails
+        env.set_auths(&[]);
         let result = client.try_set_paused(&true);
-        assert_eq!(
-            result,
-            Err(Ok(soroban_sdk::Error::from_contract_error(
-                MyfansError::NotAuthorized as u32
-            )))
-        );
+        assert!(result.is_err(), "set_paused must fail without admin auth");
 
-        // Paused should still be false
-        let is_paused = client.is_paused();
-        assert_eq!(is_paused, Ok(false));
+        // Re-auth to read state
+        env.mock_all_auths();
+        assert!(!client.is_paused());
     }
 
     #[test]
@@ -183,24 +173,17 @@ mod test {
         let admin = Address::generate(&env);
 
         // Initialize with admin
-        let result = client.initialize(&admin);
-        assert_eq!(result, Ok(()));
+        client.initialize(&admin);
 
-        // Multiple unauthorized callers should all be rejected
+        // Multiple attempts without auth must all be rejected
         for _ in 0..3 {
-            let unauthorized = Address::generate(&env);
+            env.set_auths(&[]);
             let result = client.try_set_paused(&true);
-            assert_eq!(
-                result,
-                Err(Ok(soroban_sdk::Error::from_contract_error(
-                    MyfansError::NotAuthorized as u32
-                )))
-            );
+            assert!(result.is_err(), "set_paused must fail without admin auth");
         }
 
-        // Paused should still be false
-        let is_paused = client.is_paused();
-        assert_eq!(is_paused, Ok(false));
+        env.mock_all_auths();
+        assert!(!client.is_paused());
     }
 
     #[test]
@@ -214,23 +197,19 @@ mod test {
         let admin = Address::generate(&env);
 
         // Initialize with admin
-        let result = client.initialize(&admin);
-        assert_eq!(result, Ok(()));
+        client.initialize(&admin);
 
         // Admin sets paused to true
-        let result = client.set_paused(&true);
-        assert_eq!(result, Ok(()));
-        assert_eq!(client.is_paused(), Ok(true));
+        client.set_paused(&true);
+        assert!(client.is_paused());
 
         // Admin sets paused to false
-        let result = client.set_paused(&false);
-        assert_eq!(result, Ok(()));
-        assert_eq!(client.is_paused(), Ok(false));
+        client.set_paused(&false);
+        assert!(!client.is_paused());
 
         // Admin sets paused to true again
-        let result = client.set_paused(&true);
-        assert_eq!(result, Ok(()));
-        assert_eq!(client.is_paused(), Ok(true));
+        client.set_paused(&true);
+        assert!(client.is_paused());
     }
 
     // ── SubscriptionStatus ────────────────────────────────────────────────
@@ -304,6 +283,7 @@ mod test {
                 &String::from_str(env, "MFAN"),
                 &7,
                 &0,
+                &admin,
             );
             (client, admin)
         }
@@ -433,6 +413,7 @@ mod test {
                 &String::from_str(env, "MFAN"),
                 &7,
                 &0,
+                &admin,
             );
             (client, admin)
         }
@@ -607,6 +588,7 @@ mod test {
                 &String::from_str(env, "MFAN"),
                 &7,
                 &0,
+                &admin,
             );
             (client, admin)
         }
@@ -959,6 +941,7 @@ mod test {
                 &String::from_str(env, "MFAN"),
                 &7,
                 &0,
+                &admin,
             );
             (client, admin)
         }
@@ -1545,7 +1528,10 @@ mod test {
     mod earnings_integration {
         use earnings::{Earnings, EarningsClient};
         use proptest::proptest;
-        use soroban_sdk::{testutils::Address as _, Address, Env, Error as SorobanError};
+        use soroban_sdk::{
+            testutils::{Address as _, Ledger},
+            Address, Env, Error as SorobanError,
+        };
 
         fn setup(env: &Env) -> (EarningsClient<'_>, Address, Address) {
             env.mock_all_auths();
@@ -1749,7 +1735,7 @@ mod test {
 
             // Advance the ledger (simulates time passing).
             env.ledger().with_mut(|ledger| {
-                ledger.sequence = ledger.sequence.saturating_add(100);
+                ledger.sequence_number = ledger.sequence_number.saturating_add(100);
             });
 
             // ── Restore and verify snapshot consistency ──
