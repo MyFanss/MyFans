@@ -2,9 +2,9 @@ import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 
 // ── Migration files (ordered by timestamp) ───────────────────────────────────
-import { CreateRefreshTokens1700000000000 } from './refresh-module/1700000000000-CreateRefreshTokens';
+import { CreateRefreshTokens1700000000000 } from './database/migrations/1700000000000-CreateRefreshTokens';
 import { AddSocialLinksToUser1700000000000 } from './social-link/1700000000000-AddSocialLinksToUser';
-import { CreateWalletChallenges1711554834000 } from './auth/1711554834000-CreateWalletChallenges';
+import { CreateWalletChallenges1711554834000 } from './database/migrations/1711554834000-CreateWalletChallenges';
 import { CreateIdempotencyKeys1711554835000 } from './idempotency/1711554835000-CreateIdempotencyKeys';
 import { AddQueuedAtToModerationFlags1745000000000 } from './moderation/1745000000000-AddQueuedAtToModerationFlags';
 import { CreateReferralTables1745000000000 } from './referral/1745000000000-CreateReferralTables';

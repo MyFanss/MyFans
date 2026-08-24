@@ -2,10 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { InProcessEventBus } from './in-process-event-bus';
 import { EventBus } from './event-bus';
-import { AuthService } from '../auth/auth.service';
+import { AuthService } from '../auth-module/auth.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CreatorsService } from '../creators/creators.service';
 import { User } from '../users/entities/user.entity';
+import { UsersService } from '../users/users.service';
 import { SubscriptionIndexRepository } from '../subscriptions/repositories/subscription-index.repository';
 import {
   MockRpcAdapter,
@@ -66,6 +67,7 @@ describe('AuthService events', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
+        { provide: UsersService, useValue: {} },
         { provide: EventBus, useClass: InProcessEventBus },
       ],
     }).compile();
@@ -77,7 +79,7 @@ describe('AuthService events', () => {
   it('publishes UserLoggedInEvent on createSession', async () => {
     const handler = jest.fn();
     eventBus.subscribe('auth.user_logged_in', handler);
-    await authService.createSession(`G${'A'.repeat(55)}`);
+    authService.createSession(`G${'A'.repeat(55)}`);
     expect(handler).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'auth.user_logged_in' }),
     );

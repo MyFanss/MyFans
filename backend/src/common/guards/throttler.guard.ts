@@ -1,4 +1,4 @@
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { ThrottlerGuard as NestThrottlerGuard } from '@nestjs/throttler';
 
 @Injectable()
@@ -9,16 +9,10 @@ export class ThrottlerGuard extends NestThrottlerGuard implements CanActivate {
       .getRequest<{ url?: string; method?: string }>();
     const url = request.url ?? '';
 
-    if (this.isHealthCheckRoute(url)) {
+    if (url === '/health' || url === '/v1/health') {
       return true;
     }
 
     return super.canActivate(context);
-  }
-
-  private isHealthCheckRoute(url: string): boolean {
-    // Only exempt the basic liveness probe — expensive sub-checks are throttled
-    // to prevent resource exhaustion from scanning probes.
-    return url === '/health' || url === '/v1/health';
   }
 }
