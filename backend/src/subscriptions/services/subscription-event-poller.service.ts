@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { EventBus } from '../../events/event-bus';
@@ -17,6 +18,7 @@ import { SubscriptionIndexRepository, UpsertEventData } from '../repositories/su
 import { SorobanRpcService } from '../../common/services/soroban-rpc.service';
 import { RequestContextService } from '../../common/services/request-context.service';
 import { FeatureFlagsService } from '../../feature-flags/feature-flags.service';
+import { SubscriptionCacheService } from '../subscription-cache.service';
 
 const TARGET_EVENTS = ['subscribed', 'extended', 'cancelled'] as const;
 type TargetEventType = typeof TARGET_EVENTS[number];
@@ -33,6 +35,8 @@ export class SubscriptionEventPollerService implements OnModuleInit {
     private readonly sorobanRpc: SorobanRpcService,
     private readonly requestContext: RequestContextService,
     private readonly featureFlags: FeatureFlagsService,
+    @Optional()
+    private readonly cache?: SubscriptionCacheService,
   ) {}
 
   async onModuleInit() {
@@ -177,6 +181,11 @@ export class SubscriptionEventPollerService implements OnModuleInit {
       };
 
       const indexed = await this.indexRepo.upsertEvent(upsertData);
+
+      // Chain state changed (subscribed/extended/cancelled) — bust any
+      // cached gated-content check so the next request reflects it
+      // immediately instead of waiting out the TTL.
+      this.cache?.invalidate(fan, creator);
 
       // Publish domain event
       await this.publishDomainEvent(indexed);

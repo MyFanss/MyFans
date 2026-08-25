@@ -21,6 +21,14 @@ export interface UpsertManualData {
   planId: number;
   expiryUnix: number;
   status: SubscriptionStatus;
+  /**
+   * Ledger sequence this write is derived from, if known (e.g. the ledger a
+   * verified on-chain confirmation landed in). Defaults to -1 ("no chain
+   * evidence") for purely off-chain writes. Chain events indexed by the
+   * poller are the source of truth: a manual write is never allowed to
+   * clobber a row that already reflects a higher ledgerSeq.
+   */
+  ledgerSeq?: number;
 }
 
 @Injectable()
@@ -50,11 +58,22 @@ export class SubscriptionIndexRepository {
   }
 
   async upsertManual(data: UpsertManualData): Promise<SubscriptionIndexEntity> {
-    // Upsert on (fan, creator) - keep latest
+    // Upsert on (fan, creator) - keep latest, but never let an off-chain
+    // write (checkout confirmation, reconciler fill-gap repair) clobber a
+    // row that chain events (indexed by the poller) already advanced past.
+    // Guard: only apply if incoming ledgerSeq >= the currently stored one.
     const existing = await this.findCurrentForFanCreator(data.fan, data.creator);
+    const incomingLedgerSeq = data.ledgerSeq ?? -1;
+    if (existing && existing.ledgerSeq > incomingLedgerSeq) {
+      this.logger.warn(
+        `Skipped stale write for ${data.fan}->${data.creator}: existing ledgerSeq ${existing.ledgerSeq} > incoming ${incomingLedgerSeq}`,
+      );
+      return existing;
+    }
+
     const entity = this.repo.create({
       ...data,
-      ledgerSeq: -1, // manual
+      ledgerSeq: incomingLedgerSeq,
       eventIndex: -1,
       eventType: 'manual',
     });
@@ -118,11 +137,34 @@ export class SubscriptionIndexRepository {
     return res?.maxLedger ?? 0;
   }
 
-  async updateStatus(fan: string, creator: string, status: SubscriptionStatus, expiryUnix?: number): Promise<void> {
-    await this.repo.update(
-      { fan, creator, status: SubscriptionStatus.ACTIVE },
-      { status, expiryUnix: expiryUnix ?? 0, updatedAt: new Date() },
-    );
+  /**
+   * Updates the status of the fan/creator's currently-active row.
+   *
+   * `minLedgerSeq`, when provided, guards the write so it only applies if
+   * the stored row's ledgerSeq has not moved past it since it was read
+   * (optimistic concurrency) — used by the reconciler so it can never
+   * overwrite fresher poller-indexed data with a stale repair.
+   */
+  async updateStatus(
+    fan: string,
+    creator: string,
+    status: SubscriptionStatus,
+    expiryUnix?: number,
+    minLedgerSeq?: number,
+  ): Promise<void> {
+    const qb = this.repo
+      .createQueryBuilder()
+      .update(SubscriptionIndexEntity)
+      .set({ status, expiryUnix: expiryUnix ?? 0, updatedAt: new Date() })
+      .where('"fan" = :fan', { fan })
+      .andWhere('"creator" = :creator', { creator })
+      .andWhere('"status" = :activeStatus', { activeStatus: SubscriptionStatus.ACTIVE });
+
+    if (minLedgerSeq !== undefined) {
+      qb.andWhere('"ledgerSeq" <= :minLedgerSeq', { minLedgerSeq });
+    }
+
+    await qb.execute();
   }
 
   async isSubscriber(fan: string, creator: string): Promise<boolean> {

@@ -28,6 +28,7 @@ import { RPC_BALANCE_ADAPTER, MockRpcAdapter, HorizonRpcAdapter } from './rpc-ad
 import { LedgerClockService } from './ledger-clock.service';
 import { LoggingSubscriptionEventPublisher } from './subscription-event-publisher.service';
 import { StellarService } from '../common/stellar.service';
+import { SorobanRpcService } from '../common/services/soroban-rpc.service';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { StellarService } from '../common/stellar.service';
     FeatureFlagGuard,
     SubscriptionLifecycleIndexerService,
     StellarService,
+    SorobanRpcService,
     MockRpcAdapter,
     HorizonRpcAdapter,
     {

@@ -190,43 +190,49 @@ export async function createCreatorPlanOnSoroban(
 
 export async function buildSubscriptionTx(
   fanAddress: string,
-  _creatorAddress: string,
-  _planId: number,
-  _tokenAddress: string
+  creatorAddress: string,
+  planId: number,
+  tokenAddress: string
 ) {
+  const config = getStellarConfig();
+  if (!config.subscriptionContractId) {
+    throw createAppError('TX_BUILD_FAILED', {
+      message: 'Subscription contract is not configured',
+      description: 'Set NEXT_PUBLIC_SUBSCRIPTION_CONTRACT_ID before subscribing on Soroban.',
+    });
+  }
+
   try {
-    void _creatorAddress;
-    void _planId;
-    void _tokenAddress;
+    const SDK = await getStellarSdk();
+    const server = await getRpcServer();
+    const account = await server.getAccount(fanAddress);
+    const networkPassphrase = await getNetworkPassphrase();
+    const contract = new SDK.Contract(config.subscriptionContractId);
 
-    const SDK = await import('@stellar/stellar-sdk');
-    const config = getStellarConfig();
-    const server = new SDK.Horizon.Server(config.horizonUrl);
-    const account = await server.loadAccount(fanAddress);
-    const networkPassphrase =
-      config.network === 'testnet'
-        ? SDK.Networks.TESTNET
-        : config.network === 'futurenet'
-          ? SDK.Networks.FUTURENET
-          : SDK.Networks.PUBLIC;
-
-    // These values will be consumed once the Soroban contract invocation is wired in.
-    void _creatorAddress;
-    void _planId;
-    void _tokenAddress;
-
-    // Build transaction (simplified - actual Soroban invocation needs contract bindings)
     const tx = new SDK.TransactionBuilder(account, {
-      fee: '100000',
+      fee: SDK.BASE_FEE,
       networkPassphrase,
     })
-      .setTimeout(300)
+      .addOperation(
+        contract.call(
+          'subscribe',
+          SDK.Address.fromString(fanAddress).toScVal(),
+          SDK.Address.fromString(creatorAddress).toScVal(),
+          SDK.nativeToScVal(planId, { type: 'u32' }),
+          SDK.Address.fromString(tokenAddress).toScVal(),
+        ),
+      )
+      .setTimeout(60)
       .build();
 
-    return tx.toXDR();
+    // Let simulation errors from prepareTransaction (paused market, token
+    // mismatch, insufficient balance, etc.) surface to the caller instead
+    // of being swallowed.
+    const preparedTx = await server.prepareTransaction(tx);
+    return preparedTx.toXDR();
   } catch (err) {
     throw createAppError('TX_BUILD_FAILED', {
-      message: err instanceof Error ? err.message : 'Failed to build transaction',
+      message: err instanceof Error ? err.message : 'Failed to build subscription transaction',
       cause: err instanceof Error ? err : undefined,
     });
   }
@@ -312,10 +318,45 @@ export async function cancelSubscriptionOnSoroban(
   return { txHash };
 }
 
-export async function checkSubscription(_fanAddress: string, _creatorAddress: string): Promise<boolean> {
-  void _fanAddress;
-  void _creatorAddress;
-  return false;
+/** Dummy source account used for read-only simulations (mirrors the backend's
+ *  SubscriptionChainReaderService pattern so we don't require the fan's
+ *  account to exist/be funded just to check subscription status). */
+const SIM_SOURCE_ACCOUNT = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+
+export async function checkSubscription(fanAddress: string, creatorAddress: string): Promise<boolean> {
+  const config = getStellarConfig();
+  if (!config.subscriptionContractId) return false;
+
+  try {
+    const SDK = await getStellarSdk();
+    const server = await getRpcServer();
+    const networkPassphrase = await getNetworkPassphrase();
+    const contract = new SDK.Contract(config.subscriptionContractId);
+    const source = new SDK.Account(SIM_SOURCE_ACCOUNT, '0');
+
+    const tx = new SDK.TransactionBuilder(source, {
+      fee: SDK.BASE_FEE,
+      networkPassphrase,
+    })
+      .addOperation(
+        contract.call(
+          'is_subscriber',
+          SDK.Address.fromString(fanAddress).toScVal(),
+          SDK.Address.fromString(creatorAddress).toScVal(),
+        ),
+      )
+      .setTimeout(30)
+      .build();
+
+    const sim = await server.simulateTransaction(tx);
+    if (!SDK.rpc.Api.isSimulationSuccess(sim) || !sim.result?.retval) {
+      return false;
+    }
+
+    return Boolean(SDK.scValToNative(sim.result.retval));
+  } catch {
+    return false;
+  }
 }
 
 export async function checkTransactionStatus(
