@@ -16,9 +16,9 @@ import 'reflect-metadata';
 import { DataSource, QueryRunner } from 'typeorm';
 
 // ── Migration classes (same order as migration.datasource.ts) ────────────────
-import { CreateRefreshTokens1700000000000 } from '../src/refresh-module/1700000000000-CreateRefreshTokens';
+import { CreateRefreshTokens1700000000000 } from '../src/database/migrations/1700000000000-CreateRefreshTokens';
 import { AddSocialLinksToUser1700000000000 } from '../src/social-link/1700000000000-AddSocialLinksToUser';
-import { CreateWalletChallenges1711554834000 } from '../src/auth/1711554834000-CreateWalletChallenges';
+import { CreateWalletChallenges1711554834000 } from '../src/database/migrations/1711554834000-CreateWalletChallenges';
 import { CreateIdempotencyKeys1711554835000 } from '../src/idempotency/1711554835000-CreateIdempotencyKeys';
 import { AddQueuedAtToModerationFlags1745000000000 } from '../src/moderation/1745000000000-AddQueuedAtToModerationFlags';
 import { CreateReferralTables1745000000000 } from '../src/referral/1745000000000-CreateReferralTables';
@@ -61,12 +61,12 @@ function buildDataSource(): DataSource {
 }
 
 async function tableExists(qr: QueryRunner, table: string): Promise<boolean> {
-  const result = await qr.query(
+  const result: unknown = await qr.query(
     `SELECT 1 FROM information_schema.tables
      WHERE table_schema = 'public' AND table_name = $1`,
     [table],
   );
-  return result.length > 0;
+  return Array.isArray(result) && result.length > 0;
 }
 
 async function columnExists(
@@ -74,12 +74,12 @@ async function columnExists(
   table: string,
   column: string,
 ): Promise<boolean> {
-  const result = await qr.query(
+  const result: unknown = await qr.query(
     `SELECT 1 FROM information_schema.columns
      WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`,
     [table, column],
   );
-  return result.length > 0;
+  return Array.isArray(result) && result.length > 0;
 }
 
 // ── Test suite ────────────────────────────────────────────────────────────────
@@ -187,10 +187,10 @@ describe('Database migrations (integration)', () => {
   });
 
   it('migrations table records all 13 migrations', async () => {
-    const rows: { name: string }[] = await qr.query(
+    const rows: unknown = await qr.query(
       `SELECT name FROM migrations ORDER BY timestamp ASC`,
     );
-    expect(rows.length).toBe(13);
+    expect(Array.isArray(rows) ? rows.length : 0).toBe(13);
   });
 
   it('running migrations again is idempotent (no-op)', async () => {
@@ -207,10 +207,8 @@ describe('Database migrations (integration)', () => {
     }
 
     // All tracked migrations should be gone
-    const rows: { name: string }[] = await qr.query(
-      `SELECT name FROM migrations`,
-    );
-    expect(rows.length).toBe(0);
+    const rows: unknown = await qr.query(`SELECT name FROM migrations`);
+    expect(Array.isArray(rows) ? rows.length : 0).toBe(0);
   });
 
   it('referral tables are dropped after revert', async () => {
