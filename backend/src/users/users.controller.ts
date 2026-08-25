@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Patch,
+  Param,
   Body,
   UseInterceptors,
   ClassSerializerInterceptor,
@@ -20,6 +21,7 @@ import {
 import { UsersService } from './users.service';
 import {
   UpdateUserDto,
+  UpdateUserRoleDto,
   UserProfileDto,
   DeleteAccountDto,
   UpdateOnboardingDto,
@@ -27,8 +29,13 @@ import {
 import { plainToInstance } from 'class-transformer';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth-module/guards/roles.guard';
+import { Roles } from '../auth-module/decorators/roles.decorator';
+import { UserRole } from '../common/enums/user-role.enum';
 import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
 import type { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
+import { AdminAuditService } from '../admin-audit/admin-audit.service';
+import { RequestContextService } from '../common/services/request-context.service';
 
 /**
  * UsersController
@@ -48,7 +55,11 @@ import type { JwtUserPayload } from '../auth-module/decorators/current-user.deco
 @Controller({ path: 'users', version: '1' })
 @UseInterceptors(ClassSerializerInterceptor)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly adminAuditService: AdminAuditService,
+    private readonly requestContext: RequestContextService,
+  ) {}
 
   @UseGuards(JwtAuthGuard)
   @Get('me')
@@ -140,5 +151,34 @@ export class UsersController {
     );
     if (!isValid) throw new UnauthorizedException('Invalid password');
     await this.usersService.remove(user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/role')
+  @ApiOperation({
+    summary: '[Admin] Change a user\'s role',
+    description:
+      'Admin-only. Every role change is written to the append-only admin audit log (#1568), ' +
+      'recording the actor, the previous/new role, and the request correlation id.',
+  })
+  @ApiResponse({ status: 200, description: 'Updated user profile', type: UserProfileDto })
+  @ApiResponse({ status: 403, description: 'Forbidden — admin role required' })
+  async updateUserRole(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserRoleDto,
+    @CurrentUser() admin: JwtUserPayload,
+  ): Promise<UserProfileDto> {
+    const { user, previousRole } = await this.usersService.updateRole(id, dto.role);
+
+    await this.adminAuditService.record({
+      actorId: admin.userId,
+      action: 'user.role_changed',
+      target: id,
+      payload: { previousRole, newRole: dto.role },
+      correlationId: this.requestContext.getCorrelationId(),
+    });
+
+    return plainToInstance(UserProfileDto, user);
   }
 }

@@ -9,6 +9,7 @@ import { PlanDto } from './dto/plan.dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { SubscriptionChainReaderService } from '../subscriptions/subscription-chain-reader.service';
+import { FavoritesService } from '../favorites/favorites.service';
 
 export interface Plan {
   id: number;
@@ -33,6 +34,8 @@ export class CreatorsService {
     private readonly eventBus?: EventBus,
     @Optional()
     private readonly chainReader?: SubscriptionChainReaderService,
+    @Optional()
+    private readonly favoritesService?: FavoritesService,
   ) {}
 
   createPlan(
@@ -293,8 +296,18 @@ export class CreatorsService {
    * unknown usernames) instead of the client-side prefix search used by
    * discovery.
    */
+  /**
+   * Fetches the public creator-profile view. `viewerUserId` is only ever
+   * populated when the caller presented a *valid* JWT (via
+   * OptionalJwtAuthGuard) — it personalizes `isFavorited` for that viewer
+   * and is never used to expose another user's private data. Anonymous
+   * callers (viewerUserId undefined) get `isFavorited: null` and otherwise
+   * an identical response — no field is gated on authentication status
+   * beyond this one personalization.
+   */
   async getCreatorByUsername(
     username: string,
+    viewerUserId?: string,
   ): Promise<PublicCreatorDto | null> {
     const qb = this.userRepository
       .createQueryBuilder('user')
@@ -325,6 +338,19 @@ export class CreatorsService {
       raw?.creator_is_verified ?? user.creator?.is_verified ?? false;
     dto.followers_count =
       raw?.creator_followers_count ?? user.creator?.followers_count ?? 0;
+
+    if (viewerUserId && this.favoritesService) {
+      try {
+        dto.isFavorited = await this.favoritesService.isFavorite(viewerUserId, user.id);
+      } catch (err) {
+        // Never fail the whole profile load over a favorites lookup hiccup.
+        this.logger.warn(`Failed to resolve isFavorited for viewer ${viewerUserId}: ${err}`);
+        dto.isFavorited = null;
+      }
+    } else {
+      dto.isFavorited = null;
+    }
+
     return dto;
   }
 }

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User } from './entities/user.entity';
+import { User, UserRole } from './entities/user.entity';
 import { UpdateUserDto } from './dto';
 import { ONBOARDING_STEPS } from './dto/update-onboarding.dto';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
@@ -63,6 +63,23 @@ export class UsersService {
     const user = await this.findOne(id);
     Object.assign(user, updateUserDto);
     return this.usersRepository.save(user);
+  }
+
+  /**
+   * Changes a user's role. Callers are responsible for authorization
+   * (enforced via @Roles(ADMIN) on the controller) and for recording the
+   * change in the append-only admin audit log (#1568) — this method just
+   * returns the previous role so the caller can log an accurate diff.
+   */
+  async updateRole(
+    id: string,
+    role: UserRole,
+  ): Promise<{ user: User; previousRole: UserRole }> {
+    const user = await this.findOne(id);
+    const previousRole = user.role;
+    user.role = role;
+    const saved = await this.usersRepository.save(user);
+    return { user: saved, previousRole };
   }
 
   async updateOnboarding(

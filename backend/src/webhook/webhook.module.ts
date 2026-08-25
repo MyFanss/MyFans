@@ -7,12 +7,10 @@ import { WebhookAuditService } from './webhook-audit.service';
 import { WebhookEventProcessorService } from './webhook-event-processor.service';
 import { WebhookAuditLog } from './entities/webhook-audit-log.entity';
 import { WebhookProcessedEvent } from './entities/webhook-processed-event.entity';
-import { EventsModule } from '../events/events.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([WebhookAuditLog, WebhookProcessedEvent]),
-    EventsModule,
   ],
   controllers: [WebhookController],
   providers: [

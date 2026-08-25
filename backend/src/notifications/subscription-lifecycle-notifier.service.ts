@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { EventBus } from '../events/event-bus';
 import {
+  SubscriptionCreatedEvent,
   SubscriptionCancelledEvent,
   SubscriptionRenewedEvent,
   SubscriptionRenewalFailedEvent,
@@ -19,6 +20,20 @@ export class SubscriptionLifecycleNotifierService implements OnModuleInit {
   ) { }
 
   onModuleInit(): void {
+    this.eventBus.subscribe('subscription.created', (event: SubscriptionCreatedEvent) => {
+      const subscriptionId = `${event.fan}:${event.creator}:${event.planId}`;
+      void this.notificationsService.enqueueSubscriptionLifecycleNotification({
+        dedupeKey: `subscription.created:${subscriptionId}:${event.expiry}`,
+        event: 'created',
+        recipientUserId: event.fan,
+        creatorUserId: event.creator,
+        creatorDisplayName: event.creator,
+        subscriptionId,
+        planId: event.planId,
+        occurredAt: new Date(event.timestamp),
+      });
+    });
+
     this.eventBus.subscribe('subscription.renewed', (event: SubscriptionRenewedEvent) => {
       void this.handleLifecycleEvent('renewed', event, `subscription.renewed:${event.subscriptionId}:${event.expiry}`);
     });

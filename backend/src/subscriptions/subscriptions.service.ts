@@ -29,10 +29,14 @@ import type { RpcBalanceAdapter } from './rpc-adapter';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
 import { SubscriptionIndexRepository } from './repositories/subscription-index.repository';
 import { SubscriptionIndexEntity, SubscriptionStatus } from './entities/subscription-index.entity';
-import { SpendingCapService } from './services/spending-cap.service';
+import { rpc } from '@stellar/stellar-sdk';
+import { SorobanRpcService } from '../common/services/soroban-rpc.service';
+import { SubscriptionCacheService } from './subscription-cache.service';
 
 export enum CheckoutStatus {
   PENDING = 'pending',
+  /** Chain-verified via RPC, but not yet reflected in the subscription index. */
+  CONFIRMED_ON_CHAIN = 'confirmed_on_chain',
   COMPLETED = 'completed',
   FAILED = 'failed',
   REJECTED = 'rejected',
@@ -124,7 +128,9 @@ export class SubscriptionsService {
     @Optional()
     private readonly chainReader?: SubscriptionChainReaderService,
     @Optional()
-    private readonly spendingCapService?: SpendingCapService,
+    private readonly soroban?: SorobanRpcService,
+    @Optional()
+    private readonly cache?: SubscriptionCacheService,
   ) {
     this.creatorProfiles.set('GAAAAAAAAAAAAAAA', {
       name: 'Creator 1',
@@ -195,6 +201,7 @@ export class SubscriptionsService {
     creator: string,
     planId: number,
     expiry: number,
+    ledgerSeq?: number,
   ): Promise<SubscriptionIndexEntity> {
     const status = this.getExpiryStatus(expiry);
     const upsertData = {
@@ -203,8 +210,10 @@ export class SubscriptionsService {
       planId,
       expiryUnix: expiry,
       status,
+      ledgerSeq,
     } as const;
     const sub = await this.indexRepo.upsertManual(upsertData);
+    this.cache?.invalidate(fan, creator);
     this.eventBus.publish(
       new SubscriptionCreatedEvent(fan, creator, planId, expiry),
     );
@@ -223,6 +232,7 @@ export class SubscriptionsService {
     creator: string,
     planId: number,
     expiry?: number,
+    ledgerSeq?: number,
   ): Promise<SubscriptionIndexEntity> {
     const plan = this.getRequiredPlan(planId);
     if (plan.creator !== creator) {
@@ -239,8 +249,10 @@ export class SubscriptionsService {
       planId,
       expiryUnix: nextExpiry,
       status,
+      ledgerSeq,
     } as const;
     const sub = await this.indexRepo.upsertManual(upsertData);
+    this.cache?.invalidate(fan, creator);
     this.eventBus.publish(
       new SubscriptionRenewedEvent(
         sub.id,
@@ -253,20 +265,37 @@ export class SubscriptionsService {
     return sub;
   }
 
-  async expireSubscription(fan: string, creator: string) {
-    const now = Math.floor(Date.now() / 1000);
-    await this.indexRepo.updateStatus(fan, creator, SubscriptionStatus.EXPIRED);
+  /**
+   * `minLedgerSeq`, when provided, guards against overwriting a row that
+   * chain events have already advanced past (see reconciler usage).
+   */
+  async expireSubscription(fan: string, creator: string, minLedgerSeq?: number) {
+    await this.indexRepo.updateStatus(
+      fan,
+      creator,
+      SubscriptionStatus.EXPIRED,
+      undefined,
+      minLedgerSeq,
+    );
+    this.cache?.invalidate(fan, creator);
     this.eventBus.publish(new SubscriptionExpiredEvent(fan, creator));
   }
 
-  async cancelSubscription(fan: string, creator: string) {
+  async cancelSubscription(fan: string, creator: string, minLedgerSeq?: number) {
     const now = Math.floor(Date.now() / 1000);
     const existing = await this.getSubscription(fan, creator);
     if (!existing) {
       throw new NotFoundException('Subscription not found');
     }
 
-    await this.indexRepo.updateStatus(fan, creator, SubscriptionStatus.CANCELLED, now);
+    await this.indexRepo.updateStatus(
+      fan,
+      creator,
+      SubscriptionStatus.CANCELLED,
+      now,
+      minLedgerSeq,
+    );
+    this.cache?.invalidate(fan, creator);
 
     this.eventBus.publish(
       new SubscriptionCancelledEvent(
@@ -699,33 +728,98 @@ export class SubscriptionsService {
     };
   }
 
-  async confirmSubscription(checkoutId: string, txHash?: string) {
+  /**
+   * Confirms a checkout only after independently verifying the supplied
+   * txHash succeeded on-chain via Soroban RPC. This is the sole gate that
+   * is allowed to move a subscription to ACTIVE from the checkout path —
+   * client-side "trust me" confirmation is not sufficient (see #1574).
+   *
+   * State machine: pending -> confirmed_on_chain -> completed (indexed).
+   * Idempotent: replaying the same txHash against an already-completed
+   * checkout returns the original result without reprocessing.
+   */
+  async confirmSubscription(checkoutId: string, txHash: string) {
+    if (!txHash || !txHash.trim()) {
+      throw new BadRequestException(
+        'txHash is required to confirm a subscription',
+      );
+    }
+
     const checkout = this.getCheckout(checkoutId);
+
+    // Idempotent replay: same hash already fully processed for this checkout.
+    if (checkout.status === CheckoutStatus.COMPLETED) {
+      if (checkout.txHash !== txHash) {
+        throw new BadRequestException(
+          'Checkout has already been confirmed with a different transaction hash',
+        );
+      }
+      const existingSubscription = await this.getSubscription(
+        checkout.fanAddress,
+        checkout.creatorAddress,
+      );
+      return {
+        success: true,
+        checkoutId: checkout.id,
+        status: checkout.status,
+        txHash: checkout.txHash,
+        explorerUrl: `https://stellar.expert/explorer/testnet/tx/${checkout.txHash}`,
+        subscriptionId: existingSubscription?.id ?? '',
+        lifecycleEvent: 'renewed',
+        message: 'Subscription already confirmed for this transaction.',
+      };
+    }
+
+    if (
+      checkout.status === CheckoutStatus.FAILED ||
+      checkout.status === CheckoutStatus.REJECTED ||
+      checkout.status === CheckoutStatus.EXPIRED
+    ) {
+      throw new BadRequestException(
+        `Checkout cannot be confirmed from status "${checkout.status}"`,
+      );
+    }
+
+    // Verify the transaction actually landed on-chain before trusting it.
+    const verification = await this.verifyOnChainTransaction(txHash);
+    if (!verification.ok) {
+      throw new BadRequestException(
+        `Unable to verify transaction on-chain: ${verification.error}`,
+      );
+    }
+
+    checkout.status = CheckoutStatus.CONFIRMED_ON_CHAIN;
+    checkout.txHash = txHash;
+    checkout.updatedAt = new Date();
+
     const existingSubscription = await this.getSubscription(
       checkout.fanAddress,
       checkout.creatorAddress,
     );
 
-    checkout.status = CheckoutStatus.COMPLETED;
-    checkout.txHash = txHash || `tx_${Date.now()}`;
-    checkout.updatedAt = new Date();
-
-    const explorerUrl = `https://stellar.expert/explorer/testnet/tx/${checkout.txHash}`;
-    const subscription = existingSubscription
-      ? this.renewSubscription(
+    const resolvedSubscription = existingSubscription
+      ? await this.renewSubscription(
           checkout.fanAddress,
           checkout.creatorAddress,
           checkout.planId,
+          undefined,
+          verification.ledger,
         )
-      : this.addSubscription(
+      : await this.addSubscription(
           checkout.fanAddress,
           checkout.creatorAddress,
           checkout.planId,
           this.calculateExpiryTimestamp(
             this.getRequiredPlan(checkout.planId).intervalDays,
           ),
+          verification.ledger,
         );
-    const resolvedSubscription = await subscription;
+
+    // Chain evidence is now reflected in the subscription index.
+    checkout.status = CheckoutStatus.COMPLETED;
+    checkout.updatedAt = new Date();
+
+    const explorerUrl = `https://stellar.expert/explorer/testnet/tx/${checkout.txHash}`;
 
     // Record the spend against the fan's cap only once the on-chain
     // subscribe/renew is confirmed, mirroring the pre-checkout assertion in
@@ -749,6 +843,31 @@ export class SubscriptionsService {
         ? 'Subscription renewed successfully!'
         : 'Subscription created successfully!',
     };
+  }
+
+  /**
+   * Looks up `txHash` via Soroban RPC and confirms it succeeded. Unknown,
+   * pending, or failed hashes are rejected — the caller must not activate
+   * a subscription on unverified chain evidence.
+   */
+  private async verifyOnChainTransaction(
+    txHash: string,
+  ): Promise<{ ok: true; ledger?: number } | { ok: false; error: string }> {
+    if (!this.soroban) {
+      return { ok: false, error: 'Transaction verification service unavailable' };
+    }
+    try {
+      const result = await this.soroban.getTransaction(txHash);
+      if (result.status === rpc.Api.GetTransactionStatus.SUCCESS) {
+        return { ok: true, ledger: result.ledger };
+      }
+      return { ok: false, error: `transaction status: ${result.status}` };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : 'RPC lookup failed',
+      };
+    }
   }
 
   failCheckout(

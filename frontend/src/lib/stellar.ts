@@ -190,43 +190,49 @@ export async function createCreatorPlanOnSoroban(
 
 export async function buildSubscriptionTx(
   fanAddress: string,
-  _creatorAddress: string,
-  _planId: number,
-  _tokenAddress: string
+  creatorAddress: string,
+  planId: number,
+  tokenAddress: string
 ) {
+  const config = getStellarConfig();
+  if (!config.subscriptionContractId) {
+    throw createAppError('TX_BUILD_FAILED', {
+      message: 'Subscription contract is not configured',
+      description: 'Set NEXT_PUBLIC_SUBSCRIPTION_CONTRACT_ID before subscribing on Soroban.',
+    });
+  }
+
   try {
-    void _creatorAddress;
-    void _planId;
-    void _tokenAddress;
+    const SDK = await getStellarSdk();
+    const server = await getRpcServer();
+    const account = await server.getAccount(fanAddress);
+    const networkPassphrase = await getNetworkPassphrase();
+    const contract = new SDK.Contract(config.subscriptionContractId);
 
-    const SDK = await import('@stellar/stellar-sdk');
-    const config = getStellarConfig();
-    const server = new SDK.Horizon.Server(config.horizonUrl);
-    const account = await server.loadAccount(fanAddress);
-    const networkPassphrase =
-      config.network === 'testnet'
-        ? SDK.Networks.TESTNET
-        : config.network === 'futurenet'
-          ? SDK.Networks.FUTURENET
-          : SDK.Networks.PUBLIC;
-
-    // These values will be consumed once the Soroban contract invocation is wired in.
-    void _creatorAddress;
-    void _planId;
-    void _tokenAddress;
-
-    // Build transaction (simplified - actual Soroban invocation needs contract bindings)
     const tx = new SDK.TransactionBuilder(account, {
-      fee: '100000',
+      fee: SDK.BASE_FEE,
       networkPassphrase,
     })
-      .setTimeout(300)
+      .addOperation(
+        contract.call(
+          'subscribe',
+          SDK.Address.fromString(fanAddress).toScVal(),
+          SDK.Address.fromString(creatorAddress).toScVal(),
+          SDK.nativeToScVal(planId, { type: 'u32' }),
+          SDK.Address.fromString(tokenAddress).toScVal(),
+        ),
+      )
+      .setTimeout(60)
       .build();
 
-    return tx.toXDR();
+    // Let simulation errors from prepareTransaction (paused market, token
+    // mismatch, insufficient balance, etc.) surface to the caller instead
+    // of being swallowed.
+    const preparedTx = await server.prepareTransaction(tx);
+    return preparedTx.toXDR();
   } catch (err) {
     throw createAppError('TX_BUILD_FAILED', {
-      message: err instanceof Error ? err.message : 'Failed to build transaction',
+      message: err instanceof Error ? err.message : 'Failed to build subscription transaction',
       cause: err instanceof Error ? err : undefined,
     });
   }
@@ -312,98 +318,45 @@ export async function cancelSubscriptionOnSoroban(
   return { txHash };
 }
 
-export interface ExtendSubscriptionInput {
-  fanAddress: string;
-  creatorAddress: string;
-  /** Token contract address the plan is denominated in (from plan metadata). */
-  tokenAddress: string;
-  /** Number of extra ledgers to extend the subscription's TTL by on-chain. */
-  extraLedgers?: number;
-}
+/** Dummy source account used for read-only simulations (mirrors the backend's
+ *  SubscriptionChainReaderService pattern so we don't require the fan's
+ *  account to exist/be funded just to check subscription status). */
+const SIM_SOURCE_ACCOUNT = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
 
-function isPausedContractError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err);
-  return /paused/i.test(message);
-}
-
-/**
- * Builds an unsigned `extend_subscription` invocation for renewing an
- * existing fan→creator subscription on the subscription contract. Mirrors
- * `buildCancelSubscriptionTx` — same account/network/contract plumbing, but
- * a different call and args (token + extra_ledgers, per the contract's
- * `extend_subscription` entrypoint).
- */
-export async function buildExtendSubscriptionTx({
-  fanAddress,
-  creatorAddress,
-  tokenAddress,
-  extraLedgers = 30 * 24 * 60 * 12, // ~30 days of 5s ledgers, default renewal window
-}: ExtendSubscriptionInput): Promise<string> {
+export async function checkSubscription(fanAddress: string, creatorAddress: string): Promise<boolean> {
   const config = getStellarConfig();
-  if (!config.subscriptionContractId) {
-    throw createAppError('TX_BUILD_FAILED', {
-      message: 'Subscription contract is not configured',
-      description: 'Set NEXT_PUBLIC_SUBSCRIPTION_CONTRACT_ID before renewing on Soroban.',
-    });
-  }
+  if (!config.subscriptionContractId) return false;
 
   try {
     const SDK = await getStellarSdk();
     const server = await getRpcServer();
-    const account = await server.getAccount(fanAddress);
     const networkPassphrase = await getNetworkPassphrase();
     const contract = new SDK.Contract(config.subscriptionContractId);
+    const source = new SDK.Account(SIM_SOURCE_ACCOUNT, '0');
 
-    const tx = new SDK.TransactionBuilder(account, {
+    const tx = new SDK.TransactionBuilder(source, {
       fee: SDK.BASE_FEE,
       networkPassphrase,
     })
       .addOperation(
         contract.call(
-          'extend_subscription',
+          'is_subscriber',
           SDK.Address.fromString(fanAddress).toScVal(),
           SDK.Address.fromString(creatorAddress).toScVal(),
-          SDK.Address.fromString(tokenAddress).toScVal(),
-          SDK.nativeToScVal(extraLedgers, { type: 'u32' }),
         ),
       )
-      .setTimeout(60)
+      .setTimeout(30)
       .build();
 
-    const preparedTx = await server.prepareTransaction(tx);
-    return preparedTx.toXDR();
-  } catch (err) {
-    if (isPausedContractError(err)) {
-      throw createAppError('TX_BUILD_FAILED', {
-        message: 'This creator’s subscription plan is currently paused',
-        description: 'The creator has paused new renewals. Please try again later or contact the creator.',
-        cause: err instanceof Error ? err : undefined,
-      });
+    const sim = await server.simulateTransaction(tx);
+    if (!SDK.rpc.Api.isSimulationSuccess(sim) || !sim.result?.retval) {
+      return false;
     }
-    throw createAppError('TX_BUILD_FAILED', {
-      message: err instanceof Error ? err.message : 'Failed to build renewal transaction',
-      cause: err instanceof Error ? err : undefined,
-    });
+
+    return Boolean(SDK.scValToNative(sim.result.retval));
+  } catch {
+    return false;
   }
-}
-
-export async function extendSubscriptionOnSoroban(
-  input: ExtendSubscriptionInput,
-): Promise<{ txHash: string }> {
-  const xdr = await buildExtendSubscriptionTx(input);
-  const networkPassphrase = await getNetworkPassphrase();
-  const signedXdr = await signTransaction(xdr, {
-    network: getStellarConfig().network,
-    networkPassphrase,
-  });
-  const txHash = await submitTransaction(signedXdr);
-  return { txHash };
-}
-
-export async function checkSubscription(_fanAddress: string, _creatorAddress: string): Promise<boolean> {
-  void _fanAddress;
-  void _creatorAddress;
-  return false;
 }
 
 export async function checkTransactionStatus(

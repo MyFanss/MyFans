@@ -11,7 +11,7 @@ import { UsersService } from '../users/users.service';
 
 export interface SubscriptionLifecycleNotificationRequest {
   dedupeKey: string;
-  event: 'renewed' | 'cancelled' | 'renewal_failed';
+  event: 'created' | 'renewed' | 'cancelled';
   recipientUserId: string;
   creatorUserId: string;
   creatorDisplayName?: string;
@@ -153,6 +153,22 @@ export class NotificationsService implements OnModuleInit {
   ): NotificationTemplate {
     const creatorName = request.creatorDisplayName ?? request.creatorUserId;
     const occurredAt = (request.occurredAt ?? new Date()).toISOString();
+
+    if (request.event === 'created') {
+      const title =
+        digestCount > 1 ? `${digestCount} new subscriptions` : 'Welcome! Subscription confirmed';
+      const body =
+        digestCount > 1
+          ? `You started ${digestCount} new subscriptions to ${creatorName}.`
+          : `Your subscription to ${creatorName} is now active. Welcome aboard!`;
+      return {
+        inApp: { title, body },
+        email: {
+          subject: `Welcome — your ${creatorName} subscription is active`,
+          body: `Thanks for subscribing to ${creatorName}! Your subscription was confirmed on ${occurredAt}.`,
+        },
+      };
+    }
 
     if (request.event === 'renewed') {
       const title =
@@ -408,13 +424,11 @@ export class NotificationsService implements OnModuleInit {
     }
 
     const type =
-      job.payload.event === 'renewed'
-        ? NotificationType.SUBSCRIPTION_RENEWED
-        : job.payload.event === 'cancelled'
-          ? NotificationType.SUBSCRIPTION_CANCELLED
-          // No dedicated NotificationType for renewal failures yet (would need
-          // an enum migration); SYSTEM is the closest existing catch-all.
-          : NotificationType.SYSTEM;
+      job.payload.event === 'created'
+        ? NotificationType.NEW_SUBSCRIBER
+        : job.payload.event === 'renewed'
+          ? NotificationType.SUBSCRIPTION_RENEWED
+          : NotificationType.SUBSCRIPTION_CANCELLED;
 
     const eventTime = (job.payload.occurredAt ?? new Date()).toISOString();
 
