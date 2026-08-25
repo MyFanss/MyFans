@@ -94,6 +94,16 @@ export class User {
   @Column({ default: false })
   is_creator: boolean;
 
+  /**
+   * Bumped whenever all of the user's existing sessions must be invalidated
+   * (e.g. account deletion — see UsersService#remove and #1566). JWTs embed
+   * the token_version they were issued with; JwtStrategy rejects a token
+   * whose embedded version no longer matches this column, which revokes
+   * every outstanding JWT without needing a token blocklist.
+   */
+  @Column({ type: 'int', default: 0 })
+  token_version: number;
+
   @Column({ type: 'jsonb', nullable: true })
   onboarding_state?: {
     currentStep: string;

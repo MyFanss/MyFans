@@ -6,7 +6,9 @@ import { UpdateUserDto } from './dto';
 import { ONBOARDING_STEPS } from './dto/update-onboarding.dto';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
 import { Creator } from './entities/creator.entity';
+import { AccountDeletionAuditLog } from './entities/account-deletion-audit-log.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { WalletLinksService } from '../wallet-links/wallet-links.service';
 import * as bcrypt from 'bcrypt';
 
 
@@ -16,7 +18,10 @@ export class UsersService {
     @InjectRepository(User)
     private usersRepository: Repository<User>,
     @InjectRepository(User)
-    private creatorRepository: Repository<Creator>
+    private creatorRepository: Repository<Creator>,
+    @InjectRepository(AccountDeletionAuditLog)
+    private accountDeletionAuditLogRepository: Repository<AccountDeletionAuditLog>,
+    private readonly walletLinksService: WalletLinksService,
   ) { }
 
   async findAll(
@@ -214,9 +219,65 @@ export class UsersService {
     return bcrypt.compare(password, user.password_hash);
   }
 
+  /**
+   * Deletes a user's account (#1566). This is an off-chain, platform-side
+   * deletion only:
+   *
+   *  - Soft-deletes the `users` row.
+   *  - Bumps `token_version` so every JWT already issued to this user fails
+   *    the version check in `JwtStrategy#validate` on its next use — this
+   *    revokes all existing sessions without needing a token blocklist.
+   *  - Deletes the user's wallet links (so a future caller can't be bridged
+   *    into a deleted account's identity via #1561's wallet-address
+   *    resolution) and resets their notification preferences.
+   *  - Writes an audit log entry.
+   *
+   * IMPORTANT: this does NOT cancel any on-chain Soroban subscription the
+   * user holds as a fan, and does NOT touch the subscription smart
+   * contract in any way. On-chain subscriptions are controlled by the
+   * user's Stellar wallet, not this backend, and can only be cancelled by
+   * the user signing an explicit cancel transaction. Deletion only stops
+   * off-chain effects: login/session validity, wallet-address bridging,
+   * and email/notification reminders (see EmailOutboxService).
+   */
   async remove(userId: string): Promise<void> {
     const user = await this.findOne(userId);
+
+    user.token_version = (user.token_version ?? 0) + 1;
+    Object.assign(user, this.disabledNotificationPreferences());
+    await this.usersRepository.save(user);
+
+    await this.walletLinksService.deleteAllForUser(user.id);
+
     await this.usersRepository.softDelete(user.id);
+
+    await this.accountDeletionAuditLogRepository.save({
+      user_id: user.id,
+      details:
+        'Account deleted: sessions revoked (token_version bumped), wallet links removed, ' +
+        'notification preferences cleared. On-chain subscriptions, if any, are unaffected ' +
+        'and require an explicit on-chain cancel transaction from the user.',
+    });
+  }
+
+  private disabledNotificationPreferences() {
+    return {
+      email_notifications: false,
+      push_notifications: false,
+      marketing_emails: false,
+      email_new_subscriber: false,
+      email_subscription_renewal: false,
+      email_new_comment: false,
+      email_new_like: false,
+      email_new_message: false,
+      email_payout: false,
+      push_new_subscriber: false,
+      push_subscription_renewal: false,
+      push_new_comment: false,
+      push_new_like: false,
+      push_new_message: false,
+      push_payout: false,
+    };
   }
 }
 

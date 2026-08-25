@@ -3,6 +3,7 @@ import { NotFoundException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { EventBus } from '../events/event-bus';
+import { RefreshTokenService } from './refresh-token.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -11,12 +12,18 @@ describe('AuthService', () => {
     findOne: jest.fn(),
   };
 
+  const mockRefreshTokenService = {
+    rotate: jest.fn(),
+    issueTokenPair: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: UsersService, useValue: mockUsersService },
         { provide: EventBus, useValue: { publish: jest.fn() } },
+        { provide: RefreshTokenService, useValue: mockRefreshTokenService },
       ],
     }).compile();
 

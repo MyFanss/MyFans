@@ -12,6 +12,8 @@ export enum EmailOutboxStatus {
   PENDING = 'pending',
   SENT = 'sent',
   FAILED = 'failed',
+  /** Delivery was skipped because the recipient's account was deleted (#1566). */
+  SUPPRESSED = 'suppressed',
 }
 
 /** Durable record of an email queued for delivery, replacing the previous in-memory-only log. */

@@ -10,6 +10,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -22,7 +23,8 @@ import {
 import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
 import type { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
-import { OptionalJwtAuthGuard } from '../auth-module/guards/optional-jwt-auth.guard';
+import { OptionalHybridFanAuthGuard } from '../subscriptions/guards/optional-hybrid-fan-auth.guard';
+import type { RequestWithHybridAuth } from '../subscriptions/guards/hybrid-fan-auth.guard';
 import { PaginatedResponseDto, PaginationDto } from '../common/dto';
 import {
   ContentAccessService,
@@ -82,18 +84,22 @@ export class ContentController {
   }
 
   @Get(':id')
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(OptionalHybridFanAuthGuard)
   @ApiOperation({
     summary:
-      'Get content by ID — gated content returns a teaser to non-subscribers',
+      'Get content by ID — gated content returns a teaser to non-subscribers. ' +
+      'Accepts either a platform JWT or a Stellar bearer token (see HybridFanAuthGuard), or no credential at all.',
   })
   @ApiResponse({ status: 200 })
   @ApiResponse({ status: 404 })
   findOne(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: JwtUserPayload,
+    @Req() req: RequestWithHybridAuth,
   ): Promise<GatedContentView> {
-    return this.contentAccessService.getForRequester(id, user?.userId);
+    return this.contentAccessService.getForRequester(id, {
+      userId: req.user?.userId,
+      fanAddress: req.fanAddress,
+    });
   }
 
   @Put(':id')
