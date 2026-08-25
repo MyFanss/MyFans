@@ -69,8 +69,7 @@ export default function OnboardingPage() {
       try {
         const me = await fetchMe();
         if (cancelled) return;
-        const serverState = (me as any).onboarding_state ?? null;
-        hydrateFromServer(serverState);
+        hydrateFromServer(me.onboarding_state ?? null);
       } catch {
         // best-effort hydration; local state still works offline
       }

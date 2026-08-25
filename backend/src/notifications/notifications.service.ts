@@ -11,7 +11,7 @@ import { UsersService } from '../users/users.service';
 
 export interface SubscriptionLifecycleNotificationRequest {
   dedupeKey: string;
-  event: 'renewed' | 'cancelled';
+  event: 'renewed' | 'cancelled' | 'renewal_failed';
   recipientUserId: string;
   creatorUserId: string;
   creatorDisplayName?: string;
@@ -168,6 +168,24 @@ export class NotificationsService implements OnModuleInit {
         email: {
           subject: `Your ${creatorName} subscription renewed`,
           body: `Your subscription renewal for ${creatorName} was processed successfully on ${occurredAt}.`,
+        },
+      };
+    }
+
+    if (request.event === 'renewal_failed') {
+      const title =
+        digestCount > 1
+          ? `${digestCount} subscription renewals failed`
+          : 'Subscription renewal failed';
+      const body =
+        digestCount > 1
+          ? `${digestCount} subscription renewals to ${creatorName} could not be processed.`
+          : `Your subscription renewal for ${creatorName} could not be processed. Please check your wallet balance.`;
+      return {
+        inApp: { title, body },
+        email: {
+          subject: `Your ${creatorName} subscription renewal failed`,
+          body: `Your subscription renewal for ${creatorName} failed on ${occurredAt}. Please check your wallet and try again.`,
         },
       };
     }
@@ -392,7 +410,11 @@ export class NotificationsService implements OnModuleInit {
     const type =
       job.payload.event === 'renewed'
         ? NotificationType.SUBSCRIPTION_RENEWED
-        : NotificationType.SUBSCRIPTION_CANCELLED;
+        : job.payload.event === 'cancelled'
+          ? NotificationType.SUBSCRIPTION_CANCELLED
+          // No dedicated NotificationType for renewal failures yet (would need
+          // an enum migration); SYSTEM is the closest existing catch-all.
+          : NotificationType.SYSTEM;
 
     const eventTime = (job.payload.occurredAt ?? new Date()).toISOString();
 

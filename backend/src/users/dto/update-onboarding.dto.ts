@@ -1,7 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsArray, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
-const STEPS = ['account-type', 'profile', 'social-links', 'verification'] as const;
+export const ONBOARDING_STEPS = [
+  'account-type',
+  'profile',
+  'social-links',
+  'verification',
+] as const;
+const STEPS = ONBOARDING_STEPS;
 const INTENTS = ['creator', 'fan', 'both'] as const;
 
 export class UpdateOnboardingDto {

@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { UpdateUserDto } from './dto';
+import { ONBOARDING_STEPS } from './dto/update-onboarding.dto';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
 import { Creator } from './entities/creator.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -42,6 +43,22 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * Resolves a Stellar G-address (as seen on-chain / in subscription
+   * lifecycle events) to the platform user UUID it is linked to.
+   *
+   * There is currently no persisted wallet-link table connecting a `users`
+   * row to a Stellar address (see `HybridFanAuthGuard`'s doc comment), so
+   * this always returns `null` today — callers MUST treat that as "unlinked"
+   * and must never fall back to using the raw address as a user id (e.g. as
+   * a notification/outbox recipient). Once a wallet-link table exists, this
+   * is the single place to update to query it.
+   */
+  async findByStellarAddress(_stellarAddress: string): Promise<User | null> {
+    void _stellarAddress;
+    return null;
+  }
+
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
     const user = await this.findOne(id);
     Object.assign(user, updateUserDto);
@@ -60,10 +77,16 @@ export class UsersService {
   ): Promise<User> {
     const user = await this.findOne(id);
     const prev = user.onboarding_state ?? null;
+    const completedSteps = onboarding.completedSteps ?? prev?.completedSteps ?? [];
+    const skippedSteps = onboarding.skippedSteps ?? prev?.skippedSteps ?? [];
+    const currentStep = onboarding.currentStep ?? prev?.currentStep ?? 'account-type';
+
+    this.assertLegalOnboardingTransition(completedSteps, skippedSteps, currentStep);
+
     user.onboarding_state = {
-      currentStep: onboarding.currentStep ?? prev?.currentStep ?? 'account-type',
-      completedSteps: onboarding.completedSteps ?? prev?.completedSteps ?? [],
-      skippedSteps: onboarding.skippedSteps ?? prev?.skippedSteps ?? [],
+      currentStep,
+      completedSteps,
+      skippedSteps,
       intent:
         onboarding.intent ??
         prev?.intent ??
@@ -71,6 +94,48 @@ export class UsersService {
       updatedAt: onboarding.updatedAt ?? new Date().toISOString(),
     };
     return this.usersRepository.save(user);
+  }
+
+  /**
+   * Onboarding steps must be completed/skipped in order — a step can only
+   * be marked handled (completed or skipped) once every step before it in
+   * `ONBOARDING_STEPS` is also handled. This rejects a client sending a
+   * `currentStep`/`completedSteps`/`skippedSteps` payload that skips ahead
+   * without going through the earlier steps (e.g. jumping straight to
+   * `verification`).
+   */
+  private assertLegalOnboardingTransition(
+    completedSteps: string[],
+    skippedSteps: string[],
+    currentStep: string,
+  ): void {
+    const handled = new Set([...completedSteps, ...skippedSteps]);
+    const order = ONBOARDING_STEPS as readonly string[];
+
+    let maxHandledIndex = -1;
+    for (const step of handled) {
+      const idx = order.indexOf(step);
+      if (idx === -1) continue; // caught by DTO validation already
+      maxHandledIndex = Math.max(maxHandledIndex, idx);
+    }
+
+    // Every step up to the furthest handled one must also be handled —
+    // no gaps allowed.
+    for (let i = 0; i <= maxHandledIndex; i += 1) {
+      if (!handled.has(order[i])) {
+        throw new BadRequestException(
+          `Cannot skip onboarding step "${order[i]}" — steps must be completed or skipped in order.`,
+        );
+      }
+    }
+
+    // currentStep may not point further ahead than "next after the last handled step".
+    const currentIdx = order.indexOf(currentStep);
+    if (currentIdx !== -1 && currentIdx > maxHandledIndex + 1) {
+      throw new BadRequestException(
+        `Cannot jump to onboarding step "${currentStep}" before earlier steps are handled.`,
+      );
+    }
   }
 
   async findById(id: string): Promise<User> {
