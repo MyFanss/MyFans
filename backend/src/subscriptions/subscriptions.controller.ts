@@ -243,11 +243,11 @@ export class SubscriptionsController {
   })
   @ApiResponse({ status: 404, description: 'Plan not found' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
-  createCheckout(
+  async createCheckout(
     @Body() body: CreateCheckoutDto,
     @Headers('x-network') requestNetwork?: string,
   ) {
-    const checkout = this.subscriptionsService.createCheckout(
+    const checkout = await this.subscriptionsService.createCheckout(
       body.fanAddress,
       body.creatorAddress,
       body.planId,

@@ -574,14 +574,14 @@ export class SubscriptionsService {
     return new PaginatedResponseDto(paginatedResults, limit, nextCursor, hasMore);
   }
 
-  createCheckout(
+  async createCheckout(
     fanAddress: string,
     creatorAddress: string,
     planId: number,
     assetCode = 'XLM',
     assetIssuer?: string,
     requestNetwork?: string,
-  ): Checkout {
+  ): Promise<Checkout> {
     this.assertNetworkMatch(requestNetwork);
 
     const plan = this.getPlanMock(planId);
@@ -592,6 +592,17 @@ export class SubscriptionsService {
     const amount = plan.amount;
     const fee = this.calculateFee(amount);
     const total = (parseFloat(amount) + parseFloat(fee)).toFixed(7);
+
+    // Spending cap is keyed on the fan's Stellar address (same key used by
+    // /subscriptions/me/spending-cap), so this rejects checkouts that would
+    // push the fan over their configured cap regardless of whether they
+    // authenticated with a Stellar bearer token or a linked JWT.
+    if (this.spendingCapService) {
+      await this.spendingCapService.assertWithinCap(
+        fanAddress,
+        this.amountToStroops(total),
+      );
+    }
 
     const checkout: Checkout = {
       id: generateId(),
@@ -810,6 +821,16 @@ export class SubscriptionsService {
 
     const explorerUrl = `https://stellar.expert/explorer/testnet/tx/${checkout.txHash}`;
 
+    // Record the spend against the fan's cap only once the on-chain
+    // subscribe/renew is confirmed, mirroring the pre-checkout assertion in
+    // createCheckout so a fan's usage always reflects settled spend.
+    if (this.spendingCapService) {
+      await this.spendingCapService.recordSpend(
+        checkout.fanAddress,
+        this.amountToStroops(checkout.total),
+      );
+    }
+
     return {
       success: true,
       checkoutId: checkout.id,
@@ -874,6 +895,13 @@ export class SubscriptionsService {
 
   private calculateFee(amount: string): string {
     return ((parseFloat(amount) * this.platformFeeBps) / 10000).toFixed(7);
+  }
+
+  /** Converts a decimal Stellar amount string (e.g. "10.5000000") to stroops (1 XLM = 10^7 stroops). */
+  private amountToStroops(amount: string): bigint {
+    const [whole, frac = ''] = amount.split('.');
+    const fracPadded = (frac + '0000000').slice(0, 7);
+    return BigInt(whole || '0') * BigInt(10000000) + BigInt(fracPadded || '0');
   }
 
   private getDerivedSubscriberStatus(

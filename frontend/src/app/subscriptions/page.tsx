@@ -15,7 +15,7 @@ import HistoryCardSkeleton from '@/components/ui/HistoryCardSkeleton';
 import ActiveSubscriptionSkeleton from '@/components/ui/ActiveSubscriptionSkeleton';
 import { useToast } from '@/contexts/ToastContext';
 import { subscriptionActionToast, subscriptionsLoadFailed } from '@/lib/error-copy';
-import { cancelSubscriptionOnSoroban } from '@/lib/stellar';
+import { cancelSubscriptionOnSoroban, extendSubscriptionOnSoroban, getStellarConfig } from '@/lib/stellar';
 
 export default function SubscriptionsPage() {
   const { showInfo, showSuccess, showError, showLoading, dismiss } = useToast();
@@ -182,9 +182,31 @@ export default function SubscriptionsPage() {
     setRenewingId(renewTarget.id);
     const loadingToastId = showLoading(`Renewing ${renewTarget.creatorName}...`);
     try {
-      // Simulation of contract call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      
+      // Only active subscriptions carry a resolvable creator G-address today;
+      // re-subscribing from history is a separate (checkout) flow, not a
+      // contract-level renewal, so we don't attempt an on-chain call for it.
+      if (!('creatorId' in renewTarget) || !renewTarget.creatorId) {
+        throw new Error('Re-subscribing from history is not supported here yet.');
+      }
+
+      const freighter = typeof window !== 'undefined'
+        ? (window as unknown as { freighter?: { getPublicKey: () => Promise<string> } }).freighter
+        : undefined;
+      const fanAddress = freighter
+        ? await freighter.getPublicKey().catch(() => 'fan_demo_address')
+        : 'fan_demo_address';
+
+      // Plan metadata (token) isn't threaded through the fan-facing
+      // ActiveSubscription shape yet — fall back to the configured MyFans
+      // token contract, which is what plans are denominated in today.
+      const tokenAddress = getStellarConfig().contractIds.token;
+
+      await extendSubscriptionOnSoroban({
+        fanAddress,
+        creatorAddress: renewTarget.creatorId,
+        tokenAddress,
+      });
+
       showSuccess('Subscription renewed', `${renewTarget.creatorName} ${renewTarget.planName} is active again.`);
 
       // Refresh list after renewal

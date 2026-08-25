@@ -1,5 +1,5 @@
 import {
-  BadRequestException,
+  ForbiddenException,
   Injectable,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -54,10 +54,16 @@ export class SpendingCapService {
     this.resetPeriodIfExpired(cap);
 
     if (cap.spentAmount + amountStroops > cap.capAmount) {
-      throw new BadRequestException(
-        `Spending cap exceeded: limit ${cap.capAmount} stroops per ${cap.period}, ` +
-        `spent ${cap.spentAmount}, requested ${amountStroops}`,
-      );
+      const remaining = cap.capAmount - cap.spentAmount;
+      throw new ForbiddenException({
+        error: 'SPENDING_CAP_EXCEEDED',
+        message: `Spending cap exceeded: limit ${cap.capAmount} stroops per ${cap.period}, ` +
+          `spent ${cap.spentAmount}, requested ${amountStroops}`,
+        capAmount: cap.capAmount.toString(),
+        spentAmount: cap.spentAmount.toString(),
+        remaining: (remaining > BigInt(0) ? remaining : BigInt(0)).toString(),
+        period: cap.period,
+      });
     }
   }
 

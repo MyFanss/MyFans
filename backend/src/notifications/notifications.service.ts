@@ -188,6 +188,24 @@ export class NotificationsService implements OnModuleInit {
       };
     }
 
+    if (request.event === 'renewal_failed') {
+      const title =
+        digestCount > 1
+          ? `${digestCount} subscription renewals failed`
+          : 'Subscription renewal failed';
+      const body =
+        digestCount > 1
+          ? `${digestCount} subscription renewals to ${creatorName} could not be processed.`
+          : `Your subscription renewal for ${creatorName} could not be processed. Please check your wallet balance.`;
+      return {
+        inApp: { title, body },
+        email: {
+          subject: `Your ${creatorName} subscription renewal failed`,
+          body: `Your subscription renewal for ${creatorName} failed on ${occurredAt}. Please check your wallet and try again.`,
+        },
+      };
+    }
+
     const title =
       digestCount > 1
         ? `${digestCount} subscriptions cancelled`
