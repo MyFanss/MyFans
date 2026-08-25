@@ -4,6 +4,7 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { WebhookGuard } from './webhook.guard';
 import { WebhookService } from './webhook.service';
@@ -30,6 +31,11 @@ export class WebhookController {
    * Authenticated by the payload signature (WebhookGuard), not by a JWT.
    */
   @Post()
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'Makes webhook delivery retries safe',
+  })
   @Public()
   @HttpCode(200)
   @UseGuards(WebhookGuard)

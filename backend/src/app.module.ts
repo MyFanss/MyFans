@@ -33,6 +33,10 @@ import { CommentsModule } from './comments/comments.module';
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
 import { CorrelationExceptionFilter } from './common/filters/correlation-exception.filter';
 import { RequestContextService } from './common/services/request-context.service';
+import { ContentModule } from './content/content.module';
+import { NetworkConfigModule } from './config/network-config.module';
+import { PostsModule } from './posts/posts.module';
+import { WebhookModule } from './webhook/webhook.module';
 
 /** Routes where idempotency protection is enforced. */
 const IDEMPOTENCY_ROUTES = [
@@ -44,6 +48,8 @@ const IDEMPOTENCY_ROUTES = [
   { path: 'v1/comments/:id', method: RequestMethod.PUT },
   { path: 'v1/conversations', method: RequestMethod.POST },
   { path: 'v1/conversations/:id/messages', method: RequestMethod.POST },
+  { path: 'v1/content', method: RequestMethod.POST },
+  { path: 'v1/webhook', method: RequestMethod.POST },
 ];
 
 @Module({
@@ -72,6 +78,10 @@ const IDEMPOTENCY_ROUTES = [
     FavoritesModule,
     FeedModule,
     CommentsModule,
+    ContentModule,
+    NetworkConfigModule,
+    PostsModule,
+    WebhookModule,
   ],
   controllers: [AppController, OpenAPIController],
   providers: [

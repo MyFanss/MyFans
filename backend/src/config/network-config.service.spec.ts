@@ -84,7 +84,13 @@ describe('NetworkConfigService', () => {
     expect(serialized).not.toContain('super-secret');
     expect(serialized).not.toContain('another-secret');
     expect(Object.keys(result).sort()).toEqual(
-      ['horizonUrl', 'network', 'networkPassphrase', 'rpcUrl'].sort(),
+      [
+        'contractIds',
+        'horizonUrl',
+        'network',
+        'networkPassphrase',
+        'rpcUrl',
+      ].sort(),
     );
   });
 });

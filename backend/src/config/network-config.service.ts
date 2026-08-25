@@ -43,6 +43,12 @@ export class NetworkConfigService {
       RPC_URL_BY_NETWORK[network] ||
       RPC_URL_BY_NETWORK.testnet;
 
-    return { network, networkPassphrase, horizonUrl, rpcUrl };
+    const contractIds = Object.fromEntries(
+      Object.entries(process.env)
+        .filter(([key, value]) => key.endsWith('_CONTRACT_ID') && value)
+        .map(([key, value]) => [key.toLowerCase(), value as string]),
+    );
+
+    return { network, networkPassphrase, horizonUrl, rpcUrl, contractIds };
   }
 }
