@@ -3,12 +3,10 @@ import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-// Canonical auth/users stack — `src/auth`, `src/refresh-module`, and
-// `src/users-module` are deprecated duplicates not wired here.
-// See backend/docs/AUTH_MODES.md.
+// Canonical auth/users stack. Historical duplicate stacks were removed.
 import { AuthModule } from './auth-module/auth.module';
 import { OpenAPIController } from './common/openapi-publish.controller';
-import { ThrottlerGuard } from './auth/throttler.guard';
+import { ThrottlerGuard } from './common/guards/throttler.guard';
 import { JwtAuthGuard } from './auth-module/guards/jwt-auth.guard';
 import { RolesGuard } from './auth-module/guards/roles.guard';
 import { LoggingModule } from './common/logging.module';
