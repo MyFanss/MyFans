@@ -20,7 +20,10 @@ import { DashboardQueryDto } from './dto/creator-dashboard.dto';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { CreatorRegistrySyncDto } from './dto/creator-registry-sync.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth-module/guards/optional-jwt-auth.guard';
 import { Public } from '../common/decorators/public.decorator';
+import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
+import type { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 import { CreatorRegistrySyncService } from './creator-registry-sync.service';
 
 @ApiTags('creators')
@@ -86,10 +89,15 @@ export class CreatorsController {
 
   @Get('username/:username')
   @Public()
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
     summary: 'Get a single public creator profile by exact username',
     description:
-      'Used by the creator profile page. Returns 404 when the username does not belong to a creator.',
+      'Used by the creator profile page. Works for anonymous callers (no auth required) and ' +
+      'accepts an optional bearer token to personalize `isFavorited` for the requesting user. ' +
+      'The response never includes private fields (email, wallet address, payout/balance) ' +
+      'regardless of authentication — those are owner/admin-only and are not part of this DTO. ' +
+      'Returns 404 when the username does not belong to a creator.',
   })
   @ApiResponse({
     status: 200,
@@ -108,8 +116,12 @@ export class CreatorsController {
   })
   async getCreatorByUsername(
     @Param('username') username: string,
+    @CurrentUser() user?: JwtUserPayload,
   ): Promise<PublicCreatorDto> {
-    const creator = await this.creatorsService.getCreatorByUsername(username);
+    const creator = await this.creatorsService.getCreatorByUsername(
+      username,
+      user?.userId,
+    );
     if (!creator) {
       throw new NotFoundException('Creator not found');
     }
