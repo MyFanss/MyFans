@@ -3,7 +3,6 @@ import { JwtModule } from '@nestjs/jwt';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { EventsModule } from '../events/events.module';
 import { UsersModule } from '../users/users.module';
 import { Notification } from './entities/notification.entity';
 import { EmailOutboxEntry } from './entities/email-outbox-entry.entity';
@@ -22,7 +21,6 @@ import { SmtpEmailAdapter } from './adapters/smtp-email.adapter';
 
 @Module({
   imports: [
-    EventsModule,
     ConfigModule,
     UsersModule,
     ScheduleModule,

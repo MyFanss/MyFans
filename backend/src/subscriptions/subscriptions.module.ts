@@ -4,7 +4,6 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggingModule } from '../common/logging.module';
-import { EventsModule } from '../events/events.module';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { SubscriptionLifecycleIndexerController } from './subscription-lifecycle-indexer.controller';
 import { SubscriptionLifecycleIndexerService } from './subscription-lifecycle-indexer.service';
@@ -35,7 +34,6 @@ import { StellarService } from '../common/stellar.service';
     ConfigModule,
     ScheduleModule,
     TypeOrmModule.forFeature([SubscriptionIndexEntity, FanSpendingCapEntity]),
-    EventsModule,
     LoggingModule,
     FeatureFlagsModule,
     JwtModule.registerAsync({

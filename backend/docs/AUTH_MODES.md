@@ -36,11 +36,49 @@ does not fabricate a Stellar address for a JWT-authenticated user. See
 `FanBearerGuard` only, since they are payment-critical and a broader swap
 needs its own verification pass.
 
-## Future work: true unification
+## Wallet Linking (true unification)
 
-Unifying the two identities (one platform user ↔ one or more linked
-Stellar addresses) requires a wallet-linking feature: a table associating
-`users.id` with verified Stellar addresses, plus a flow for a
-JWT-authenticated user to prove ownership of an address (e.g. a signed
-challenge, same pattern as `src/auth/wallet-auth.service.ts`). That is out
-of scope for this bridge.
+A JWT-authenticated user can now link verified Stellar addresses to their
+account via the wallet-linking flow:
+
+1. **Create Challenge**: `POST /v1/auth/wallet/challenge`
+   - Request: `{ "stellarAddress": "G..." }`
+   - Response: `{ "nonce": "...", "expiresAt": "..." }`
+   - Challenge expires in 5 minutes and is single-use
+
+2. **Verify and Link**: `POST /v1/auth/wallet/verify` (requires JWT token)
+   - Request: `{ "stellarAddress": "G...", "nonce": "...", "signature": "..." }`
+   - Response: `{ "id": "...", "stellarAddress": "...", "verifiedAt": "..." }`
+   - Signature is Ed25519(nonce) from the wallet keypair
+   - Linked address must be unique across all users; linking an already-linked
+     address to a different user returns 409 Conflict
+   - First linked address becomes primary; subsequent links can be managed
+     via `GET /v1/auth/wallet/links` and `DELETE /v1/auth/wallet/links/:linkId`
+
+### Persistence
+
+Wallet links are stored in the `user_wallet_links` table:
+- `id` (PK, UUID)
+- `user_id` (FK to users)
+- `stellar_address` (unique, required)
+- `is_primary` (boolean, used by gating/notifications)
+- `verified_at` (timestamp)
+- `created_at` (timestamp)
+
+### Usage in Content Gating
+
+Services requiring a Stellar address for gating can now:
+
+```typescript
+const primaryLink = await walletLinkingService.getPrimaryWalletLink(userId);
+if (primaryLink) {
+  // Use primaryLink.stellarAddress for chain queries, spending caps, etc.
+}
+```
+
+### Deprecation Note
+
+The deprecated `src/auth/wallet-auth.service.ts` (in the dead `src/auth/` module)
+is superseded by `src/auth-module/services/wallet-linking.service.ts`. The legacy
+service can be removed once this wallet-linking flow is confirmed working in
+production.
