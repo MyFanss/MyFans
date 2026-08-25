@@ -28,6 +28,7 @@ import { AddRoleToUsers1747000000000 } from '../src/users/1747000000000-AddRoleT
 import { CreateSocialLinksTable1748000000000 } from '../src/social-link/1748000000000-CreateSocialLinksTable';
 import { CreateCreatorOnchainMappings1749000000000 } from '../src/creators/1749000000000-CreateCreatorOnchainMappings';
 import { CreateNotificationDurableState1750000000000 } from '../src/notifications/1750000000000-CreateNotificationDurableState';
+import { CreateUserWalletLinks1751000000000 } from '../src/auth-module/1751000000000-CreateUserWalletLinks';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,7 @@ function buildDataSource(): DataSource {
       CreateSocialLinksTable1748000000000,
       CreateCreatorOnchainMappings1749000000000,
       CreateNotificationDurableState1750000000000,
+      CreateUserWalletLinks1751000000000,
     ],
   });
 }
@@ -184,11 +186,11 @@ describe('Database migrations (integration)', () => {
     );
   });
 
-  it('migrations table records all 12 migrations', async () => {
+  it('migrations table records all 13 migrations', async () => {
     const rows: { name: string }[] = await qr.query(
       `SELECT name FROM migrations ORDER BY timestamp ASC`,
     );
-    expect(rows.length).toBe(12);
+    expect(rows.length).toBe(13);
   });
 
   it('running migrations again is idempotent (no-op)', async () => {
@@ -200,7 +202,7 @@ describe('Database migrations (integration)', () => {
 
   it('reverts all migrations down without error', async () => {
     // Revert one at a time in reverse order
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 13; i++) {
       await ds.undoLastMigration({ transaction: true });
     }
 
