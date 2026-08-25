@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { InProcessEventBus } from './in-process-event-bus';
 import { EventBus } from './event-bus';
+import { EventsModule } from './events.module';
 import { AuthService } from '../auth-module/auth.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CreatorsService } from '../creators/creators.service';
@@ -56,6 +57,22 @@ describe('InProcessEventBus', () => {
     eventBus.subscribe('auth.user_logged_in', goodHandler);
     eventBus.publish(new UserLoggedInEvent('user1', 'GABC123'));
     expect(goodHandler).toHaveBeenCalled();
+  });
+
+  it('tracks events_published_total metric', () => {
+    eventBus.publish(new UserLoggedInEvent('user1', 'GABC123'));
+    eventBus.publish(new SubscriptionCreatedEvent('fan1', 'creator1', 1, 9999));
+    const metrics = eventBus.getMetrics();
+    expect(metrics.events_published_total).toBe(2);
+  });
+
+  it('tracks per-event-type metrics', () => {
+    eventBus.publish(new UserLoggedInEvent('user1', 'GABC123'));
+    eventBus.publish(new UserLoggedInEvent('user2', 'GABC456'));
+    eventBus.publish(new SubscriptionCreatedEvent('fan1', 'creator1', 1, 9999));
+    const metrics = eventBus.getMetrics();
+    expect(metrics.events_by_type['auth.user_logged_in']).toBe(2);
+    expect(metrics.events_by_type['subscription.created']).toBe(1);
   });
 });
 
@@ -178,5 +195,39 @@ describe('CreatorsService events', () => {
         amount: '10',
       }),
     );
+  });
+});
+
+describe('EventsModule (global module)', () => {
+  it('provides a single shared EventBus instance across modules', async () => {
+    const module = await Test.createTestingModule({
+      imports: [EventsModule],
+    }).compile();
+
+    const bus1 = module.get<EventBus>(EventBus);
+    const bus2 = module.get<EventBus>(EventBus);
+
+    expect(bus1).toBe(bus2);
+    await module.close();
+  });
+
+  it('EventsModule is @Global() so subscribers receive published events without explicit import', async () => {
+    const module = await Test.createTestingModule({
+      imports: [EventsModule],
+    }).compile();
+
+    const eventBus = module.get<EventBus>(EventBus);
+    const handler = jest.fn();
+
+    eventBus.subscribe('subscription.created', handler);
+    eventBus.publish(new SubscriptionCreatedEvent('fan1', 'creator1', 1, 9999));
+
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'subscription.created',
+        fan: 'fan1',
+      }),
+    );
+    await module.close();
   });
 });

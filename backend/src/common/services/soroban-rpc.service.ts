@@ -453,6 +453,32 @@ const health = await this.recordRpcCall('getHealth', () =>
   }
 
   /**
+   * Looks up a submitted transaction by hash and reports its on-chain
+   * status. Used to verify a client-reported txHash actually landed
+   * successfully before trusting it (e.g. checkout confirmation).
+   */
+  async getTransaction(hash: string): Promise<{
+    status: rpc.Api.GetTransactionStatus;
+    ledger?: number;
+  }> {
+    if (!this.server) {
+      throw new Error('SorobanRpcService: server not initialized');
+    }
+    try {
+      const response = await this.recordRpcCall('getTransaction', () =>
+        this.server!.getTransaction(hash),
+      );
+      return {
+        status: response.status,
+        ledger: 'ledger' in response ? response.ledger : undefined,
+      };
+    } catch (err) {
+      this.logger.warn(`getTransaction failed for ${hash}: ${err}`);
+      throw err;
+    }
+  }
+
+  /**
    * Fetches contract events from the Soroban RPC node.
    */
   async getNetworkEvents(opts: {

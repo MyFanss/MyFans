@@ -14,6 +14,7 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 import { CreatorsModule } from './creators/creators.module';
+import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -37,6 +38,7 @@ import { ContentModule } from './content/content.module';
 import { NetworkConfigModule } from './config/network-config.module';
 import { PostsModule } from './posts/posts.module';
 import { WebhookModule } from './webhook/webhook.module';
+import { AdminAuditModule } from './admin-audit/admin-audit.module';
 
 /** Routes where idempotency protection is enforced. */
 const IDEMPOTENCY_ROUTES = [
@@ -62,6 +64,7 @@ const IDEMPOTENCY_ROUTES = [
     ]),
     LoggingModule,
     MetricsModule,
+    EventsModule,
     AuthModule,
     CreatorsModule,
     SubscriptionsModule,
@@ -82,6 +85,7 @@ const IDEMPOTENCY_ROUTES = [
     NetworkConfigModule,
     PostsModule,
     WebhookModule,
+    AdminAuditModule,
   ],
   controllers: [AppController, OpenAPIController],
   providers: [

@@ -11,7 +11,7 @@ import { UsersService } from '../users/users.service';
 
 export interface SubscriptionLifecycleNotificationRequest {
   dedupeKey: string;
-  event: 'renewed' | 'cancelled';
+  event: 'created' | 'renewed' | 'cancelled';
   recipientUserId: string;
   creatorUserId: string;
   creatorDisplayName?: string;
@@ -154,6 +154,22 @@ export class NotificationsService implements OnModuleInit {
     const creatorName = request.creatorDisplayName ?? request.creatorUserId;
     const occurredAt = (request.occurredAt ?? new Date()).toISOString();
 
+    if (request.event === 'created') {
+      const title =
+        digestCount > 1 ? `${digestCount} new subscriptions` : 'Welcome! Subscription confirmed';
+      const body =
+        digestCount > 1
+          ? `You started ${digestCount} new subscriptions to ${creatorName}.`
+          : `Your subscription to ${creatorName} is now active. Welcome aboard!`;
+      return {
+        inApp: { title, body },
+        email: {
+          subject: `Welcome — your ${creatorName} subscription is active`,
+          body: `Thanks for subscribing to ${creatorName}! Your subscription was confirmed on ${occurredAt}.`,
+        },
+      };
+    }
+
     if (request.event === 'renewed') {
       const title =
         digestCount > 1
@@ -168,6 +184,24 @@ export class NotificationsService implements OnModuleInit {
         email: {
           subject: `Your ${creatorName} subscription renewed`,
           body: `Your subscription renewal for ${creatorName} was processed successfully on ${occurredAt}.`,
+        },
+      };
+    }
+
+    if (request.event === 'renewal_failed') {
+      const title =
+        digestCount > 1
+          ? `${digestCount} subscription renewals failed`
+          : 'Subscription renewal failed';
+      const body =
+        digestCount > 1
+          ? `${digestCount} subscription renewals to ${creatorName} could not be processed.`
+          : `Your subscription renewal for ${creatorName} could not be processed. Please check your wallet balance.`;
+      return {
+        inApp: { title, body },
+        email: {
+          subject: `Your ${creatorName} subscription renewal failed`,
+          body: `Your subscription renewal for ${creatorName} failed on ${occurredAt}. Please check your wallet and try again.`,
         },
       };
     }
@@ -390,9 +424,11 @@ export class NotificationsService implements OnModuleInit {
     }
 
     const type =
-      job.payload.event === 'renewed'
-        ? NotificationType.SUBSCRIPTION_RENEWED
-        : NotificationType.SUBSCRIPTION_CANCELLED;
+      job.payload.event === 'created'
+        ? NotificationType.NEW_SUBSCRIBER
+        : job.payload.event === 'renewed'
+          ? NotificationType.SUBSCRIPTION_RENEWED
+          : NotificationType.SUBSCRIPTION_CANCELLED;
 
     const eventTime = (job.payload.occurredAt ?? new Date()).toISOString();
 

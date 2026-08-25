@@ -5,13 +5,14 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { User } from './entities/user.entity';
-import { AccountDeletionAuditLog } from './entities/account-deletion-audit-log.entity';
-import { WalletLinksModule } from '../wallet-links/wallet-links.module';
+import { AdminAuditModule } from '../admin-audit/admin-audit.module';
+import { LoggingModule } from '../common/logging.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, AccountDeletionAuditLog]),
-    WalletLinksModule,
+    TypeOrmModule.forFeature([User]),
+    AdminAuditModule,
+    LoggingModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({

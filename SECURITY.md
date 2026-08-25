@@ -1,5 +1,16 @@
 # Security findings
 
+## Finding #7 — no audit trail for admin role changes / moderation actions (#1568)
+
+**Resolved.** A compromised admin token could previously promote accounts
+or approve/reject moderation flags with no durable record. `backend/src/admin-audit`
+now provides an append-only `admin_audit_events` table (actor, action, target,
+a SHA-256 payload hash, correlation id, timestamp). A row is written on every
+role change (`UsersController#updateUserRole`, admin-only) and every
+moderation decision (`ModerationService#reviewFlag`). The log is readable via
+`GET /v1/admin/audit-log` (admin-only, 403 otherwise, paginated); there is no
+update or delete endpoint for audit rows.
+
 ## Finding #6 — duplicate authentication stacks
 
 **Resolved.** The canonical runtime stack is `backend/src/auth-module` with

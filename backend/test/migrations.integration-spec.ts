@@ -22,6 +22,13 @@ import { CreateWalletChallenges1711554834000 } from '../src/database/migrations/
 import { CreateIdempotencyKeys1711554835000 } from '../src/idempotency/1711554835000-CreateIdempotencyKeys';
 import { AddQueuedAtToModerationFlags1745000000000 } from '../src/moderation/1745000000000-AddQueuedAtToModerationFlags';
 import { CreateReferralTables1745000000000 } from '../src/referral/1745000000000-CreateReferralTables';
+import { AddDigestColumnsToNotifications1745100000000 } from '../src/notifications/1745100000000-AddDigestColumnsToNotifications';
+import { AddOnboardingStateToUsers1745200000000 } from '../src/users/1745200000000-AddOnboardingStateToUsers';
+import { AddRoleToUsers1747000000000 } from '../src/users/1747000000000-AddRoleToUsers';
+import { CreateSocialLinksTable1748000000000 } from '../src/social-link/1748000000000-CreateSocialLinksTable';
+import { CreateCreatorOnchainMappings1749000000000 } from '../src/creators/1749000000000-CreateCreatorOnchainMappings';
+import { CreateNotificationDurableState1750000000000 } from '../src/notifications/1750000000000-CreateNotificationDurableState';
+import { CreateUserWalletLinks1751000000000 } from '../src/auth-module/1751000000000-CreateUserWalletLinks';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -42,6 +49,13 @@ function buildDataSource(): DataSource {
       CreateIdempotencyKeys1711554835000,
       AddQueuedAtToModerationFlags1745000000000,
       CreateReferralTables1745000000000,
+      AddDigestColumnsToNotifications1745100000000,
+      AddOnboardingStateToUsers1745200000000,
+      AddRoleToUsers1747000000000,
+      CreateSocialLinksTable1748000000000,
+      CreateCreatorOnchainMappings1749000000000,
+      CreateNotificationDurableState1750000000000,
+      CreateUserWalletLinks1751000000000,
     ],
   });
 }
@@ -172,11 +186,11 @@ describe('Database migrations (integration)', () => {
     );
   });
 
-  it('migrations table records all 6 migrations', async () => {
+  it('migrations table records all 13 migrations', async () => {
     const rows: unknown = await qr.query(
       `SELECT name FROM migrations ORDER BY timestamp ASC`,
     );
-    expect(Array.isArray(rows) ? rows.length : 0).toBe(6);
+    expect(Array.isArray(rows) ? rows.length : 0).toBe(13);
   });
 
   it('running migrations again is idempotent (no-op)', async () => {
@@ -188,7 +202,7 @@ describe('Database migrations (integration)', () => {
 
   it('reverts all migrations down without error', async () => {
     // Revert one at a time in reverse order
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 13; i++) {
       await ds.undoLastMigration({ transaction: true });
     }
 

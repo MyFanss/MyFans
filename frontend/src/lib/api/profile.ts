@@ -3,6 +3,14 @@ import { getApiBaseUrl } from "@/lib/api/base-url";
 
 const API_BASE = getApiBaseUrl();
 
+export type ServerOnboardingState = {
+  currentStep?: string;
+  completedSteps?: string[];
+  skippedSteps?: string[];
+  intent?: 'creator' | 'fan' | 'both' | null;
+  updatedAt?: string;
+};
+
 export type MeResponse = {
   id: string;
   email: string;
@@ -14,6 +22,7 @@ export type MeResponse = {
   x_handle: string | null;
   instagram_handle: string | null;
   other_url: string | null;
+  onboarding_state?: ServerOnboardingState | null;
   creator: {
     id: string;
     bio: string | null;

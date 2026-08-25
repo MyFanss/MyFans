@@ -38,7 +38,7 @@ export class CheckoutResponseDto {
   @ApiProperty({ description: 'Subscription amount' }) amount: string;
   @ApiProperty({ description: 'Platform fee' }) fee: string;
   @ApiProperty({ description: 'Total including fees' }) total: string;
-  @ApiProperty({ description: 'Checkout status', enum: ['pending', 'completed', 'failed', 'rejected', 'expired'] }) status: string;
+  @ApiProperty({ description: 'Checkout status', enum: ['pending', 'confirmed_on_chain', 'completed', 'failed', 'rejected', 'expired'] }) status: string;
   @ApiProperty({ description: 'Session expiry timestamp' }) expiresAt: Date;
   @ApiPropertyOptional({ description: 'Transaction hash (after confirmation)' }) txHash?: string;
   @ApiPropertyOptional({ description: 'Error message (on failure)' }) error?: string;
@@ -65,10 +65,13 @@ export class ValidateBalanceResponseDto {
 }
 
 export class ConfirmSubscriptionDto {
-  @ApiPropertyOptional({ description: 'Transaction hash from Stellar network' })
-  @IsOptional()
+  @ApiProperty({
+    description:
+      'Transaction hash from the Stellar network. Required — the server verifies it on-chain via RPC before the subscription is marked active.',
+  })
   @IsString()
-  txHash?: string;
+  @IsNotEmpty()
+  txHash: string;
 }
 
 export class ConfirmSubscriptionResponseDto {
