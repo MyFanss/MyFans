@@ -17,6 +17,9 @@ const FEATURE_FLAG_ENV_KEYS = {
   cryptoPayments: ['FEATURE_CRYPTO_PAYMENTS', 'FEATURE_FLAG_CRYPTO_PAYMENTS'],
   referralCodes: ['FEATURE_REFERRAL_CODES'],
   sorobanPoller: ['FEATURE_SOROBAN_POLLER'],
+  // Gates shortening the access JWT TTL from 24h to 15m (#1565) — off by
+  // default since other code may still assume a 24h-lived access token.
+  shortLivedAccessTokens: ['FEATURE_SHORT_LIVED_ACCESS_TOKENS'],
 } as const;
 
 export type FeatureFlagName = keyof typeof FEATURE_FLAG_ENV_KEYS;

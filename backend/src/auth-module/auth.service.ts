@@ -10,13 +10,20 @@ import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
 import { EventBus } from '../events/event-bus';
 import { UserLoggedInEvent } from '../events/domain-events';
 import { isStellarAccountAddress } from '../common/utils/stellar-address';
+import { RefreshTokenService, TokenPair } from './refresh-token.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly eventBus: EventBus,
+    private readonly refreshTokenService: RefreshTokenService,
   ) {}
+
+  /** Rotates a refresh token for a new access+refresh pair (#1565). */
+  async refresh(refreshToken: string): Promise<TokenPair> {
+    return this.refreshTokenService.rotate(refreshToken);
+  }
 
   validateStellarAddress(address: string): boolean {
     return isStellarAccountAddress(address);

@@ -18,6 +18,7 @@ import { SpendingCapService } from './services/spending-cap.service';
 import { SUBSCRIPTION_EVENT_PUBLISHER } from './events';
 import { FanBearerGuard } from './guards/fan-bearer.guard';
 import { HybridFanAuthGuard } from './guards/hybrid-fan-auth.guard';
+import { OptionalHybridFanAuthGuard } from './guards/optional-hybrid-fan-auth.guard';
 import { GatedContentGuard } from './gated-content.guard';
 import { FeatureFlagGuard } from '../feature-flags/feature-flag.guard';
 import { SubscriptionCacheService } from './subscription-cache.service';
@@ -60,6 +61,7 @@ import { StellarService } from '../common/stellar.service';
     GatedContentGuard,
     FanBearerGuard,
     HybridFanAuthGuard,
+    OptionalHybridFanAuthGuard,
     FeatureFlagGuard,
     SubscriptionLifecycleIndexerService,
     StellarService,
@@ -79,6 +81,13 @@ import { StellarService } from '../common/stellar.service';
       useClass: LoggingSubscriptionEventPublisher,
     },
   ],
-  exports: [SubscriptionsService, SubscriptionLifecycleIndexerService, SubscriptionIndexRepository, SubscriptionChainSyncService],
+  exports: [
+    SubscriptionsService,
+    SubscriptionLifecycleIndexerService,
+    SubscriptionIndexRepository,
+    SubscriptionChainSyncService,
+    HybridFanAuthGuard,
+    OptionalHybridFanAuthGuard,
+  ],
 })
 export class SubscriptionsModule {}

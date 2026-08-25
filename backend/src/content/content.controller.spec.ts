@@ -91,23 +91,42 @@ describe('ContentController', () => {
   });
 
   describe('findOne', () => {
-    it('delegates to ContentAccessService with the requester id from the JWT', async () => {
+    it('delegates to ContentAccessService with the requester userId from a JWT-authenticated request', async () => {
       const view = { ...fakeContent, locked: false };
       accessService.getForRequester.mockResolvedValue(view);
 
-      const result = await controller.findOne('uuid-1', fakeUser);
+      const result = await controller.findOne('uuid-1', { user: fakeUser } as any);
 
-      expect(accessService.getForRequester).toHaveBeenCalledWith('uuid-1', 'creator-1');
+      expect(accessService.getForRequester).toHaveBeenCalledWith('uuid-1', {
+        userId: 'creator-1',
+        fanAddress: undefined,
+      });
       expect(result).toBe(view);
     });
 
-    it('passes undefined as requester id for anonymous callers', async () => {
+    it('delegates with the fanAddress from a Stellar-bearer-authenticated request', async () => {
+      const view = { ...fakeContent, locked: false };
+      accessService.getForRequester.mockResolvedValue(view);
+
+      const result = await controller.findOne('uuid-1', { fanAddress: 'GFAN...' } as any);
+
+      expect(accessService.getForRequester).toHaveBeenCalledWith('uuid-1', {
+        userId: undefined,
+        fanAddress: 'GFAN...',
+      });
+      expect(result).toBe(view);
+    });
+
+    it('passes undefined identity for anonymous callers', async () => {
       const teaser = { ...fakeContent, locked: true };
       accessService.getForRequester.mockResolvedValue(teaser);
 
-      const result = await controller.findOne('uuid-1', undefined as any);
+      const result = await controller.findOne('uuid-1', {} as any);
 
-      expect(accessService.getForRequester).toHaveBeenCalledWith('uuid-1', undefined);
+      expect(accessService.getForRequester).toHaveBeenCalledWith('uuid-1', {
+        userId: undefined,
+        fanAddress: undefined,
+      });
       expect(result).toBe(teaser);
     });
   });

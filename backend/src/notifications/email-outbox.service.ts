@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -7,6 +7,7 @@ import {
 } from './entities/email-outbox-entry.entity';
 import { EMAIL_ADAPTER } from './adapters/email-adapter.interface';
 import type { EmailAdapter } from './adapters/email-adapter.interface';
+import { UsersService } from '../users/users.service';
 
 export interface EnqueueEmailRequest {
   dedupeKey: string;
@@ -36,6 +37,7 @@ export class EmailOutboxService {
     private readonly repo: Repository<EmailOutboxEntry>,
     @Inject(EMAIL_ADAPTER)
     private readonly adapter: EmailAdapter,
+    private readonly usersService: UsersService,
   ) {}
 
   async enqueue(request: EnqueueEmailRequest): Promise<EmailOutboxEntry> {
@@ -75,7 +77,32 @@ export class EmailOutboxService {
     return this.repo.find({ order: { created_at: 'ASC' } });
   }
 
+  /**
+   * The target user's `users` row is soft-deleted (see UsersService#remove,
+   * #1566), so a default (non-`withDeleted`) lookup returns nothing for a
+   * deleted account and `findOne` throws `NotFoundException`.
+   */
+  private async isRecipientDeleted(userId: string): Promise<boolean> {
+    try {
+      await this.usersService.findOne(userId);
+      return false;
+    } catch (error) {
+      if (error instanceof NotFoundException) return true;
+      throw error;
+    }
+  }
+
   private async deliver(entry: EmailOutboxEntry): Promise<void> {
+    if (await this.isRecipientDeleted(entry.to_user_id)) {
+      entry.status = EmailOutboxStatus.SUPPRESSED;
+      entry.last_error = 'Recipient account has been deleted; delivery suppressed.';
+      await this.repo.save(entry);
+      this.logger.log(
+        `Suppressed email ${entry.dedupe_key} for deleted user ${entry.to_user_id}.`,
+      );
+      return;
+    }
+
     try {
       await this.adapter.send({
         to: entry.to_user_id,
