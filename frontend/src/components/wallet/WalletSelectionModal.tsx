@@ -12,6 +12,7 @@ import {
   WALLETCONNECT_UNSUPPORTED_MESSAGE,
 } from '@/lib/wallet';
 import { errorToastWithCause } from '@/lib/error-copy';
+import { useBackendNetwork } from '@/hooks/useBackendNetwork';
 
 interface WalletSelectionModalProps {
   isOpen: boolean;
@@ -37,6 +38,7 @@ export function WalletSelectionModal({
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const walletConnectEnabled = isWalletConnectEnabled();
+  const backendNetwork = useBackendNetwork();
 
   const handleClose = useCallback(() => {
     if (connectionState.status === 'connecting') return;
@@ -154,7 +156,7 @@ export function WalletSelectionModal({
         status: 'connected',
         address,
         walletType,
-        network: 'Stellar Mainnet',
+        network: backendNetwork,
       });
 
       onConnect?.(address, walletType);
@@ -174,7 +176,7 @@ export function WalletSelectionModal({
       });
       showError('WALLET_CONNECTION_FAILED', errorToastWithCause('WALLET_CONNECTION_FAILED', error));
     }
-  }, [dismiss, getInstallUrl, isWalletInstalled, onConnect, showError, showLoading, showSuccess, showInfo]);
+  }, [backendNetwork, dismiss, getInstallUrl, isWalletInstalled, onConnect, showError, showLoading, showSuccess, showInfo]);
 
   const handleInstallWallet = useCallback((walletType: WalletType) => {
     const installUrl = getInstallUrl(walletType);

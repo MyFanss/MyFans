@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { WalletType, WalletConnectionState } from "@/types/wallet";
+import { useBackendNetwork } from './useBackendNetwork';
 import {
   connectWallet,
   getConnectedAddress,
@@ -39,6 +40,7 @@ interface UseWalletReturn {
  * Hook for managing wallet connection state with resilience features
  */
 export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
+  const backendNetwork = useBackendNetwork();
   const {
     autoReconnect = true,
     reconnectAttempts = 3,
@@ -70,7 +72,7 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
           status: "connected",
           address: connected.address,
           walletType: connected.walletType,
-          network: "Stellar Mainnet",
+          network: backendNetwork,
         });
         return;
       }
@@ -85,7 +87,7 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
     if (mountedRef.current) {
       setConnectionState({ status: "disconnected" });
     }
-  }, []);
+  }, [backendNetwork]);
 
   // Check for existing connection on mount
   useEffect(() => {
@@ -204,7 +206,7 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
         status: "connected",
         address,
         walletType,
-        network: "Stellar Mainnet",
+        network: backendNetwork,
       });
     } catch (error) {
       const errorMessage =
@@ -216,7 +218,7 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
       });
       throw error;
     }
-  }, []);
+  }, [backendNetwork]);
 
   const disconnect = useCallback(() => {
     setConnectionState({ status: "disconnected" });

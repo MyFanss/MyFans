@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiHeader,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -44,6 +45,12 @@ export class ContentController {
   ) {}
 
   @Post()
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description:
+      'Makes retries safe; reusing a key with another body returns 409',
+  })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create content metadata' })

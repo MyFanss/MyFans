@@ -12,7 +12,8 @@ export class NetworkConfigDto {
 
   @ApiProperty({
     example: 'Test SDF Network ; September 2015',
-    description: 'Stellar network passphrase clients must sign transactions with',
+    description:
+      'Stellar network passphrase clients must sign transactions with',
   })
   @Expose()
   networkPassphrase: string;
@@ -30,4 +31,12 @@ export class NetworkConfigDto {
   })
   @Expose()
   rpcUrl: string;
+
+  @ApiProperty({
+    description: 'Public Soroban contract identifiers',
+    type: 'object',
+    additionalProperties: { type: 'string' },
+  })
+  @Expose()
+  contractIds: Record<string, string>;
 }
