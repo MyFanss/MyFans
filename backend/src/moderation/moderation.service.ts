@@ -11,6 +11,8 @@ import { CreateFlagDto } from './dto/create-flag.dto';
 import { ReviewFlagDto } from './dto/review-flag.dto';
 import { QueryFlagsDto } from './dto/query-flags.dto';
 import { PaginatedResponseDto } from '../common/dto';
+import { AdminAuditService } from '../admin-audit/admin-audit.service';
+import { RequestContextService } from '../common/services/request-context.service';
 
 @Injectable()
 export class ModerationService {
@@ -19,6 +21,8 @@ export class ModerationService {
     private readonly flagRepo: Repository<ModerationFlag>,
     @InjectRepository(ModerationAuditLog)
     private readonly auditRepo: Repository<ModerationAuditLog>,
+    private readonly adminAuditService: AdminAuditService,
+    private readonly requestContext: RequestContextService,
   ) {}
 
   async createFlag(reportedBy: string, dto: CreateFlagDto): Promise<ModerationFlag> {
@@ -100,7 +104,7 @@ export class ModerationService {
 
     const updated = await this.flagRepo.save(flag);
 
-    // Persist audit trail
+    // Persist per-flag audit trail (existing, flag-scoped view)
     await this.auditRepo.save(
       this.auditRepo.create({
         flag_id: flagId,
@@ -110,6 +114,19 @@ export class ModerationService {
         notes: dto.admin_notes ?? null,
       }),
     );
+
+    // Persist to the global, append-only admin audit log (#1568)
+    await this.adminAuditService.record({
+      actorId: adminId,
+      action: 'moderation.flag_reviewed',
+      target: flagId,
+      payload: {
+        previousStatus,
+        newStatus: dto.status,
+        adminNotes: dto.admin_notes ?? null,
+      },
+      correlationId: this.requestContext.getCorrelationId(),
+    });
 
     return updated;
   }

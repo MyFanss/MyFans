@@ -37,6 +37,7 @@ import { ContentModule } from './content/content.module';
 import { NetworkConfigModule } from './config/network-config.module';
 import { PostsModule } from './posts/posts.module';
 import { WebhookModule } from './webhook/webhook.module';
+import { AdminAuditModule } from './admin-audit/admin-audit.module';
 
 /** Routes where idempotency protection is enforced. */
 const IDEMPOTENCY_ROUTES = [
@@ -82,6 +83,7 @@ const IDEMPOTENCY_ROUTES = [
     NetworkConfigModule,
     PostsModule,
     WebhookModule,
+    AdminAuditModule,
   ],
   controllers: [AppController, OpenAPIController],
   providers: [
