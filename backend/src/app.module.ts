@@ -14,6 +14,7 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 import { CreatorsModule } from './creators/creators.module';
+import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -63,6 +64,7 @@ const IDEMPOTENCY_ROUTES = [
     ]),
     LoggingModule,
     MetricsModule,
+    EventsModule,
     AuthModule,
     CreatorsModule,
     SubscriptionsModule,

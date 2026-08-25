@@ -151,7 +151,12 @@ export class SubscriptionReconcilerService {
       if (record.action === 'none' || record.action === 'skipped') return record;
 
       if (!dryRun) {
-        this.applyRepair(sub.fan, sub.creator, record.action, record.chainExpiry);
+        // Guard the write with the ledgerSeq we read this row at: if a
+        // fresher chain event (via the poller) has landed for this pair in
+        // the meantime, the guarded update becomes a no-op instead of
+        // clobbering it with this stale repair. The reconciler only fills
+        // gaps — chain events remain the source of truth.
+        await this.applyRepair(sub.fan, sub.creator, record.action, record.chainExpiry, sub.ledgerSeq);
         record.applied = true;
       } else {
         record.applied = false; // dry-run: would have applied
@@ -171,13 +176,20 @@ export class SubscriptionReconcilerService {
     creator: string,
     action: 'expire' | 'activate',
     chainExpiry: number | null,
+    minLedgerSeq: number,
   ): Promise<void> {
     if (action === 'expire') {
-      await this.subscriptions.expireSubscription(fan, creator);
+      await this.subscriptions.expireSubscription(fan, creator, minLedgerSeq);
     } else if (action === 'activate' && chainExpiry !== null) {
       const sub = await this.subscriptions.getSubscription(fan, creator);
       if (sub) {
-        await this.subscriptions.renewSubscription(fan, creator, sub.planId, chainExpiry);
+        await this.subscriptions.renewSubscription(
+          fan,
+          creator,
+          sub.planId,
+          chainExpiry,
+          minLedgerSeq,
+        );
       }
     }
   }

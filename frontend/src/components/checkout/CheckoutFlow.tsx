@@ -21,6 +21,8 @@ import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { FeatureFlag } from "@/lib/feature-flags";
 import { useToast } from "@/contexts/ToastContext";
 import { createTrackedTransaction, getExplorerUrl } from "@/lib/transaction-history";
+import { buildSubscriptionTx, submitTransaction } from "@/lib/stellar";
+import { signTransaction } from "@/lib/wallet";
 
 import { createAppError } from "@/types/errors";
 import PlanSummaryComponent from "./PlanSummary";
@@ -209,21 +211,25 @@ export default function CheckoutFlow({
     }
 
     await tx.execute(async () => {
-      const txHash = `tx_${Date.now()}_${Math.random()
-        .toString(36)
-        .slice(2, 11)}`;
+      // Build the real Soroban `subscribe` invocation, have the wallet sign
+      // it, and submit it to the network. The backend independently
+      // verifies this hash on-chain before activating the subscription
+      // (see subscriptions.service#confirmSubscription), so a fabricated
+      // hash here would simply be rejected.
+      const tokenAddress =
+        selectedAsset?.issuer ||
+        selectedAsset?.code ||
+        priceBreakdown?.currency ||
+        "XLM";
 
-      // Simulate transaction submission
-      await new Promise((resolve, reject) => {
-        setTimeout(() => {
-          const shouldFail = Math.random() < 0.1; // 10% chance of failure
-          if (shouldFail) {
-            reject(new Error("Transaction rejected by user"));
-          } else {
-            resolve(txHash);
-          }
-        }, 2000);
-      });
+      const xdr = await buildSubscriptionTx(
+        fanAddress,
+        creatorAddress,
+        planId,
+        tokenAddress
+      );
+      const signedXdr = await signTransaction(xdr);
+      const txHash = await submitTransaction(signedXdr);
 
       // Confirm with backend
       const result = await apiConfirmSubscription(checkoutId, txHash);
@@ -251,7 +257,18 @@ export default function CheckoutFlow({
       onComplete?.(nextResult);
       return { ...nextResult, trackedTransaction };
     });
-  }, [checkoutId, tx, onComplete]);
+  }, [
+    checkoutId,
+    tx,
+    onComplete,
+    fanAddress,
+    creatorAddress,
+    planId,
+    selectedAsset,
+    priceBreakdown,
+    mismatch,
+    showError,
+  ]);
 
   // Handle failure
   const handleFail = useCallback(
