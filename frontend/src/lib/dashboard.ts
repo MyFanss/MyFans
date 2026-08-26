@@ -43,16 +43,67 @@ const MOCK_ACTIVITY: ActivityItem[] = [
 ];
 
 /**
- * Fetch dashboard data. Replace with real API when available.
- * @param options.simulateError - if true, rejects to test error state
+ * Fetch dashboard data from the real API.
+ * Falls back to mock data if API is unavailable (for testing).
+ * @param options.simulateError - if true, rejects to test error state (dev only)
+ * @param options.useMock - if true, uses mock data instead of real API (test only)
  */
-export async function fetchDashboardData(options?: { simulateError?: boolean }): Promise<DashboardData> {
+export async function fetchDashboardData(options?: {
+  simulateError?: boolean;
+  useMock?: boolean;
+}): Promise<DashboardData> {
+  // Test-only mock mode
+  if (options?.useMock) {
+    if (options?.simulateError) {
+      await new Promise((_, reject) => setTimeout(() => reject(new Error('Failed to load dashboard')), 400));
+    }
+    await new Promise((r) => setTimeout(r, 100));
+    return {
+      metrics: MOCK_METRICS,
+      recentActivity: MOCK_ACTIVITY,
+    };
+  }
+
+  // Default: fetch from real API
   if (options?.simulateError) {
     await new Promise((_, reject) => setTimeout(() => reject(new Error('Failed to load dashboard')), 400));
   }
-  await new Promise((r) => setTimeout(r, 800)); // simulate network
-  return {
-    metrics: MOCK_METRICS,
-    recentActivity: MOCK_ACTIVITY,
-  };
+
+  try {
+    const response = await fetch('/v1/subscriptions/dashboard/creator-summary', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Dashboard API failed: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    return {
+      metrics: {
+        totalSubscribers: data.totalSubscribers ?? 0,
+        totalSubscribersChangePercent: data.totalSubscribersChangePercent ?? 0,
+        mrr: data.mrr ?? 0,
+        mrrChangePercent: data.mrrChangePercent ?? 0,
+        activeSubscriptions: data.activeSubscriptions ?? 0,
+        activeSubscriptionsChangePercent: data.activeSubscriptionsChangePercent ?? 0,
+      },
+      recentActivity: (data.recentActivity ?? []).map((activity: any) => ({
+        id: activity.id,
+        type: activity.type,
+        title: activity.title,
+        description: activity.description,
+        timestamp: activity.timestamp,
+        metadata: activity.metadata,
+      })),
+    };
+  } catch (error) {
+    console.error('Failed to fetch dashboard data:', error);
+    // Fail fast: don't fall back to mock - let the error bubble up
+    throw error;
+  }
 }

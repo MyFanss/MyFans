@@ -574,6 +574,57 @@ export class SubscriptionsService {
     return new PaginatedResponseDto(paginatedResults, limit, nextCursor, hasMore);
   }
 
+  async getCreatorDashboardSummary(creatorAddress: string) {
+    const allSubs = await this.indexRepo.listForCreator(creatorAddress);
+    const nowSecs = Math.floor(Date.now() / 1000);
+
+    const active = allSubs.filter(s => s.status === 'active' && s.expiryUnix > nowSecs);
+    const totalSubscribers = active.length;
+
+    let mrr = 0;
+    for (const sub of active) {
+      const plan = this.getPlanMock(sub.planId);
+      if (plan) {
+        const monthlyAmount = parseFloat(plan.amount) * (30 / plan.intervalDays);
+        mrr += monthlyAmount;
+      }
+    }
+
+    const activeSubscriptions = allSubs.filter(s => s.status === 'active').length;
+
+    const recentActivity = allSubs
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 10)
+      .map((sub) => ({
+        id: sub.id,
+        type: sub.eventType === 'cancelled' ? 'cancellation' : sub.eventType === 'extended' ? 'renewal' : 'subscription',
+        title:
+          sub.eventType === 'cancelled'
+            ? 'Subscription cancelled'
+            : sub.eventType === 'extended'
+              ? 'Renewal'
+              : 'New subscriber',
+        description: `@${sub.fan.slice(0, 8)} ${
+          sub.eventType === 'cancelled'
+            ? 'cancelled'
+            : sub.eventType === 'extended'
+              ? 'renewed'
+              : 'subscribed to'
+        } your content`,
+        timestamp: sub.createdAt.toISOString(),
+      }));
+
+    return {
+      totalSubscribers,
+      totalSubscribersChangePercent: 0,
+      mrr: Math.round(mrr * 100) / 100,
+      mrrChangePercent: 0,
+      activeSubscriptions,
+      activeSubscriptionsChangePercent: 0,
+      recentActivity,
+    };
+  }
+
   async createCheckout(
     fanAddress: string,
     creatorAddress: string,
