@@ -80,6 +80,20 @@ export class SubscriptionEventPollerService implements OnModuleInit {
     }
     this.contractId = id;
     this.logger.log(`Poller initialized for contract: ${this.contractId}`);
+
+    this.featureFlags.logPollerFlagResolution();
+
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
+    const isEnabled = this.featureFlags.isSorobanPollerEnabled();
+    if (isEnabled && isProduction) {
+      const rpcUrl = this.configService.get<string>('SOROBAN_RPC_URL')?.trim();
+      if (!rpcUrl) {
+        throw new Error(
+          'Soroban poller is enabled in production but SOROBAN_RPC_URL is not configured. ' +
+          'Either set SOROBAN_RPC_URL or disable the poller via FEATURE_SOROBAN_POLLER=false.',
+        );
+      }
+    }
   }
 
   /**
