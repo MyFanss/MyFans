@@ -42,17 +42,25 @@ import {
 import { FanBearerGuard } from './guards/fan-bearer.guard';
 import type { RequestWithFan } from './guards/fan-bearer.guard';
 import { SubscriptionsService } from './subscriptions.service';
+import { SubscriptionPauseService } from './subscription-pause.service';
 import { RequireFeatureFlag } from '../feature-flags/feature-flag.decorator';
 import { FeatureFlagGuard } from '../feature-flags/feature-flag.guard';
 import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
 import { SubscriptionsExceptionFilter } from './filters/subscriptions-exception.filter';
+import { Roles } from '../auth-module/decorators/roles.decorator';
+import { RolesGuard } from '../auth-module/guards/roles.guard';
+import { UserRole } from '../common/enums/user-role.enum';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 
 @ApiTags('subscriptions')
 @UseFilters(new SubscriptionsExceptionFilter())
 @UseGuards(ThrottlerGuard)
 @Controller({ path: 'subscriptions', version: '1' })
 export class SubscriptionsController {
-  constructor(private subscriptionsService: SubscriptionsService) {}
+  constructor(
+    private subscriptionsService: SubscriptionsService,
+    private pauseService: SubscriptionPauseService,
+  ) {}
 
   @Get('me/subscription-state')
   @UseGuards(FanBearerGuard)
@@ -451,5 +459,98 @@ export class SubscriptionsController {
       body.fanAddress,
       body.creatorAddress,
     );
+  }
+
+  // ── Admin endpoints (require ADMIN role) ────────────────────────────────
+
+  @Get('admin/status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: '[Admin] Get subscription service status including pause state',
+    description:
+      'Returns the current pause state of the subscription contract. ' +
+      'Requires ADMIN role.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Service status',
+    schema: {
+      type: 'object',
+      properties: {
+        paused: { type: 'boolean' },
+        pausedAt: { type: 'string', example: '2026-08-26T14:30:00Z' },
+        pausedBy: { type: 'string', example: 'GADMIN...' },
+        reason: { type: 'string', example: 'Scheduled maintenance' },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden (insufficient role)' })
+  getStatus() {
+    return this.pauseService.getState();
+  }
+
+  @Post('admin/pause')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: '[Admin] Pause subscription service',
+    description:
+      'Pauses the subscription contract, denying all new subscriptions and gating. ' +
+      'Requires ADMIN role. ' +
+      'Checkout requests will return 503 Service Unavailable while paused.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Subscription service paused',
+    schema: {
+      type: 'object',
+      properties: {
+        paused: { type: 'boolean' },
+        pausedAt: { type: 'string' },
+        pausedBy: { type: 'string' },
+        reason: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden (insufficient role)' })
+  pause(@Req() req: { user?: { sub: string } }, @Body('reason') reason?: string) {
+    const adminId = req.user?.sub || 'unknown';
+    return this.pauseService.pause(adminId, reason);
+  }
+
+  @Post('admin/unpause')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: '[Admin] Unpause subscription service',
+    description:
+      'Unpauses the subscription contract, restoring normal operation. ' +
+      'Requires ADMIN role. ' +
+      'Gating checks and checkout requests will resume normal processing.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Subscription service unpaused',
+    schema: {
+      type: 'object',
+      properties: {
+        paused: { type: 'boolean' },
+        pausedAt: { type: 'string', nullable: true },
+        pausedBy: { type: 'string', nullable: true },
+        reason: { type: 'string', nullable: true },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden (insufficient role)' })
+  unpause(@Req() req: { user?: { sub: string } }) {
+    const adminId = req.user?.sub || 'unknown';
+    return this.pauseService.unpause(adminId);
   }
 }

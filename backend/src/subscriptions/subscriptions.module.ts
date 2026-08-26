@@ -22,6 +22,7 @@ import { GatedContentGuard } from './gated-content.guard';
 import { FeatureFlagGuard } from '../feature-flags/feature-flag.guard';
 import { SubscriptionCacheService } from './subscription-cache.service';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
+import { SubscriptionPauseService } from './subscription-pause.service';
 import { SubscriptionsController } from './subscriptions.controller';
 import { SpendingCapController } from './spending-cap.controller';
 import { SubscriptionsService } from './subscriptions.service';
@@ -57,6 +58,7 @@ import { SorobanRpcService } from '../common/services/soroban-rpc.service';
     SubscriptionChainReaderService,
     LedgerClockService,
     SubscriptionCacheService,
+    SubscriptionPauseService,
     GatedContentGuard,
     FanBearerGuard,
     HybridFanAuthGuard,
