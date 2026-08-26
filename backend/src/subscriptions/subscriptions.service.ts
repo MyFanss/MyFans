@@ -324,8 +324,52 @@ export class SubscriptionsService {
     };
   }
 
+  /**
+   * Checks if a fan has an active subscription to a creator.
+   *
+   * **Resolution order:**
+   * 1. Check index (fast, local; may lag chain state)
+   * 2. If index says no: simulate is_subscriber on-chain via RPC
+   * 3. Cache positive results (1 min TTL) to avoid hammering RPC
+   *
+   * **Failure behavior:**
+   * - Index read failures are logged and treated as "no subscription"
+   * - Chain read failures are logged; index status is used as fallback
+   * - Returns typed error via `chain.error` in getFanCreatorSubscriptionState if needed
+   */
   async isSubscriber(fan: string, creator: string): Promise<boolean> {
-    return this.indexRepo.isSubscriber(fan, creator);
+    // Check cache first (only cached positives)
+    if (this.cache?.get(fan, creator)) {
+      return true;
+    }
+
+    // Check index
+    const indexedActive = await this.indexRepo.isSubscriber(fan, creator);
+    if (indexedActive) {
+      return true;
+    }
+
+    // Index says no; check chain
+    const contractId = this.chainReader?.getConfiguredContractId();
+    if (!contractId || !this.chainReader) {
+      return false;
+    }
+
+    try {
+      const result = await this.chainReader.readIsSubscriber(
+        contractId,
+        fan,
+        creator,
+      );
+      if (result.ok && result.isSubscriber) {
+        this.cache?.set(fan, creator);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      this.logger.warn(`isSubscriber chain read error: ${err}`);
+      return false;
+    }
   }
 
   /** Returns the distinct creator IDs the fan currently holds an active subscription to. */

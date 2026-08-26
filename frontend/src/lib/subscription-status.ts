@@ -35,12 +35,6 @@ const SUBSCRIPTION_STATUS_COPY: Record<SubscriptionStatus, SubscriptionStatusCop
   },
 };
 
-const MOCK_VIEWER_SUBSCRIPTION_STATUS: Record<string, SubscriptionStatus> = {
-  jane: 'active',
-  alex: 'expired',
-  maria: 'cancelled',
-};
-
 export function getSubscriptionStatusCopy(status: SubscriptionStatus): SubscriptionStatusCopy {
   return SUBSCRIPTION_STATUS_COPY[status];
 }
@@ -49,10 +43,4 @@ export function isSubscriptionActive(
   status: SubscriptionStatus | null | undefined,
 ): status is 'active' {
   return status === 'active';
-}
-
-export function getMockViewerSubscriptionStatus(
-  username: string,
-): SubscriptionStatus | null {
-  return MOCK_VIEWER_SUBSCRIPTION_STATUS[username.toLowerCase()] ?? null;
 }
