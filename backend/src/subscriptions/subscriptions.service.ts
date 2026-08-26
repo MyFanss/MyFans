@@ -11,6 +11,7 @@ import {
 import { PaginatedResponseDto } from '../common/dto';
 import { isStellarAccountAddress } from '../common/utils/stellar-address';
 import { EventBus } from '../events/event-bus';
+import { LedgerClockService } from './ledger-clock.service';
 import {
   SubscriptionCancelledEvent,
   SubscriptionCreatedEvent,
@@ -131,6 +132,8 @@ export class SubscriptionsService {
     private readonly soroban?: SorobanRpcService,
     @Optional()
     private readonly cache?: SubscriptionCacheService,
+    @Optional()
+    private readonly ledgerClock?: LedgerClockService,
   ) {
     this.creatorProfiles.set('GAAAAAAAAAAAAAAA', {
       name: 'Creator 1',
@@ -397,7 +400,20 @@ export class SubscriptionsService {
 
     const active = await this.isSubscriber(fan, creator);
     const sub = await this.getSubscription(fan, creator);
-    const nowSec = Math.floor(Date.now() / 1000);
+
+    // Use ledger time for consistency with on-chain gating logic.
+    let nowSec: number;
+    try {
+      if (this.ledgerClock) {
+        const snapshot = await this.ledgerClock.fetchSnapshot();
+        nowSec = this.ledgerClock.ledgerNowUnix(snapshot);
+      } else {
+        nowSec = Math.floor(Date.now() / 1000);
+      }
+    } catch (clockErr) {
+      this.logger.warn(`Failed to fetch ledger clock: ${clockErr}. Using wall clock.`);
+      nowSec = Math.floor(Date.now() / 1000);
+    }
 
     let indexedStatus: 'none' | 'active' | 'expired' = 'none';
     let indexed: {
