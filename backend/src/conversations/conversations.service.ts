@@ -1,10 +1,19 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
 import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
-import { ConversationDto, MessageDto, CreateConversationDto, SendMessageDto } from './dto';
+import {
+  ConversationDto,
+  MessageDto,
+  CreateConversationDto,
+  SendMessageDto,
+} from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 
 @Injectable()
@@ -17,14 +26,21 @@ export class ConversationsService {
   ) {}
 
   private toConversationDto(conversation: Conversation): ConversationDto {
-    return plainToInstance(ConversationDto, conversation, { excludeExtraneousValues: true });
+    return plainToInstance(ConversationDto, conversation, {
+      excludeExtraneousValues: true,
+    });
   }
 
   private toMessageDto(message: Message): MessageDto {
-    return plainToInstance(MessageDto, message, { excludeExtraneousValues: true });
+    return plainToInstance(MessageDto, message, {
+      excludeExtraneousValues: true,
+    });
   }
 
-  async create(userId: string, dto: CreateConversationDto): Promise<ConversationDto> {
+  async create(
+    userId: string,
+    dto: CreateConversationDto,
+  ): Promise<ConversationDto> {
     const conversation = this.conversationsRepository.create({
       participant1Id: userId,
       participant2Id: dto.participant2Id,
@@ -33,12 +49,18 @@ export class ConversationsService {
     return this.toConversationDto(saved);
   }
 
-  async findAll(userId: string, pagination: PaginationDto): Promise<PaginatedResponseDto<ConversationDto>> {
+  async findAll(
+    userId: string,
+    pagination: PaginationDto,
+  ): Promise<PaginatedResponseDto<ConversationDto>> {
     const { cursor, limit = 20 } = pagination;
 
     const qb = this.conversationsRepository
       .createQueryBuilder('conversation')
-      .where('conversation.participant1Id = :userId OR conversation.participant2Id = :userId', { userId })
+      .where(
+        'conversation.participant1Id = :userId OR conversation.participant2Id = :userId',
+        { userId },
+      )
       .orderBy('conversation.id', 'ASC')
       .take(limit + 1);
 
@@ -70,13 +92,18 @@ export class ConversationsService {
 
   async findOne(userId: string, id: string): Promise<ConversationDto> {
     const conversation = await this.conversationsRepository.findOne({
-      where: [
-        { id, participant1Id: userId },
-        { id, participant2Id: userId },
-      ],
+      where: { id },
     });
     if (!conversation) {
       throw new NotFoundException(`Conversation with id "${id}" not found`);
+    }
+    if (
+      conversation.participant1Id !== userId &&
+      conversation.participant2Id !== userId
+    ) {
+      throw new ForbiddenException(
+        'You are not a participant in this conversation',
+      );
     }
     return this.toConversationDto(conversation);
   }
@@ -122,7 +149,11 @@ export class ConversationsService {
     );
   }
 
-  async sendMessage(userId: string, conversationId: string, dto: SendMessageDto): Promise<MessageDto> {
+  async sendMessage(
+    userId: string,
+    conversationId: string,
+    dto: SendMessageDto,
+  ): Promise<MessageDto> {
     // Verify user has access to conversation
     await this.findOne(userId, conversationId);
 

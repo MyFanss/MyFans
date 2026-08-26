@@ -1,9 +1,9 @@
 import Link from 'next/link';
-import { listConversations } from '@/lib/api/messages';
+import { Conversation, listConversations } from '@/lib/api/messages';
 
 export default async function MessagesPage() {
-  let conversations = [];
-  let error = null;
+  let conversations: Conversation[] = [];
+  let error: string | null = null;
 
   try {
     const result = await listConversations({ limit: 20 });
@@ -12,15 +12,11 @@ export default async function MessagesPage() {
     error = err instanceof Error ? err.message : 'Failed to load conversations';
   }
 
-  const getOtherParticipant = (conv: any) => {
-    return conv.participant2?.username || conv.participant1?.username || 'Unknown';
-  };
-
-  const getOtherParticipantName = (conv: any) => {
+  const getOtherParticipantName = (conv: Conversation) => {
     return conv.participant2?.displayName || conv.participant2?.username || 'Unknown';
   };
 
-  const getLastMessagePreview = (conv: any) => {
+  const getLastMessagePreview = (conv: Conversation) => {
     if (!conv.lastMessage) return 'No messages yet';
     const content = conv.lastMessage.content;
     return content.length > 50 ? `${content.slice(0, 50)}...` : content;

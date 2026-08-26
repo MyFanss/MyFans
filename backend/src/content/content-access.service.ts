@@ -3,7 +3,12 @@ import { ContentService } from './content.service';
 import { ContentMetadata } from './entities/content.entity';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
-export type GatedContentView = Partial<ContentMetadata> & {
+export type GatedContentView = Omit<
+  Partial<ContentMetadata>,
+  'ipfs_cid' | 'ipfs_url'
+> & {
+  ipfs_cid?: string | null;
+  ipfs_url?: string | null;
   locked: boolean;
   preview_message?: string;
 };
@@ -46,7 +51,10 @@ export class ContentAccessService {
     }
 
     const isSubscriber = requesterId
-      ? await this.subscriptionsService.isSubscriber(requesterId, content.creator_id)
+      ? await this.subscriptionsService.isSubscriber(
+          requesterId,
+          content.creator_id,
+        )
       : false;
 
     if (isSubscriber) {

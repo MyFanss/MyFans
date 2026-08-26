@@ -49,6 +49,7 @@ export interface MessagesPage {
 }
 
 const API_BASE = `${getApiBaseUrl()}/api/v1`;
+const idempotencyKey = () => globalThis.crypto.randomUUID();
 
 /**
  * List user conversations with cursor-based pagination.
@@ -100,6 +101,7 @@ export async function createConversation(params: {
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey(),
     },
     body: JSON.stringify(params),
   });
@@ -151,6 +153,7 @@ export async function sendMessage(
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey(),
     },
     body: JSON.stringify(params),
   });

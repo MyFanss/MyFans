@@ -18,13 +18,19 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentUser, JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
+import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
+import type { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth-module/guards/optional-jwt-auth.guard';
 import { PaginatedResponseDto, PaginationDto } from '../common/dto';
-import { ContentAccessService, GatedContentView } from './content-access.service';
+import { ContentAccessService } from './content-access.service';
+import type { GatedContentView } from './content-access.service';
 import { ContentService } from './content.service';
-import { ContentResponseDto, CreateContentDto, UpdateContentDto } from './dto/content.dto';
+import {
+  ContentResponseDto,
+  CreateContentDto,
+  UpdateContentDto,
+} from './dto/content.dto';
 import { ContentMetadata } from './entities/content.entity';
 
 @ApiTags('content')

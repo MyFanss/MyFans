@@ -6,11 +6,17 @@ import { StartupProbeService } from './startup-probe.service';
 import { SorobanRpcService } from '../common/services/soroban-rpc.service';
 import { QueueMetricsService } from '../common/services/queue-metrics.service';
 import { MetricsModule } from '../metrics/metrics.module';
+import { ContractHealthModule } from '../contract-health/contract-health.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([]), MetricsModule],
+  imports: [TypeOrmModule.forFeature([]), MetricsModule, ContractHealthModule],
   controllers: [HealthController],
-  providers: [HealthService, StartupProbeService, SorobanRpcService, QueueMetricsService],
+  providers: [
+    HealthService,
+    StartupProbeService,
+    SorobanRpcService,
+    QueueMetricsService,
+  ],
   exports: [HealthService, StartupProbeService],
 })
 export class HealthModule {}

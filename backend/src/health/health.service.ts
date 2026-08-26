@@ -1,13 +1,24 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import * as net from 'net';
 import * as tls from 'tls';
 import { DataSource } from 'typeorm';
-import { SorobanRpcService, SorobanHealthStatus } from '../common/services/soroban-rpc.service';
-import { QueueMetricsService, QueueSnapshot } from '../common/services/queue-metrics.service';
+import {
+  SorobanRpcService,
+  SorobanHealthStatus,
+} from '../common/services/soroban-rpc.service';
+import {
+  QueueMetricsService,
+  QueueSnapshot,
+} from '../common/services/queue-metrics.service';
+import {
+  ContractHealthService,
+  ContractCheckResult,
+} from '../contract-health/contract-health.service';
+import { loadContractIds } from '../contract-health/contract-ids.loader';
 
 export interface HealthCheckResult {
-    status: 'up' | 'down' | 'degraded';
-    timestamp: string;
+  status: 'up' | 'down' | 'degraded';
+  timestamp: string;
 }
 
 /**
@@ -18,17 +29,17 @@ export interface HealthCheckResult {
  * does not drag the aggregate health to `degraded`.
  */
 export interface RedisHealthStatus {
-    status: 'up' | 'down' | 'not_configured';
-    latencyMs?: number;
-    error?: string;
+  status: 'up' | 'down' | 'not_configured';
+  latencyMs?: number;
+  error?: string;
 }
 
 export interface DetailedHealthCheckResult extends HealthCheckResult {
-    checks?: {
-        database?: { status: 'up' | 'down' | 'degraded'; error?: string };
-        sorobanRpc?: SorobanHealthStatus;
-        sorobanContract?: SorobanHealthStatus;
-    };
+  checks?: {
+    database?: { status: 'up' | 'down' | 'degraded'; error?: string };
+    sorobanRpc?: SorobanHealthStatus;
+    sorobanContract?: SorobanHealthStatus;
+  };
 }
 
 /**
@@ -42,8 +53,17 @@ export interface ReadinessResult {
   status: 'up' | 'down';
   timestamp: string;
   checks: {
-    database: { status: 'up' | 'down' | 'degraded'; latencyMs?: number; error?: string };
+    database: {
+      status: 'up' | 'down' | 'degraded';
+      latencyMs?: number;
+      error?: string;
+    };
     sorobanRpc: SorobanHealthStatus;
+    contracts: {
+      status: 'up' | 'down' | 'not_configured';
+      results: ContractCheckResult[];
+      error?: string;
+    };
   };
 }
 
@@ -53,7 +73,11 @@ export interface AggregatedHealthResult {
   uptime: number;
   version: string;
   subsystems: {
-    database: { status: 'up' | 'down' | 'degraded'; latencyMs?: number; error?: string };
+    database: {
+      status: 'up' | 'down' | 'degraded';
+      latencyMs?: number;
+      error?: string;
+    };
     // Omitted entirely when Redis is not configured (optional subsystem).
     redis?: RedisHealthStatus;
     sorobanRpc: SorobanHealthStatus;
@@ -78,6 +102,7 @@ export class HealthService {
     private dataSource: DataSource,
     private sorobanRpcService: SorobanRpcService,
     private queueMetrics: QueueMetricsService,
+    @Optional() private contractHealth?: ContractHealthService,
   ) {}
 
   getHealth(): DetailedHealthCheckResult {
@@ -99,7 +124,10 @@ export class HealthService {
 
     if (dbHealth.status === 'down') {
       overallStatus = 'down';
-    } else if (rpcHealth.status === 'down' || contractHealth.status === 'down') {
+    } else if (
+      rpcHealth.status === 'down' ||
+      contractHealth.status === 'down'
+    ) {
       overallStatus = 'down';
     } else if (
       rpcHealth.status === 'degraded' ||
@@ -131,12 +159,13 @@ export class HealthService {
    *   overall 'down'     → 503
    */
   async getAggregatedHealth(): Promise<AggregatedHealthResult> {
-    const [dbHealth, redisHealth, rpcHealth, contractHealth] = await Promise.all([
-      this.checkDatabaseWithLatency(),
-      this.checkRedis(),
-      this.checkSorobanRpc(),
-      this.checkSorobanContract(),
-    ]);
+    const [dbHealth, redisHealth, rpcHealth, contractHealth] =
+      await Promise.all([
+        this.checkDatabaseWithLatency(),
+        this.checkRedis(),
+        this.checkSorobanRpc(),
+        this.checkSorobanContract(),
+      ]);
 
     // An unconfigured Redis is skipped so it neither counts toward the summary
     // nor degrades the aggregate status.
@@ -179,7 +208,10 @@ export class HealthService {
     };
   }
 
-  async checkDatabase(): Promise<{ status: 'up' | 'down' | 'degraded'; error?: string }> {
+  async checkDatabase(): Promise<{
+    status: 'up' | 'down' | 'degraded';
+    error?: string;
+  }> {
     try {
       await this.dataSource.query('SELECT 1');
       return { status: 'up' };
@@ -270,8 +302,12 @@ export class HealthService {
     const useTls = parsed.protocol === 'rediss:';
     const host = parsed.hostname;
     const port = parsed.port ? Number(parsed.port) : 6379;
-    const password = parsed.password ? decodeURIComponent(parsed.password) : undefined;
-    const username = parsed.username ? decodeURIComponent(parsed.username) : undefined;
+    const password = parsed.password
+      ? decodeURIComponent(parsed.password)
+      : undefined;
+    const username = parsed.username
+      ? decodeURIComponent(parsed.username)
+      : undefined;
 
     return new Promise<void>((resolve, reject) => {
       const socket = useTls
@@ -345,19 +381,60 @@ export class HealthService {
    * readiness on its own.
    */
   async getReadiness(): Promise<ReadinessResult> {
-    const [dbHealth, rpcHealth] = await Promise.all([
+    const [dbHealth, rpcHealth, contracts] = await Promise.all([
       this.checkDatabaseWithLatency(),
       this.checkSorobanRpc(),
+      this.checkConfiguredContracts(),
     ]);
 
     return {
-      status: dbHealth.status === 'down' ? 'down' : 'up',
+      status:
+        dbHealth.status === 'down' ||
+        (process.env.NODE_ENV === 'production' && contracts.status !== 'up')
+          ? 'down'
+          : 'up',
       timestamp: new Date().toISOString(),
       checks: {
         database: dbHealth,
         sorobanRpc: rpcHealth,
+        contracts,
       },
     };
+  }
+
+  private async checkConfiguredContracts(): Promise<
+    ReadinessResult['checks']['contracts']
+  > {
+    if (!this.contractHealth) return { status: 'not_configured', results: [] };
+    try {
+      const ids = loadContractIds();
+      const configured = [
+        ['subscriptions', ids.subscriptions, 'plan_count'],
+        ['token', ids.myfansToken, 'balance'],
+      ] as const;
+      if (configured.some(([, id]) => !id)) {
+        return {
+          status: 'not_configured',
+          results: [],
+          error: 'Required contract ID is missing',
+        };
+      }
+      const results = await Promise.all(
+        configured.map(([name, id, method]) =>
+          this.contractHealth!.checkContract(name, id, method),
+        ),
+      );
+      return {
+        status: results.every((result) => result.ok) ? 'up' : 'down',
+        results,
+      };
+    } catch (error) {
+      return {
+        status: 'not_configured',
+        results: [],
+        error: (error as Error).message,
+      };
+    }
   }
 
   async checkSorobanRpc(): Promise<SorobanHealthStatus> {

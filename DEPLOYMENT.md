@@ -80,6 +80,15 @@ Contract IDs written by `contract/scripts/deploy.sh` (`.env.deployed`) use canon
 
 ### Frontend (.env.local)
 - `NEXT_PUBLIC_SUBSCRIPTION_CONTRACT_ID` (or `NEXT_PUBLIC_SUBSCRIPTIONS_CONTRACT_ID`): same contract as backend subscription id
+
+### Readiness probe
+
+Configure orchestrators to call `GET /v1/health/ready`. In production this
+returns HTTP 503 unless the database is reachable and both
+`CONTRACT_ID_SUBSCRIPTION` and `CONTRACT_ID_MYFANS_TOKEN` are configured and
+respond to Soroban simulation. Test environments report missing contracts as
+`not_configured` without failing readiness. The latest probe is exported as
+the `contract_health_up` gauge from `GET /v1/metrics/prometheus`.
 - `NEXT_PUBLIC_STELLAR_NETWORK`: testnet or public
 - `NEXT_PUBLIC_API_URL`: Backend API URL
 

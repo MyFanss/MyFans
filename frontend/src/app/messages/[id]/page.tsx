@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { getConversationById, listMessages } from '@/lib/api/messages';
+import { getConversationById, listMessages, Message } from '@/lib/api/messages';
 import { MessageThread } from './message-thread';
 
 interface PageProps {
@@ -15,8 +15,8 @@ export default async function MessageThreadPage({ params }: PageProps) {
     notFound();
   }
 
-  let messages = [];
-  let messagesError = null;
+  let messages: Message[] = [];
+  let messagesError: string | null = null;
 
   try {
     const result = await listMessages(id, { limit: 30 });
