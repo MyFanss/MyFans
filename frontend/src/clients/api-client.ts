@@ -121,14 +121,14 @@ class ApiClient {
     return this.request<PaginatedResponse<PaymentRecord>>(`/analytics/payments${queryString ? `?${queryString}` : ''}`);
   }
 
-  async getCreatorSubscribers(params: { page?: number; limit?: number; search?: string; status?: string } = {}): Promise<PaginatedResponse<any>> {
+  async getCreatorSubscribers(params: { page?: number; limit?: number; search?: string; status?: string; sort?: string; cursor?: string } = {}): Promise<PaginatedResponse<any>> {
     const search = new URLSearchParams();
-    if (params.page) search.set('page', String(params.page));
+    if (params.cursor) search.set('cursor', params.cursor);
     if (params.limit) search.set('limit', String(params.limit));
-    if (params.search) search.set('search', params.search);
     if (params.status) search.set('status', params.status);
+    if (params.sort) search.set('sort', params.sort);
     const queryString = search.toString();
-    return this.request<PaginatedResponse<any>>(`/creators/me/subscribers${queryString ? `?${queryString}` : ''}`);
+    return this.request<PaginatedResponse<any>>(`/subscriptions/me/creator-subscribers${queryString ? `?${queryString}` : ''}`);
   }
 }
 
