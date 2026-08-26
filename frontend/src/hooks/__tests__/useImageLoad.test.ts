@@ -37,4 +37,48 @@ describe('useImageLoad', () => {
 
     expect(result.current.isLoaded).toBe(true);
   });
+
+  it('sets isLoaded to false when onError is called', () => {
+    const { result } = renderHook(() => useImageLoad());
+
+    act(() => {
+      result.current.onLoad();
+    });
+
+    expect(result.current.isLoaded).toBe(true);
+
+    act(() => {
+      result.current.onError();
+    });
+
+    expect(result.current.isLoaded).toBe(false);
+  });
+
+  it('returns a stable onError reference across renders', () => {
+    const { result, rerender } = renderHook(() => useImageLoad());
+    const firstOnError = result.current.onError;
+
+    rerender();
+
+    expect(result.current.onError).toBe(firstOnError);
+  });
+
+  it('handles load -> error -> load sequence', () => {
+    const { result } = renderHook(() => useImageLoad());
+
+    act(() => {
+      result.current.onLoad();
+    });
+    expect(result.current.isLoaded).toBe(true);
+
+    act(() => {
+      result.current.onError();
+    });
+    expect(result.current.isLoaded).toBe(false);
+
+    act(() => {
+      result.current.onLoad();
+    });
+    expect(result.current.isLoaded).toBe(true);
+  });
 });

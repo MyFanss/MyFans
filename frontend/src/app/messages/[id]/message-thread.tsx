@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { sendMessage, type Conversation, type Message } from '@/lib/api/messages';
+import { getCsrfToken } from '@/lib/csrf';
 
 interface MessageThreadProps {
   conversation: Conversation;
@@ -32,15 +33,26 @@ export function MessageThread({ conversation, initialMessages, messagesError }: 
     if (!content.trim()) return;
 
     const messageContent = content;
+    const idempotencyKey = crypto.randomUUID();
     setContent('');
     setIsSending(true);
     setError(null);
 
     try {
-      const newMessage = await sendMessage(conversation.id, { content: messageContent });
+      const csrfToken = await getCsrfToken();
+      const newMessage = await sendMessage(
+        conversation.id,
+        { content: messageContent, idempotencyKey },
+        csrfToken,
+      );
       setMessages((prev) => [...prev, newMessage]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send message');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to send message';
+      if (errorMessage === 'Unauthorized') {
+        setError('You must be signed in to send messages. Please sign in and try again.');
+      } else {
+        setError(errorMessage);
+      }
       setContent(messageContent); // Restore content on error
     } finally {
       setIsSending(false);
