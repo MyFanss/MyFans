@@ -144,16 +144,31 @@ export async function sendMessage(
   conversationId: string,
   params: {
     content: string;
+    idempotencyKey?: string;
   },
+  csrfToken?: string,
 ): Promise<Message> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (csrfToken) {
+    headers['x-csrf-token'] = csrfToken;
+  }
+
+  if (params.idempotencyKey) {
+    headers['idempotency-key'] = params.idempotencyKey;
+  }
+
   const res = await fetch(`${API_BASE}/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: 'POST',
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(params),
+    headers,
+    body: JSON.stringify({ content: params.content }),
   });
+  if (res.status === 401) {
+    throw new Error('Unauthorized');
+  }
   if (res.status === 404) {
     throw new Error('Conversation not found');
   }
