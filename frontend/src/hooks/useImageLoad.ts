@@ -5,15 +5,15 @@ import { useCallback, useState } from 'react';
 /**
  * useImageLoad - tracks whether a given image URL has finished loading.
  *
- * Returns a stable `onLoad` callback and the current `isLoaded` boolean.
- * Use the callback as the `onLoad` prop on a `<img>` or `next/image`
+ * Returns stable `onLoad` and `onError` callbacks and the current `isLoaded` boolean.
+ * Use the callbacks as `onLoad` and `onError` props on an `<img>` or `next/image`
  * component; set the image's initial opacity to 0 (via the `.lazy-image`
  * CSS class defined in globals.css) and flip it to 1 once `isLoaded` is
- * true to produce a smooth fade-in effect.
+ * true to produce a smooth fade-in effect. If loading fails, `isLoaded` remains false.
  *
  * @example
  * ```tsx
- * const { isLoaded, onLoad } = useImageLoad();
+ * const { isLoaded, onLoad, onError } = useImageLoad();
  *
  * <div className="image-skeleton-wrapper relative">
  *   <Image
@@ -21,6 +21,7 @@ import { useCallback, useState } from 'react';
  *     alt={alt}
  *     loading="lazy"
  *     onLoad={onLoad}
+ *     onError={onError}
  *     className={`lazy-image ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
  *   />
  *   {!isLoaded && <Skeleton className="absolute inset-0" />}
@@ -34,5 +35,9 @@ export function useImageLoad() {
     setIsLoaded(true);
   }, []);
 
-  return { isLoaded, onLoad };
+  const onError = useCallback(() => {
+    setIsLoaded(false);
+  }, []);
+
+  return { isLoaded, onLoad, onError };
 }

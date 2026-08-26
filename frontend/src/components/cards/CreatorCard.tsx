@@ -108,7 +108,20 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
       <div className="flex items-start gap-4">
         {/* Avatar */}
         <div className="relative flex-shrink-0">
-          {avatarUrl ? (
+          {avatarUrl && avatarLoad.isLoaded ? (
+            <div className="relative w-16 h-16 rounded-full">
+              <Image
+                src={avatarUrl}
+                alt={name}
+                width={64}
+                height={64}
+                loading="lazy"
+                onLoad={avatarLoad.onLoad}
+                onError={avatarLoad.onError}
+                className="w-16 h-16 rounded-full object-cover ring-2 ring-gray-100 dark:ring-gray-700"
+              />
+            </div>
+          ) : avatarUrl ? (
             <div className="image-skeleton-wrapper relative w-16 h-16 rounded-full">
               <Image
                 src={avatarUrl}
@@ -117,6 +130,7 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
                 height={64}
                 loading="lazy"
                 onLoad={avatarLoad.onLoad}
+                onError={avatarLoad.onError}
                 className={`lazy-image w-16 h-16 rounded-full object-cover ring-2 ring-gray-100 dark:ring-gray-700 ${
                   avatarLoad.isLoaded ? 'opacity-100' : 'opacity-0'
                 }`}
@@ -126,7 +140,7 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
               )}
             </div>
           ) : (
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 dark:from-primary-500 dark:to-primary-700 flex items-center justify-center text-white text-xl font-semibold">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 dark:from-primary-500 dark:to-primary-700 flex items-center justify-center text-white text-xl font-semibold ring-2 ring-gray-100 dark:ring-gray-700">
               {name.charAt(0).toUpperCase()}
             </div>
           )}
