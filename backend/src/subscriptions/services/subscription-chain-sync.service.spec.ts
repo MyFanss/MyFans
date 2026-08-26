@@ -364,4 +364,64 @@ describe('SubscriptionChainSyncService', () => {
       expect(result.contractId).toBe(CONTRACT_ID);
     });
   });
+
+  describe('ledger clock failures (fail-closed)', () => {
+    it('aborts sync when ledger clock cannot be fetched', async () => {
+      const sub = makeSub({ status: SubscriptionStatus.ACTIVE });
+      const repo = makeRepo([sub]);
+      const chainReader = makeChainReader(
+        CONTRACT_ID,
+        { ok: true, isSubscriber: false },
+      );
+      const ledgerClock = {
+        fetchSnapshot: jest.fn().mockRejectedValue(new Error('Horizon unreachable')),
+        ledgerNowUnix: jest.fn(),
+      };
+
+      const svc = new SubscriptionChainSyncService(repo, chainReader, ledgerClock as any);
+      const result = await svc.sync();
+
+      // Sync should abort and return empty result without reading the chain
+      expect(result.totalScanned).toBe(0);
+      expect(result.records).toHaveLength(0);
+      expect(result.errors).toBe(0);
+      expect(chainReader.readIsSubscriber).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to fetch ledger clock'),
+        expect.anything(),
+      );
+    });
+
+    it('uses ledger time from clock snapshot for expiry comparisons', async () => {
+      const nowUnix = Math.floor(Date.now() / 1000);
+      const sub = makeSub({
+        status: SubscriptionStatus.ACTIVE,
+        expiryUnix: nowUnix - 3600, // expired 1 hour ago in wall clock
+      });
+      const repo = makeRepo([sub]);
+      const chainReader = makeChainReader(
+        CONTRACT_ID,
+        { ok: true, isSubscriber: true },
+        { ok: true, expiryUnix: nowUnix + 3600, expiryLedgerSeq: 200, skewMs: 0 },
+      );
+      const ledgerClock = {
+        fetchSnapshot: jest.fn().mockResolvedValue({
+          ledgerSeq: 1000,
+          ledgerCloseTimeUnix: nowUnix,
+          capturedAtMs: Date.now(),
+          skewMs: 0,
+        }),
+        ledgerNowUnix: jest.fn().mockReturnValue(nowUnix),
+      };
+
+      const svc = new SubscriptionChainSyncService(repo, chainReader, ledgerClock as any);
+      const result = await svc.sync();
+
+      expect(result.records[0].action).toBe('none');
+      expect(ledgerClock.fetchSnapshot).toHaveBeenCalled();
+      expect(ledgerClock.ledgerNowUnix).toHaveBeenCalledWith(
+        expect.objectContaining({ ledgerSeq: 1000 }),
+      );
+    });
+  });
 });

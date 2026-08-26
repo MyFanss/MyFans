@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { SubscriptionIndexRepository } from '../repositories/subscription-index.repository';
 import { SubscriptionIndexEntity, SubscriptionStatus } from '../entities/subscription-index.entity';
 import { SubscriptionChainReaderService } from '../subscription-chain-reader.service';
+import { LedgerClockService } from '../ledger-clock.service';
 
 export interface ChainSyncRecord {
   subscriptionId: string;
@@ -55,10 +56,16 @@ export class SubscriptionChainSyncService {
     private readonly indexRepo: SubscriptionIndexRepository,
     @Optional()
     private readonly chainReader?: SubscriptionChainReaderService,
+    @Optional()
+    private readonly ledgerClock?: LedgerClockService,
   ) {}
 
   /**
    * Sync all indexed subscriptions against the chain.
+   *
+   * **Ledger time & clock failures:**
+   * All expiry comparisons use ledger time (skew-corrected wall clock).
+   * If the ledger clock cannot be read (RPC failure), sync is aborted to fail closed.
    *
    * @param dryRun  When true, evaluates what would change but does not write.
    * @param fanFilter  Optional: only sync subscriptions for this fan address.
@@ -85,6 +92,20 @@ export class SubscriptionChainSyncService {
       return result;
     }
 
+    // Fetch ledger clock snapshot for consistent time comparisons across the sync.
+    // Fail closed if clock is unavailable.
+    let clockSnapshot;
+    try {
+      if (!this.ledgerClock) {
+        this.logger.warn('LedgerClockService not configured — sync skipped (cannot fetch clock)');
+        return result;
+      }
+      clockSnapshot = await this.ledgerClock.fetchSnapshot();
+    } catch (clockErr) {
+      this.logger.error(`Failed to fetch ledger clock: ${clockErr}. Aborting sync (fail-closed).`);
+      return result;
+    }
+
     const allSubs = fanFilter
       ? await this.indexRepo.listActiveForFan(fanFilter)
       : await this.indexRepo.findAllForReconciler();
@@ -92,7 +113,7 @@ export class SubscriptionChainSyncService {
     result.totalScanned = allSubs.length;
 
     for (const sub of allSubs) {
-      const record = await this.evaluateAndApply(sub, contractId, dryRun);
+      const record = await this.evaluateAndApply(sub, contractId, dryRun, clockSnapshot);
       result.records.push(record);
 
       if (record.action === 'skipped' || record.error) {
@@ -116,8 +137,10 @@ export class SubscriptionChainSyncService {
     sub: SubscriptionIndexEntity,
     contractId: string,
     dryRun: boolean,
+    clockSnapshot: any,
   ): Promise<ChainSyncRecord> {
-    const nowSecs = Math.floor(Date.now() / 1000);
+    // Use ledger time (skew-corrected) for consistent gating across the system.
+    const nowSecs = this.ledgerClock!.ledgerNowUnix(clockSnapshot);
 
     const record: ChainSyncRecord = {
       subscriptionId: sub.id,

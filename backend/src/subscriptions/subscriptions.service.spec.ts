@@ -597,6 +597,55 @@ describe('SubscriptionsService', () => {
       expect(result).toBe(false);
     });
 
+    it('isSubscriber checks chain as fallback when index says no', async () => {
+      const chainReader = makeChainReader();
+      chainReader.getConfiguredContractId = jest.fn().mockReturnValue('CCONTRACT');
+      chainReader.readIsSubscriber = jest.fn().mockResolvedValue({
+        ok: true,
+        isSubscriber: true,
+      });
+
+      const moduleRef = await Test.createTestingModule({
+        providers: [
+          SubscriptionsService,
+          { provide: EventBus, useValue: eventBus },
+          { provide: RPC_BALANCE_ADAPTER, useValue: new MockRpcAdapter() },
+          { provide: SubscriptionIndexRepository, useValue: repo },
+          { provide: SubscriptionChainReaderService, useValue: chainReader },
+        ],
+      }).compile();
+
+      const serviceWithChainReader = moduleRef.get(SubscriptionsService);
+
+      const result = await serviceWithChainReader.isSubscriber(fan, creator);
+      expect(result).toBe(true);
+      expect(chainReader.readIsSubscriber).toHaveBeenCalledWith('CCONTRACT', fan, creator);
+    });
+
+    it('isSubscriber returns false when chain read fails', async () => {
+      const chainReader = makeChainReader();
+      chainReader.getConfiguredContractId = jest.fn().mockReturnValue('CCONTRACT');
+      chainReader.readIsSubscriber = jest.fn().mockResolvedValue({
+        ok: false,
+        error: 'RPC timeout',
+      });
+
+      const moduleRef = await Test.createTestingModule({
+        providers: [
+          SubscriptionsService,
+          { provide: EventBus, useValue: eventBus },
+          { provide: RPC_BALANCE_ADAPTER, useValue: new MockRpcAdapter() },
+          { provide: SubscriptionIndexRepository, useValue: repo },
+          { provide: SubscriptionChainReaderService, useValue: chainReader },
+        ],
+      }).compile();
+
+      const serviceWithChainReader = moduleRef.get(SubscriptionsService);
+
+      const result = await serviceWithChainReader.isSubscriber(fan, creator);
+      expect(result).toBe(false);
+    });
+
     it('getSubscription returns the subscription entity', async () => {
       await service.addSubscription(
         fan,
