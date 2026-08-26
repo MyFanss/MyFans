@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 const FEATURE_FLAG_ENV_KEYS = {
   bookmarks: ['FEATURE_FLAG_BOOKMARKS', 'NEXT_PUBLIC_FLAG_BOOKMARKS'],
@@ -44,6 +45,10 @@ function parseBooleanEnv(value: string | undefined): boolean | undefined {
 
 @Injectable()
 export class FeatureFlagsService {
+  private readonly logger = new Logger(FeatureFlagsService.name);
+
+  constructor(private readonly configService: ConfigService) {}
+
   isEnabled(flag: FeatureFlagName): boolean {
     for (const envKey of FEATURE_FLAG_ENV_KEYS[flag]) {
       const parsed = parseBooleanEnv(process.env[envKey]);
@@ -68,8 +73,47 @@ export class FeatureFlagsService {
   }
 
   isSorobanPollerEnabled(): boolean {
-    const parsed = parseBooleanEnv(process.env.FEATURE_SOROBAN_POLLER);
-    return parsed === undefined ? true : parsed;
+    const explicit = parseBooleanEnv(process.env.FEATURE_SOROBAN_POLLER);
+    if (explicit !== undefined) {
+      return explicit;
+    }
+
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
+    if (!isProduction) {
+      return false;
+    }
+
+    const rpcUrl = this.configService.get<string>('SOROBAN_RPC_URL')?.trim();
+    const contractId =
+      this.configService.get<string>('CONTRACT_ID_SUBSCRIPTION')?.trim() ||
+      this.configService.get<string>('SUBSCRIPTION_CONTRACT_ID')?.trim() ||
+      this.configService.get<string>('CONTRACT_ID_MYFANS')?.trim();
+
+    return !!(rpcUrl && contractId);
+  }
+
+  logPollerFlagResolution(): void {
+    const isEnabled = this.isSorobanPollerEnabled();
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
+    const explicit = parseBooleanEnv(process.env.FEATURE_SOROBAN_POLLER);
+    const rpcUrl = this.configService.get<string>('SOROBAN_RPC_URL')?.trim();
+    const contractId =
+      this.configService.get<string>('CONTRACT_ID_SUBSCRIPTION')?.trim() ||
+      this.configService.get<string>('SUBSCRIPTION_CONTRACT_ID')?.trim() ||
+      this.configService.get<string>('CONTRACT_ID_MYFANS')?.trim();
+
+    if (explicit !== undefined) {
+      this.logger.log(
+        `Soroban poller: explicitly ${isEnabled ? 'enabled' : 'disabled'} via FEATURE_SOROBAN_POLLER`,
+      );
+    } else if (isProduction) {
+      const reason = rpcUrl && contractId ? 'production + configured' : 'production but missing configuration';
+      this.logger.log(
+        `Soroban poller: ${isEnabled ? 'enabled' : 'disabled'} (${reason}; RPC=${!!rpcUrl}, contract=${!!contractId})`,
+      );
+    } else {
+      this.logger.log('Soroban poller: disabled (test environment)');
+    }
   }
 
   getAllFlags(): FeatureFlagsSnapshot {

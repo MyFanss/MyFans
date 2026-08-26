@@ -45,10 +45,13 @@ export class SubscriptionIndexRepository {
     try {
       return await this.repo.save(entity);
     } catch (error) {
-      // Idempotency: unique violation on (ledgerSeq, eventIndex) → ignore
+      // Idempotency: unique violation on (ledgerSeq, eventIndex) → ignore and fetch existing
       if (error instanceof Error && 'code' in error && error.code === '23505') {
-        this.logger.warn(`Event already indexed: ledger ${data.ledgerSeq}:${data.eventIndex}`);
-        // Fetch existing
+        this.logger.warn(
+          `Duplicate event delivery detected: ledger ${data.ledgerSeq}:${data.eventIndex} already indexed; ` +
+          `this is expected under at-least-once RPC delivery and has been deduplicated.`,
+        );
+        // Fetch existing to return to caller
         const existing = await this.findByEventId(data.ledgerSeq, data.eventIndex);
         if (!existing) throw error;
         return existing;

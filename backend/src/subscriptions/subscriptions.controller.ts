@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -25,6 +26,10 @@ import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 import { ListCreatorSubscribersQueryDto } from './dto/list-creator-subscribers-query.dto';
 import { SubscriptionStateQueryDto } from './dto/subscription-state-query.dto';
 import { FanDashboardQueryDto } from './dto/fan-dashboard-query.dto';
+import { CreatorDashboardSummaryDto } from './dto/creator-dashboard-summary.dto';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
+import type { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 import {
   CreateCheckoutDto,
   CheckoutResponseDto,
@@ -197,6 +202,60 @@ export class SubscriptionsController {
     );
   }
 
+  @Get('me/creator-subscribers')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'List subscribers for the authenticated creator',
+    description:
+      'Cursor-paginated subscriber list for the creator dashboard. Only the creator can access their own subscriber list. ' +
+      'Pass `cursor`, `limit`, `status`, and `sort`; responses include `data`, `limit`, `nextCursor`, and `hasMore`. ' +
+      'Email is hidden by default per privacy policy; subscriber wallets/usernames are shown.',
+  })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'Pagination cursor (`nextCursor` from the previous page)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Number of items per page (default 20, max 100)',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['active', 'expired'],
+    description: 'Filter by subscription status',
+  })
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    enum: ['created', 'expiry'],
+    description: 'Sort field (default: created)',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Cursor-paginated subscribers list for authenticated creator (`data`, `limit`, `nextCursor`, `hasMore`)',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getMyCreatorSubscribers(
+    @CurrentUser() user: JwtUserPayload,
+    @Query() query: ListCreatorSubscribersQueryDto,
+  ) {
+    if (!user?.userId) {
+      throw new BadRequestException('User ID is required');
+    }
+    return this.subscriptionsService.listCreatorSubscribers(
+      user.userId,
+      query.status,
+      query.cursor,
+      query.limit,
+      query.sort,
+    );
+  }
+
   @Get('me/dashboard')
   @UseGuards(FanBearerGuard)
   @ApiBearerAuth()
@@ -229,6 +288,38 @@ export class SubscriptionsController {
       query.page,
       query.limit,
     );
+  }
+
+  @Get('dashboard/creator-summary')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get creator dashboard summary with subscriber metrics and recent activity',
+    description:
+      'Returns creator-specific metrics including total subscribers, MRR, active subscriptions, and recent activity. ' +
+      'Only the creator themselves can access their own dashboard summary.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Creator dashboard summary with metrics',
+    type: CreatorDashboardSummaryDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - you can only view your own dashboard summary',
+  })
+  async getCreatorDashboardSummary(
+    @CurrentUser() user: JwtUserPayload,
+  ): Promise<CreatorDashboardSummaryDto> {
+    if (!user?.userId) {
+      throw new BadRequestException('User ID is required');
+    }
+    const summary = await this.subscriptionsService.getCreatorDashboardSummary(user.userId);
+    return summary as CreatorDashboardSummaryDto;
   }
 
   @Post('checkout')

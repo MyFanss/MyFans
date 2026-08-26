@@ -20,6 +20,7 @@ import { SorobanRpcService } from '../../common/services/soroban-rpc.service';
 import { RequestContextService } from '../../common/services/request-context.service';
 import { FeatureFlagsService } from '../../feature-flags/feature-flags.service';
 import { SubscriptionCacheService } from '../subscription-cache.service';
+import { SubscriptionChainReaderService } from '../subscription-chain-reader.service';
 
 const TARGET_EVENTS = ['subscribed', 'extended', 'cancelled'] as const;
 type TargetEventType = typeof TARGET_EVENTS[number];
@@ -65,6 +66,7 @@ export class SubscriptionEventPollerService implements OnModuleInit {
     private readonly sorobanRpc: SorobanRpcService,
     private readonly requestContext: RequestContextService,
     private readonly featureFlags: FeatureFlagsService,
+    private readonly chainReader: SubscriptionChainReaderService,
     @Optional()
     private readonly cache?: SubscriptionCacheService,
   ) {}
@@ -80,6 +82,20 @@ export class SubscriptionEventPollerService implements OnModuleInit {
     }
     this.contractId = id;
     this.logger.log(`Poller initialized for contract: ${this.contractId}`);
+
+    this.featureFlags.logPollerFlagResolution();
+
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
+    const isEnabled = this.featureFlags.isSorobanPollerEnabled();
+    if (isEnabled && isProduction) {
+      const rpcUrl = this.configService.get<string>('SOROBAN_RPC_URL')?.trim();
+      if (!rpcUrl) {
+        throw new Error(
+          'Soroban poller is enabled in production but SOROBAN_RPC_URL is not configured. ' +
+          'Either set SOROBAN_RPC_URL or disable the poller via FEATURE_SOROBAN_POLLER=false.',
+        );
+      }
+    }
   }
 
   /**
@@ -275,13 +291,15 @@ export class SubscriptionEventPollerService implements OnModuleInit {
           eventType: p.eventType,
         };
 
-      // Chain state changed (subscribed/extended/cancelled) — bust any
-      // cached gated-content check so the next request reflects it
-      // immediately instead of waiting out the TTL.
-      this.cache?.invalidate(fan, creator);
+        const indexed = await this.indexRepo.upsertEvent(upsertData);
 
-      // Publish domain event
-      await this.publishDomainEvent(indexed);
+        // Chain state changed (subscribed/extended/cancelled) — bust any
+        // cached gated-content check so the next request reflects it
+        // immediately instead of waiting out the TTL.
+        this.cache?.invalidate(p.fan, p.creator);
+
+        // Publish domain event
+        await this.publishDomainEvent(indexed);
 
         this.logger.debug(`Indexed ${p.eventType} ${p.fan.slice(0, 8)} -> ${p.creator.slice(0, 8)}`);
         results.push({

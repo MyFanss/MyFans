@@ -3,6 +3,7 @@
  *  - feature flag disables polling
  *  - stale / disconnected RPC is handled gracefully (no throw)
  *  - typed methods are called (no any-cast)
+ *  - fail-fast on enabled-but-missing-RPC in production
  */
 import { SubscriptionEventPollerService } from './subscription-event-poller.service';
 import { RequestContextService } from '../../common/services/request-context.service';
@@ -12,11 +13,14 @@ function makePoller(overrides: {
   getLatestLedgerSequence?: () => Promise<number>;
   getNetworkEvents?: () => Promise<any>;
   checkpoint?: number;
+  nodeEnv?: string;
+  rpcUrl?: string;
 }) {
   const requestContext = new RequestContextService();
 
   const featureFlags = {
     isSorobanPollerEnabled: jest.fn().mockReturnValue(overrides.pollerEnabled ?? true),
+    logPollerFlagResolution: jest.fn(),
   };
 
   const indexRepo = {
@@ -36,8 +40,16 @@ function makePoller(overrides: {
 
   const eventBus = { publish: jest.fn() };
 
+  const configService = {
+    get: jest.fn((key: string) => {
+      if (key === 'NODE_ENV') return overrides.nodeEnv ?? 'test';
+      if (key === 'SOROBAN_RPC_URL') return overrides.rpcUrl;
+      return 'CONTRACT_ID';
+    }),
+  };
+
   const svc = new (SubscriptionEventPollerService as any)(
-    { get: () => 'CONTRACT_ID' },
+    configService,
     indexRepo,
     eventBus,
     sorobanRpc,
@@ -47,7 +59,7 @@ function makePoller(overrides: {
 
   (svc as any).contractId = 'CONTRACT_ID';
 
-  return { svc, sorobanRpc, indexRepo, featureFlags, eventBus };
+  return { svc, sorobanRpc, indexRepo, featureFlags, eventBus, configService };
 }
 
 describe('SubscriptionEventPollerService – feature flag', () => {
@@ -64,11 +76,40 @@ describe('SubscriptionEventPollerService – feature flag', () => {
     await svc.poll();
     expect(sorobanRpc.getLatestLedgerSequence).toHaveBeenCalledTimes(1);
   });
+
+  it('logs flag resolution on init', async () => {
+    const { svc, featureFlags } = makePoller({ pollerEnabled: true });
+    await (svc as any).onModuleInit?.();
+    expect(featureFlags.logPollerFlagResolution).toHaveBeenCalled();
+  });
+
+  it('fails fast when enabled in production but RPC is missing', async () => {
+    const { svc } = makePoller({
+      pollerEnabled: true,
+      nodeEnv: 'production',
+      rpcUrl: undefined,
+    });
+
+    await expect((svc as any).onModuleInit?.()).rejects.toThrow(
+      /Soroban poller is enabled in production but SOROBAN_RPC_URL is not configured/,
+    );
+  });
+
+  it('starts normally when enabled in production with RPC configured', async () => {
+    const { svc } = makePoller({
+      pollerEnabled: true,
+      nodeEnv: 'production',
+      rpcUrl: 'https://soroban-testnet.stellar.org',
+    });
+
+    await expect((svc as any).onModuleInit?.()).resolves.toBeUndefined();
+  });
 });
 
 describe('SubscriptionEventPollerService – stale / disconnected RPC', () => {
   it('does not throw when getLatestLedgerSequence rejects', async () => {
     const { svc, sorobanRpc } = makePoller({
+      pollerEnabled: true,
       getLatestLedgerSequence: () => Promise.reject(new Error('connection refused')),
     });
     await expect(svc.poll()).resolves.toBeUndefined();
@@ -77,6 +118,7 @@ describe('SubscriptionEventPollerService – stale / disconnected RPC', () => {
 
   it('does not throw when getNetworkEvents rejects mid-page', async () => {
     const { svc, sorobanRpc } = makePoller({
+      pollerEnabled: true,
       getLatestLedgerSequence: () => Promise.resolve(100),
       getNetworkEvents: () => Promise.reject(new Error('rpc timeout')),
       checkpoint: 50,
@@ -85,7 +127,7 @@ describe('SubscriptionEventPollerService – stale / disconnected RPC', () => {
   });
 
   it('uses typed getLatestLedgerSequence (not any-cast)', async () => {
-    const { svc, sorobanRpc } = makePoller({ checkpoint: 10 });
+    const { svc, sorobanRpc } = makePoller({ pollerEnabled: true, checkpoint: 10 });
     sorobanRpc.getLatestLedgerSequence.mockResolvedValue(10); // no new ledgers
     await svc.poll();
     // Verify the real method was called, not a dynamic property
