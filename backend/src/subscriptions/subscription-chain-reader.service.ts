@@ -85,6 +85,20 @@ function extractRetval(
 /**
  * Read-only Soroban simulation of the subscription contract methods.
  * Skipped when no contract id is configured.
+ *
+ * **Retry & Timeout Strategy:**
+ * - All reads use withRetry() with bounded attempts, jittered backoff, and circuit breaker.
+ * - Provider timeout (env: SOROBAN_RPC_TIMEOUT_SECONDS) sets the maximum wall-clock
+ *   duration per RPC call; defaults to 30 seconds.
+ * - Transaction timeout (env: SOROBAN_TX_ENVELOPE_TIMEOUT_SECONDS) sets the Stellar
+ *   transaction envelope timeout; defaults to 30 seconds.
+ * - Retry budget (env: SOROBAN_RPC_MAX_RETRIES) caps retry attempts per call;
+ *   defaults to 4 (first attempt + 3 retries).
+ *
+ * **Failure Modes:**
+ * - All simulation errors are returned as { ok: false, error: "..." }, never thrown.
+ * - RPC failures increment rpc_errors_total metric, labeled by failure type.
+ * - Circuit breaker opens after 5 consecutive failures, blocks new attempts for 30s.
  */
 @Injectable()
 export class SubscriptionChainReaderService {
@@ -97,6 +111,14 @@ export class SubscriptionChainReaderService {
       updatedAtMs: number;
     }
   >();
+  private readonly rpcTimeoutSec = parseInt(
+    process.env.SOROBAN_RPC_TIMEOUT_SECONDS || '30',
+    10,
+  );
+  private readonly txEnvelopeTimeoutSec = parseInt(
+    process.env.SOROBAN_TX_ENVELOPE_TIMEOUT_SECONDS || '30',
+    10,
+  );
 
   constructor(private readonly ledgerClock: LedgerClockService) {}
 
@@ -137,8 +159,26 @@ export class SubscriptionChainReaderService {
       networkPassphrase: this.getNetworkPassphrase(),
     })
       .addOperation(op)
-      .setTimeout(30)
+      .setTimeout(this.txEnvelopeTimeoutSec)
       .build();
+  }
+
+  /**
+   * Wraps an async function with a max-wall-clock timeout.
+   * Rejects with TimeoutError if the call exceeds rpcTimeoutSec.
+   */
+  private withRpcTimeout<T>(
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    return Promise.race([
+      fn(),
+      new Promise<T>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`RPC call timeout after ${this.rpcTimeoutSec}s`)),
+          this.rpcTimeoutSec * 1000,
+        ),
+      ),
+    ]);
   }
 
   private parsePositiveBigInt(value: unknown): bigint | null {
@@ -249,6 +289,7 @@ export class SubscriptionChainReaderService {
 
   /**
    * Simulates `is_subscriber(fan, creator)` on the deployed subscription contract.
+   * Returns { ok: false, error: "..." } on any failure (timeout, RPC error, parse error).
    */
   async readIsSubscriber(
     contractId: string,
@@ -265,7 +306,9 @@ export class SubscriptionChainReaderService {
 
       const sim = await withRetry(
         'soroban-rpc',
-        () => this.makeServer().simulateTransaction(this.buildTx(op)),
+        () => this.withRpcTimeout(() =>
+          this.makeServer().simulateTransaction(this.buildTx(op)),
+        ),
         { isPermanentError: PERMANENT_ERROR },
       );
       this.trackSimulationCost('is_subscriber', sim);
@@ -285,7 +328,7 @@ export class SubscriptionChainReaderService {
 
   /**
    * Reads the subscription expiry from the contract, skew-corrected via
-   * LedgerClockService.
+   * LedgerClockService. Returns { ok: false, error: "..." } on any failure.
    */
   async readExpiryUnix(
     contractId: string,
@@ -302,7 +345,9 @@ export class SubscriptionChainReaderService {
 
       const sim = await withRetry(
         'soroban-rpc',
-        () => this.makeServer().simulateTransaction(this.buildTx(op)),
+        () => this.withRpcTimeout(() =>
+          this.makeServer().simulateTransaction(this.buildTx(op)),
+        ),
         { isPermanentError: PERMANENT_ERROR },
       );
       this.trackSimulationCost('get_expiry_unix', sim);
@@ -331,6 +376,7 @@ export class SubscriptionChainReaderService {
 
   /**
    * Simulates `get_plan(plan_id)` on the deployed contract.
+   * Returns { ok: false, error: "..." } on any failure.
    */
   async readPlan(
     contractId: string,
@@ -342,7 +388,9 @@ export class SubscriptionChainReaderService {
 
       const sim = await withRetry(
         'soroban-rpc',
-        () => this.makeServer().simulateTransaction(this.buildTx(op)),
+        () => this.withRpcTimeout(() =>
+          this.makeServer().simulateTransaction(this.buildTx(op)),
+        ),
         { isPermanentError: PERMANENT_ERROR },
       );
       this.trackSimulationCost('get_plan', sim);
@@ -376,6 +424,7 @@ export class SubscriptionChainReaderService {
 
   /**
    * Simulates `get_plan_count()` on the deployed contract.
+   * Returns { ok: false, error: "..." } on any failure.
    */
   async readPlanCount(contractId: string): Promise<ChainPlanCountReadResult> {
     try {
@@ -384,7 +433,9 @@ export class SubscriptionChainReaderService {
 
       const sim = await withRetry(
         'soroban-rpc',
-        () => this.makeServer().simulateTransaction(this.buildTx(op)),
+        () => this.withRpcTimeout(() =>
+          this.makeServer().simulateTransaction(this.buildTx(op)),
+        ),
         { isPermanentError: PERMANENT_ERROR },
       );
       this.trackSimulationCost('get_plan_count', sim);
