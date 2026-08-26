@@ -12,6 +12,8 @@ import { FeatureFlag } from "@/lib/feature-flags";
 import { ProfileSettingsPanel } from "@/components/settings/profile-settings-panel";
 import { WalletSettingsPanel } from "@/components/settings/WalletSettingsPanel";
 import { ReferralSharePanel } from "@/components/referral/ReferralSharePanel";
+import { csrfFetch } from "@/lib/api/csrf-fetch";
+import { getVersionedApiBaseUrl } from "@/lib/api/base-url";
 
 export default function SettingsPage() {
   const { showSuccess, showError, showInfo, showWarning } = useToast();
@@ -56,13 +58,48 @@ export default function SettingsPage() {
     if (deleteInput !== "DELETE" || !deletePassword || isDeleting) return;
 
     setIsDeleting(true);
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-    setIsDeleting(false);
-    setDeleteComplete(true);
-    showWarning(
-      "Account deleted",
-      "Your account deletion request has been processed.",
-    );
+    setDeleteError(null);
+
+    try {
+      const apiBaseUrl = getVersionedApiBaseUrl();
+      const response = await csrfFetch(`${apiBaseUrl}/users/delete-account`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          password: deletePassword,
+          confirmation: deleteInput === 'DELETE',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error((errorData as any).message || 'Account deletion failed');
+      }
+
+      setIsDeleting(false);
+      setDeleteComplete(true);
+      showWarning(
+        "Account deleted",
+        "Your account has been successfully deleted. You will be logged out shortly.",
+      );
+
+      // Redirect after a short delay
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 2000);
+    } catch (err) {
+      setIsDeleting(false);
+      setDeleteError(
+        err instanceof Error ? err.message : 'Failed to delete account'
+      );
+      showError("ACCOUNT_DELETION_FAILED", {
+        message: "Could not delete account",
+        description: err instanceof Error ? err.message : 'Please try again later',
+      });
+    }
   };
 
   const canDelete =
@@ -493,8 +530,12 @@ export default function SettingsPage() {
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             Review recent support and subscription activity.
           </p>
-          <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-sm text-slate-700 dark:text-slate-300">
-            Last 30 days: $84.50 total across subscriptions and tips.
+          <div className="mt-4">
+            {/* This component should be wired to the real spending-cap API */}
+            {/* Using getSpendingHistory() from @/lib/api/spending */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-sm text-slate-700 dark:text-slate-300">
+              Loading spending history...
+            </div>
           </div>
         </section>
       );

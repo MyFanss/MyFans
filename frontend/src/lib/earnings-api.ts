@@ -143,9 +143,14 @@ export async function requestWithdrawal(data: {
   destination_address: string;
   method: 'wallet' | 'bank';
 }): Promise<Withdrawal> {
+  // Map frontend fields to backend contract (amount, asset)
+  const backendPayload = {
+    amount: data.amount,
+    asset: data.currency,
+  };
   return fetchApi('/earnings/withdraw', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(backendPayload),
   });
 }
 

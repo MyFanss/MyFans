@@ -1,9 +1,11 @@
 'use client';
 
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { DashboardSectionBoundary } from '@/components/dashboard';
+import { useAuth } from '@/hooks/useAuth';
 import {
   EarningsSummaryCard,
   EarningsChartSkeleton,
@@ -24,22 +26,51 @@ function WithdrawalCtaStub({ availableHint }: { availableHint?: string }) {
             ? `Request a payout when you are ready. ${availableHint}`
             : 'Request a payout from your available balance when you are ready.'}
         </p>
-        <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
-          Full withdrawal flow is available on the earnings workspace (stub CTA).
-        </p>
       </div>
       <Link
-        href="/earnings#withdraw"
+        href="/earnings"
         className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium transition-colors"
       >
-        Withdraw
+        Go to Earnings
       </Link>
     </div>
   );
 }
 
 export default function DashboardEarningsPage() {
+  const router = useRouter();
+  const { isAuthenticated, sessionData, isLoading } = useAuth();
   const [days, setDays] = useState(30);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      setAuthError('You must be logged in');
+      router.push('/auth/sign-in');
+    } else if (!isLoading && sessionData && !sessionData.is_creator) {
+      setAuthError('Only creators can view earnings');
+    }
+  }, [isAuthenticated, isLoading, sessionData, router]);
+
+  if (authError) {
+    return (
+      <div className="max-w-full space-y-6">
+        <div className="rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-900 p-4">
+          <p className="text-red-700 dark:text-red-300 text-sm">{authError}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="max-w-full space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-full space-y-6">
