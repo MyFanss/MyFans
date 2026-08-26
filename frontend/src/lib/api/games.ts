@@ -11,6 +11,7 @@ export interface Game {
   status: 'PENDING' | 'ACTIVE' | 'COMPLETED';
   maxPlayers: number;
   currentPlayers: number;
+  hostUserId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -70,14 +71,23 @@ export async function getGameById(id: string): Promise<Game | null> {
 /**
  * Join a game as the authenticated user.
  */
-export async function joinGame(gameId: string): Promise<{ success: boolean; message?: string }> {
+export async function joinGame(gameId: string, csrfToken?: string): Promise<{ success: boolean; message?: string }> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (csrfToken) {
+    headers['x-csrf-token'] = csrfToken;
+  }
+
   const res = await fetch(`${API_BASE}/games/${encodeURIComponent(gameId)}/join`, {
     method: 'POST',
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
   });
+  if (res.status === 401) {
+    throw new Error('Unauthorized');
+  }
   if (res.status === 404) {
     throw new Error('Game not found');
   }
@@ -90,4 +100,47 @@ export async function joinGame(gameId: string): Promise<{ success: boolean; mess
     throw new Error((err as { message?: string }).message ?? `Request failed: ${res.status}`);
   }
   return res.json() as Promise<{ success: boolean; message?: string }>;
+}
+
+/**
+ * Start a game (host-only action).
+ */
+export async function startGame(
+  gameId: string,
+  params: {
+    idempotencyKey?: string;
+  } = {},
+  csrfToken?: string,
+): Promise<Game> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (csrfToken) {
+    headers['x-csrf-token'] = csrfToken;
+  }
+
+  if (params.idempotencyKey) {
+    headers['idempotency-key'] = params.idempotencyKey;
+  }
+
+  const res = await fetch(`${API_BASE}/games/${encodeURIComponent(gameId)}/start`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+  });
+  if (res.status === 401) {
+    throw new Error('Unauthorized');
+  }
+  if (res.status === 403) {
+    throw new Error('Only the host can start the game');
+  }
+  if (res.status === 404) {
+    throw new Error('Game not found');
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message ?? `Request failed: ${res.status}`);
+  }
+  return res.json() as Promise<Game>;
 }

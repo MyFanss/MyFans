@@ -4,12 +4,21 @@ import { listGames, type Game } from '@/lib/api/games';
 export default async function GamesPage() {
   let games: Game[] = [];
   let error: string | null = null;
+  let errorType: 'unauthorized' | 'notfound' | 'server' | null = null;
 
   try {
     const result = await listGames({ limit: 20 });
     games = result.data;
   } catch (err) {
-    error = err instanceof Error ? err.message : 'Failed to load games';
+    const message = err instanceof Error ? err.message : 'Failed to load games';
+    error = message;
+    if (message.includes('401')) {
+      errorType = 'unauthorized';
+    } else if (message.includes('404')) {
+      errorType = 'notfound';
+    } else if (message.includes('5')) {
+      errorType = 'server';
+    }
   }
 
   return (
@@ -38,7 +47,13 @@ export default async function GamesPage() {
 
           {error && (
             <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <p className="text-red-800 dark:text-red-200">{error}</p>
+              <p className="text-red-800 dark:text-red-200">
+                {errorType === 'unauthorized'
+                  ? 'You must be signed in to view games. Please sign in to continue.'
+                  : errorType === 'server'
+                    ? 'We encountered an issue loading games. Please try again later.'
+                    : error}
+              </p>
             </div>
           )}
 
