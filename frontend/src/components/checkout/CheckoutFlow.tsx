@@ -211,28 +211,90 @@ export default function CheckoutFlow({
     }
 
     await tx.execute(async () => {
-      // Build the real Soroban `subscribe` invocation, have the wallet sign
-      // it, and submit it to the network. The backend independently
-      // verifies this hash on-chain before activating the subscription
-      // (see subscriptions.service#confirmSubscription), so a fabricated
-      // hash here would simply be rejected.
       const tokenAddress =
         selectedAsset?.issuer ||
         selectedAsset?.code ||
         priceBreakdown?.currency ||
         "XLM";
 
-      const xdr = await buildSubscriptionTx(
-        fanAddress,
-        creatorAddress,
-        planId,
-        tokenAddress
-      );
+      // Build transaction
+      let xdr: string;
+      try {
+        xdr = await buildSubscriptionTx(
+          fanAddress,
+          creatorAddress,
+          planId,
+          tokenAddress
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+
+        // Check for protocol paused state
+        if (message.includes('paused') || message.includes('halted')) {
+          throw createAppError('PROTOCOL_PAUSED', {
+            message: 'Subscription protocol is temporarily paused',
+            description: 'New subscriptions are currently not being accepted. Please try again later.',
+          });
+        }
+
+        // Check for insufficient balance or token mismatch
+        if (message.includes('insufficient') || message.includes('not enough')) {
+          throw createAppError('INSUFFICIENT_BALANCE', {
+            message: 'Insufficient balance for this subscription',
+            description: 'Your wallet does not have enough of the required asset.',
+          });
+        }
+
+        // Check for token mismatch
+        if (message.includes('token') || message.includes('asset')) {
+          throw createAppError('TOKEN_MISMATCH', {
+            message: 'Token or asset mismatch error',
+            description: 'The asset you selected is not compatible with this plan. Try selecting a different asset.',
+          });
+        }
+
+        throw err;
+      }
+
+      // Sign transaction
       const signedXdr = await signTransaction(xdr);
+
+      // Generate idempotency key using checkout ID and a timestamp to prevent duplicate submissions
+      const idempotencyKey = `${checkoutId}-${Math.floor(Date.now() / 1000)}`;
+
+      // Submit transaction
       const txHash = await submitTransaction(signedXdr);
 
-      // Confirm with backend
+      // Confirm with backend (backend uses txHash to verify on-chain)
       const result = await apiConfirmSubscription(checkoutId, txHash);
+
+      // Ensure failed checkouts stay in pending/failed state, not ACTIVE
+      if (result.status === 'FAILED' || result.status === 'PENDING') {
+        const trackedTransaction = createTrackedTransaction({
+          checkoutId,
+          txHash,
+          type: "subscription",
+          description: planSummary
+            ? `Subscription to ${planSummary.creatorName}${planSummary.name ? ` • ${planSummary.name}` : ""}`
+            : "Subscription payment",
+          amount: priceBreakdown?.total ?? checkout?.total ?? "0",
+          currency: priceBreakdown?.currency ?? selectedAsset?.code ?? "XLM",
+          creatorName: planSummary?.creatorName,
+          planName: planSummary?.name,
+        });
+
+        const nextResult = {
+          ...result,
+          txHash,
+          explorerUrl: result.explorerUrl || getExplorerUrl(txHash),
+        };
+
+        setCheckoutResult(nextResult);
+        setCurrentStep("result");
+        onComplete?.(nextResult);
+        return { ...nextResult, trackedTransaction };
+      }
+
       const trackedTransaction = createTrackedTransaction({
         checkoutId,
         txHash,
@@ -268,6 +330,8 @@ export default function CheckoutFlow({
     priceBreakdown,
     mismatch,
     showError,
+    planSummary,
+    checkout,
   ]);
 
   // Handle failure
