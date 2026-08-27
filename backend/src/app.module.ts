@@ -35,6 +35,7 @@ import { CommentsModule } from './comments/comments.module';
 import { ContentModule } from './content/content.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { GamesModule } from './games/games.module';
+import { LikesModule } from './likes/likes.module';
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
 import { CorrelationExceptionFilter } from './common/filters/correlation-exception.filter';
 import { RequestContextService } from './common/services/request-context.service';
@@ -96,6 +97,7 @@ const IDEMPOTENCY_ROUTES = [
     ContentModule,
     ConversationsModule,
     GamesModule,
+    LikesModule,
   ],
   controllers: [AppController, OpenAPIController],
   providers: [
