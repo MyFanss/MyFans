@@ -55,7 +55,6 @@ import { SubscriptionsExceptionFilter } from './filters/subscriptions-exception.
 import { Roles } from '../auth-module/decorators/roles.decorator';
 import { RolesGuard } from '../auth-module/guards/roles.guard';
 import { UserRole } from '../common/enums/user-role.enum';
-import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 
 @ApiTags('subscriptions')
 @UseFilters(new SubscriptionsExceptionFilter())
@@ -294,7 +293,8 @@ export class SubscriptionsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Get creator dashboard summary with subscriber metrics and recent activity',
+    summary:
+      'Get creator dashboard summary with subscriber metrics and recent activity',
     description:
       'Returns creator-specific metrics including total subscribers, MRR, active subscriptions, and recent activity. ' +
       'Only the creator themselves can access their own dashboard summary.',
@@ -318,7 +318,9 @@ export class SubscriptionsController {
     if (!user?.userId) {
       throw new BadRequestException('User ID is required');
     }
-    const summary = await this.subscriptionsService.getCreatorDashboardSummary(user.userId);
+    const summary = await this.subscriptionsService.getCreatorDashboardSummary(
+      user.userId,
+    );
     return summary as CreatorDashboardSummaryDto;
   }
 
@@ -609,7 +611,10 @@ export class SubscriptionsController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden (insufficient role)' })
-  pause(@Req() req: { user?: { sub: string } }, @Body('reason') reason?: string) {
+  pause(
+    @Req() req: { user?: { sub: string } },
+    @Body('reason') reason?: string,
+  ) {
     const adminId = req.user?.sub || 'unknown';
     return this.pauseService.pause(adminId, reason);
   }

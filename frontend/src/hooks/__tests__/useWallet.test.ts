@@ -12,6 +12,7 @@ vi.mock('@/lib/wallet', () => ({
   isAnyWalletConnected: vi.fn(),
   getWalletInstallUrl: vi.fn(),
   isWalletInstalled: vi.fn(),
+  disconnectWallet: vi.fn(),
 }));
 
 import {
