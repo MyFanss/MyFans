@@ -1,5 +1,6 @@
 import { createAppError, type AppError } from '@/types/errors';
 import { FeatureFlag, isFeatureEnabled } from '@/lib/feature-flags';
+import { assertWalletNetworkMatches } from '@/lib/network-guard';
 
 /** Clear copy when WalletConnect is stubbed / not yet available */
 export const WALLETCONNECT_UNSUPPORTED_MESSAGE = 'WalletConnect is not available yet';
@@ -184,6 +185,11 @@ export async function signTransaction(
       message: 'Window is not defined',
     });
   }
+
+  // Central network guard: never sign a transaction while the wallet is on a
+  // different Stellar network than the app is configured for. Throws a
+  // NETWORK_MISMATCH AppError; no-ops when the wallet network can't be read.
+  await assertWalletNetworkMatches();
 
   try {
     const windowWithWallets = window as Window & { freighter?: FreighterWallet };

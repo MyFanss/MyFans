@@ -20,10 +20,10 @@ export function useViewerSubscriptionStatus(
   creatorUsernameOrId?: string | null,
 ): UseViewerSubscriptionStatusResult {
   const { isConnected, address } = useWallet();
-  const [status, setStatus] = useState<SubscriptionStatus | null>(() => {
-    if (!creatorUsernameOrId) return null;
-    return getSubscriptionStatusForCreator(creatorUsernameOrId);
-  });
+  // Start from a neutral (locked) state and never seed from the local cache
+  // before we know the viewer is signed in — otherwise a logged-out visitor
+  // could briefly see subscriber-only content unlocked (flash of wrong unlock).
+  const [status, setStatus] = useState<SubscriptionStatus | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
 

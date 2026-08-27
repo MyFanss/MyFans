@@ -46,6 +46,9 @@ export type ErrorCode =
   | 'INTERNAL_ERROR'
   | 'SERVICE_UNAVAILABLE'
   | 'RATE_LIMITED'
+  | 'API_ERROR'
+  | 'CSRF_TOKEN_FETCH_FAILED'
+  | 'CSRF_VALIDATION_FAILED'
   // Form/Plan errors
   // Unknown
   | 'UNKNOWN_ERROR'
@@ -55,10 +58,15 @@ export type ErrorCode =
   | 'PUBLISH_FAILED'
   | 'ACCESS_DENIED'
   | 'PROFILE_ERROR'
+  | 'CREATOR_NOT_FOUND'
   | 'WALLET_NOT_INSTALLED'
   | 'UNSUPPORTED_WALLET'
   | 'WALLET_CONNECTION_REJECTED'
+  | 'WALLET_ADDRESS_MISMATCH'
+  | 'WALLET_SIGNATURE_REJECTED'
   | 'NETWORK_MISMATCH'
+  | 'WITHDRAWAL_FAILED'
+  | 'ACCOUNT_DELETION_FAILED'
   // Subscription/Protocol-specific
   | 'PROTOCOL_PAUSED'
   | 'TOKEN_MISMATCH'
@@ -573,6 +581,14 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       recoverable: true,
       actions: [{ label: 'Try again', type: 'retry', primary: true }],
     },
+    CREATOR_NOT_FOUND: {
+      message: 'Creator information not found',
+      description: 'Unable to verify creator identity. Refresh the page or sign in again.',
+      severity: 'error',
+      category: 'auth',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
     WALLET_NOT_INSTALLED: {
       message: 'Wallet not installed',
       severity: 'error',
@@ -605,6 +621,64 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
         { label: 'Try again', type: 'retry', primary: true },
         { label: 'Go back', type: 'back' },
       ],
+    },
+    API_ERROR: {
+      message: 'Request failed',
+      description: 'The server returned an error. Check your connection and try again.',
+      severity: 'error',
+      category: 'server',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    CSRF_TOKEN_FETCH_FAILED: {
+      message: 'Security check failed',
+      description: 'Could not verify the request. Refresh the page and try again.',
+      severity: 'error',
+      category: 'server',
+      recoverable: true,
+      actions: [{ label: 'Refresh', type: 'retry', primary: true }],
+    },
+    CSRF_VALIDATION_FAILED: {
+      message: 'Security check failed',
+      description: 'This request could not be verified. Refresh the page and try again.',
+      severity: 'error',
+      category: 'server',
+      recoverable: true,
+      actions: [{ label: 'Refresh', type: 'retry', primary: true }],
+    },
+    WALLET_ADDRESS_MISMATCH: {
+      message: 'Wallet address mismatch',
+      description:
+        'The connected wallet does not match the account on file. Connect the wallet linked to this account and try again.',
+      severity: 'error',
+      category: 'wallet',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    WALLET_SIGNATURE_REJECTED: {
+      message: 'Signature rejected',
+      description: 'You declined the signature request in your wallet. Try again and approve it to continue.',
+      severity: 'warning',
+      category: 'wallet',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    WITHDRAWAL_FAILED: {
+      message: 'Withdrawal failed',
+      description:
+        'The withdrawal could not be completed. No funds were moved — check your balance and try again.',
+      severity: 'error',
+      category: 'transaction',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    ACCOUNT_DELETION_FAILED: {
+      message: 'Account deletion failed',
+      description: 'We could not delete your account right now. Try again, or contact support if it persists.',
+      severity: 'error',
+      category: 'server',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
     },
     PROTOCOL_PAUSED: {
       message: 'Subscription protocol is paused',

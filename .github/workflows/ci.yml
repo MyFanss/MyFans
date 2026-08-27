@@ -87,6 +87,10 @@ jobs:
         run: npm run build
         working-directory: frontend
 
+      - name: Verify demo routes are excluded from the production build
+        run: npm run check:demo-routes
+        working-directory: frontend
+
   contract:
     name: Contract
     runs-on: ubuntu-latest

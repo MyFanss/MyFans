@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { OnboardingIntent, OnboardingStep } from '@/lib/onboarding-types';
-import { patchMyOnboarding } from '@/lib/api/profile';
+import { STEP_ORDER, isFlowFinished } from '@/lib/onboarding-types';
+import { patchMyOnboarding, type ServerOnboardingState } from '@/lib/api/profile';
 
 export const ONBOARDING_STORAGE_KEY = 'myfans_onboarding_state';
 export const ONBOARDING_PROFILE_DRAFT_KEY = 'myfans_onboarding_profile_draft';
@@ -21,14 +22,6 @@ export interface OnboardingState {
   savedAt: string | null;
 }
 
-type ServerOnboardingState = Partial<{
-  currentStep: OnboardingStep;
-  completedSteps: OnboardingStep[];
-  skippedSteps: OnboardingStep[];
-  intent: OnboardingIntent;
-  updatedAt: string;
-}>;
-
 interface OnboardingData {
   accountType?: 'creator' | 'fan' | 'both';
   profileComplete?: boolean;
@@ -36,22 +29,8 @@ interface OnboardingData {
   verificationComplete?: boolean;
 }
 
-export const STEP_ORDER: OnboardingStep[] = [
-  'account-type',
-  'profile',
-  'social-links',
-  'verification',
-];
-
-/** Exported for tests — true when every step is completed or skipped. */
-export function isFlowFinished(
-  completed: OnboardingStep[],
-  skipped: OnboardingStep[],
-): boolean {
-  return STEP_ORDER.every(
-    (s) => completed.includes(s) || skipped.includes(s),
-  );
-}
+/** Re-exported from `@/lib/onboarding-types` for back-compat with existing importers. */
+export { STEP_ORDER, isFlowFinished };
 
 function nextCurrentStep(
   prevStep: OnboardingStep,

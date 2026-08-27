@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchActiveSubscriptions, SubscriptionsUnauthorizedError } from './subscriptions';
+import {
+  fetchActiveSubscriptions,
+  fetchPaymentHistory,
+  fetchSubscriptionHistory,
+  SubscriptionsUnauthorizedError,
+} from './subscriptions';
 
 vi.mock('@/lib/api/base-url', () => ({
   getApiBaseUrl: () => 'https://api.test',
@@ -115,5 +120,111 @@ describe('fetchActiveSubscriptions', () => {
 
     await expect(fetchActiveSubscriptions({})).rejects.toThrow('Internal server error');
     expect(localStorage.getItem('authToken')).toBe('jwt-access-token');
+  });
+});
+
+describe('fetchSubscriptionHistory', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  it('requests the cancelled slice of the list endpoint', async () => {
+    mockFetchOk({ data: [] });
+
+    await fetchSubscriptionHistory();
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.test/api/v1/subscriptions/me/list?status=cancelled',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
+  it('normalizes ended-subscription items with safe defaults', async () => {
+    mockFetchOk({
+      data: [
+        {
+          id: 'hist-1',
+          creator: 'Studio Art',
+          plan_name: 'Basic',
+          price: '4.99',
+          currency: 'USD',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          endedAt: '2026-02-01T00:00:00.000Z',
+          cancelReason: 'Cancelled by user',
+        },
+      ],
+    });
+
+    const result = await fetchSubscriptionHistory();
+
+    expect(result).toEqual([
+      {
+        id: 'hist-1',
+        creatorName: 'Studio Art',
+        creatorUsername: '',
+        planName: 'Basic',
+        price: 4.99,
+        currency: 'USD',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        endedAt: '2026-02-01T00:00:00.000Z',
+        cancelReason: 'Cancelled by user',
+      },
+    ]);
+  });
+
+  it('throws SubscriptionsUnauthorizedError on a 401', async () => {
+    localStorage.setItem('authToken', 'stale');
+    mockFetchStatus(401);
+
+    await expect(fetchSubscriptionHistory()).rejects.toThrow(SubscriptionsUnauthorizedError);
+    expect(localStorage.getItem('authToken')).toBeNull();
+  });
+});
+
+describe('fetchPaymentHistory', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  it('hits the analytics payments endpoint', async () => {
+    mockFetchOk({ data: [] });
+
+    await fetchPaymentHistory();
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.test/api/v1/analytics/payments',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
+  it('normalizes payment records and falls back to a valid status', async () => {
+    mockFetchOk([
+      {
+        id: 'pay-1',
+        paidAt: '2026-02-15T00:00:00.000Z',
+        creator: 'Jane Doe',
+        planName: 'Pro',
+        amount: 9.99,
+        asset: 'XLM',
+        status: 'not-a-real-status',
+      },
+    ]);
+
+    const result = await fetchPaymentHistory();
+
+    expect(result).toEqual([
+      {
+        id: 'pay-1',
+        date: '2026-02-15T00:00:00.000Z',
+        creatorName: 'Jane Doe',
+        planName: 'Pro',
+        amount: 9.99,
+        currency: 'XLM',
+        status: 'completed',
+        description: undefined,
+      },
+    ]);
   });
 });
