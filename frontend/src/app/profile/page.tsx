@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { AvatarUpload } from "@/components/ui/AvatarUpload";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/contexts/ToastContext";
+import { fetchMe, patchMe, MeResponse, ProfileUnauthorizedError } from "@/lib/api/profile";
 
-// Mock data types
+// Types
 interface SocialLinks {
   website: string;
   twitter: string;
@@ -33,31 +35,6 @@ interface AccountStatus {
   creator: "active" | "pending" | "inactive";
   fan: "active" | "pending" | "inactive";
 }
-
-// Mock initial data
-const initialProfile: ProfileData = {
-  displayName: "Star Creator",
-  username: "star.creator",
-  bio: "Digital content creator | Sharing exclusive content for my fans",
-  avatar: null,
-  socialLinks: {
-    website: "https://starcreator.com",
-    twitter: "@starcreator",
-    instagram: "@starcreator",
-    other: "",
-  },
-};
-
-const mockWallet: WalletData = {
-  address: "GAC47WQS3V5GZT3QRWP5QJ5Q5K7X6ZJ6K2P2X5HNR5ZJT5KZJT5K7X6Z",
-  network: "testnet",
-  isConnected: true,
-};
-
-const mockAccountStatus: AccountStatus = {
-  creator: "active",
-  fan: "inactive",
-};
 
 // Validation functions
 const validateUsername = (value: string): string | null => {
@@ -98,30 +75,95 @@ const validateInstagram = (value: string): string | null => {
   return null;
 };
 
+function convertMeResponseToProfile(me: MeResponse): ProfileData {
+  return {
+    displayName: me.display_name || "",
+    username: me.username || "",
+    bio: me.creator?.bio || "",
+    avatar: me.avatar_url,
+    socialLinks: {
+      website: me.website_url || "",
+      twitter: me.x_handle || "",
+      instagram: me.instagram_handle || "",
+      other: me.other_url || "",
+    },
+  };
+}
+
 export default function ProfilePage() {
+  const router = useRouter();
+  const { showSuccess, showError } = useToast();
+
   // State for profile data
-  const [profile, setProfile] = useState<ProfileData>(initialProfile);
-  const [wallet, setWallet] = useState<WalletData>(mockWallet);
-  const [accountStatus] = useState<AccountStatus>(mockAccountStatus);
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [wallet] = useState<WalletData>({
+    address: null,
+    network: "testnet",
+    isConnected: false,
+  });
+  const [accountStatus] = useState<AccountStatus>({
+    creator: "pending",
+    fan: "inactive",
+  });
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Toast notifications
-  const { showSuccess, showError } = useToast();
+  // Load user profile on mount
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProfile() {
+      try {
+        setIsLoading(true);
+        const me = await fetchMe();
+        if (!cancelled) {
+          setProfile(convertMeResponseToProfile(me));
+          setIsAuthenticated(true);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          if (err instanceof ProfileUnauthorizedError) {
+            router.push("/signin");
+          } else {
+            showError("INTERNAL_ERROR", {
+              message: "Failed to load profile",
+            });
+            setIsAuthenticated(false);
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [router, showError]);
 
   // Handle input changes
   const handleInputChange = useCallback(
     (field: keyof ProfileData | keyof SocialLinks, value: string) => {
+      if (!profile) return;
+
       if (field in profile.socialLinks) {
-        setProfile((prev) => ({
-          ...prev,
-          socialLinks: { ...prev.socialLinks, [field]: value },
-        }));
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                socialLinks: { ...prev.socialLinks, [field]: value },
+              }
+            : null
+        );
       } else {
-        setProfile((prev) => ({ ...prev, [field]: value }));
+        setProfile((prev) => (prev ? { ...prev, [field]: value } : null));
       }
       // Clear error when user types
       if (errors[field]) {
@@ -132,11 +174,13 @@ export default function ProfilePage() {
         });
       }
     },
-    [errors]
+    [profile, errors]
   );
 
   // Validate all fields
   const validateForm = (): boolean => {
+    if (!profile) return false;
+
     const newErrors: Record<string, string> = {};
 
     const usernameError = validateUsername(profile.username);
@@ -163,6 +207,8 @@ export default function ProfilePage() {
 
   // Handle save
   const handleSave = useCallback(async () => {
+    if (!profile) return;
+
     if (!validateForm()) {
       showError("VALIDATION_ERROR");
       return;
@@ -170,11 +216,18 @@ export default function ProfilePage() {
 
     setIsSaving(true);
     try {
-      // Mock API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      showSuccess("Profile saved successfully!");
-    } catch {
-      showError("INTERNAL_ERROR");
+      await patchMe({
+        display_name: profile.displayName,
+        username: profile.username,
+        website_url: profile.socialLinks.website,
+        x_handle: profile.socialLinks.twitter,
+        instagram_handle: profile.socialLinks.instagram,
+        other_url: profile.socialLinks.other,
+      });
+      showSuccess("Profile updated successfully!");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update profile";
+      showError("SAVE_FAILED", { message });
     } finally {
       setIsSaving(false);
     }
@@ -183,17 +236,16 @@ export default function ProfilePage() {
   // Handle avatar upload
   const handleAvatarUpload = useCallback((file: File) => {
     // In real app, this would upload to server
-    console.log("Avatar file selected:", file.name);
   }, []);
 
   // Handle disconnect wallet
   const handleDisconnect = useCallback(() => {
-    setWallet({ address: null, network: "testnet", isConnected: false });
+    // In real app, this would disconnect the wallet
   }, []);
 
-  // Handle connect wallet (mock)
+  // Handle connect wallet
   const handleConnectWallet = useCallback(() => {
-    setWallet(mockWallet);
+    // In real app, this would connect to wallet
   }, []);
 
   // Copy address to clipboard
@@ -225,6 +277,43 @@ export default function ProfilePage() {
         return "default";
     }
   };
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
+          <p className="text-slate-600 dark:text-slate-400">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if not authenticated
+  if (!isAuthenticated || !profile) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="rounded-lg border border-red-200 bg-red-50 p-4 text-center dark:border-red-800 dark:bg-red-900/20"
+          >
+            <p className="text-red-700 dark:text-red-300">
+              Please sign in to view your profile.
+            </p>
+            <button
+              onClick={() => router.push("/signin")}
+              className="mt-4 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600"
+            >
+              Sign In
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -556,19 +645,13 @@ export default function ProfilePage() {
 
         {/* Action Buttons */}
         <div className="mt-8 flex justify-end gap-4">
-          {isAuthenticated ? (
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="rounded-lg bg-primary-500 px-6 py-2.5 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-600 dark:hover:bg-primary-700"
-            >
-              {isSaving ? "Saving..." : "Save Changes"}
-            </button>
-          ) : (
-            <button className="rounded-lg bg-primary-500 px-6 py-2.5 text-sm font-medium text-white hover:bg-primary-600 dark:bg-primary-600 dark:hover:bg-primary-700">
-              Login
-            </button>
-          )}
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="rounded-lg bg-primary-500 px-6 py-2.5 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-600 dark:hover:bg-primary-700"
+          >
+            {isSaving ? "Saving..." : "Save Changes"}
+          </button>
         </div>
       </div>
     </div>

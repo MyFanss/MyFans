@@ -58,7 +58,11 @@ export type ErrorCode =
   | 'WALLET_NOT_INSTALLED'
   | 'UNSUPPORTED_WALLET'
   | 'WALLET_CONNECTION_REJECTED'
-  | 'NETWORK_MISMATCH';
+  | 'NETWORK_MISMATCH'
+  // Subscription/Protocol-specific
+  | 'PROTOCOL_PAUSED'
+  | 'TOKEN_MISMATCH'
+  | 'PLAN_FETCH_FAILED';
 
 /** Error severity levels */
 export type ErrorSeverity = 'error' | 'warning' | 'info';
@@ -600,6 +604,40 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       actions: [
         { label: 'Try again', type: 'retry', primary: true },
         { label: 'Go back', type: 'back' },
+      ],
+    },
+    PROTOCOL_PAUSED: {
+      message: 'Subscription protocol is paused',
+      description:
+        'New subscriptions are currently not being accepted. Please try again later when the protocol resumes.',
+      severity: 'warning',
+      category: 'server',
+      recoverable: true,
+      actions: [
+        { label: 'Try again later', type: 'back', primary: true },
+      ],
+    },
+    TOKEN_MISMATCH: {
+      message: 'Token or asset mismatch',
+      description:
+        'The asset you selected is not compatible with this plan. Try selecting a different asset.',
+      severity: 'error',
+      category: 'transaction',
+      recoverable: true,
+      actions: [
+        { label: 'Try again', type: 'retry', primary: true },
+        { label: 'Go back', type: 'back' },
+      ],
+    },
+    PLAN_FETCH_FAILED: {
+      message: 'Couldn\'t load plan details',
+      description:
+        'We had trouble loading the plan information. Check your connection and try again.',
+      severity: 'error',
+      category: 'network',
+      recoverable: true,
+      actions: [
+        { label: 'Try again', type: 'retry', primary: true },
       ],
     },
   };

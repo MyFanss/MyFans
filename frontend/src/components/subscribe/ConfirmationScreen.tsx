@@ -104,6 +104,13 @@ export default function ConfirmationScreen({
         </dl>
       </section>
 
+      {/* Network mismatch warning */}
+      {mismatch && (
+        <div className="mb-4">
+          <NetworkMismatchBanner />
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex gap-3">
         <button
@@ -112,19 +119,13 @@ export default function ConfirmationScreen({
         >
           Cancel
         </button>
-        {mismatch ? (
-          <div className="flex-1">
-            <NetworkMismatchBanner />
-          </div>
-        ) : (
-          <button
-            onClick={onConfirm}
-            disabled={disabled}
-            className="flex-1 rounded-lg bg-primary-500 px-4 py-3 font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-600 dark:hover:bg-primary-700"
-          >
-            Sign &amp; Subscribe
-          </button>
-        )}
+        <button
+          onClick={onConfirm}
+          disabled={disabled || mismatch}
+          className="flex-1 rounded-lg bg-primary-500 px-4 py-3 font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-600 dark:hover:bg-primary-700"
+        >
+          Sign &amp; Subscribe
+        </button>
       </div>
     </div>
   );
