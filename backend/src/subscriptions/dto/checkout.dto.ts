@@ -2,27 +2,40 @@ import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateCheckoutDto {
-  @ApiProperty({ description: 'Fan Stellar G-address' })
+  @ApiProperty({
+    description: 'Fan Stellar G-address',
+    example: 'GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ',
+  })
   @IsString()
   @IsNotEmpty()
   fanAddress: string;
 
-  @ApiProperty({ description: 'Creator Stellar G-address' })
+  @ApiProperty({
+    description: 'Creator Stellar G-address',
+    example: 'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H',
+  })
   @IsString()
   @IsNotEmpty()
   creatorAddress: string;
 
-  @ApiProperty({ description: 'Subscription plan ID', minimum: 1 })
+  @ApiProperty({ description: 'Subscription plan ID', minimum: 1, example: 1 })
   @IsInt()
   @Min(1)
   planId: number;
 
-  @ApiPropertyOptional({ description: 'Asset code (default: XLM)', default: 'XLM' })
+  @ApiPropertyOptional({
+    description: 'Asset code (default: XLM)',
+    default: 'XLM',
+    example: 'USDC',
+  })
   @IsOptional()
   @IsString()
   assetCode?: string;
 
-  @ApiPropertyOptional({ description: 'Asset issuer address (for non-native assets)' })
+  @ApiPropertyOptional({
+    description: 'Asset issuer address (for non-native assets)',
+    example: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+  })
   @IsOptional()
   @IsString()
   assetIssuer?: string;
@@ -31,17 +44,32 @@ export class CreateCheckoutDto {
 export class CheckoutResponseDto {
   @ApiProperty({ description: 'Checkout session ID' }) id: string;
   @ApiProperty({ description: 'Fan Stellar G-address' }) fanAddress: string;
-  @ApiProperty({ description: 'Creator Stellar G-address' }) creatorAddress: string;
+  @ApiProperty({ description: 'Creator Stellar G-address' })
+  creatorAddress: string;
   @ApiProperty({ description: 'Subscription plan ID' }) planId: number;
   @ApiProperty({ description: 'Asset code' }) assetCode: string;
-  @ApiPropertyOptional({ description: 'Asset issuer address' }) assetIssuer?: string;
+  @ApiPropertyOptional({ description: 'Asset issuer address' })
+  assetIssuer?: string;
   @ApiProperty({ description: 'Subscription amount' }) amount: string;
   @ApiProperty({ description: 'Platform fee' }) fee: string;
   @ApiProperty({ description: 'Total including fees' }) total: string;
-  @ApiProperty({ description: 'Checkout status', enum: ['pending', 'confirmed_on_chain', 'completed', 'failed', 'rejected', 'expired'] }) status: string;
+  @ApiProperty({
+    description: 'Checkout status',
+    enum: [
+      'pending',
+      'confirmed_on_chain',
+      'completed',
+      'failed',
+      'rejected',
+      'expired',
+    ],
+  })
+  status: string;
   @ApiProperty({ description: 'Session expiry timestamp' }) expiresAt: Date;
-  @ApiPropertyOptional({ description: 'Transaction hash (after confirmation)' }) txHash?: string;
-  @ApiPropertyOptional({ description: 'Error message (on failure)' }) error?: string;
+  @ApiPropertyOptional({ description: 'Transaction hash (after confirmation)' })
+  txHash?: string;
+  @ApiPropertyOptional({ description: 'Error message (on failure)' })
+  error?: string;
   @ApiProperty({ description: 'Creation timestamp' }) createdAt: Date;
   @ApiProperty({ description: 'Last update timestamp' }) updatedAt: Date;
 }
@@ -61,7 +89,8 @@ export class ValidateBalanceDto {
 export class ValidateBalanceResponseDto {
   @ApiProperty({ description: 'Whether balance is sufficient' }) valid: boolean;
   @ApiProperty({ description: 'Current balance' }) balance: string;
-  @ApiPropertyOptional({ description: 'Amount short (if insufficient)' }) shortfall?: string;
+  @ApiPropertyOptional({ description: 'Amount short (if insufficient)' })
+  shortfall?: string;
 }
 
 export class ConfirmSubscriptionDto {
@@ -91,7 +120,10 @@ export class FailCheckoutDto {
   @IsNotEmpty()
   error: string;
 
-  @ApiPropertyOptional({ description: 'Whether the transaction was rejected by the user', default: false })
+  @ApiPropertyOptional({
+    description: 'Whether the transaction was rejected by the user',
+    default: false,
+  })
   @IsOptional()
   rejected?: boolean;
 }

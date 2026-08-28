@@ -11,20 +11,20 @@ export default {
 export const Connected = {
   args: {
     address: '0x1234567890abcdef1234567890abcdef12345678',
-    network: 'Mainnet'
+    network: 'Stellar Public'
   }
 };
 
 export const Testnet = {
   args: {
     address: '0xabcdef1234567890abcdef1234567890abcdef12',
-    network: 'Testnet'
+    network: 'Stellar Testnet'
   }
 };
 
 export const Disconnected = {
   args: {
     address: '',
-    network: 'Mainnet'
+    network: 'Stellar Public'
   }
 };
