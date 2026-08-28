@@ -9,7 +9,11 @@
  */
 import { resolveAuthToken, clearStoredAuthToken } from '@/lib/auth-storage';
 import { getApiBaseUrl } from '@/lib/api/base-url';
-import type { ActiveSubscription } from '@/lib/subscriptions';
+import type {
+  ActiveSubscription,
+  PaymentRecord,
+  SubscriptionHistoryItem,
+} from '@/lib/subscriptions';
 
 const API_BASE = `${getApiBaseUrl()}/api/v1`;
 
@@ -94,4 +98,90 @@ export async function fetchActiveSubscriptions(
   const data = await res.json();
   const items: Record<string, unknown>[] = Array.isArray(data) ? data : (data.data ?? []);
   return items.map(normalizeActiveSubscription);
+}
+
+/**
+ * Shared GET for the per-user subscription resources: same auth/credentials
+ * shape as `fetchActiveSubscriptions`, same 401 → `SubscriptionsUnauthorizedError`
+ * contract, and always returns a plain array (unwrapping `{ data: [...] }`).
+ */
+async function getSubscriptionList(path: string): Promise<Record<string, unknown>[]> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'GET',
+    headers: authHeaders(),
+    credentials: 'include',
+    cache: 'no-store',
+  });
+
+  if (res.status === 401) {
+    clearStoredAuthToken();
+    throw new SubscriptionsUnauthorizedError();
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message ?? `Request failed: ${res.status}`);
+  }
+
+  const data = await res.json();
+  return Array.isArray(data) ? data : (data.data ?? []);
+}
+
+function toNumber(value: unknown): number {
+  if (typeof value === 'number') return value;
+  const parsed = parseFloat(String(value ?? '0'));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeHistoryItem(item: Record<string, unknown>): SubscriptionHistoryItem {
+  return {
+    id: String(item.id ?? ''),
+    creatorName: String(item.creatorName ?? item.creator ?? 'Creator'),
+    creatorUsername: String(item.creatorUsername ?? item.creator_username ?? ''),
+    planName: String(item.planName ?? item.plan_name ?? 'Subscription'),
+    price: toNumber(item.price),
+    currency: String(item.currency ?? 'XLM'),
+    startedAt: String(item.startedAt ?? item.createdAt ?? new Date().toISOString()),
+    endedAt: String(item.endedAt ?? item.currentPeriodEnd ?? new Date().toISOString()),
+    cancelReason: item.cancelReason ? String(item.cancelReason) : undefined,
+  };
+}
+
+const PAYMENT_STATUSES: PaymentRecord['status'][] = [
+  'completed',
+  'pending',
+  'failed',
+  'refunded',
+];
+
+function normalizePaymentRecord(item: Record<string, unknown>): PaymentRecord {
+  const rawStatus = String(item.status ?? 'completed') as PaymentRecord['status'];
+  return {
+    id: String(item.id ?? ''),
+    date: String(item.date ?? item.paidAt ?? item.createdAt ?? new Date().toISOString()),
+    creatorName: String(item.creatorName ?? item.creator ?? 'Creator'),
+    planName: String(item.planName ?? item.plan_name ?? 'Subscription'),
+    amount: toNumber(item.amount),
+    currency: String(item.currency ?? item.asset ?? 'XLM'),
+    status: PAYMENT_STATUSES.includes(rawStatus) ? rawStatus : 'completed',
+    description: item.description ? String(item.description) : undefined,
+  };
+}
+
+/**
+ * Fetch the current user's ended (cancelled/expired) subscriptions for the
+ * history section. Throws `SubscriptionsUnauthorizedError` on a 401.
+ */
+export async function fetchSubscriptionHistory(): Promise<SubscriptionHistoryItem[]> {
+  const items = await getSubscriptionList('/subscriptions/me/list?status=cancelled');
+  return items.map(normalizeHistoryItem);
+}
+
+/**
+ * Fetch the current user's payment records. Throws
+ * `SubscriptionsUnauthorizedError` on a 401.
+ */
+export async function fetchPaymentHistory(): Promise<PaymentRecord[]> {
+  const items = await getSubscriptionList('/analytics/payments');
+  return items.map(normalizePaymentRecord);
 }

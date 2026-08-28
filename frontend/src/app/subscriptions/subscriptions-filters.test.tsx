@@ -5,11 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SubscriptionsPage from './page';
 
 // Minimal mocks for dependencies
-vi.mock('@/lib/subscriptions', () => ({
-  MOCK_HISTORY: [],
-  MOCK_PAYMENTS: [],
-}));
-
 vi.mock('@/lib/formatting', () => ({
   formatCurrency: (amount: number, currency: string) => `${currency}${amount}`,
   formatDate: (iso: string) => iso,
@@ -35,6 +30,8 @@ vi.mock('@/lib/error-copy', () => ({
 
 vi.mock('@/lib/stellar', () => ({
   cancelSubscriptionOnSoroban: vi.fn(),
+  extendSubscriptionOnSoroban: vi.fn(),
+  getStellarConfig: () => ({ network: 'testnet', tokenContractId: 'C_TOKEN' }),
 }));
 
 vi.mock('@/contexts/ToastContext', () => ({
@@ -53,8 +50,19 @@ global.fetch = mockFetch;
 function makePagedResponse(items: unknown[] = []) {
   return Promise.resolve({
     ok: true,
+    status: 200,
     json: () => Promise.resolve({ data: items, total: items.length, hasMore: false, nextCursor: null }),
   });
+}
+
+/** URLs `fetch` was called with (first arg of each call). */
+function fetchedUrls(): string[] {
+  return mockFetch.mock.calls.map((call) => String(call[0]));
+}
+
+/** Assert some `fetch` call targeted a URL containing `substr`. */
+function expectFetched(substr: string) {
+  expect(fetchedUrls().some((url) => url.includes(substr))).toBe(true);
 }
 
 describe('SubscriptionsPage – filter and sort controls', () => {
@@ -74,71 +82,51 @@ describe('SubscriptionsPage – filter and sort controls', () => {
     render(<SubscriptionsPage />);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('status=active'),
-      );
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('sort=expiry'),
-      );
+      expectFetched('status=active');
+      expectFetched('sort=expiry');
     });
   });
 
   it('re-fetches when status filter changes to expired', async () => {
     render(<SubscriptionsPage />);
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('status=active')));
+    await waitFor(() => expectFetched('status=active'));
 
     fireEvent.change(screen.getByLabelText('Filter by status'), {
       target: { value: 'expired' },
     });
 
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('status=expired'),
-      );
-    });
+    await waitFor(() => expectFetched('status=expired'));
   });
 
   it('re-fetches when status filter changes to cancelled', async () => {
     render(<SubscriptionsPage />);
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('status=active')));
+    await waitFor(() => expectFetched('status=active'));
 
     fireEvent.change(screen.getByLabelText('Filter by status'), {
       target: { value: 'cancelled' },
     });
 
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('status=cancelled'),
-      );
-    });
+    await waitFor(() => expectFetched('status=cancelled'));
   });
 
   it('re-fetches when sort changes to created', async () => {
     render(<SubscriptionsPage />);
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('status=active')));
+    await waitFor(() => expectFetched('status=active'));
 
     fireEvent.change(screen.getByLabelText('Sort subscriptions'), {
       target: { value: 'created' },
     });
 
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('sort=created'),
-      );
-    });
+    await waitFor(() => expectFetched('sort=created'));
   });
 
   it('calls the correct API endpoint', async () => {
     render(<SubscriptionsPage />);
 
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/subscriptions/me/list'),
-      );
-    });
+    await waitFor(() => expectFetched('/api/v1/subscriptions/me/list'));
   });
 
   it('shows empty state when API returns no subscriptions', async () => {
@@ -153,12 +141,8 @@ describe('SubscriptionsPage – filter and sort controls', () => {
     render(<SubscriptionsPage />);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/subscriptions/me/list?status=cancelled'),
-      );
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/analytics/payments'),
-      );
+      expectFetched('/api/v1/subscriptions/me/list?status=cancelled');
+      expectFetched('/api/v1/analytics/payments');
     });
   });
 

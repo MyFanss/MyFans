@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "check:demo-routes": "node scripts/check-demo-routes.mjs",
     "analyze": "ANALYZE=true next build",
     "start": "next start",
     "lint": "eslint",

@@ -1,6 +1,7 @@
 import { signTransaction } from '@/lib/wallet';
 import { createAppError } from '@/types/errors';
 import { getStellarRuntimeConfig } from '@/lib/contract-config';
+import { assertWalletNetworkMatches } from '@/lib/network-guard';
 
 export function getStellarConfig() {
   return getStellarRuntimeConfig();
@@ -131,6 +132,7 @@ async function waitForTransactionResult(hash: string) {
 }
 
 export async function submitCreatePlanTx(signedXdr: string): Promise<CreateCreatorPlanResult> {
+  await assertWalletNetworkMatches();
   try {
     const SDK = await getStellarSdk();
     const server = await getRpcServer();
@@ -179,6 +181,7 @@ export async function submitCreatePlanTx(signedXdr: string): Promise<CreateCreat
 export async function createCreatorPlanOnSoroban(
   input: CreateCreatorPlanInput,
 ): Promise<CreateCreatorPlanResult> {
+  await assertWalletNetworkMatches();
   const xdr = await buildCreatePlanTx(input);
   const signedXdr = await signTransaction(xdr, {
     network: STELLAR_CONFIG.network,
@@ -239,6 +242,7 @@ export async function buildSubscriptionTx(
 }
 
 export async function submitTransaction(signedXdr: string) {
+  await assertWalletNetworkMatches();
   try {
     const SDK = await import('@stellar/stellar-sdk');
     const server = new SDK.Horizon.Server(STELLAR_CONFIG.horizonUrl);
@@ -308,7 +312,97 @@ export async function buildCancelSubscriptionTx({
 export async function cancelSubscriptionOnSoroban(
   input: CancelSubscriptionInput,
 ): Promise<{ txHash: string }> {
+  await assertWalletNetworkMatches();
   const xdr = await buildCancelSubscriptionTx(input);
+  const networkPassphrase = await getNetworkPassphrase();
+  const signedXdr = await signTransaction(xdr, {
+    network: getStellarConfig().network,
+    networkPassphrase,
+  });
+  const txHash = await submitTransaction(signedXdr);
+  return { txHash };
+}
+
+export interface ExtendSubscriptionInput {
+  fanAddress: string;
+  creatorAddress: string;
+  /** Token contract address the plan is denominated in (from plan metadata). */
+  tokenAddress: string;
+  /** Number of extra ledgers to extend the subscription's TTL by on-chain. */
+  extraLedgers?: number;
+}
+
+function isPausedContractError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /paused/i.test(message);
+}
+
+/**
+ * Builds an unsigned `extend_subscription` invocation for renewing an
+ * existing fan→creator subscription on the subscription contract. Mirrors
+ * `buildCancelSubscriptionTx` — same account/network/contract plumbing, but
+ * a different call and args (token + extra_ledgers, per the contract's
+ * `extend_subscription` entrypoint).
+ */
+export async function buildExtendSubscriptionTx({
+  fanAddress,
+  creatorAddress,
+  tokenAddress,
+  extraLedgers = 30 * 24 * 60 * 12, // ~30 days of 5s ledgers, default renewal window
+}: ExtendSubscriptionInput): Promise<string> {
+  const config = getStellarConfig();
+  if (!config.subscriptionContractId) {
+    throw createAppError('TX_BUILD_FAILED', {
+      message: 'Subscription contract is not configured',
+      description: 'Set NEXT_PUBLIC_SUBSCRIPTION_CONTRACT_ID before renewing on Soroban.',
+    });
+  }
+
+  try {
+    const SDK = await getStellarSdk();
+    const server = await getRpcServer();
+    const account = await server.getAccount(fanAddress);
+    const networkPassphrase = await getNetworkPassphrase();
+    const contract = new SDK.Contract(config.subscriptionContractId);
+
+    const tx = new SDK.TransactionBuilder(account, {
+      fee: SDK.BASE_FEE,
+      networkPassphrase,
+    })
+      .addOperation(
+        contract.call(
+          'extend_subscription',
+          SDK.Address.fromString(fanAddress).toScVal(),
+          SDK.Address.fromString(creatorAddress).toScVal(),
+          SDK.Address.fromString(tokenAddress).toScVal(),
+          SDK.nativeToScVal(extraLedgers, { type: 'u32' }),
+        ),
+      )
+      .setTimeout(60)
+      .build();
+
+    const preparedTx = await server.prepareTransaction(tx);
+    return preparedTx.toXDR();
+  } catch (err) {
+    if (isPausedContractError(err)) {
+      throw createAppError('TX_BUILD_FAILED', {
+        message: 'This creator’s subscription plan is currently paused',
+        description: 'The creator has paused new renewals. Please try again later or contact the creator.',
+        cause: err instanceof Error ? err : undefined,
+      });
+    }
+    throw createAppError('TX_BUILD_FAILED', {
+      message: err instanceof Error ? err.message : 'Failed to build renewal transaction',
+      cause: err instanceof Error ? err : undefined,
+    });
+  }
+}
+
+export async function extendSubscriptionOnSoroban(
+  input: ExtendSubscriptionInput,
+): Promise<{ txHash: string }> {
+  await assertWalletNetworkMatches();
+  const xdr = await buildExtendSubscriptionTx(input);
   const networkPassphrase = await getNetworkPassphrase();
   const signedXdr = await signTransaction(xdr, {
     network: getStellarConfig().network,

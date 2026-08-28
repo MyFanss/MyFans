@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { demoRoutesEnabled, isDemoRoute } from '@/lib/demo-routes';
 
 /**
  * Middleware to protect authenticated routes.
@@ -22,6 +23,21 @@ const PROTECTED_ROUTES = [
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Demo / component-story routes. When demos are disabled (a plain
+  // production build) they are not compiled at all and 404 on their own;
+  // this is defense-in-depth in case one is ever reachable. When they are
+  // enabled (dev / staging preview) keep them out of search indexes.
+  if (isDemoRoute(pathname)) {
+    if (!demoRoutesEnabled()) {
+      // Demos are excluded from the prod build entirely, so this only fires
+      // on a misconfiguration — a bare 404 is fine here.
+      return new NextResponse('Not Found', { status: 404 });
+    }
+    const res = NextResponse.next();
+    res.headers.set('X-Robots-Tag', 'noindex, nofollow');
+    return res;
+  }
 
   // Check if the current route needs authentication
   const isProtectedRoute = PROTECTED_ROUTES.some(route => pathname.startsWith(route));

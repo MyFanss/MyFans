@@ -17,6 +17,7 @@ import {
   toAtomicPlanAmount,
 } from '@/lib/plan-form';
 import { createCreatorPlanOnSoroban } from '@/lib/stellar';
+import NetworkMismatchBanner from '@/components/NetworkMismatchBanner';
 import { createAppError } from '@/types/errors';
 import { DashboardSectionBoundary } from '@/components/dashboard';
 import { createPlan, getCreatorPlans, generatePlanIdempotencyKey, type CreatePlanRequest } from '@/lib/api/plans';
@@ -178,9 +179,11 @@ export default function PlansPage() {
     }
 
     const loadApiPlans = async () => {
+      const creatorId = sessionData?.creator?.id;
+      if (!creatorId) return;
       try {
         setLoading(true);
-        const result = await getCreatorPlans(sessionData.creator.id, 1, 50);
+        const result = await getCreatorPlans(creatorId, 1, 50);
         const converted: CreatorDashboardPlan[] = result.data.map((plan) => ({
           id: `api-${plan.id}`,
           name: `Plan ${plan.id}`,
@@ -338,6 +341,9 @@ export default function PlansPage() {
           Create token-priced plans for your fans, sign them with your creator wallet, and keep the dashboard in sync with pending and confirmed Soroban state.
         </p>
       </div>
+
+      {/* create_plan signing/submitting is refused on a network mismatch. */}
+      <NetworkMismatchBanner />
 
       <DashboardSectionBoundary label="Wallet status">
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">

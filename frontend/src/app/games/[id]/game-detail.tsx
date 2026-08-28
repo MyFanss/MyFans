@@ -10,7 +10,8 @@ interface GameDetailProps {
 }
 
 export function GameDetail({ game }: GameDetailProps) {
-  const { isAuthenticated, isLoading, userId } = useAuth();
+  const { isAuthenticated, isLoading, sessionData } = useAuth();
+  const userId = sessionData?.id ?? null;
   const [isJoining, setIsJoining] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);

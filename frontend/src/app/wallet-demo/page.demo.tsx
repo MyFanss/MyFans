@@ -1,9 +1,10 @@
 import { notFound } from 'next/navigation';
 import { WalletModalDemo } from '@/components/wallet/WalletModalDemo';
+import { demoRoutesEnabled } from '@/lib/demo-routes';
 
 export default function WalletDemoPage() {
-  // Env gate: disable in production
-  if (process.env.NODE_ENV === 'production') {
+  // Demo route: 404 in production unless NEXT_PUBLIC_FLAG_DEMOS=true.
+  if (!demoRoutesEnabled()) {
     notFound();
   }
 
