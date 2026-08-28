@@ -209,6 +209,47 @@ export class PostsService {
     );
   }
 
+  /**
+   * Cursor-paginated, published, non-deleted posts across all authors, newest first.
+   * Used by the public feed timeline.
+   */
+  async findPublicFeed(
+    cursor?: string,
+    limit = 20,
+  ): Promise<PaginatedResponseDto<PostDto>> {
+    const qb = this.postRepo
+      .createQueryBuilder('post')
+      .where('post.isPublished = :isPublished', { isPublished: true })
+      .andWhere('post.deletedAt IS NULL')
+      .orderBy('post.createdAt', 'DESC')
+      .addOrderBy('post.id', 'DESC')
+      .take(limit + 1);
+
+    const decoded = cursor ? this.decodeFeedCursor(cursor) : null;
+    if (decoded) {
+      qb.andWhere(
+        '(post.createdAt < :cCreatedAt OR (post.createdAt = :cCreatedAt AND post.id < :cId))',
+        { cCreatedAt: decoded.createdAt, cId: decoded.id },
+      );
+    }
+
+    const rows = await qb.getMany();
+    const hasMore = rows.length > limit;
+    if (hasMore) {
+      rows.pop();
+    }
+
+    const nextCursor =
+      rows.length > 0 ? this.encodeFeedCursor(rows[rows.length - 1]) : null;
+
+    return new PaginatedResponseDto(
+      rows.map((p) => this.toDto(p)),
+      limit,
+      nextCursor,
+      hasMore,
+    );
+  }
+
   private encodeFeedCursor(post: Post): string {
     return Buffer.from(`${post.createdAt.toISOString()}|${post.id}`).toString(
       'base64',
