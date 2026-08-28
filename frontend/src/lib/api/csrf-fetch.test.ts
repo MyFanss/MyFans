@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { csrfFetch } from './csrf-fetch';
+import { csrfFetch, csrfHeaders, methodNeedsCsrf } from './csrf-fetch';
 import * as csrfModule from '@/lib/csrf';
 
 global.fetch = vi.fn();
@@ -92,5 +92,54 @@ describe('csrfFetch', () => {
     ).rejects.toThrow(/csrf token/i);
 
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes 401 (auth) from 403 (csrf) and does not clear the token on 401', async () => {
+    vi.mocked(csrfModule.getCsrfToken).mockResolvedValue('good-token');
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 })
+    );
+
+    await expect(
+      csrfFetch('https://api.example.com/subscriptions/checkout', { method: 'POST' })
+    ).rejects.toThrow(/not authenticated|sign in/i);
+
+    expect(csrfModule.invalidateCsrfToken).not.toHaveBeenCalled();
+  });
+
+  it('sends credentials so the CSRF cookie rides along', async () => {
+    vi.mocked(csrfModule.getCsrfToken).mockResolvedValue('t');
+    vi.mocked(global.fetch).mockResolvedValueOnce(new Response('{}', { status: 200 }));
+
+    await csrfFetch('https://api.example.com/creators/plans', { method: 'POST' });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.example.com/creators/plans',
+      expect.objectContaining({ credentials: 'include' })
+    );
+  });
+});
+
+describe('csrfHeaders / methodNeedsCsrf', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('only flags mutating methods', () => {
+    expect(methodNeedsCsrf('GET')).toBe(false);
+    expect(methodNeedsCsrf('head')).toBe(false);
+    for (const m of ['POST', 'put', 'PATCH', 'delete']) {
+      expect(methodNeedsCsrf(m)).toBe(true);
+    }
+  });
+
+  it('returns the X-CSRF-Token header for a checkout POST', async () => {
+    vi.mocked(csrfModule.getCsrfToken).mockResolvedValue('checkout-token');
+    await expect(csrfHeaders('POST')).resolves.toEqual({ 'X-CSRF-Token': 'checkout-token' });
+  });
+
+  it('returns an empty object for a GET', async () => {
+    await expect(csrfHeaders('GET')).resolves.toEqual({});
+    expect(csrfModule.getCsrfToken).not.toHaveBeenCalled();
   });
 });

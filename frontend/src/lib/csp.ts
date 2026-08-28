@@ -65,7 +65,39 @@ export interface BuildCspOptions {
   apiHost: string;
   /** Whether to build the stricter production policy. */
   isProd: boolean;
+  /**
+   * Whether to add `localhost:*` / `127.0.0.1:*` to `connect-src`.
+   *
+   * Defaults to `!isProd`. Deployed non-production environments (preview /
+   * staging) run a production build (`isProd === true`) so they already get
+   * the strict policy; pass `false` explicitly for any non-prod *build* that
+   * is nonetheless a shared deployment, so a preview URL never ships a
+   * policy that trusts `localhost`.
+   */
+  allowLocalhost?: boolean;
   env?: EnvSource;
+}
+
+/**
+ * Resolve whether `localhost` sources belong in the policy.
+ *
+ * `localhost` is a dev-only convenience. It is dropped for a production
+ * build, and also for any environment that identifies itself as a shared
+ * deployment via `NEXT_PUBLIC_APP_ENV` / `VERCEL_ENV`
+ * (`preview` / `staging` / `production`), even if that build was
+ * accidentally made with `NODE_ENV !== 'production'`.
+ */
+export function shouldAllowLocalhost(
+  isProd: boolean,
+  env: EnvSource = process.env,
+): boolean {
+  if (isProd) return false;
+  const appEnv = (env.NEXT_PUBLIC_APP_ENV ?? env.VERCEL_ENV ?? '')
+    .toString()
+    .trim()
+    .toLowerCase();
+  if (['preview', 'staging', 'production'].includes(appEnv)) return false;
+  return true;
 }
 
 /**
@@ -76,16 +108,19 @@ export interface BuildCspOptions {
 export function buildContentSecurityPolicy({
   apiHost,
   isProd,
+  allowLocalhost,
   env = process.env,
 }: BuildCspOptions): string {
   const connectHosts = buildConnectSrcHosts(apiHost, env);
+  const localhostAllowed =
+    allowLocalhost ?? shouldAllowLocalhost(isProd, env);
 
   const connectSrc = [
     "'self'",
     ...connectHosts,
-    // Add localhost for dev
-    !isProd && 'localhost:*',
-    !isProd && '127.0.0.1:*',
+    // Add localhost for local dev only (never on a deployed preview/staging).
+    localhostAllowed && 'localhost:*',
+    localhostAllowed && '127.0.0.1:*',
   ]
     .filter(Boolean)
     .join(' ');
