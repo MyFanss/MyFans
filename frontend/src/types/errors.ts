@@ -58,6 +58,7 @@ export type ErrorCode =
   | 'PUBLISH_FAILED'
   | 'ACCESS_DENIED'
   | 'PROFILE_ERROR'
+  | 'REFERRAL_CLAIM_FAILED'
   | 'CREATOR_NOT_FOUND'
   | 'WALLET_NOT_INSTALLED'
   | 'UNSUPPORTED_WALLET'
@@ -579,6 +580,15 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       category: 'server',
       recoverable: true,
       actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    REFERRAL_CLAIM_FAILED: {
+      message: 'Referral code not applied',
+      description:
+        'The code could not be applied to this checkout. You can continue subscribing without it.',
+      severity: 'warning',
+      category: 'server',
+      recoverable: true,
+      actions: [{ label: 'Dismiss', type: 'dismiss' }],
     },
     CREATOR_NOT_FOUND: {
       message: 'Creator information not found',

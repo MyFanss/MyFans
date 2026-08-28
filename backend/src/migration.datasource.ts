@@ -8,6 +8,7 @@ import { CreateWalletChallenges1711554834000 } from './database/migrations/17115
 import { CreateIdempotencyKeys1711554835000 } from './idempotency/1711554835000-CreateIdempotencyKeys';
 import { AddQueuedAtToModerationFlags1745000000000 } from './moderation/1745000000000-AddQueuedAtToModerationFlags';
 import { CreateReferralTables1745000000000 } from './referral/1745000000000-CreateReferralTables';
+import { AddReferralAttribution1745500000000 } from './referral/1745500000000-AddReferralAttribution';
 import { AddDigestColumnsToNotifications1745100000000 } from './notifications/1745100000000-AddDigestColumnsToNotifications';
 import { AddOnboardingStateToUsers1745200000000 } from './users/1745200000000-AddOnboardingStateToUsers';
 import { AddRoleToUsers1747000000000 } from './users/1747000000000-AddRoleToUsers';
@@ -27,6 +28,7 @@ import { ModerationFlag } from './moderation/entities/moderation-flag.entity';
 import { ModerationAuditLog } from './moderation/entities/moderation-audit-log.entity';
 import { ReferralCode } from './referral/entities/referral-code.entity';
 import { ReferralRedemption } from './referral/entities/referral-redemption.entity';
+import { ReferralReward } from './referral/entities/referral-reward.entity';
 import { Notification } from './notifications/entities/notification.entity';
 import { EmailOutboxEntry } from './notifications/entities/email-outbox-entry.entity';
 import { NotificationRetryJobEntity } from './notifications/entities/notification-retry-job.entity';
@@ -67,6 +69,7 @@ export const migrationDataSource = new DataSource({
     CreateReferralTables1745000000000,
     AddDigestColumnsToNotifications1745100000000,
     AddOnboardingStateToUsers1745200000000,
+    AddReferralAttribution1745500000000,
     AddRoleToUsers1747000000000,
     CreateSocialLinksTable1748000000000,
     CreateCreatorOnchainMappings1749000000000,
@@ -84,6 +87,7 @@ export const migrationDataSource = new DataSource({
     ModerationAuditLog,
     ReferralCode,
     ReferralRedemption,
+    ReferralReward,
     Notification,
     EmailOutboxEntry,
     NotificationRetryJobEntity,

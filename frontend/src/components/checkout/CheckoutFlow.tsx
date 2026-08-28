@@ -34,6 +34,7 @@ import CheckoutResultDisplay from "./CheckoutResult";
 import TxFailureRecovery from "./TxFailureRecovery";
 import TransactionProgress from "./TransactionProgress"; 
 import { ReferralCodeInput } from "@/components/referral/ReferralCodeInput";
+import { claimReferralCode } from "@/lib/referral";
 
 export type CheckoutStep = "select" | "preview" | "confirm" | "result";
 
@@ -461,10 +462,33 @@ export default function CheckoutFlow({
           {referralEnabled && (
             <ReferralCodeInput
               onValidated={(code, valid) => {
-                if (valid) setAppliedReferralCode(code);
-                else setAppliedReferralCode(null);
+                if (!valid) {
+                  setAppliedReferralCode(null);
+                  return;
+                }
+                setAppliedReferralCode(code);
+                // Record a pending claim now; the backend attributes it (and
+                // pays the code owner) only on the first SubscriptionCreatedEvent.
+                void claimReferralCode(code, fanAddress).then((result) => {
+                  if (!result.ok) {
+                    setAppliedReferralCode(null);
+                    showError("REFERRAL_CLAIM_FAILED", {
+                      message: "Referral code not applied",
+                      description: result.reason,
+                    });
+                  }
+                });
               }}
             />
+          )}
+          {referralEnabled && appliedReferralCode && (
+            <p
+              role="status"
+              className="text-xs font-medium text-green-600 dark:text-green-400"
+            >
+              ✓ Referral code {appliedReferralCode} will be applied on your first
+              subscription.
+            </p>
           )}
           <div className="flex gap-3">
             {onCancel && (
