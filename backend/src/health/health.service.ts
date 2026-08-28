@@ -2,12 +2,18 @@ import { Injectable } from '@nestjs/common';
 import * as net from 'net';
 import * as tls from 'tls';
 import { DataSource } from 'typeorm';
-import { SorobanRpcService, SorobanHealthStatus } from '../common/services/soroban-rpc.service';
-import { QueueMetricsService, QueueSnapshot } from '../common/services/queue-metrics.service';
+import {
+  SorobanRpcService,
+  SorobanHealthStatus,
+} from '../common/services/soroban-rpc.service';
+import {
+  QueueMetricsService,
+  QueueSnapshot,
+} from '../common/services/queue-metrics.service';
 
 export interface HealthCheckResult {
-    status: 'up' | 'down' | 'degraded';
-    timestamp: string;
+  status: 'up' | 'down' | 'degraded';
+  timestamp: string;
 }
 
 /**
@@ -18,31 +24,40 @@ export interface HealthCheckResult {
  * does not drag the aggregate health to `degraded`.
  */
 export interface RedisHealthStatus {
-    status: 'up' | 'down' | 'not_configured';
-    latencyMs?: number;
-    error?: string;
+  status: 'up' | 'down' | 'not_configured';
+  latencyMs?: number;
+  error?: string;
 }
 
 export interface DetailedHealthCheckResult extends HealthCheckResult {
-    checks?: {
-        database?: { status: 'up' | 'down' | 'degraded'; error?: string };
-        sorobanRpc?: SorobanHealthStatus;
-        sorobanContract?: SorobanHealthStatus;
-    };
+  checks?: {
+    database?: { status: 'up' | 'down' | 'degraded'; error?: string };
+    sorobanRpc?: SorobanHealthStatus;
+    sorobanContract?: SorobanHealthStatus;
+  };
 }
 
 /**
  * Readiness result — unlike liveness (`getHealth`), this actually probes
  * subsystems. The database is mandatory: a failed DB probe fails readiness
- * so a load balancer stops routing traffic to this instance. Soroban RPC is
- * probed for visibility but is optional and never fails readiness on its own,
- * since the API remains functional for non-chain reads/writes without it.
+ * so a load balancer stops routing traffic to this instance. Redis is
+ * mandatory too when it is configured (an instance whose cache/session store
+ * is down is not fit for traffic); an unconfigured Redis is omitted. Soroban
+ * RPC is probed for visibility but is optional and never fails readiness on
+ * its own, since the API remains functional for non-chain reads/writes
+ * without it.
  */
 export interface ReadinessResult {
   status: 'up' | 'down';
   timestamp: string;
   checks: {
-    database: { status: 'up' | 'down' | 'degraded'; latencyMs?: number; error?: string };
+    database: {
+      status: 'up' | 'down' | 'degraded';
+      latencyMs?: number;
+      error?: string;
+    };
+    // Omitted when Redis is not configured (optional subsystem).
+    redis?: RedisHealthStatus;
     sorobanRpc: SorobanHealthStatus;
   };
 }
@@ -53,7 +68,11 @@ export interface AggregatedHealthResult {
   uptime: number;
   version: string;
   subsystems: {
-    database: { status: 'up' | 'down' | 'degraded'; latencyMs?: number; error?: string };
+    database: {
+      status: 'up' | 'down' | 'degraded';
+      latencyMs?: number;
+      error?: string;
+    };
     // Omitted entirely when Redis is not configured (optional subsystem).
     redis?: RedisHealthStatus;
     sorobanRpc: SorobanHealthStatus;
@@ -99,7 +118,10 @@ export class HealthService {
 
     if (dbHealth.status === 'down') {
       overallStatus = 'down';
-    } else if (rpcHealth.status === 'down' || contractHealth.status === 'down') {
+    } else if (
+      rpcHealth.status === 'down' ||
+      contractHealth.status === 'down'
+    ) {
       overallStatus = 'down';
     } else if (
       rpcHealth.status === 'degraded' ||
@@ -131,12 +153,13 @@ export class HealthService {
    *   overall 'down'     → 503
    */
   async getAggregatedHealth(): Promise<AggregatedHealthResult> {
-    const [dbHealth, redisHealth, rpcHealth, contractHealth] = await Promise.all([
-      this.checkDatabaseWithLatency(),
-      this.checkRedis(),
-      this.checkSorobanRpc(),
-      this.checkSorobanContract(),
-    ]);
+    const [dbHealth, redisHealth, rpcHealth, contractHealth] =
+      await Promise.all([
+        this.checkDatabaseWithLatency(),
+        this.checkRedis(),
+        this.checkSorobanRpc(),
+        this.checkSorobanContract(),
+      ]);
 
     // An unconfigured Redis is skipped so it neither counts toward the summary
     // nor degrades the aggregate status.
@@ -179,7 +202,10 @@ export class HealthService {
     };
   }
 
-  async checkDatabase(): Promise<{ status: 'up' | 'down' | 'degraded'; error?: string }> {
+  async checkDatabase(): Promise<{
+    status: 'up' | 'down' | 'degraded';
+    error?: string;
+  }> {
     try {
       await this.dataSource.query('SELECT 1');
       return { status: 'up' };
@@ -270,8 +296,12 @@ export class HealthService {
     const useTls = parsed.protocol === 'rediss:';
     const host = parsed.hostname;
     const port = parsed.port ? Number(parsed.port) : 6379;
-    const password = parsed.password ? decodeURIComponent(parsed.password) : undefined;
-    const username = parsed.username ? decodeURIComponent(parsed.username) : undefined;
+    const password = parsed.password
+      ? decodeURIComponent(parsed.password)
+      : undefined;
+    const username = parsed.username
+      ? decodeURIComponent(parsed.username)
+      : undefined;
 
     return new Promise<void>((resolve, reject) => {
       const socket = useTls
@@ -340,21 +370,31 @@ export class HealthService {
   /**
    * Readiness probe. Unlike `getHealth()` (liveness — always up while the
    * process is running), this actually checks whether the instance is fit
-   * to receive traffic: the database must be reachable, or readiness fails.
-   * Soroban RPC is probed and reported for visibility but does not gate
-   * readiness on its own.
+   * to receive traffic: the database must be reachable, and Redis — when
+   * configured — must answer PING, or readiness fails. Soroban RPC is probed
+   * and reported for visibility but does not gate readiness on its own.
    */
   async getReadiness(): Promise<ReadinessResult> {
-    const [dbHealth, rpcHealth] = await Promise.all([
+    const [dbHealth, redisHealth, rpcHealth] = await Promise.all([
       this.checkDatabaseWithLatency(),
+      this.checkRedis(),
       this.checkSorobanRpc(),
     ]);
 
+    // An unconfigured Redis is omitted from the report and does not gate
+    // readiness. A configured-but-down Redis leaves the instance without its
+    // cache/session store, so it is not fit to receive traffic.
+    const redisConfigured = redisHealth.status !== 'not_configured';
+    const ready =
+      dbHealth.status !== 'down' &&
+      (!redisConfigured || redisHealth.status !== 'down');
+
     return {
-      status: dbHealth.status === 'down' ? 'down' : 'up',
+      status: ready ? 'up' : 'down',
       timestamp: new Date().toISOString(),
       checks: {
         database: dbHealth,
+        ...(redisConfigured ? { redis: redisHealth } : {}),
         sorobanRpc: rpcHealth,
       },
     };
@@ -377,6 +417,7 @@ export class HealthService {
 
   private readonly HEALTH_CHECKS = [
     { name: 'app', endpoint: '/health' },
+    { name: 'ready', endpoint: '/health/ready' },
     { name: 'detailed', endpoint: '/health/detailed' },
     { name: 'aggregate', endpoint: '/health/aggregate' },
     { name: 'db', endpoint: '/health/db' },

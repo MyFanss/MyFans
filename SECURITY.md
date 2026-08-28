@@ -19,3 +19,15 @@ update or delete endpoint for audit rows.
 `src/common/guards`, and historical schema migrations live under
 `src/database/migrations`, so deleting deprecated code no longer removes
 production controls or migration history.
+
+## Finding #1 — static health endpoint did not probe dependencies (#1620)
+
+**Resolved.** `GET /v1/health` previously reported a static `up` without
+probing any subsystem, so an orchestrator (k8s liveness/readiness probe, load
+balancer health check) could keep routing traffic to an instance whose
+database connection was completely down. Liveness (`GET /v1/health`) now stays
+a cheap process-up check by design — a dependency outage must not restart an
+otherwise-healthy process — and readiness moved to `GET /v1/health/ready`,
+which probes the database (mandatory, 503 on failure) and Redis when
+configured (mandatory, 503 on failure), while Soroban RPC is probed and
+reported for visibility only and never fails readiness on its own.
