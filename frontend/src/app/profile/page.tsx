@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/contexts/ToastContext";
 import { fetchMe, patchMe, MeResponse, ProfileUnauthorizedError } from "@/lib/api/profile";
+import { useBackendNetwork } from "@/hooks/useBackendNetwork";
+import { isPublicStellarNetwork } from "@/lib/network-label";
 
 // Types
 interface SocialLinks {
@@ -27,7 +29,6 @@ interface ProfileData {
 
 interface WalletData {
   address: string | null;
-  network: "mainnet" | "testnet";
   isConnected: boolean;
 }
 
@@ -98,9 +99,9 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [wallet] = useState<WalletData>({
     address: null,
-    network: "testnet",
     isConnected: false,
   });
+  const networkLabel = useBackendNetwork();
   const [accountStatus] = useState<AccountStatus>({
     creator: "pending",
     fan: "inactive",
@@ -565,10 +566,8 @@ export default function ProfilePage() {
                         Network
                       </label>
                       <div className="mt-1">
-                        <Badge variant={wallet.network === "mainnet" ? "success" : "warning"}>
-                          {wallet.network === "mainnet"
-                            ? "Stellar Mainnet"
-                            : "Stellar Testnet"}
+                        <Badge variant={isPublicStellarNetwork(networkLabel) ? "success" : "warning"}>
+                          {networkLabel}
                         </Badge>
                       </div>
                     </div>

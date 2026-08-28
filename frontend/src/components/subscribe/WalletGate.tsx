@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { isWalletInstalled, connectWallet } from '@/lib/wallet';
+import { setWalletSession } from '@/lib/client-session';
 
 interface WalletGateProps {
   onConnected: (address: string) => void;
@@ -22,6 +23,8 @@ export default function WalletGate({ onConnected }: WalletGateProps) {
     try {
       const address = await connectWallet('freighter');
       if (address) {
+        // Record the signer so signTransaction() dispatches to Freighter later.
+        setWalletSession({ address, walletType: 'freighter' });
         onConnected(address);
       }
     } catch (err) {

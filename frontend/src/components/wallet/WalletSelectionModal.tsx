@@ -13,6 +13,8 @@ import {
 } from '@/lib/wallet';
 import { errorToastWithCause } from '@/lib/error-copy';
 import { useBackendNetwork } from '@/hooks/useBackendNetwork';
+import { clearWalletSession, setWalletSession } from '@/lib/client-session';
+import { WALLET_CONNECT_URI_EVENT } from '@/lib/walletconnect';
 
 interface WalletSelectionModalProps {
   isOpen: boolean;
@@ -39,6 +41,18 @@ export function WalletSelectionModal({
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const walletConnectEnabled = isWalletConnectEnabled();
   const backendNetwork = useBackendNetwork();
+  const [walletConnectUri, setWalletConnectUri] = useState<string | null>(null);
+
+  // Surface the WalletConnect pairing URI (from @/lib/walletconnect) so the fan
+  // can scan / deep-link into their mobile wallet while the connect is pending.
+  useEffect(() => {
+    const handleUri = (event: Event) => {
+      const detail = (event as CustomEvent<{ uri: string | null }>).detail;
+      setWalletConnectUri(detail?.uri ?? null);
+    };
+    window.addEventListener(WALLET_CONNECT_URI_EVENT, handleUri);
+    return () => window.removeEventListener(WALLET_CONNECT_URI_EVENT, handleUri);
+  }, []);
 
   const handleClose = useCallback(() => {
     if (connectionState.status === 'connecting') return;
@@ -158,6 +172,8 @@ export function WalletSelectionModal({
         walletType,
         network: backendNetwork,
       });
+      // Record which wallet signed in so signTransaction() dispatches correctly.
+      setWalletSession({ address, walletType });
 
       onConnect?.(address, walletType);
       showSuccess('Wallet connected', `${walletType} wallet is ready.`);
@@ -191,6 +207,7 @@ export function WalletSelectionModal({
 
   const handleDisconnect = useCallback(() => {
     setConnectionState({ status: 'disconnected' });
+    clearWalletSession();
     onDisconnect?.();
   }, [onDisconnect]);
 
@@ -321,6 +338,29 @@ export function WalletSelectionModal({
               onInstall={() => handleInstallWallet('walletconnect')}
               disabled={connectionState.status === 'connecting'}
             />
+
+            {/* WalletConnect pairing: scan or deep-link into a mobile wallet */}
+            {connectionState.status === 'connecting' &&
+              connectionState.walletType === 'walletconnect' &&
+              walletConnectUri && (
+                <div
+                  className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900"
+                  data-testid="walletconnect-pairing"
+                >
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                    Approve the connection in your wallet
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                    Open your mobile wallet and scan the QR code, or use the link below.
+                  </p>
+                  <a
+                    href={walletConnectUri}
+                    className="mt-2 block break-all text-xs font-medium text-primary-600 hover:underline dark:text-primary-400"
+                  >
+                    Open wallet
+                  </a>
+                </div>
+              )}
 
             {/* Error message */}
             {connectionState.status === 'error' && (

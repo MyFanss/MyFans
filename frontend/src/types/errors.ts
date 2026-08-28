@@ -62,8 +62,7 @@ export type ErrorCode =
   | 'WALLET_NOT_INSTALLED'
   | 'UNSUPPORTED_WALLET'
   | 'WALLET_CONNECTION_REJECTED'
-  | 'WALLET_ADDRESS_MISMATCH'
-  | 'WALLET_SIGNATURE_REJECTED'
+  | 'WALLET_CONNECT_CONFIG_MISSING'
   | 'NETWORK_MISMATCH'
   | 'WITHDRAWAL_FAILED'
   | 'ACCOUNT_DELETION_FAILED'
@@ -609,6 +608,15 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       category: 'wallet',
       recoverable: true,
       actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    WALLET_CONNECT_CONFIG_MISSING: {
+      message: 'WalletConnect is not configured',
+      description:
+        'This build has WalletConnect enabled but no project ID. Set NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID, or connect with Freighter or Lobstr.',
+      severity: 'error',
+      category: 'wallet',
+      recoverable: false,
+      actions: [],
     },
     NETWORK_MISMATCH: {
       message: 'Wrong network',
