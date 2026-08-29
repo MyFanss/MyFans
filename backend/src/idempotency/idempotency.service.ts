@@ -20,6 +20,9 @@ export interface CachedResponse {
 const DEFAULT_TTL_MS =
   parseInt(process.env.IDEMPOTENCY_TTL_HOURS ?? '24', 10) * 60 * 60 * 1000;
 
+const DEFAULT_BATCH_SIZE =
+  parseInt(process.env.IDEMPOTENCY_CLEANUP_BATCH_SIZE ?? '1000', 10);
+
 @Injectable()
 export class IdempotencyService {
   private readonly logger = new Logger(IdempotencyService.name);
@@ -43,15 +46,21 @@ export class IdempotencyService {
     path: string,
     ttlMs = DEFAULT_TTL_MS,
   ): Promise<CachedResponse | null> {
-    const existing = await this.repo.findOne({
-      where: { key, fingerprint },
-    });
+    // Look up by key alone first so we can detect body-hash mismatches.
+    const existing = await this.repo.findOne({ where: { key } });
 
     if (existing) {
       // Expired record — treat as if it never existed (allow re-use).
       if (existing.expires_at < new Date()) {
         await this.repo.remove(existing);
         // Fall through to create a fresh record below.
+      } else if (existing.fingerprint !== fingerprint) {
+        // Same key but different fingerprint (different user or different
+        // request body). The fingerprint now includes a SHA-256 hash of the
+        // request body, so this catches payload-mismatch reuse.
+        throw new ConflictException(
+          'Idempotency-Key has already been used with a different request body or by a different caller.',
+        );
       } else if (!existing.is_complete) {
         // First request is still processing — reject concurrent retry.
         throw new ConflictException(
@@ -127,17 +136,32 @@ export class IdempotencyService {
   }
 
   /**
-   * Purge all expired records. Intended to be called by a scheduled job.
-   * Returns the number of deleted rows.
+   * Purge expired records in batches to avoid long-running deletes.
+   * Returns the total number of deleted rows across all batches.
    */
-  async purgeExpired(): Promise<number> {
-    const result = await this.repo.delete({
-      expires_at: LessThan(new Date()),
-    });
-    const count = result.affected ?? 0;
-    if (count > 0) {
-      this.logger.log(`Purged ${count} expired idempotency key(s).`);
+  async purgeExpired(batchSize = DEFAULT_BATCH_SIZE): Promise<number> {
+    let totalDeleted = 0;
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const expired = await this.repo.find({
+        where: { expires_at: LessThan(new Date()) },
+        select: ['id'],
+        take: batchSize,
+      });
+
+      if (expired.length === 0) break;
+
+      const ids = expired.map((r) => r.id);
+      const result = await this.repo.delete(ids);
+      totalDeleted += result.affected ?? 0;
+
+      if (expired.length < batchSize) break;
     }
-    return count;
+
+    if (totalDeleted > 0) {
+      this.logger.log(`Purged ${totalDeleted} expired idempotency key(s).`);
+    }
+    return totalDeleted;
   }
 }

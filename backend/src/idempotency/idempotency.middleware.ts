@@ -7,6 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
+import * as crypto from 'crypto';
 import { IdempotencyService } from './idempotency.service';
 
 /** Header name clients must send. */
@@ -126,13 +127,24 @@ export class IdempotencyMiddleware implements NestMiddleware {
   }
 
   /**
-   * Build a caller fingerprint.
-   * Uses the authenticated user's ID when available (set by auth middleware),
-   * otherwise falls back to the client IP address.
+   * Build a caller fingerprint that includes the caller identity and request
+   * body hash. The body hash ensures that reusing the same idempotency key
+   * with a different payload is detected and rejected with 409 Conflict.
    */
   private buildFingerprint(req: Request): string {
+    const identity = this.callerIdentity(req);
+    const bodyHash = this.hashBody(req.body);
+    return `${identity}|${bodyHash}`;
+  }
+
+  private callerIdentity(req: Request): string {
     const userId = (req as any).user?.id ?? (req as any).user?.userId;
     if (userId) return `user:${userId}`;
     return `ip:${req.ip ?? 'unknown'}`;
+  }
+
+  private hashBody(body: unknown): string {
+    const serialised = body ? JSON.stringify(body) : '';
+    return crypto.createHash('sha256').update(serialised).digest('hex');
   }
 }
