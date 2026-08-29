@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import type { MetricsSnapshot } from '../common/services/http-metrics.service';
 import { HttpMetricsService } from '../common/services/http-metrics.service';
 import { RpcMetricsService, RpcMetricsSnapshot } from '../common/services/rpc-metrics.service';
+import { BusinessMetricsService } from './business-metrics.service';
 import { ModerationSlaService, ModerationSlaSnapshot } from '../moderation/moderation-sla.service';
 import { Public } from '../common/decorators/public.decorator';
 import { MetricsGuard } from './metrics.guard';
@@ -39,6 +40,7 @@ export class MetricsController {
   constructor(
     private readonly httpMetrics: HttpMetricsService,
     private readonly rpcMetrics: RpcMetricsService,
+    private readonly businessMetrics: BusinessMetricsService,
     private readonly moderationSla: ModerationSlaService,
   ) {}
 
@@ -92,7 +94,9 @@ export class MetricsController {
       );
     }
 
-    return this.renderPrometheus(httpSnap, rpcSnap);
+    const httpProm = this.renderPrometheus(httpSnap, rpcSnap);
+    const bizProm = this.businessMetrics.toPrometheus();
+    return httpProm + '\n' + bizProm;
   }
 
   private buildAlerts(

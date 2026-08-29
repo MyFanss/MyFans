@@ -21,6 +21,7 @@ import { RequestContextService } from '../../common/services/request-context.ser
 import { FeatureFlagsService } from '../../feature-flags/feature-flags.service';
 import { SubscriptionCacheService } from '../subscription-cache.service';
 import { SubscriptionChainReaderService } from '../subscription-chain-reader.service';
+import { BusinessMetricsService } from '../../metrics/business-metrics.service';
 
 const TARGET_EVENTS = ['subscribed', 'extended', 'cancelled'] as const;
 type TargetEventType = typeof TARGET_EVENTS[number];
@@ -69,6 +70,8 @@ export class SubscriptionEventPollerService implements OnModuleInit {
     private readonly chainReader: SubscriptionChainReaderService,
     @Optional()
     private readonly cache?: SubscriptionCacheService,
+    @Optional()
+    private readonly businessMetrics?: BusinessMetricsService,
   ) {}
 
   async onModuleInit() {
@@ -177,6 +180,7 @@ export class SubscriptionEventPollerService implements OnModuleInit {
       } while (cursor);
 
       const duration = Date.now() - startTime;
+      this.businessMetrics?.recordPollerLag(duration);
       const correlationId = this.requestContext.getCorrelationId();
       this.logger.log(
         `Poll complete: processed=${processed} (created=${counters.created}, renewed=${counters.renewed}, cancelled=${counters.cancelled}), errors=${errors}, checkpoint=${checkpoint} -> ${latestLedger}, duration=${duration}ms, correlationId=${correlationId}`,
