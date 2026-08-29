@@ -1,7 +1,10 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
@@ -12,6 +15,8 @@ import { CommentDto, CreateCommentDto, UpdateCommentDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 import { EventBus } from '../events/event-bus';
 import { CommentDeletedEvent } from '../events/domain-events';
+import { PostsService } from '../posts/posts.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 @Injectable()
 export class CommentsService {
@@ -21,6 +26,12 @@ export class CommentsService {
     @InjectRepository(CommentAuditLog)
     private readonly auditRepository: Repository<CommentAuditLog>,
     private readonly eventBus: EventBus,
+    @Optional()
+    @Inject(forwardRef(() => PostsService))
+    private readonly postsService?: PostsService,
+    @Optional()
+    @Inject(forwardRef(() => SubscriptionsService))
+    private readonly subscriptionsService?: SubscriptionsService,
   ) {}
 
   private toDto(comment: Comment): CommentDto {
@@ -30,6 +41,25 @@ export class CommentsService {
   }
 
   async create(authorId: string, dto: CreateCommentDto): Promise<CommentDto> {
+    if (this.postsService && this.subscriptionsService) {
+      try {
+        const post = await this.postsService.findOne(dto.postId);
+        if (post && post.isPremium) {
+          const isAuthor = authorId === post.authorId;
+          const isSubscriber =
+            isAuthor ||
+            (await this.subscriptionsService.isSubscriber(authorId, post.authorId));
+          if (!isSubscriber) {
+            throw new ForbiddenException(
+              'An active subscription to this creator is required to comment on this premium post',
+            );
+          }
+        }
+      } catch (err) {
+        if (err instanceof ForbiddenException) throw err;
+      }
+    }
+
     const comment = this.commentsRepository.create({
       ...dto,
       authorId,
@@ -62,7 +92,29 @@ export class CommentsService {
   async findByPost(
     postId: string,
     pagination: PaginationDto,
+    viewerId?: string,
   ): Promise<PaginatedResponseDto<CommentDto>> {
+    if (this.postsService && this.subscriptionsService) {
+      try {
+        const post = await this.postsService.findOne(postId);
+        if (post && post.isPremium) {
+          const isAuthor = viewerId && viewerId === post.authorId;
+          const isSubscriber =
+            isAuthor ||
+            (viewerId
+              ? await this.subscriptionsService.isSubscriber(viewerId, post.authorId)
+              : false);
+          if (!isSubscriber) {
+            throw new ForbiddenException(
+              'An active subscription to this creator is required to view comments on this premium post',
+            );
+          }
+        }
+      } catch (err) {
+        if (err instanceof ForbiddenException) throw err;
+      }
+    }
+
     const { page = 1, limit = 20 } = pagination;
     const skip = (page - 1) * limit;
 

@@ -14,10 +14,33 @@ const FEATURE_FLAG_ENV_KEYS = {
   newSubscriptionFlow: [
     'FEATURE_NEW_SUBSCRIPTION_FLOW',
     'FEATURE_FLAG_NEW_SUBSCRIPTION_FLOW',
+    'NEXT_PUBLIC_FEATURE_NEW_SUBSCRIPTION_FLOW',
   ],
-  cryptoPayments: ['FEATURE_CRYPTO_PAYMENTS', 'FEATURE_FLAG_CRYPTO_PAYMENTS'],
-  referralCodes: ['FEATURE_REFERRAL_CODES'],
-  sorobanPoller: ['FEATURE_SOROBAN_POLLER'],
+  cryptoPayments: [
+    'FEATURE_CRYPTO_PAYMENTS',
+    'FEATURE_FLAG_CRYPTO_PAYMENTS',
+    'NEXT_PUBLIC_FEATURE_CRYPTO_PAYMENTS',
+  ],
+  referralCodes: [
+    'FEATURE_REFERRAL_CODES',
+    'FEATURE_FLAG_REFERRAL_CODES',
+    'NEXT_PUBLIC_FLAG_REFERRAL_CODES',
+  ],
+  sorobanPoller: [
+    'FEATURE_SOROBAN_POLLER',
+    'FEATURE_FLAG_SOROBAN_POLLER',
+    'FEATURE_POLLER',
+  ],
+  walletConnect: [
+    'FEATURE_WALLET_CONNECT',
+    'FEATURE_FLAG_WALLET_CONNECT',
+    'NEXT_PUBLIC_FEATURE_WALLET_CONNECT',
+  ],
+  contentUploads: [
+    'FEATURE_CONTENT_UPLOADS',
+    'FEATURE_FLAG_CONTENT_UPLOADS',
+    'NEXT_PUBLIC_FEATURE_CONTENT_UPLOADS',
+  ],
   // Gates shortening the access JWT TTL from 24h to 15m (#1565) — off by
   // default since other code may still assume a 24h-lived access token.
   shortLivedAccessTokens: ['FEATURE_SHORT_LIVED_ACCESS_TOKENS'],
@@ -70,6 +93,14 @@ export class FeatureFlagsService {
 
   isReferralCodesEnabled(): boolean {
     return this.isEnabled('referralCodes');
+  }
+
+  isWalletConnectEnabled(): boolean {
+    return this.isEnabled('walletConnect');
+  }
+
+  isContentUploadsEnabled(): boolean {
+    return this.isEnabled('contentUploads');
   }
 
   isSorobanPollerEnabled(): boolean {
@@ -125,6 +156,9 @@ export class FeatureFlagsService {
       cryptoPayments: this.isCryptoPaymentsEnabled(),
       referralCodes: this.isReferralCodesEnabled(),
       sorobanPoller: this.isSorobanPollerEnabled(),
+      walletConnect: this.isWalletConnectEnabled(),
+      contentUploads: this.isContentUploadsEnabled(),
+      shortLivedAccessTokens: this.isEnabled('shortLivedAccessTokens'),
     };
   }
 }

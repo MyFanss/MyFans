@@ -22,6 +22,7 @@ import {
   ApiTags,
   ApiQuery,
   ApiBearerAuth,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { CommentsService } from './comments.service';
@@ -29,6 +30,7 @@ import { CommentDto, CreateCommentDto, UpdateCommentDto } from './dto';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 import { CommentsExceptionFilter } from './filters/comments-exception.filter';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth-module/guards/optional-jwt-auth.guard';
 import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
 
 /**
@@ -54,6 +56,12 @@ export class CommentsController {
 
   @Post()
   @Throttle({ short: { limit: 10, ttl: 60000 } })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description:
+      'Makes retries safe; reusing a key with another body returns 409',
+  })
   @ApiOperation({ summary: 'Create a new comment' })
   @ApiBody({ type: CreateCommentDto })
   @ApiResponse({
@@ -72,6 +80,17 @@ export class CommentsController {
     status: 401,
     description: 'Unauthorized',
     schema: { example: { statusCode: 401, message: 'Unauthorized' } },
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden – subscription required for premium post',
+    schema: {
+      example: {
+        statusCode: 403,
+        message:
+          'An active subscription to this creator is required to comment on this premium post',
+      },
+    },
   })
   @ApiResponse({
     status: 429,
@@ -138,10 +157,12 @@ export class CommentsController {
   }
 
   @Get('post/:postId')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
     summary: 'List comments by post (paginated)',
     description:
-      'Returns all comments for a given post, ordered by createdAt DESC.',
+      'Returns all comments for a given post, ordered by createdAt DESC. ' +
+      'Requires active subscription if the post is premium/gated.',
   })
   @ApiParam({ name: 'postId', description: 'Post ID' })
   @ApiQuery({
@@ -167,6 +188,17 @@ export class CommentsController {
     },
   })
   @ApiResponse({
+    status: 403,
+    description: 'Forbidden – subscription required for premium post',
+    schema: {
+      example: {
+        statusCode: 403,
+        message:
+          'An active subscription to this creator is required to view comments on this premium post',
+      },
+    },
+  })
+  @ApiResponse({
     status: 500,
     description: 'Internal server error',
     schema: { example: { statusCode: 500, message: 'Internal server error' } },
@@ -174,8 +206,9 @@ export class CommentsController {
   async findByPost(
     @Param('postId') postId: string,
     @Query() pagination: PaginationDto,
+    @CurrentUser() user?: { userId: string },
   ): Promise<PaginatedResponseDto<CommentDto>> {
-    return this.commentsService.findByPost(postId, pagination);
+    return this.commentsService.findByPost(postId, pagination, user?.userId);
   }
 
   @Get(':id')
