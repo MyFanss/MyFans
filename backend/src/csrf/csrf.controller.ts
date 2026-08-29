@@ -5,13 +5,15 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { CSRF_COOKIE } from '../common/middleware/csrf.middleware';
 import { Public } from '../common/decorators/public.decorator';
 
+const IS_PROD = process.env.NODE_ENV === 'production';
+
 @ApiTags('csrf')
 @Controller({ path: 'csrf', version: '1' })
 export class CsrfController {
   @Get('token')
   @Public()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Obtain a CSRF token (sets __Host-csrf cookie)' })
+  @ApiOperation({ summary: 'Obtain a CSRF token cookie' })
   @ApiResponse({ status: 200, description: 'CSRF token' })
   getToken(
     @Req() req: Request,
@@ -23,7 +25,7 @@ export class CsrfController {
       res.cookie(CSRF_COOKIE, token, {
         httpOnly: false,
         sameSite: 'strict',
-        secure: process.env.NODE_ENV === 'production',
+        secure: IS_PROD,
         path: '/',
       });
     }
