@@ -4,8 +4,12 @@ export interface EmailMessage {
   body: string;
 }
 
+export interface EmailSendResult {
+  messageId?: string;
+}
+
 export interface EmailAdapter {
-  send(message: EmailMessage): Promise<void>;
+  send(message: EmailMessage): Promise<EmailSendResult>;
 }
 
 /** DI token — inject with `@Inject(EMAIL_ADAPTER)`. */

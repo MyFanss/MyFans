@@ -77,6 +77,40 @@ export class EmailOutboxService {
     return this.repo.find({ order: { created_at: 'ASC' } });
   }
 
+  /** List entries that have exhausted all delivery attempts. */
+  async listDeadLetters(): Promise<EmailOutboxEntry[]> {
+    return this.repo.find({
+      where: [
+        { status: EmailOutboxStatus.DEAD_LETTER },
+        { status: EmailOutboxStatus.FAILED },
+      ],
+      order: { updated_at: 'DESC' },
+    });
+  }
+
+  /**
+   * Reset a DEAD_LETTER or FAILED entry back to PENDING so the retry
+   * worker picks it up again. Useful for admin-initiated replays.
+   */
+  async replayById(id: string): Promise<EmailOutboxEntry> {
+    const entry = await this.repo.findOne({ where: { id } });
+    if (!entry) {
+      throw new NotFoundException(`Email outbox entry ${id} not found.`);
+    }
+    if (
+      entry.status !== EmailOutboxStatus.DEAD_LETTER &&
+      entry.status !== EmailOutboxStatus.FAILED
+    ) {
+      throw new NotFoundException(
+        `Entry ${id} is not in a replayable state (current: ${entry.status}).`,
+      );
+    }
+    entry.status = EmailOutboxStatus.PENDING;
+    entry.attempts = 0;
+    entry.last_error = null;
+    return this.repo.save(entry);
+  }
+
   /**
    * The target user's `users` row is soft-deleted (see UsersService#remove,
    * #1566), so a default (non-`withDeleted`) lookup returns nothing for a
@@ -104,7 +138,7 @@ export class EmailOutboxService {
     }
 
     try {
-      await this.adapter.send({
+      const result = await this.adapter.send({
         to: entry.to_user_id,
         subject: entry.subject,
         body: entry.body,
@@ -112,17 +146,18 @@ export class EmailOutboxService {
       entry.status = EmailOutboxStatus.SENT;
       entry.sent_at = new Date();
       entry.last_error = null;
+      entry.provider_message_id = result.messageId ?? null;
       await this.repo.save(entry);
     } catch (error) {
       entry.attempts += 1;
       entry.last_error = error instanceof Error ? error.message : String(error);
       entry.status =
         entry.attempts >= this.maxAttempts
-          ? EmailOutboxStatus.FAILED
+          ? EmailOutboxStatus.DEAD_LETTER
           : EmailOutboxStatus.PENDING;
       await this.repo.save(entry);
       this.logger.warn(
-        `Email delivery failed for ${entry.dedupe_key} (attempt ${entry.attempts}): ${entry.last_error}`,
+        `Email delivery failed for ${entry.dedupe_key} (attempt ${entry.attempts}/${this.maxAttempts}): ${entry.last_error}`,
       );
     }
   }
