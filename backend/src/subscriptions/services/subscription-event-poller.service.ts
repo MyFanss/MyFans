@@ -17,8 +17,11 @@ import { SubscriptionIndexRepository, UpsertEventData } from '../repositories/su
 import { SorobanRpcService } from '../../common/services/soroban-rpc.service';
 import { RequestContextService } from '../../common/services/request-context.service';
 import { FeatureFlagsService } from '../../feature-flags/feature-flags.service';
+import {
+  TARGET_EVENTS,
+  normalizeSubscriptionEventType,
+} from '../subscription-event-fixture';
 
-const TARGET_EVENTS = ['subscribed', 'extended', 'cancelled'] as const;
 type TargetEventType = typeof TARGET_EVENTS[number];
 
 @Injectable()
@@ -136,8 +139,11 @@ export class SubscriptionEventPollerService implements OnModuleInit {
 
     // Filter: our contract, target events
     if (!topic || topic[0] !== this.contractId) return false;
-    const eventType = topic[1]?.toString();
-    if (!TARGET_EVENTS.includes(eventType as any)) return false;
+    const eventType = normalizeSubscriptionEventType(topic[1]?.toString());
+    if (!eventType) {
+      this.logger.debug(`Ignoring unsupported subscription event for contract ${this.contractId}: ${topic[1]}`);
+      return false;
+    }
 
     try {
       // Already indexed? Idempotent

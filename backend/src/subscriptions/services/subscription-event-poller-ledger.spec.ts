@@ -6,6 +6,11 @@
  */
 import { SubscriptionEventPollerService } from './subscription-event-poller.service';
 import { RequestContextService } from '../../common/services/request-context.service';
+import {
+  SUBSCRIPTION_EVENT_FIXTURE,
+  TARGET_EVENTS,
+  normalizeSubscriptionEventType,
+} from '../subscription-event-fixture';
 
 function makePoller(overrides: {
   pollerEnabled?: boolean;
@@ -90,5 +95,33 @@ describe('SubscriptionEventPollerService – stale / disconnected RPC', () => {
     await svc.poll();
     // Verify the real method was called, not a dynamic property
     expect(sorobanRpc.getLatestLedgerSequence).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Subscription event compatibility', () => {
+  it('keeps the poller target list aligned with the shared fixture', () => {
+    expect(TARGET_EVENTS).toEqual(SUBSCRIPTION_EVENT_FIXTURE.targetEvents);
+    expect(new Set(TARGET_EVENTS).size).toBe(TARGET_EVENTS.length);
+  });
+
+  it('normalizes renamed contract topics back to canonical event names', () => {
+    expect(normalizeSubscriptionEventType('subscription_created')).toBe('subscribed');
+    expect(normalizeSubscriptionEventType('subscription_cancelled')).toBe('cancelled');
+    expect(normalizeSubscriptionEventType('subscribed')).toBe('subscribed');
+  });
+
+  it('ignores unknown event topics instead of indexing them', async () => {
+    const { svc } = makePoller();
+    const event = {
+      id: '42:7',
+      topic: ['CONTRACT_ID', 'weird_event', 'GAAAA', 'GBBBB'],
+      ledger: 42,
+      index: 7,
+      value: { xdr: 1 },
+      txHash: 'hash',
+    };
+
+    const result = await (svc as any).processEvent(event);
+    expect(result).toBe(false);
   });
 });
