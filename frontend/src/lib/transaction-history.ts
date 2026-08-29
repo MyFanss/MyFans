@@ -1,5 +1,7 @@
 'use client';
 
+import { getStellarExpertBaseUrl } from '@/lib/stellar-explorer';
+
 export type TrackedTransactionStatus = 'pending' | 'confirmed' | 'failed';
 export type TrackedTransactionType = 'subscription' | 'tip' | 'withdrawal' | 'purchase';
 
@@ -33,15 +35,19 @@ interface CreateTrackedTransactionInput {
 }
 
 const STORAGE_KEY = 'myfans.transactions';
-const DEFAULT_EXPLORER_BASE = 'https://stellar.expert/explorer/public/tx/';
 const POLLING_COMPLETE_AFTER_MS = 12000;
 
 function canUseStorage() {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 }
 
+/**
+ * Explorer URL for a tracked transaction hash. Uses the configured Stellar
+ * network (testnet / futurenet / mainnet) rather than a hardcoded segment
+ * so tracked history links match the network the checkout ran on.
+ */
 export function getExplorerUrl(txHash: string) {
-  return `${DEFAULT_EXPLORER_BASE}${txHash}`;
+  return `${getStellarExpertBaseUrl()}/tx/${txHash}`;
 }
 
 function readTransactions(): TrackedTransaction[] {

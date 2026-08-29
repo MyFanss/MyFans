@@ -29,8 +29,13 @@ hosts the app (and connected wallets like Freighter) are allowed to talk to.
    though `contract-config.ts` is configured to use them, and wallet
    signing/submission would fail with an opaque CSP violation in the
    console instead of a clear error.
-4. In non-production builds only: `localhost:*` and `127.0.0.1:*`, so local
-   backends and local RPC nodes work without any extra configuration.
+4. In **local dev only**: `localhost:*` and `127.0.0.1:*`, so local backends
+   and local RPC nodes work without any extra configuration. This is gated
+   by `shouldAllowLocalhost()` — it is dropped for a production build **and**
+   for any deployed environment that identifies itself via
+   `NEXT_PUBLIC_APP_ENV` / `VERCEL_ENV` as `preview`, `staging`, or
+   `production`, even if that build was made with `NODE_ENV !== 'production'`.
+   A preview URL therefore never ships a policy that trusts `localhost`.
 
 Everything else is blocked. A host that isn't the API origin, isn't in
 `DEFAULT_STELLAR_CONNECT_HOSTS`, and isn't reachable via
@@ -83,6 +88,30 @@ allowed" section above in the same change — the test is intentionally
 written to fail if the two drift apart, so a host removal must be a
 deliberate, reviewed edit in both places, not an accidental side effect of
 an unrelated refactor.
+
+## Preview / staging environments
+
+Preview and staging are treated as **deployed** environments, not dev:
+
+- They must set `NEXT_PUBLIC_APP_ENV` (`preview` / `staging`) — this alone
+  drops `localhost:*` from `connect-src` regardless of `NODE_ENV`.
+- Their `connect-src` is still built purely from *their own*
+  `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SOROBAN_RPC_URL`, and
+  `NEXT_PUBLIC_HORIZON_URL` — a preview pointed at a preview API/RPC only
+  allows those hosts, and nothing leaks in from production defaults.
+- Keep the CSP env vars in the deploy config in sync with
+  `STAGING_PARITY_CHECKLIST.md` → *Networking & API*.
+
+## COEP / CORP and wallet extensions
+
+`connect-src` is only half of what wallet extensions (Freighter, Lobstr,
+…) need. The cross-origin isolation headers (`Cross-Origin-Embedder-Policy`,
+`Cross-Origin-Resource-Policy`, `Cross-Origin-Opener-Policy`) also have to
+be relaxed on wallet-heavy routes or the extension cannot inject its
+bridge. That policy — route-scoped `credentialless` COEP on
+`/checkout`, `/subscribe`, `/wallet-demo` and `require-corp` elsewhere — is
+documented in `docs/SECURITY_HEADERS.md`. Changing either file without the
+other tends to break Freighter connect, so review them together.
 
 ## Related
 

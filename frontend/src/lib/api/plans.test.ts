@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createPlan, getCreatorPlans, generatePlanIdempotencyKey } from './plans';
 import type { CreatePlanRequest } from './plans';
 
+vi.mock('@/lib/csrf', () => ({
+  getCsrfToken: vi.fn(() => Promise.resolve('test-csrf-token')),
+  invalidateCsrfToken: vi.fn(),
+}));
+
 global.fetch = vi.fn();
 
 describe('Plans API', () => {
@@ -42,6 +47,8 @@ describe('Plans API', () => {
           method: 'POST',
           headers: expect.objectContaining({
             'Idempotency-Key': 'test-idempotency-key-123',
+            // #1611: cookie-authed plan create must carry the CSRF token.
+            'X-CSRF-Token': 'test-csrf-token',
           }),
         })
       );

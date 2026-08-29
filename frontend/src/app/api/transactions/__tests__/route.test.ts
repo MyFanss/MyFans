@@ -73,6 +73,25 @@ describe('/api/transactions route', () => {
     expect(body.data).toEqual([]);
   });
 
+  it('forwards type and status filters to the backend on GET', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const request = new NextRequest(
+      'http://localhost:3000/api/transactions?type=subscription&status=pending&creator=GC',
+    );
+    await GET(request);
+
+    const calledUrl = String(fetchMock.mock.calls[0][0]);
+    expect(calledUrl).toMatch(/type=subscription/);
+    expect(calledUrl).toMatch(/status=pending/);
+    expect(calledUrl).toMatch(/creator=GC/);
+  });
+
   it('supports POST body filters for legacy clients', async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import DataTable, { ColumnDef } from '../ui/DataTable';
+import { getStellarExpertTxUrl } from '@/lib/stellar-explorer';
 
 interface Transaction {
   id: string;
@@ -36,10 +37,12 @@ const COLUMNS: ColumnDef<Transaction, TxKey>[] = [
   {
     key: 'txHash',
     header: 'Tx',
-    render: (tx) =>
-      tx.txHash ? (
+    render: (tx) => {
+      // Network-aware explorer link; null for missing / placeholder hashes.
+      const explorerUrl = getStellarExpertTxUrl(tx.txHash);
+      return explorerUrl ? (
         <Link
-          href={`https://stellar.expert/explorer/testnet/tx/${tx.txHash}`}
+          href={explorerUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="text-emerald-600 dark:text-emerald-400 underline hover:no-underline"
@@ -48,7 +51,8 @@ const COLUMNS: ColumnDef<Transaction, TxKey>[] = [
         </Link>
       ) : (
         '–'
-      ),
+      );
+    },
   },
 ];
 

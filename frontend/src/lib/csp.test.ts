@@ -4,6 +4,7 @@ import {
   buildContentSecurityPolicy,
   DEFAULT_STELLAR_CONNECT_HOSTS,
   extractHost,
+  shouldAllowLocalhost,
 } from '@/lib/csp';
 
 /**
@@ -127,5 +128,63 @@ describe('buildContentSecurityPolicy', () => {
 
     expect(devCsp).toContain('localhost:*');
     expect(prodCsp).not.toContain('localhost:*');
+  });
+
+  it('never wildcards the connect-src scheme (no bare https:/*)', () => {
+    const csp = buildContentSecurityPolicy({ apiHost: API_HOST, isProd: true, env: {} });
+    const connectSrcLine = csp
+      .split(';')
+      .map((directive) => directive.trim())
+      .find((directive) => directive.startsWith('connect-src'))!;
+
+    expect(connectSrcLine).not.toMatch(/\bhttps:(\s|$)/);
+    expect(connectSrcLine).not.toMatch(/(\s|^)\*(\s|$)/);
+  });
+
+  it('drops localhost on a deployed preview/staging build even when isProd is false', () => {
+    const previewCsp = buildContentSecurityPolicy({
+      apiHost: API_HOST,
+      isProd: false,
+      env: { NEXT_PUBLIC_APP_ENV: 'preview' },
+    });
+    const stagingCsp = buildContentSecurityPolicy({
+      apiHost: API_HOST,
+      isProd: false,
+      env: { VERCEL_ENV: 'staging' },
+    });
+
+    expect(previewCsp).not.toContain('localhost:*');
+    expect(stagingCsp).not.toContain('localhost:*');
+  });
+
+  it('honours an explicit allowLocalhost override', () => {
+    const csp = buildContentSecurityPolicy({
+      apiHost: API_HOST,
+      isProd: false,
+      allowLocalhost: false,
+      env: {},
+    });
+    expect(csp).not.toContain('localhost:*');
+  });
+});
+
+describe('shouldAllowLocalhost', () => {
+  it('is false for a production build', () => {
+    expect(shouldAllowLocalhost(true, {})).toBe(false);
+  });
+
+  it('is true for a plain local dev build', () => {
+    expect(shouldAllowLocalhost(false, {})).toBe(true);
+  });
+
+  it.each(['preview', 'staging', 'production'])(
+    'is false for a NEXT_PUBLIC_APP_ENV=%s deployment',
+    (appEnv) => {
+      expect(shouldAllowLocalhost(false, { NEXT_PUBLIC_APP_ENV: appEnv })).toBe(false);
+    },
+  );
+
+  it('falls back to VERCEL_ENV when NEXT_PUBLIC_APP_ENV is unset', () => {
+    expect(shouldAllowLocalhost(false, { VERCEL_ENV: 'preview' })).toBe(false);
   });
 });

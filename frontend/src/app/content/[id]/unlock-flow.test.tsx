@@ -42,6 +42,16 @@ vi.mock('next/link', () => ({
 
 vi.mock('@/lib/api/content', () => ({
   getContentById: vi.fn(),
+  // Access is resolved via the API now (no client mock). Default: denied
+  // unless a test overrides it.
+  getContentAccess: vi.fn(async () => ({
+    hasAccess: false,
+    reason: 'subscription_required' as const,
+  })),
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
 }));
 
 import { getContentById } from '@/lib/api/content';

@@ -1,6 +1,7 @@
 import { getApiBaseUrl, getVersionedApiBaseUrl } from './base-url';
 import { createAppError } from '@/types/errors';
 import { resolveAuthToken } from '@/lib/auth-storage';
+import { csrfHeaders } from '@/lib/api/csrf-fetch';
 
 const API_BASE = getVersionedApiBaseUrl();
 
@@ -55,10 +56,17 @@ export async function createPlan(
   idempotencyKey: string,
 ): Promise<CreatorPlan> {
   try {
+    // Global CSRF middleware rejects cookie-authed POSTs without the
+    // double-submit token with a 403 (which surfaces to users as an opaque
+    // "wallet failed"). Attach it here. See docs/CSRF.md.
+    const headers = {
+      ...(getHeaders(true, idempotencyKey) as Record<string, string>),
+      ...(await csrfHeaders('POST')),
+    };
     const response = await fetch(`${API_BASE}/creators/plans`, {
       method: 'POST',
       credentials: 'include',
-      headers: getHeaders(true, idempotencyKey),
+      headers,
       body: JSON.stringify(request),
     });
 

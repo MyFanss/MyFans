@@ -21,6 +21,39 @@ export interface BackendPaymentRecord {
   asset: string;
   txHash: string;
   paidAt: string;
+  /** Optional — present once the backend records lifecycle state. */
+  status?: string;
+  type?: string;
+}
+
+const TRANSACTION_TYPES: Transaction['type'][] = ['subscription', 'payment', 'refund'];
+const TRANSACTION_STATUSES: Transaction['status'][] = ['pending', 'success', 'failed'];
+
+/** Map assorted backend status spellings onto the UI's three states. */
+export function normalizeTransactionStatus(raw: unknown): Transaction['status'] {
+  const value = String(raw ?? '').toLowerCase();
+  if (value === 'confirmed' || value === 'complete' || value === 'completed' || value === 'success') {
+    return 'success';
+  }
+  if (value === 'failed' || value === 'error' || value === 'rejected') {
+    return 'failed';
+  }
+  if (value === 'pending' || value === 'processing' || value === 'submitted') {
+    return 'pending';
+  }
+  return TRANSACTION_STATUSES.includes(value as Transaction['status'])
+    ? (value as Transaction['status'])
+    : 'success';
+}
+
+/** Map assorted backend type spellings onto the UI's three types. */
+export function normalizeTransactionType(raw: unknown): Transaction['type'] {
+  const value = String(raw ?? '').toLowerCase();
+  if (value === 'subscription' || value === 'sub') return 'subscription';
+  if (value === 'refund' || value === 'chargeback') return 'refund';
+  return TRANSACTION_TYPES.includes(value as Transaction['type'])
+    ? (value as Transaction['type'])
+    : 'payment';
 }
 
 export interface TransactionsQuery {
@@ -58,8 +91,8 @@ export function getAnalyticsPaymentsUrl(): string {
 export function mapPaymentToTransaction(payment: BackendPaymentRecord): Transaction {
   return {
     id: payment.id,
-    type: 'payment',
-    status: 'success',
+    type: normalizeTransactionType(payment.type),
+    status: normalizeTransactionStatus(payment.status),
     amount: parseFloat(payment.amount) || 0,
     currency: payment.asset || 'XLM',
     txHash: payment.txHash || undefined,
@@ -82,6 +115,8 @@ export function mapPaymentsResponse(payload: unknown): TransactionsResponse {
       asset: String(record.asset ?? record.currency ?? 'XLM'),
       txHash: String(record.txHash ?? ''),
       paidAt: String(record.paidAt ?? record.date ?? record.createdAt ?? new Date().toISOString()),
+      status: record.status != null ? String(record.status) : undefined,
+      type: record.type != null ? String(record.type) : undefined,
     });
   });
 
