@@ -110,9 +110,14 @@ export class AppModule {
 
     consumer.apply(IdempotencyMiddleware).forRoutes(...IDEMPOTENCY_ROUTES);
 
-    // CSRF double-submit cookie protection on all state-mutating routes
+    // CSRF double-submit cookie protection on all state-mutating routes.
+    // Webhook routes are excluded — they authenticate via HMAC signatures.
     consumer
       .apply(CsrfMiddleware)
+      .exclude(
+        { path: 'v1/webhook', method: RequestMethod.POST },
+        { path: 'v1/webhook/(.*)', method: RequestMethod.POST },
+      )
       .forRoutes(
         { path: '*', method: RequestMethod.POST },
         { path: '*', method: RequestMethod.PUT },
