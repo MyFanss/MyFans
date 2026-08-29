@@ -40,8 +40,50 @@ Verify it's up:
 
 ```bash
 curl http://localhost:3001/v1/health
-# {"status":"ok","timestamp":"..."}
+# {"status":"up","timestamp":"2026-08-28T00:00:00.000Z"}
 ```
+
+### Health and readiness probes
+
+The backend exposes two distinct probe endpoints (both public, no token needed):
+
+| Endpoint | Purpose | Example response / status |
+|----------|---------|---------------------------|
+| `GET /v1/health` | **Liveness** — the process is up and able to handle requests. It is deliberately cheap and never probes dependencies, so a DB/Redis/RPC outage does not trigger an orchestrator restart. | `200` with `{"status":"up","timestamp":"..."}` |
+| `GET /v1/health/ready` | **Readiness** — the instance is fit to receive traffic. Probes the database (mandatory) and Redis when configured (mandatory); Soroban RPC is probed but optional. | `200` when ready, `503` when the database or a configured Redis is down |
+
+```bash
+# Liveness (process up only)
+curl -s http://localhost:3001/v1/health
+
+# Readiness (probes DB, Redis-if-configured, and optional RPC)
+curl -s http://localhost:3001/v1/health/ready
+# 200 {"status":"up","checks":{"database":{"status":"up",...},...}}
+```
+
+Kubernetes probe example — point the liveness probe at `/v1/health` and the
+readiness probe at `/v1/health/ready` so traffic is only routed to instances
+whose dependencies are actually reachable:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /v1/health
+    port: 3001
+  initialDelaySeconds: 10
+  periodSeconds: 10
+readinessProbe:
+  httpGet:
+    path: /v1/health/ready
+    port: 3001
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  failureThreshold: 3
+```
+
+The same split applies to Docker Compose / load-balancer healthchecks: use
+`/v1/health` for "is the container alive" and `/v1/health/ready` for "is it
+safe to route traffic here".
 
 ### Manual setup (without Docker)
 
