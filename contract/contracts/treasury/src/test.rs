@@ -827,8 +827,32 @@ fn test_unauthorized_deposit_reverts() {
     let treasury_id = env.register_contract(None, Treasury);
     let treasury_client = TreasuryClient::new(&env, &treasury_id);
 
-    env.mock_all_auths();
+    // Signer-specific auth: the admin signs for the token mint and for
+    // treasury initialize. No mock_all_auths in the auth test path.
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &token_address,
+            fn_name: "mint",
+            args: soroban_sdk::vec![&env, user.clone().into_val(&env), 1000_i128.into_val(&env)],
+            sub_invokes: &[],
+        },
+    }]);
     admin_client.mint(&user, &1000);
+
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &treasury_id,
+            fn_name: "initialize",
+            args: soroban_sdk::vec![
+                &env,
+                admin.clone().into_val(&env),
+                token_address.clone().into_val(&env),
+            ],
+            sub_invokes: &[],
+        },
+    }]);
     treasury_client.initialize(&admin, &token_address);
 
     // Attempt deposit without any auth.
