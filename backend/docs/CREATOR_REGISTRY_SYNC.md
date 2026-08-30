@@ -10,9 +10,10 @@ Soroban contract, via a new `creator_onchain_mappings` table.
 The on-chain registry (`register_creator(caller, creator_address, creator_id)`)
 and the backend's `CreatorProfile` are independent sources of truth keyed
 differently (Stellar address vs. internal UUID). Without an explicit mapping
-+ drift check, the two can silently diverge (e.g. a creator re-registers with
-a new `creator_id`, or a registration transaction fails after the backend
-already recorded it as successful).
+
+- drift check, the two can silently diverge (e.g. a creator re-registers with
+  a new `creator_id`, or a registration transaction fails after the backend
+  already recorded it as successful).
 
 ## Components
 
@@ -36,6 +37,11 @@ already recorded it as successful).
     observable in dashboards.
 - **Endpoint**: `POST /v1/creators/:creatorId/onchain-sync` — thin wrapper
   around `syncOnOnboard` for the onboarding flow.
+- **Endpoint**: `POST /v1/creators/registry/reconcile` — admin-only
+  (`@Roles(ADMIN)`), triggers an on-demand `reconcile()` run mirroring the
+  hourly cron. Pass `?dryRun=true` for a report-only run (no drift markers
+  persisted); when omitted it falls back to the
+  `CREATOR_REGISTRY_RECONCILER_DRY_RUN` env var just like the scheduled job.
 
 ## Current limitation
 

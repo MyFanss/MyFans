@@ -5,6 +5,8 @@ import { UsersService } from './users.service';
 import { JwtService } from '@nestjs/jwt';
 import { UserProfileDto } from './dto/user-profile.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { AdminAuditService } from '../admin-audit/admin-audit.service';
+import { RequestContextService } from '../common/services/request-context.service';
 
 const makeUser = (overrides: Record<string, unknown> = {}) => ({
   id: 'jwt-user-1',
@@ -49,6 +51,14 @@ describe('UsersController', () => {
       providers: [
         { provide: UsersService, useValue: service },
         { provide: JwtService, useValue: { verifyAsync: jest.fn() } },
+        {
+          provide: AdminAuditService,
+          useValue: { record: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
+        },
+        {
+          provide: RequestContextService,
+          useValue: { getCorrelationId: jest.fn().mockReturnValue('corr-1') },
+        },
         {
           provide: JwtAuthGuard,
           useValue: { canActivate: jest.fn().mockReturnValue(true) },
@@ -115,6 +125,82 @@ describe('UsersController', () => {
           email: 'test@example.com',
         }),
       ).rejects.toThrow('DB error');
+    });
+  });
+
+  // #1626 — the controller must fail closed: the target user is ALWAYS the
+  // JWT subject (CurrentUser.userId). A spoofed id in the request body is
+  // stripped by the whitelisting ValidationPipe before it reaches the
+  // controller, but even if one slipped through, the service must never be
+  // invoked with anything other than the authenticated subject.
+  describe('IDOR hardening (#1626)', () => {
+    it('updateMe ignores a spoofed id/userId in the body and targets the JWT subject', async () => {
+      service.update.mockResolvedValue(makeUser() as any);
+      const dto = {
+        id: 'victim-user',
+        userId: 'victim-user',
+        display_name: 'Hacked',
+      };
+
+      await controller.updateMe(dto as any, {
+        userId: 'jwt-user-1',
+        email: 'test@example.com',
+      });
+
+      expect(service.update).toHaveBeenCalledTimes(1);
+      const [targetId, updateArgs] = service.update.mock.calls[0];
+      expect(targetId).toBe('jwt-user-1');
+      expect(updateArgs).toEqual(
+        expect.objectContaining({ display_name: 'Hacked' }),
+      );
+      expect(targetId).not.toBe('victim-user');
+    });
+
+    it('getMe resolves the profile from the JWT subject, never from params/body', async () => {
+      service.findOne.mockResolvedValue(makeUser() as any);
+
+      await controller.getMe({
+        userId: 'jwt-user-1',
+        email: 'test@example.com',
+      });
+
+      expect(service.findOne).toHaveBeenCalledWith('jwt-user-1');
+      expect(service.findOne).toHaveBeenCalledTimes(1);
+    });
+
+    it('updateNotifications never accepts a target user id', async () => {
+      service.updateNotificationPreferences.mockResolvedValue({
+        message: 'ok',
+        preferences: {},
+      } as any);
+      const dto = {
+        id: 'victim-user',
+        email_notifications: true,
+      };
+
+      await controller.updateNotifications(
+        { userId: 'jwt-user-1', email: 'test@example.com' },
+        dto as any,
+      );
+
+      const [targetId] = service.updateNotificationPreferences.mock.calls[0];
+      expect(targetId).toBe('jwt-user-1');
+    });
+
+    it('removeMe deletes the JWT subject even when the body carries an id', async () => {
+      service.validatePassword.mockResolvedValue(true);
+      service.remove.mockResolvedValue(undefined);
+
+      await controller.removeMe(
+        { userId: 'jwt-user-1', email: 'test@example.com' },
+        { password: 'correct', id: 'victim-user' } as any,
+      );
+
+      expect(service.validatePassword).toHaveBeenCalledWith(
+        'jwt-user-1',
+        'correct',
+      );
+      expect(service.remove).toHaveBeenCalledWith('jwt-user-1');
     });
   });
 
