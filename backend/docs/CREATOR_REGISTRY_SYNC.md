@@ -30,6 +30,10 @@ already recorded it as successful).
     (`drift_detected_at`). Runs hourly via `@Cron` (see
     `CREATOR_REGISTRY_RECONCILER_DRY_RUN` env var to run without persisting),
     mirroring `SubscriptionReconcilerService`.
+  - **Drift metric**: every `reconcile()` run records the latest drift count
+    via `BusinessMetricsService.recordCreatorRegistryDrift()`, exposed as the
+    `myfans_creator_registry_drift_count` Prometheus gauge so divergence is
+    observable in dashboards.
 - **Endpoint**: `POST /v1/creators/:creatorId/onchain-sync` — thin wrapper
   around `syncOnOnboard` for the onboarding flow.
 

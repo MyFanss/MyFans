@@ -40,10 +40,9 @@ import { RequestContextService } from '../common/services/request-context.servic
 /**
  * UsersController
  *
- * Handles user profile CRUD and account management. Protected endpoints
- * use JWT authentication via AuthGuard or @CurrentUser decorator to extract
- * the authenticated user's identity. The updateMe method now uses
- * @CurrentUser instead of a hardcoded temp ID.
+ * Handles user profile CRUD and account management. Protected endpoints use
+ * JWT authentication via AuthGuard or @CurrentUser to extract the
+ * authenticated user's identity.
  *
  * @Controller users
  * @version 1
@@ -86,9 +85,9 @@ export class UsersController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async updateMe(
     @Body() updateUserDto: UpdateUserDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: JwtUserPayload,
   ): Promise<UserProfileDto> {
-    const updatedUser = await this.usersService.update(user.id, updateUserDto);
+    const updatedUser = await this.usersService.update(user.userId, updateUserDto);
     return plainToInstance(UserProfileDto, updatedUser);
   }
 

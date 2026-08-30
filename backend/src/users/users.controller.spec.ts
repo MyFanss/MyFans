@@ -97,7 +97,8 @@ describe('UsersController', () => {
       const dto = { display_name: 'New Name' };
 
       const result = await controller.updateMe(dto as any, {
-        id: 'jwt-user-1',
+        userId: 'jwt-user-1',
+        email: 'test@example.com',
       });
 
       expect(service.update).toHaveBeenCalledWith('jwt-user-1', dto);
@@ -109,7 +110,10 @@ describe('UsersController', () => {
       service.update.mockRejectedValue(new Error('DB error'));
 
       await expect(
-        controller.updateMe({} as any, { id: 'jwt-user-1' }),
+        controller.updateMe({} as any, {
+          userId: 'jwt-user-1',
+          email: 'test@example.com',
+        }),
       ).rejects.toThrow('DB error');
     });
   });
