@@ -1,4 +1,7 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+import { getApiBaseUrl } from '@/lib/api/base-url';
+import { getCsrfToken } from '@/lib/csrf';
+
+const API_BASE_URL = `${getApiBaseUrl()}/api/v1`;
 
 type FavoritesPayload =
   | string[]
@@ -27,6 +30,10 @@ async function requestFavorites<T>(path: string, init?: RequestInit): Promise<T>
     },
   });
 
+  if (response.status === 401) {
+    throw new Error('Unauthorized');
+  }
+
   if (!response.ok) {
     const fallbackMessage = `Favorites request failed with status ${response.status}`;
     const errorBody = await response.json().catch(() => null);
@@ -51,13 +58,21 @@ export async function getFavorites(): Promise<string[]> {
 }
 
 export async function addFavorite(creatorId: string): Promise<void> {
+  const csrfToken = await getCsrfToken();
   await requestFavorites(`/favorites/${encodeURIComponent(creatorId)}`, {
     method: 'POST',
+    headers: {
+      'x-csrf-token': csrfToken,
+    },
   });
 }
 
 export async function removeFavorite(creatorId: string): Promise<void> {
+  const csrfToken = await getCsrfToken();
   await requestFavorites(`/favorites/${encodeURIComponent(creatorId)}`, {
     method: 'DELETE',
+    headers: {
+      'x-csrf-token': csrfToken,
+    },
   });
 }

@@ -1,13 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from './entities/notification.entity';
 import { CreateNotificationDto, MarkReadDto } from './dto/notification.dto';
 import { NotificationType } from './entities/notification.entity';
+import { NotificationRetryStoreService } from './notification-retry-store.service';
+import { NotificationDigestStoreService } from './notification-digest-store.service';
+import { EmailOutboxService } from './email-outbox.service';
+import { UsersService } from '../users/users.service';
 
 export interface SubscriptionLifecycleNotificationRequest {
   dedupeKey: string;
-  event: 'renewed' | 'cancelled';
+  event: 'created' | 'renewed' | 'cancelled';
   recipientUserId: string;
   creatorUserId: string;
   creatorDisplayName?: string;
@@ -46,7 +50,7 @@ interface DigestWindow {
 }
 
 @Injectable()
-export class NotificationsService {
+export class NotificationsService implements OnModuleInit {
   private readonly maxQueueAttempts = 3;
   private readonly retryQueue = new Map<string, NotificationQueueJob>();
   private readonly completedNotifications = new Map<string, Notification>();
@@ -67,8 +71,51 @@ export class NotificationsService {
     @InjectRepository(Notification)
     private readonly notificationsRepository: Repository<Notification>,
     digestWindowMs = 5 * 60 * 1000,
+    /**
+     * Durable backing stores for the retry queue / digest windows / email
+     * delivery. All optional so existing direct-construction call sites
+     * (and unit tests) keep working exactly as before, falling back to the
+     * in-memory-only behavior; the DI-wired production module always
+     * supplies them (see `NotificationsModule`), which is what gives this
+     * service its durability.
+     */
+    @Optional() private readonly retryStore?: NotificationRetryStoreService,
+    @Optional() private readonly digestStore?: NotificationDigestStoreService,
+    @Optional() private readonly emailOutbox?: EmailOutboxService,
+    @Optional() private readonly usersService?: UsersService,
   ) {
     this.digestWindowMs = digestWindowMs;
+  }
+
+  /** Reloads durable retry-queue/digest-window state into memory after a restart. */
+  async onModuleInit(): Promise<void> {
+    await this.hydrateFromStores();
+  }
+
+  async hydrateFromStores(): Promise<void> {
+    if (this.retryStore) {
+      const jobs = await this.retryStore.listAll();
+      for (const job of jobs) {
+        this.retryQueue.set(job.dedupeKey, {
+          dedupeKey: job.dedupeKey,
+          payload: job.payload,
+          attempts: job.attempts,
+          status: job.status,
+          lastError: job.lastError,
+        });
+      }
+    }
+
+    if (this.digestStore) {
+      const windows = await this.digestStore.listAll();
+      for (const record of windows) {
+        this.digestWindows.set(record.key, {
+          notificationId: record.notificationId,
+          eventTimes: record.eventTimes,
+          windowExpiresAt: record.windowExpiresAt,
+        });
+      }
+    }
   }
 
   async findAllForUser(
@@ -107,6 +154,22 @@ export class NotificationsService {
     const creatorName = request.creatorDisplayName ?? request.creatorUserId;
     const occurredAt = (request.occurredAt ?? new Date()).toISOString();
 
+    if (request.event === 'created') {
+      const title =
+        digestCount > 1 ? `${digestCount} new subscriptions` : 'Welcome! Subscription confirmed';
+      const body =
+        digestCount > 1
+          ? `You started ${digestCount} new subscriptions to ${creatorName}.`
+          : `Your subscription to ${creatorName} is now active. Welcome aboard!`;
+      return {
+        inApp: { title, body },
+        email: {
+          subject: `Welcome — your ${creatorName} subscription is active`,
+          body: `Thanks for subscribing to ${creatorName}! Your subscription was confirmed on ${occurredAt}.`,
+        },
+      };
+    }
+
     if (request.event === 'renewed') {
       const title =
         digestCount > 1
@@ -121,6 +184,24 @@ export class NotificationsService {
         email: {
           subject: `Your ${creatorName} subscription renewed`,
           body: `Your subscription renewal for ${creatorName} was processed successfully on ${occurredAt}.`,
+        },
+      };
+    }
+
+    if (request.event === 'renewal_failed') {
+      const title =
+        digestCount > 1
+          ? `${digestCount} subscription renewals failed`
+          : 'Subscription renewal failed';
+      const body =
+        digestCount > 1
+          ? `${digestCount} subscription renewals to ${creatorName} could not be processed.`
+          : `Your subscription renewal for ${creatorName} could not be processed. Please check your wallet balance.`;
+      return {
+        inApp: { title, body },
+        email: {
+          subject: `Your ${creatorName} subscription renewal failed`,
+          body: `Your subscription renewal for ${creatorName} failed on ${occurredAt}. Please check your wallet and try again.`,
         },
       };
     }
@@ -155,12 +236,14 @@ export class NotificationsService {
       return null;
     }
 
-    this.retryQueue.set(request.dedupeKey, {
+    const job: NotificationQueueJob = {
       dedupeKey: request.dedupeKey,
       payload: request,
       attempts: 0,
       status: 'pending',
-    });
+    };
+    this.retryQueue.set(request.dedupeKey, job);
+    await this.persistRetryJob(job);
 
     return this.processQueueJob(request.dedupeKey);
   }
@@ -241,6 +324,7 @@ export class NotificationsService {
     });
     if (!notification) {
       this.digestWindows.delete(key);
+      void this.digestStore?.delete(key).catch(() => undefined);
       return null;
     }
 
@@ -261,7 +345,16 @@ export class NotificationsService {
       notification.body = `You have ${countWord} new subscribers.`;
     }
 
-    return this.notificationsRepository.save(notification);
+    const saved = await this.notificationsRepository.save(notification);
+    void this.digestStore
+      ?.set({
+        key,
+        notificationId: window.notificationId,
+        eventTimes: window.eventTimes,
+        windowExpiresAt: window.windowExpiresAt,
+      })
+      .catch(() => undefined);
+    return saved;
   }
 
   /** Open a new digest window after creating the first notification. */
@@ -273,11 +366,48 @@ export class NotificationsService {
     firstEventTime: string,
   ): void {
     const key = this.digestKeyFor(userId, type, creatorUserId);
-    this.digestWindows.set(key, {
+    const window: DigestWindow = {
       notificationId,
       eventTimes: [firstEventTime],
       windowExpiresAt: Date.now() + this.digestWindowMs,
+    };
+    this.digestWindows.set(key, window);
+    void this.digestStore
+      ?.set({
+        key,
+        notificationId: window.notificationId,
+        eventTimes: window.eventTimes,
+        windowExpiresAt: window.windowExpiresAt,
+      })
+      .catch(() => undefined);
+  }
+
+  /** Persists the current in-memory state of a retry job to the durable store, if configured. */
+  private async persistRetryJob(job: NotificationQueueJob): Promise<void> {
+    if (!this.retryStore) return;
+    await this.retryStore.upsert({
+      dedupeKey: job.dedupeKey,
+      payload: job.payload,
+      attempts: job.attempts,
+      status: job.status,
+      lastError: job.lastError,
     });
+  }
+
+  /** Whether the recipient's notification preferences allow this email to be sent. Fails open. */
+  private async emailAllowedForRecipient(
+    payload: SubscriptionLifecycleNotificationRequest,
+  ): Promise<boolean> {
+    if (!this.usersService) return true;
+    try {
+      const preferences = await this.usersService.getNotificationPreferences(
+        payload.recipientUserId,
+      );
+      return preferences.email_subscription_renewal !== false;
+    } catch {
+      // Don't drop a lifecycle email over a preference-lookup failure.
+      return true;
+    }
   }
 
   // ── Private queue processing ────────────────────────────────────────────
@@ -294,14 +424,17 @@ export class NotificationsService {
     }
 
     const type =
-      job.payload.event === 'renewed'
-        ? NotificationType.SUBSCRIPTION_RENEWED
-        : NotificationType.SUBSCRIPTION_CANCELLED;
+      job.payload.event === 'created'
+        ? NotificationType.NEW_SUBSCRIBER
+        : job.payload.event === 'renewed'
+          ? NotificationType.SUBSCRIPTION_RENEWED
+          : NotificationType.SUBSCRIPTION_CANCELLED;
 
     const eventTime = (job.payload.occurredAt ?? new Date()).toISOString();
 
     job.status = 'processing';
     job.attempts += 1;
+    await this.persistRetryJob(job);
 
     try {
       // Try to fold into an existing digest window first
@@ -345,21 +478,34 @@ export class NotificationsService {
 
       if (job.payload.emailEnabled !== false && !folded) {
         const template = this.buildSubscriptionLifecycleTemplate(job.payload, 1);
-        this.sentEmails.push({
-          dedupeKey,
-          toUserId: job.payload.recipientUserId,
-          subject: template.email.subject,
-          body: template.email.body,
-        });
+        const allowed = await this.emailAllowedForRecipient(job.payload);
+        if (allowed) {
+          this.sentEmails.push({
+            dedupeKey,
+            toUserId: job.payload.recipientUserId,
+            subject: template.email.subject,
+            body: template.email.body,
+          });
+          if (this.emailOutbox) {
+            await this.emailOutbox.enqueue({
+              dedupeKey,
+              toUserId: job.payload.recipientUserId,
+              subject: template.email.subject,
+              body: template.email.body,
+            });
+          }
+        }
       }
 
       job.status = 'completed';
       this.completedNotifications.set(dedupeKey, notification);
+      await this.persistRetryJob(job);
       return notification;
     } catch (error) {
       job.lastError = error instanceof Error ? error.message : String(error);
       job.status =
         job.attempts >= this.maxQueueAttempts ? 'failed' : 'pending';
+      await this.persistRetryJob(job);
       return null;
     }
   }

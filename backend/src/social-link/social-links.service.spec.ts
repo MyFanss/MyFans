@@ -4,11 +4,44 @@ import { SocialLinksDto } from './social-links.dto';
 import { SocialLinksService } from './social-links.service';
 import { SocialLinksResponseDto } from './user-profile.dto';
 
+function makeRepo() {
+  const store: Array<Record<string, unknown>> = [];
+  let seq = 0;
+  return {
+    create: jest.fn((partial: Record<string, unknown>) => ({ ...partial })),
+    save: jest.fn(async (entity: Record<string, unknown>) => {
+      if (!entity.id) {
+        entity.id = String(++seq);
+        entity.createdAt = new Date();
+        store.push(entity);
+      } else {
+        const idx = store.findIndex((row) => row.id === entity.id);
+        if (idx >= 0) store[idx] = entity;
+        else store.push(entity);
+      }
+      return entity;
+    }),
+    findOne: jest.fn(
+      async ({ where }: { where: { id: string } }) =>
+        store.find((row) => row.id === where.id) ?? null,
+    ),
+    findAndCount: jest.fn(
+      async ({ skip, take }: { skip: number; take: number }) => {
+        const slice = store.slice(skip, skip + take);
+        return [slice, store.length] as const;
+      },
+    ),
+    _store: store,
+  };
+}
+
 describe('SocialLinksService', () => {
   let service: SocialLinksService;
+  let repo: ReturnType<typeof makeRepo>;
 
   beforeEach(() => {
-    service = new SocialLinksService();
+    repo = makeRepo();
+    service = new SocialLinksService(repo as any);
   });
 
   // ─── validateDomainAllowlist ─────────────────────────────────────────────────
@@ -132,23 +165,24 @@ describe('SocialLinksService', () => {
   // ─── extractUpdatePayload ─────────────────────────────────────────────────
 
   describe('extractUpdatePayload', () => {
-    it('happy path: creates and stores normalized social links', () => {
+    it('happy path: creates and stores normalized social links', async () => {
       const dto = plainToInstance(SocialLinksDto, {
         websiteUrl: 'https://twitter.com/johndoe',
         twitterHandle: '@JohnDoe',
         instagramHandle: '@PhotoFan',
         otherLink: 'https://linkedin.com/in/johndoe',
       });
-      const payload = service.createSocialLinks(dto);
+      const payload = await service.createSocialLinks(dto);
 
-      expect(payload).toEqual({
+      expect(payload).toMatchObject({
+        id: '1',
         websiteUrl: 'https://twitter.com/johndoe',
         twitterHandle: 'johndoe',
         instagramHandle: 'photofan',
         otherLink: 'https://linkedin.com/in/johndoe',
       });
 
-      const list = service.listSocialLinks({ page: 1, limit: 10 });
+      const list = await service.listSocialLinks({ page: 1, limit: 10 });
       expect(list.data).toHaveLength(1);
       expect(list.data[0]).toMatchObject({
         id: '1',
@@ -159,24 +193,26 @@ describe('SocialLinksService', () => {
       });
     });
 
-    it('happy path: updates an existing stored record by id', () => {
-      service.createSocialLinks({
+    it('happy path: updates an existing stored record by id', async () => {
+      await service.createSocialLinks({
         websiteUrl: 'https://twitter.com/johndoe',
         twitterHandle: 'johndoe',
       });
 
-      const payload = service.updateSocialLinks('1', {
+      const payload = await service.updateSocialLinks('1', {
         instagramHandle: 'creatorlife',
         otherLink: 'https://linkedin.com/in/johndoe',
       });
 
-      expect(payload).toEqual({
+      expect(payload).toMatchObject({
+        id: '1',
+        websiteUrl: 'https://twitter.com/johndoe',
+        twitterHandle: 'johndoe',
         instagramHandle: 'creatorlife',
         otherLink: 'https://linkedin.com/in/johndoe',
       });
-      expect(
-        service.listSocialLinks({ page: 1, limit: 10 }).data[0],
-      ).toMatchObject({
+      const list = await service.listSocialLinks({ page: 1, limit: 10 });
+      expect(list.data[0]).toMatchObject({
         id: '1',
         websiteUrl: 'https://twitter.com/johndoe',
         twitterHandle: 'johndoe',
@@ -291,14 +327,14 @@ describe('SocialLinksService', () => {
   // ─── listSocialLinks ──────────────────────────────────────────────────────
 
   describe('listSocialLinks', () => {
-    beforeEach(() => {
-      service.createSocialLinks({ twitterHandle: 'first' });
-      service.createSocialLinks({ twitterHandle: 'second' });
-      service.createSocialLinks({ twitterHandle: 'third' });
+    beforeEach(async () => {
+      await service.createSocialLinks({ twitterHandle: 'first' });
+      await service.createSocialLinks({ twitterHandle: 'second' });
+      await service.createSocialLinks({ twitterHandle: 'third' });
     });
 
-    it('returns a page-paginated social links response', () => {
-      const page = service.listSocialLinks({ page: 2, limit: 1 });
+    it('returns a page-paginated social links response', async () => {
+      const page = await service.listSocialLinks({ page: 2, limit: 1 });
 
       expect(page).toMatchObject({
         total: 3,
@@ -318,16 +354,16 @@ describe('SocialLinksService', () => {
       ]);
     });
 
-    it('uses safe defaults for invalid direct service pagination input', () => {
-      const page = service.listSocialLinks({ page: 0, limit: -1 });
+    it('uses safe defaults for invalid direct service pagination input', async () => {
+      const page = await service.listSocialLinks({ page: 0, limit: -1 });
 
       expect(page.page).toBe(1);
       expect(page.limit).toBe(20);
       expect(page.data).toHaveLength(3);
     });
 
-    it('caps direct service limit input at 100', () => {
-      const page = service.listSocialLinks({ page: 1, limit: 500 });
+    it('caps direct service limit input at 100', async () => {
+      const page = await service.listSocialLinks({ page: 1, limit: 500 });
 
       expect(page.limit).toBe(100);
     });

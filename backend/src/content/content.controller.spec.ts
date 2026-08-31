@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ContentController } from './content.controller';
+import { ContentAccessService } from './content-access.service';
 import { ContentService } from './content.service';
 import { ContentType } from './entities/content.entity';
 import { PaginatedResponseDto } from '../common/dto';
@@ -11,6 +12,10 @@ const mockService = () => ({
   findOne: jest.fn(),
   update: jest.fn(),
   remove: jest.fn(),
+});
+
+const mockAccessService = () => ({
+  getForRequester: jest.fn(),
 });
 
 const fakeUser = { userId: 'creator-1', email: 'test@example.com', role: 'user' };
@@ -32,15 +37,20 @@ const fakeContent = {
 describe('ContentController', () => {
   let controller: ContentController;
   let service: ReturnType<typeof mockService>;
+  let accessService: ReturnType<typeof mockAccessService>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ContentController],
-      providers: [{ provide: ContentService, useFactory: mockService }],
+      providers: [
+        { provide: ContentService, useFactory: mockService },
+        { provide: ContentAccessService, useFactory: mockAccessService },
+      ],
     }).compile();
 
     controller = module.get(ContentController);
     service = module.get(ContentService);
+    accessService = module.get(ContentAccessService);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -81,10 +91,43 @@ describe('ContentController', () => {
   });
 
   describe('findOne', () => {
-    it('returns single content item', async () => {
-      service.findOne.mockResolvedValue(fakeContent);
-      const result = await controller.findOne('uuid-1');
-      expect(result).toBe(fakeContent);
+    it('delegates to ContentAccessService with the requester userId from a JWT-authenticated request', async () => {
+      const view = { ...fakeContent, locked: false };
+      accessService.getForRequester.mockResolvedValue(view);
+
+      const result = await controller.findOne('uuid-1', { user: fakeUser } as any);
+
+      expect(accessService.getForRequester).toHaveBeenCalledWith('uuid-1', {
+        userId: 'creator-1',
+        fanAddress: undefined,
+      });
+      expect(result).toBe(view);
+    });
+
+    it('delegates with the fanAddress from a Stellar-bearer-authenticated request', async () => {
+      const view = { ...fakeContent, locked: false };
+      accessService.getForRequester.mockResolvedValue(view);
+
+      const result = await controller.findOne('uuid-1', { fanAddress: 'GFAN...' } as any);
+
+      expect(accessService.getForRequester).toHaveBeenCalledWith('uuid-1', {
+        userId: undefined,
+        fanAddress: 'GFAN...',
+      });
+      expect(result).toBe(view);
+    });
+
+    it('passes undefined identity for anonymous callers', async () => {
+      const teaser = { ...fakeContent, locked: true };
+      accessService.getForRequester.mockResolvedValue(teaser);
+
+      const result = await controller.findOne('uuid-1', {} as any);
+
+      expect(accessService.getForRequester).toHaveBeenCalledWith('uuid-1', {
+        userId: undefined,
+        fanAddress: undefined,
+      });
+      expect(result).toBe(teaser);
     });
   });
 

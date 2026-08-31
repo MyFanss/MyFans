@@ -2,10 +2,39 @@
  * Unit tests for notifications lib helpers
  */
 
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MOCK_NOTIFICATIONS,
+  shouldUseMockNotifications,
   type Notification,
 } from '../notifications';
+
+describe('shouldUseMockNotifications', () => {
+  const original = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS;
+
+  afterEach(() => {
+    if (original === undefined) {
+      delete process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS;
+    } else {
+      process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS = original;
+    }
+  });
+
+  it('defaults to API (false) when unset', () => {
+    delete process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS;
+    expect(shouldUseMockNotifications()).toBe(false);
+  });
+
+  it('is opt-in only when set to true', () => {
+    process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS = 'true';
+    expect(shouldUseMockNotifications()).toBe(true);
+  });
+
+  it('does not treat "false" as mock', () => {
+    process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS = 'false';
+    expect(shouldUseMockNotifications()).toBe(false);
+  });
+});
 
 describe('MOCK_NOTIFICATIONS', () => {
   it('contains at least one notification', () => {
@@ -48,18 +77,20 @@ describe('fetchNotifications (mocked fetch)', () => {
     is_read: false,
     metadata: null,
     created_at: new Date().toISOString(),
+    digest_count: 1,
+    digest_event_times: null,
   };
 
   beforeEach(() => {
-    global.fetch = jest.fn();
+    global.fetch = vi.fn();
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('calls the correct endpoint', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => [mockNotif],
@@ -75,7 +106,7 @@ describe('fetchNotifications (mocked fetch)', () => {
   });
 
   it('appends unread_only query param when requested', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => [],
@@ -90,7 +121,7 @@ describe('fetchNotifications (mocked fetch)', () => {
   });
 
   it('throws on non-ok response', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,
       status: 401,
       json: async () => ({ message: 'Unauthorized' }),
@@ -103,15 +134,15 @@ describe('fetchNotifications (mocked fetch)', () => {
 
 describe('markAllNotificationsRead (mocked fetch)', () => {
   beforeEach(() => {
-    global.fetch = jest.fn();
+    global.fetch = vi.fn();
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('calls PATCH mark-all-read endpoint', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({ updated: 3 }),

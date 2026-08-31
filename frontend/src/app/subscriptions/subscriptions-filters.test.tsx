@@ -5,11 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SubscriptionsPage from './page';
 
 // Minimal mocks for dependencies
-vi.mock('@/lib/subscriptions', () => ({
-  MOCK_HISTORY: [],
-  MOCK_PAYMENTS: [],
-}));
-
 vi.mock('@/lib/formatting', () => ({
   formatCurrency: (amount: number, currency: string) => `${currency}${amount}`,
   formatDate: (iso: string) => iso,
@@ -35,6 +30,8 @@ vi.mock('@/lib/error-copy', () => ({
 
 vi.mock('@/lib/stellar', () => ({
   cancelSubscriptionOnSoroban: vi.fn(),
+  extendSubscriptionOnSoroban: vi.fn(),
+  getStellarConfig: () => ({ network: 'testnet', tokenContractId: 'C_TOKEN' }),
 }));
 
 vi.mock('@/contexts/ToastContext', () => ({
@@ -53,8 +50,19 @@ global.fetch = mockFetch;
 function makePagedResponse(items: unknown[] = []) {
   return Promise.resolve({
     ok: true,
+    status: 200,
     json: () => Promise.resolve({ data: items, total: items.length, hasMore: false, nextCursor: null }),
   });
+}
+
+/** URLs `fetch` was called with (first arg of each call). */
+function fetchedUrls(): string[] {
+  return mockFetch.mock.calls.map((call) => String(call[0]));
+}
+
+/** Assert some `fetch` call targeted a URL containing `substr`. */
+function expectFetched(substr: string) {
+  expect(fetchedUrls().some((url) => url.includes(substr))).toBe(true);
 }
 
 describe('SubscriptionsPage – filter and sort controls', () => {
@@ -74,71 +82,51 @@ describe('SubscriptionsPage – filter and sort controls', () => {
     render(<SubscriptionsPage />);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('status=active'),
-      );
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('sort=expiry'),
-      );
+      expectFetched('status=active');
+      expectFetched('sort=expiry');
     });
   });
 
   it('re-fetches when status filter changes to expired', async () => {
     render(<SubscriptionsPage />);
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expectFetched('status=active'));
 
     fireEvent.change(screen.getByLabelText('Filter by status'), {
       target: { value: 'expired' },
     });
 
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('status=expired'),
-      );
-    });
+    await waitFor(() => expectFetched('status=expired'));
   });
 
   it('re-fetches when status filter changes to cancelled', async () => {
     render(<SubscriptionsPage />);
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expectFetched('status=active'));
 
     fireEvent.change(screen.getByLabelText('Filter by status'), {
       target: { value: 'cancelled' },
     });
 
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('status=cancelled'),
-      );
-    });
+    await waitFor(() => expectFetched('status=cancelled'));
   });
 
   it('re-fetches when sort changes to created', async () => {
     render(<SubscriptionsPage />);
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expectFetched('status=active'));
 
     fireEvent.change(screen.getByLabelText('Sort subscriptions'), {
       target: { value: 'created' },
     });
 
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('sort=created'),
-      );
-    });
+    await waitFor(() => expectFetched('sort=created'));
   });
 
   it('calls the correct API endpoint', async () => {
     render(<SubscriptionsPage />);
 
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/subscriptions/me/list'),
-      );
-    });
+    await waitFor(() => expectFetched('/api/v1/subscriptions/me/list'));
   });
 
   it('shows empty state when API returns no subscriptions', async () => {
@@ -149,25 +137,78 @@ describe('SubscriptionsPage – filter and sort controls', () => {
     });
   });
 
-  it('shows error state gracefully when fetch fails', async () => {
-    mockFetch.mockReturnValue(Promise.resolve({ ok: false }));
-
+  it('fetches history and payments on mount', async () => {
     render(<SubscriptionsPage />);
 
-    // Should not throw; loading state resolves
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expectFetched('/api/v1/subscriptions/me/list?status=cancelled');
+      expectFetched('/api/v1/analytics/payments');
     });
   });
 
-  it('shows skeletons while loading active subscriptions', async () => {
-    // Return a promise that doesn't resolve immediately
-    mockFetch.mockReturnValue(new Promise(() => {}));
-    
+  it('renders history and payment empty states when API returns empty data', async () => {
     render(<SubscriptionsPage />);
-    
-    // Should show multiple skeletons
-    const skeletons = screen.getAllByTestId('active-skeleton');
-    expect(skeletons.length).toBeGreaterThan(0);
+
+    await waitFor(() => {
+      expect(screen.getByText('No subscription history')).toBeInTheDocument();
+      expect(screen.getByText('No payments yet')).toBeInTheDocument();
+    });
+  });
+
+  it('renders history items and payment cards when API returns data', async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('status=cancelled')) {
+        return makePagedResponse([
+          {
+            id: 'hist-101',
+            creatorName: 'Artist Creator',
+            planName: 'VIP Tier',
+            price: 15.00,
+            currency: 'USDC',
+            startedAt: '2026-01-01T00:00:00Z',
+            endedAt: '2026-02-01T00:00:00Z',
+            cancelReason: 'User choice',
+          },
+        ]);
+      }
+      if (url.includes('/analytics/payments')) {
+        return makePagedResponse([
+          {
+            id: 'pay-202',
+            date: '2026-02-15T00:00:00Z',
+            creatorName: 'Video Producer',
+            planName: 'Monthly Access',
+            amount: 25.00,
+            currency: 'XLM',
+            status: 'completed',
+          },
+        ]);
+      }
+      return makePagedResponse([]);
+    });
+
+    render(<SubscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Artist Creator · VIP Tier/)).toBeInTheDocument();
+      expect(screen.getByText(/Video Producer · Monthly Access/)).toBeInTheDocument();
+      expect(screen.getByText('User choice')).toBeInTheDocument();
+    });
+  });
+
+  it('shows history skeletons while history is loading', async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('status=cancelled') || url.includes('/analytics/payments')) {
+        return new Promise(() => {}); // pending promise
+      }
+      return makePagedResponse([]);
+    });
+
+    render(<SubscriptionsPage />);
+
+    await waitFor(() => {
+      const historySkeletons = screen.getAllByTestId('history-skeleton');
+      expect(historySkeletons.length).toBeGreaterThan(0);
+    });
   });
 });

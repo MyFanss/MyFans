@@ -34,6 +34,13 @@ export interface GatedContentViewerProps {
   subscriptionStatus?: SubscriptionStatus | null;
   /** Whether the content requires subscription to access */
   isGated: boolean;
+  /**
+   * Whether interactive controls (like / share) should render. Callers set
+   * this to `false` for a locked viewer so those controls hide with the
+   * gated media instead of sitting under the lock overlay. Defaults to
+   * `true` for backwards compatibility.
+   */
+  canInteract?: boolean;
   /** External loading state */
   isLoading?: boolean;
   /** External error */
@@ -93,6 +100,7 @@ export function GatedContentViewer({
   isSubscribed,
   subscriptionStatus = null,
   isGated,
+  canInteract = true,
   isLoading: externalLoading = false,
   error: externalError = null,
   creator,
@@ -404,7 +412,8 @@ export function GatedContentViewer({
             )}
           </div>
 
-          {/* Action Row */}
+          {/* Action Row — hidden for locked viewers (like/share gate with the media) */}
+          {canInteract && (
           <div className="flex items-center gap-3 py-6 border-y border-gray-100 dark:border-gray-800 mb-8">
             <button
               onClick={handleLike}
@@ -449,6 +458,7 @@ export function GatedContentViewer({
               </div>
             )}
           </div>
+          )}
 
           {/* About Section */}
           <div className="mb-10">

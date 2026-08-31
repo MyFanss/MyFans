@@ -110,10 +110,10 @@ The current frontend wallet implementation does not treat all wallets equally:
 | Wallet | Current repo status | Practical difference in MyFans |
 |--------|----------------------|--------------------------------|
 | **Freighter** | Fully wired for connection and transaction signing | Best choice for creator and fan flows that need Soroban transaction approval today |
-| **Lobstr** | Wallet selection UI and install guidance exist, but the integration is still marked pending | Discoverability is documented, but users should not assume full signing parity with Freighter yet |
-| **WalletConnect** | Wallet selection UI exists, but protocol integration is still marked pending | Treat it as planned support rather than a production-ready path in this repo |
+| **Lobstr** | Connection and signing dispatch wired (`signTransaction` routes to Lobstr when it is the connected wallet) | Usable for connect + subscribe/cancel signing; still less battle-tested than Freighter |
+| **WalletConnect** | Sign Client wired behind the `walletConnect` feature flag (off by default); requires `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID` | Enable the flag + set a project ID for QR-based mobile wallet connect/sign. With the flag off the UI shows "Coming soon". See [frontend/docs/WALLET_SETUP.md](frontend/docs/WALLET_SETUP.md) |
 
-If you are documenting or testing wallet-based flows in this repository, assume **Freighter is the reference implementation** until Lobstr and WalletConnect move from interface-ready to fully integrated.
+Assume **Freighter is the reference implementation**; Lobstr and WalletConnect share the same `signTransaction` dispatch path but have had less real-world exercise.
 
 ### Tech
 
@@ -239,6 +239,7 @@ Per-package commands are also available via root `package.json` scripts (`build:
 ### Platform Governance & Operations
 - **[Contract Upgrade Governance](docs/CONTRACT_UPGRADE_GOVERNANCE.md)** - Process for upgrading smart contracts safely
 - **[Security Policy](SECURITY.md)** - Security reporting, penetration testing tracker, and best practices
+- **[Feature Flags Documentation](backend/docs/FEATURE_FLAGS.md)** - Inventory of backend and frontend feature flags, defaults, and blast radius
 - **[Secret Management](backend/docs/SECRET_MANAGEMENT.md)** - JWT and secret rotation runbooks
 - **[CORS & Security Headers](backend/docs/CORS_AND_SECURITY_HEADERS.md)** - Per-environment CORS allowlist and header configuration
 - **[Bug Bash Checklist](docs/BUG_BASH_CHECKLIST.md)** - Comprehensive QA checklist before major releases

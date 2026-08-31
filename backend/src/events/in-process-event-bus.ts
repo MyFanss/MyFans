@@ -6,9 +6,16 @@ import { DomainEvent } from './domain-events';
 export class InProcessEventBus extends EventBus {
   private readonly logger = new Logger(InProcessEventBus.name);
   private readonly handlers = new Map<string, Array<(event: DomainEvent) => void>>();
+  private readonly publishedCountByType = new Map<string, number>();
+  private publishedTotal = 0;
 
   publish<T extends DomainEvent>(event: T): void {
     this.logger.debug(`Publishing event: ${event.type}`);
+    this.publishedTotal++;
+    this.publishedCountByType.set(
+      event.type,
+      (this.publishedCountByType.get(event.type) ?? 0) + 1,
+    );
     const eventHandlers = this.handlers.get(event.type) ?? [];
     for (const handler of eventHandlers) {
       try {
@@ -17,6 +24,13 @@ export class InProcessEventBus extends EventBus {
         this.logger.error(`Handler error for ${event.type}: ${err.message}`);
       }
     }
+  }
+
+  getMetrics() {
+    return {
+      events_published_total: this.publishedTotal,
+      events_by_type: Object.fromEntries(this.publishedCountByType),
+    };
   }
 
   subscribe<T extends DomainEvent>(

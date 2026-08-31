@@ -218,10 +218,12 @@ describe('CreatorsService - Property-Based Tests', () => {
           fc.option(fc.string({ maxLength: 50 }), { nil: undefined }),
           fc.integer({ min: 1, max: 100 }),
           async (searchQuery, limit) => {
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-              entities: [],
-              raw: [],
-            });
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
+              {
+                entities: [],
+                raw: [],
+              },
+            );
 
             const result = await service.searchCreators({
               q: searchQuery,
@@ -269,10 +271,12 @@ describe('CreatorsService - Property-Based Tests', () => {
         fc.asyncProperty(
           fc.option(fc.string({ maxLength: 50 }), { nil: undefined }),
           async (searchQuery) => {
-            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue({
-              entities: [],
-              raw: [],
-            });
+            (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(
+              {
+                entities: [],
+                raw: [],
+              },
+            );
 
             const result = await service.searchCreators({
               q: searchQuery,
@@ -325,9 +329,11 @@ describe('CreatorsService - Property-Based Tests', () => {
                   'display_name',
                   'avatar_url',
                   'bio',
+                  'is_verified',
+                  'followers_count',
                 ]),
               );
-              expect(keys).toHaveLength(5);
+              expect(keys).toHaveLength(7);
 
               // Verify sensitive fields are not present
               expect(creator).not.toHaveProperty('password_hash');
@@ -441,7 +447,9 @@ describe('CreatorsService - Property-Based Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           fc.option(fc.string({ maxLength: 100 }), { nil: undefined }),
-          fc.option(fc.string({ minLength: 1, maxLength: 20 }), { nil: undefined }),
+          fc.option(fc.string({ minLength: 1, maxLength: 20 }), {
+            nil: undefined,
+          }),
           fc.integer({ min: 1, max: 100 }),
           async (searchQuery, cursor, limit) => {
             (mockQueryBuilder.getRawAndEntities as jest.Mock).mockResolvedValue(

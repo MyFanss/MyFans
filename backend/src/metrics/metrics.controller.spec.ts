@@ -1,4 +1,9 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, VersioningType } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import request from 'supertest';
 import { MetricsController, MetricsAlert } from './metrics.controller';
+import { MetricsGuard } from './metrics.guard';
 import { HttpMetricsService } from '../common/services/http-metrics.service';
 import { RpcMetricsService } from '../common/services/rpc-metrics.service';
 import { ModerationSlaService } from '../moderation/moderation-sla.service';
@@ -39,7 +44,19 @@ describe('MetricsController', () => {
           errors5xx: 1,
           errors4xx: 0,
           totalLatencyMs: 6500,
-          histogram: { 5: 0, 10: 0, 25: 0, 50: 0, 100: 0, 250: 0, 500: 0, 1000: 0, 2500: 10, 5000: 0, Infinity: 0 },
+          histogram: {
+            5: 0,
+            10: 0,
+            25: 0,
+            50: 0,
+            100: 0,
+            250: 0,
+            500: 0,
+            1000: 0,
+            2500: 10,
+            5000: 0,
+            Infinity: 0,
+          },
           minLatencyMs: 400,
           maxLatencyMs: 900,
           avgLatencyMs: 650,
@@ -100,7 +117,19 @@ describe('MetricsController', () => {
           errors5xx: 1,
           errors4xx: 0,
           totalLatencyMs: 250,
-          histogram: { 5: 0, 10: 0, 25: 0, 50: 0, 100: 0, 250: 2, 500: 0, 1000: 0, 2500: 0, 5000: 0, Infinity: 0 },
+          histogram: {
+            5: 0,
+            10: 0,
+            25: 0,
+            50: 0,
+            100: 0,
+            250: 2,
+            500: 0,
+            1000: 0,
+            2500: 0,
+            5000: 0,
+            Infinity: 0,
+          },
           minLatencyMs: 120,
           maxLatencyMs: 130,
           avgLatencyMs: 125,
@@ -132,9 +161,120 @@ describe('MetricsController', () => {
 
     const output = await controller.getPrometheusMetrics();
 
-    expect(output).toContain('backend_http_requests_total{method="POST",route="/v1/auth/login"} 2');
-    expect(output).toContain('backend_http_request_errors_total{method="POST",route="/v1/auth/login",code="5xx"} 1');
-    expect(output).toContain('backend_soroban_rpc_calls_total{method="getHealth",outcome="success"} 1');
-    expect(output).toContain('backend_soroban_rpc_duration_seconds_total{method="getHealth"} 0.1');
+    expect(output).toContain(
+      'backend_http_requests_total{method="POST",route="/v1/auth/login"} 2',
+    );
+    expect(output).toContain(
+      'backend_http_request_errors_total{method="POST",route="/v1/auth/login",code="5xx"} 1',
+    );
+    expect(output).toContain(
+      'backend_soroban_rpc_calls_total{method="getHealth",outcome="success"} 1',
+    );
+    expect(output).toContain(
+      'backend_soroban_rpc_duration_seconds_total{method="getHealth"} 0.1',
+    );
+  });
+});
+
+describe('MetricsController with Guard Protection', () => {
+  let app: INestApplication;
+  let configService: ConfigService;
+
+  beforeEach(async () => {
+    const mockHttpMetrics = {
+      snapshot: jest.fn(),
+    } as unknown as HttpMetricsService;
+
+    const mockRpcMetrics = {
+      snapshot: jest.fn(),
+    } as unknown as RpcMetricsService;
+
+    const mockModerationSla = {
+      snapshot: jest.fn().mockResolvedValue({
+        collectedAt: '2026-05-31T00:00:00.000Z',
+        openCount: 0,
+        byStatus: [],
+      }),
+    } as unknown as ModerationSlaService;
+
+    mockHttpMetrics.snapshot.mockReturnValue({
+      collectedAt: '2026-05-31T00:00:00.000Z',
+      totalRequests: 1,
+      endpoints: [],
+    });
+
+    mockRpcMetrics.snapshot.mockReturnValue({
+      collectedAt: '2026-05-31T00:00:00.000Z',
+      totalCalls: 1,
+      endpoints: [],
+    });
+
+    const module: TestingModule = await Test.createTestingModule({
+      imports: [ConfigModule.forRoot()],
+      controllers: [MetricsController],
+      providers: [
+        {
+          provide: HttpMetricsService,
+          useValue: mockHttpMetrics,
+        },
+        {
+          provide: RpcMetricsService,
+          useValue: mockRpcMetrics,
+        },
+        {
+          provide: ModerationSlaService,
+          useValue: mockModerationSla,
+        },
+        MetricsGuard,
+      ],
+    }).compile();
+
+    app = module.createNestApplication();
+    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+    configService = module.get<ConfigService>(ConfigService);
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('returns 401 for /v1/metrics without Authorization header', async () => {
+    await request(app.getHttpServer()).get('/v1/metrics').expect(401);
+  });
+
+  it('returns 401 for /v1/metrics with invalid token', async () => {
+    await request(app.getHttpServer())
+      .get('/v1/metrics')
+      .set('Authorization', 'Bearer invalid-token')
+      .expect(401);
+  });
+
+  it('returns 200 for /v1/metrics with valid scrape token', async () => {
+    jest.spyOn(configService, 'get').mockReturnValue('valid-token');
+
+    const response = await request(app.getHttpServer())
+      .get('/v1/metrics')
+      .set('Authorization', 'Bearer valid-token')
+      .expect(200);
+
+    expect(response.body).toHaveProperty('collectedAt');
+  });
+
+  it('returns 401 for /v1/metrics/prometheus without Authorization header', async () => {
+    await request(app.getHttpServer())
+      .get('/v1/metrics/prometheus')
+      .expect(401);
+  });
+
+  it('returns 200 for /v1/metrics/prometheus with valid scrape token', async () => {
+    jest.spyOn(configService, 'get').mockReturnValue('valid-token');
+
+    const response = await request(app.getHttpServer())
+      .get('/v1/metrics/prometheus')
+      .set('Authorization', 'Bearer valid-token')
+      .expect(200);
+
+    expect(response.headers['content-type']).toMatch(/text\/plain/);
   });
 });

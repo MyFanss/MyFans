@@ -11,7 +11,7 @@ export type RequestWithFan = Request & { fanAddress: string };
 
 /**
  * Expects `Authorization: Bearer <token>` where token is base64(utf8 Stellar G-address),
- * matching {@link AuthService#createSession} in `src/auth/auth.service.ts`.
+ * matching {@link AuthService#createSession} in `src/auth-module/auth.service.ts`.
  */
 @Injectable()
 export class FanBearerGuard implements CanActivate {

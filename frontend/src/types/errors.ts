@@ -46,6 +46,9 @@ export type ErrorCode =
   | 'INTERNAL_ERROR'
   | 'SERVICE_UNAVAILABLE'
   | 'RATE_LIMITED'
+  | 'API_ERROR'
+  | 'CSRF_TOKEN_FETCH_FAILED'
+  | 'CSRF_VALIDATION_FAILED'
   // Form/Plan errors
   // Unknown
   | 'UNKNOWN_ERROR'
@@ -55,9 +58,19 @@ export type ErrorCode =
   | 'PUBLISH_FAILED'
   | 'ACCESS_DENIED'
   | 'PROFILE_ERROR'
+  | 'REFERRAL_CLAIM_FAILED'
+  | 'CREATOR_NOT_FOUND'
   | 'WALLET_NOT_INSTALLED'
   | 'UNSUPPORTED_WALLET'
-  | 'WALLET_CONNECTION_REJECTED';
+  | 'WALLET_CONNECTION_REJECTED'
+  | 'WALLET_CONNECT_CONFIG_MISSING'
+  | 'NETWORK_MISMATCH'
+  | 'WITHDRAWAL_FAILED'
+  | 'ACCOUNT_DELETION_FAILED'
+  // Subscription/Protocol-specific
+  | 'PROTOCOL_PAUSED'
+  | 'TOKEN_MISMATCH'
+  | 'PLAN_FETCH_FAILED';
 
 /** Error severity levels */
 export type ErrorSeverity = 'error' | 'warning' | 'info';
@@ -568,6 +581,23 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       recoverable: true,
       actions: [{ label: 'Try again', type: 'retry', primary: true }],
     },
+    REFERRAL_CLAIM_FAILED: {
+      message: 'Referral code not applied',
+      description:
+        'The code could not be applied to this checkout. You can continue subscribing without it.',
+      severity: 'warning',
+      category: 'server',
+      recoverable: true,
+      actions: [{ label: 'Dismiss', type: 'dismiss' }],
+    },
+    CREATOR_NOT_FOUND: {
+      message: 'Creator information not found',
+      description: 'Unable to verify creator identity. Refresh the page or sign in again.',
+      severity: 'error',
+      category: 'auth',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
     WALLET_NOT_INSTALLED: {
       message: 'Wallet not installed',
       severity: 'error',
@@ -588,6 +618,119 @@ function getErrorDefaults(code: ErrorCode): Omit<AppError, 'code' | 'timestamp'>
       category: 'wallet',
       recoverable: true,
       actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    WALLET_CONNECT_CONFIG_MISSING: {
+      message: 'WalletConnect is not configured',
+      description:
+        'This build has WalletConnect enabled but no project ID. Set NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID, or connect with Freighter or Lobstr.',
+      severity: 'error',
+      category: 'wallet',
+      recoverable: false,
+      actions: [],
+    },
+    NETWORK_MISMATCH: {
+      message: 'Wrong network',
+      description:
+        'Your wallet is on a different network than this app expects. Switch networks in your wallet, then try again.',
+      severity: 'error',
+      category: 'wallet',
+      recoverable: true,
+      actions: [
+        { label: 'Try again', type: 'retry', primary: true },
+        { label: 'Go back', type: 'back' },
+      ],
+    },
+    API_ERROR: {
+      message: 'Request failed',
+      description: 'The server returned an error. Check your connection and try again.',
+      severity: 'error',
+      category: 'server',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    CSRF_TOKEN_FETCH_FAILED: {
+      message: 'Security check failed',
+      description: 'Could not verify the request. Refresh the page and try again.',
+      severity: 'error',
+      category: 'server',
+      recoverable: true,
+      actions: [{ label: 'Refresh', type: 'retry', primary: true }],
+    },
+    CSRF_VALIDATION_FAILED: {
+      message: 'Security check failed',
+      description: 'This request could not be verified. Refresh the page and try again.',
+      severity: 'error',
+      category: 'server',
+      recoverable: true,
+      actions: [{ label: 'Refresh', type: 'retry', primary: true }],
+    },
+    WALLET_ADDRESS_MISMATCH: {
+      message: 'Wallet address mismatch',
+      description:
+        'The connected wallet does not match the account on file. Connect the wallet linked to this account and try again.',
+      severity: 'error',
+      category: 'wallet',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    WALLET_SIGNATURE_REJECTED: {
+      message: 'Signature rejected',
+      description: 'You declined the signature request in your wallet. Try again and approve it to continue.',
+      severity: 'warning',
+      category: 'wallet',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    WITHDRAWAL_FAILED: {
+      message: 'Withdrawal failed',
+      description:
+        'The withdrawal could not be completed. No funds were moved — check your balance and try again.',
+      severity: 'error',
+      category: 'transaction',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    ACCOUNT_DELETION_FAILED: {
+      message: 'Account deletion failed',
+      description: 'We could not delete your account right now. Try again, or contact support if it persists.',
+      severity: 'error',
+      category: 'server',
+      recoverable: true,
+      actions: [{ label: 'Try again', type: 'retry', primary: true }],
+    },
+    PROTOCOL_PAUSED: {
+      message: 'Subscription protocol is paused',
+      description:
+        'New subscriptions are currently not being accepted. Please try again later when the protocol resumes.',
+      severity: 'warning',
+      category: 'server',
+      recoverable: true,
+      actions: [
+        { label: 'Try again later', type: 'back', primary: true },
+      ],
+    },
+    TOKEN_MISMATCH: {
+      message: 'Token or asset mismatch',
+      description:
+        'The asset you selected is not compatible with this plan. Try selecting a different asset.',
+      severity: 'error',
+      category: 'transaction',
+      recoverable: true,
+      actions: [
+        { label: 'Try again', type: 'retry', primary: true },
+        { label: 'Go back', type: 'back' },
+      ],
+    },
+    PLAN_FETCH_FAILED: {
+      message: 'Couldn\'t load plan details',
+      description:
+        'We had trouble loading the plan information. Check your connection and try again.',
+      severity: 'error',
+      category: 'network',
+      recoverable: true,
+      actions: [
+        { label: 'Try again', type: 'retry', primary: true },
+      ],
     },
   };
 

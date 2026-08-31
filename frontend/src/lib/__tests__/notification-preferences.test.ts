@@ -2,6 +2,14 @@
  * Unit tests for notification-preferences lib.
  */
 
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/lib/csrf', () => ({
+  getCsrfToken: vi.fn().mockResolvedValue('test-csrf-token'),
+  invalidateCsrfToken: vi.fn(),
+}));
+
+import { getCsrfToken } from '@/lib/csrf';
 import {
   DEFAULT_PREFERENCES,
   EVENT_TYPES,
@@ -72,15 +80,18 @@ describe('EVENT_TYPES', () => {
 
 describe('fetchNotificationPreferences', () => {
   beforeEach(() => {
-    global.fetch = jest.fn();
+    vi.unstubAllEnvs();
+    global.fetch = vi.fn();
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
-  it('calls GET /users/me/notifications', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+  it('calls GET /users/me/notifications on the versioned API base', async () => {
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'https://api.example.com');
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => DEFAULT_PREFERENCES,
@@ -88,14 +99,29 @@ describe('fetchNotificationPreferences', () => {
 
     const result = await fetchNotificationPreferences();
     expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/users/me/notifications'),
-      expect.any(Object),
+      'https://api.example.com/v1/users/me/notifications',
+      expect.objectContaining({ credentials: 'include' }),
     );
     expect(result).toEqual(DEFAULT_PREFERENCES);
   });
 
+  it('uses same-origin /api/v1 when NEXT_PUBLIC_API_URL is unset', async () => {
+    vi.stubEnv('NEXT_PUBLIC_API_URL', '');
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => DEFAULT_PREFERENCES,
+    });
+
+    await fetchNotificationPreferences();
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/v1/users/me/notifications',
+      expect.any(Object),
+    );
+  });
+
   it('throws on non-ok response', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,
       status: 401,
       json: async () => ({ message: 'Unauthorized' }),
@@ -109,34 +135,42 @@ describe('fetchNotificationPreferences', () => {
 
 describe('saveNotificationPreferences', () => {
   beforeEach(() => {
-    global.fetch = jest.fn();
+    vi.unstubAllEnvs();
+    vi.clearAllMocks();
+    (getCsrfToken as ReturnType<typeof vi.fn>).mockResolvedValue('test-csrf-token');
+    global.fetch = vi.fn();
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it('calls PATCH /users/me/notifications with body', async () => {
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'http://localhost:3001');
     const patch: Partial<NotificationPreferences> = { email_notifications: false };
-    (global.fetch as jest.Mock).mockResolvedValue({
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ message: 'Notification preferences updated successfully', preferences: DEFAULT_PREFERENCES }),
+      json: async () => ({
+        message: 'Notification preferences updated successfully',
+        preferences: DEFAULT_PREFERENCES,
+      }),
     });
 
     await saveNotificationPreferences(patch);
 
     expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/users/me/notifications'),
+      'http://localhost:3001/v1/users/me/notifications',
       expect.objectContaining({
         method: 'PATCH',
         body: JSON.stringify(patch),
+        headers: expect.objectContaining({ 'x-csrf-token': 'test-csrf-token' }),
       }),
     );
   });
 
   it('returns message and preferences on success', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
@@ -151,7 +185,7 @@ describe('saveNotificationPreferences', () => {
   });
 
   it('throws on server error', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,
       status: 500,
       json: async () => ({ message: 'Internal server error' }),

@@ -1,9 +1,12 @@
-import { Controller, Get, Header, Query } from '@nestjs/common';
+import { Controller, Get, Header, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import type { MetricsSnapshot } from '../common/services/http-metrics.service';
 import { HttpMetricsService } from '../common/services/http-metrics.service';
 import { RpcMetricsService, RpcMetricsSnapshot } from '../common/services/rpc-metrics.service';
+import { BusinessMetricsService } from './business-metrics.service';
 import { ModerationSlaService, ModerationSlaSnapshot } from '../moderation/moderation-sla.service';
+import { Public } from '../common/decorators/public.decorator';
+import { MetricsGuard } from './metrics.guard';
 
 export type MetricSeverity = 'warning' | 'critical';
 
@@ -37,6 +40,7 @@ export class MetricsController {
   constructor(
     private readonly httpMetrics: HttpMetricsService,
     private readonly rpcMetrics: RpcMetricsService,
+    private readonly businessMetrics: BusinessMetricsService,
     private readonly moderationSla: ModerationSlaService,
   ) {}
 
@@ -44,11 +48,15 @@ export class MetricsController {
    * GET /v1/metrics
    * Returns a point-in-time snapshot of per-endpoint SLA metrics,
    * Soroban RPC call metrics, and moderation queue SLA stats.
+   * Requires Authorization: Bearer <METRICS_SCRAPE_TOKEN>
    */
   @Get()
+  @Public()
+  @UseGuards(MetricsGuard)
   @ApiOperation({ summary: 'Per-endpoint HTTP latency, error rate metrics, Soroban RPC metrics, and moderation queue SLA' })
   @ApiQuery({ name: 'route', required: false, description: 'Filter HTTP endpoints by route prefix, e.g. /v1/auth' })
   @ApiResponse({ status: 200, description: 'Metrics snapshot' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid scrape token' })
   async getMetrics(@Query('route') routeFilter?: string): Promise<FullMetricsSnapshot> {
     const [httpSnap, rpcSnap, slaSnap] = await Promise.all([
       Promise.resolve(this.httpMetrics.snapshot()),
@@ -67,10 +75,13 @@ export class MetricsController {
   }
 
   @Get('prometheus')
+  @Public()
+  @UseGuards(MetricsGuard)
   @Header('Content-Type', 'text/plain; version=0.0.4')
   @ApiOperation({ summary: 'Prometheus scrape endpoint for HTTP and Soroban RPC metrics' })
   @ApiQuery({ name: 'route', required: false, description: 'Filter HTTP endpoints by route prefix, e.g. /v1/auth' })
   @ApiResponse({ status: 200, description: 'Prometheus metrics text format' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid scrape token' })
   async getPrometheusMetrics(@Query('route') routeFilter?: string): Promise<string> {
     const [httpSnap, rpcSnap] = await Promise.all([
       Promise.resolve(this.httpMetrics.snapshot()),
@@ -83,7 +94,9 @@ export class MetricsController {
       );
     }
 
-    return this.renderPrometheus(httpSnap, rpcSnap);
+    const httpProm = this.renderPrometheus(httpSnap, rpcSnap);
+    const bizProm = this.businessMetrics.toPrometheus();
+    return httpProm + '\n' + bizProm;
   }
 
   private buildAlerts(

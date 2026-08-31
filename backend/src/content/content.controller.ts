@@ -10,33 +10,55 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiHeader,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
+import type { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { OptionalHybridFanAuthGuard } from '../subscriptions/guards/optional-hybrid-fan-auth.guard';
+import type { RequestWithHybridAuth } from '../subscriptions/guards/hybrid-fan-auth.guard';
 import { PaginatedResponseDto, PaginationDto } from '../common/dto';
+import {
+  ContentAccessService,
+  GatedContentView,
+} from './content-access.service';
 import { ContentService } from './content.service';
-import { ContentResponseDto, CreateContentDto, UpdateContentDto } from './dto/content.dto';
+import {
+  ContentResponseDto,
+  CreateContentDto,
+  UpdateContentDto,
+} from './dto/content.dto';
 import { ContentMetadata } from './entities/content.entity';
 
 @ApiTags('content')
 @Controller({ path: 'content', version: '1' })
 export class ContentController {
-  constructor(private readonly contentService: ContentService) {}
+  constructor(
+    private readonly contentService: ContentService,
+    private readonly contentAccessService: ContentAccessService,
+  ) {}
 
   @Post()
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description:
+      'Makes retries safe; reusing a key with another body returns 409',
+  })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create content metadata' })
   @ApiResponse({ status: 201, type: ContentResponseDto })
   create(
-    @CurrentUser() user: { userId: string },
+    @CurrentUser() user: JwtUserPayload,
     @Body() dto: CreateContentDto,
   ): Promise<ContentMetadata> {
     return this.contentService.create(user.userId, dto);
@@ -62,11 +84,22 @@ export class ContentController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get content by ID' })
-  @ApiResponse({ status: 200, type: ContentResponseDto })
+  @UseGuards(OptionalHybridFanAuthGuard)
+  @ApiOperation({
+    summary:
+      'Get content by ID — gated content returns a teaser to non-subscribers. ' +
+      'Accepts either a platform JWT or a Stellar bearer token (see HybridFanAuthGuard), or no credential at all.',
+  })
+  @ApiResponse({ status: 200 })
   @ApiResponse({ status: 404 })
-  findOne(@Param('id', ParseUUIDPipe) id: string): Promise<ContentMetadata> {
-    return this.contentService.findOne(id);
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: RequestWithHybridAuth,
+  ): Promise<GatedContentView> {
+    return this.contentAccessService.getForRequester(id, {
+      userId: req.user?.userId,
+      fanAddress: req.fanAddress,
+    });
   }
 
   @Put(':id')
@@ -77,7 +110,7 @@ export class ContentController {
   @ApiResponse({ status: 403, description: 'Forbidden – not the owner' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: { userId: string },
+    @CurrentUser() user: JwtUserPayload,
     @Body() dto: UpdateContentDto,
   ): Promise<ContentMetadata> {
     return this.contentService.update(id, user.userId, dto);
@@ -92,7 +125,7 @@ export class ContentController {
   @ApiResponse({ status: 403, description: 'Forbidden – not the owner' })
   remove(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: { userId: string },
+    @CurrentUser() user: JwtUserPayload,
   ): Promise<void> {
     return this.contentService.remove(id, user.userId);
   }

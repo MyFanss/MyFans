@@ -1,3 +1,5 @@
+import { getConfiguredApiBaseUrl, trimTrailingSlash } from '@/lib/api/base-url';
+
 export const FeatureFlag = {
   BOOKMARKS: 'bookmarks',
   EARNINGS_WITHDRAWALS: 'earnings_withdrawals',
@@ -5,6 +7,9 @@ export const FeatureFlag = {
   REFERRAL_CODES: 'referral_codes',
   NEW_SUBSCRIPTION_FLOW: 'newSubscriptionFlow',
   CRYPTO_PAYMENTS: 'cryptoPayments',
+  WALLET_CONNECT: 'walletConnect',
+  CONTENT_UPLOADS: 'contentUploads',
+  SOROBAN_POLLER: 'sorobanPoller',
 } as const;
 
 export type FeatureFlag = (typeof FeatureFlag)[keyof typeof FeatureFlag];
@@ -48,6 +53,18 @@ export const featureFlagDefinitions: Record<FeatureFlag, FeatureFlagDefinition> 
     description: 'Enables crypto payment options in the checkout flow.',
     envKey: 'NEXT_PUBLIC_FEATURE_CRYPTO_PAYMENTS',
   },
+  [FeatureFlag.WALLET_CONNECT]: {
+    description: 'Enables WalletConnect as a wallet connection option. Disabled by default until the provider is fully integrated.',
+    envKey: 'NEXT_PUBLIC_FEATURE_WALLET_CONNECT',
+  },
+  [FeatureFlag.CONTENT_UPLOADS]: {
+    description: 'Enables creator content and media uploads to IPFS and storage.',
+    envKey: 'NEXT_PUBLIC_FEATURE_CONTENT_UPLOADS',
+  },
+  [FeatureFlag.SOROBAN_POLLER]: {
+    description: 'Controls polling of on-chain Soroban subscription events.',
+    envKey: 'NEXT_PUBLIC_FEATURE_SOROBAN_POLLER',
+  },
 };
 
 export const defaultFeatureFlags: FeatureFlagSnapshot = Object.freeze({
@@ -57,6 +74,9 @@ export const defaultFeatureFlags: FeatureFlagSnapshot = Object.freeze({
   [FeatureFlag.REFERRAL_CODES]: false,
   [FeatureFlag.NEW_SUBSCRIPTION_FLOW]: false,
   [FeatureFlag.CRYPTO_PAYMENTS]: false,
+  [FeatureFlag.WALLET_CONNECT]: false,
+  [FeatureFlag.CONTENT_UPLOADS]: false,
+  [FeatureFlag.SOROBAN_POLLER]: false,
 });
 
 let cachedRemoteFlags: FeatureFlagOverrides = {};
@@ -104,17 +124,16 @@ function sanitizeFlagOverrides(value: unknown): FeatureFlagOverrides {
   }, {});
 }
 
-function trimTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, '');
-}
-
 export function getRemoteFlagsUrl(): string | undefined {
   const explicitUrl = process.env[FEATURE_FLAGS_URL_ENV_KEY];
   if (explicitUrl) {
     return explicitUrl;
   }
 
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+  // Uses getConfiguredApiBaseUrl() (undefined when unset) rather than
+  // getApiBaseUrl(), since this function's fallback is a same-origin
+  // relative path rather than the shared absolute localhost default (#1455).
+  const apiBaseUrl = getConfiguredApiBaseUrl();
   if (apiBaseUrl) {
     const normalizedApiBaseUrl = trimTrailingSlash(apiBaseUrl);
 

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -11,12 +12,24 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { Reflector } from '@nestjs/core';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 import { ListCreatorSubscribersQueryDto } from './dto/list-creator-subscribers-query.dto';
 import { SubscriptionStateQueryDto } from './dto/subscription-state-query.dto';
+import { FanDashboardQueryDto } from './dto/fan-dashboard-query.dto';
+import { CreatorDashboardSummaryDto } from './dto/creator-dashboard-summary.dto';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
+import type { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 import {
   CreateCheckoutDto,
   CheckoutResponseDto,
@@ -34,22 +47,32 @@ import {
 import { FanBearerGuard } from './guards/fan-bearer.guard';
 import type { RequestWithFan } from './guards/fan-bearer.guard';
 import { SubscriptionsService } from './subscriptions.service';
+import { SubscriptionPauseService } from './subscription-pause.service';
 import { RequireFeatureFlag } from '../feature-flags/feature-flag.decorator';
 import { FeatureFlagGuard } from '../feature-flags/feature-flag.guard';
 import { Deprecated, DeprecationInterceptor } from '../common/deprecation';
 import { SubscriptionsExceptionFilter } from './filters/subscriptions-exception.filter';
+import { Roles } from '../auth-module/decorators/roles.decorator';
+import { RolesGuard } from '../auth-module/guards/roles.guard';
+import { UserRole } from '../common/enums/user-role.enum';
 
 @ApiTags('subscriptions')
 @UseFilters(new SubscriptionsExceptionFilter())
 @UseGuards(ThrottlerGuard)
 @Controller({ path: 'subscriptions', version: '1' })
 export class SubscriptionsController {
-  constructor(private subscriptionsService: SubscriptionsService) {}
+  constructor(
+    private subscriptionsService: SubscriptionsService,
+    private pauseService: SubscriptionPauseService,
+  ) {}
 
   @Get('me/subscription-state')
   @UseGuards(FanBearerGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get subscription state between the authenticated fan and a creator' })
+  @ApiOperation({
+    summary:
+      'Get subscription state between the authenticated fan and a creator',
+  })
   @ApiResponse({ status: 200, description: 'Subscription state' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getFanCreatorSubscriptionState(
@@ -66,13 +89,23 @@ export class SubscriptionsController {
   @Deprecated({
     sunset: '2026-01-01',
     link: '/v1/subscriptions/me/subscription-state',
-    message: 'Use GET /v1/subscriptions/me/subscription-state instead. Removal date: 2026-01-01.',
+    message:
+      'Use GET /v1/subscriptions/me/subscription-state instead. Removal date: 2026-01-01.',
   })
   @UseInterceptors(new DeprecationInterceptor(new Reflector()))
-  @ApiOperation({ summary: '[Deprecated] Check if a fan is subscribed to a creator', deprecated: true })
+  @ApiOperation({
+    summary: '[Deprecated] Check if a fan is subscribed to a creator',
+    deprecated: true,
+  })
   @ApiResponse({ status: 200, description: 'Subscription check result' })
-  async checkSubscription(@Query('fan') fan: string, @Query('creator') creator: string) {
-    const isSubscriber = await this.subscriptionsService.isSubscriber(fan, creator);
+  async checkSubscription(
+    @Query('fan') fan: string,
+    @Query('creator') creator: string,
+  ) {
+    const isSubscriber = await this.subscriptionsService.isSubscriber(
+      fan,
+      creator,
+    );
     return { isSubscriber };
   }
 
@@ -80,15 +113,19 @@ export class SubscriptionsController {
   @Deprecated({
     sunset: '2026-01-01',
     link: '/v1/subscriptions/me/subscription-state',
-    message: 'Use GET /v1/subscriptions/me/subscription-state instead. Removal date: 2026-01-01.',
+    message:
+      'Use GET /v1/subscriptions/me/subscription-state instead. Removal date: 2026-01-01.',
   })
   @UseInterceptors(new DeprecationInterceptor(new Reflector()))
-  @ApiOperation({ summary: '[Deprecated] List subscriptions for a fan', deprecated: true })
+  @ApiOperation({
+    summary: '[Deprecated] List subscriptions for a fan',
+    deprecated: true,
+  })
   @ApiResponse({ status: 200, description: 'Subscriptions list' })
   listSubscriptions(@Query() query: ListSubscriptionsQueryDto) {
     return this.subscriptionsService.listSubscriptions(
       query.fan,
-      query.status as never,
+      query.status,
       query.sort,
       query.cursor,
       query.limit,
@@ -99,7 +136,8 @@ export class SubscriptionsController {
   @UseGuards(FanBearerGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'List subscriptions for the authenticated fan with status and sort filters',
+    summary:
+      'List subscriptions for the authenticated fan with status and sort filters',
     description:
       'Cursor-paginated subscription list. Pass `cursor` and `limit`; responses include `data`, `limit`, `nextCursor`, and `hasMore`.',
   })
@@ -163,6 +201,60 @@ export class SubscriptionsController {
     );
   }
 
+  @Get('me/creator-subscribers')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'List subscribers for the authenticated creator',
+    description:
+      'Cursor-paginated subscriber list for the creator dashboard. Only the creator can access their own subscriber list. ' +
+      'Pass `cursor`, `limit`, `status`, and `sort`; responses include `data`, `limit`, `nextCursor`, and `hasMore`. ' +
+      'Email is hidden by default per privacy policy; subscriber wallets/usernames are shown.',
+  })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'Pagination cursor (`nextCursor` from the previous page)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Number of items per page (default 20, max 100)',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['active', 'expired'],
+    description: 'Filter by subscription status',
+  })
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    enum: ['created', 'expiry'],
+    description: 'Sort field (default: created)',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Cursor-paginated subscribers list for authenticated creator (`data`, `limit`, `nextCursor`, `hasMore`)',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getMyCreatorSubscribers(
+    @CurrentUser() user: JwtUserPayload,
+    @Query() query: ListCreatorSubscribersQueryDto,
+  ) {
+    if (!user?.userId) {
+      throw new BadRequestException('User ID is required');
+    }
+    return this.subscriptionsService.listCreatorSubscribers(
+      user.userId,
+      query.status,
+      query.cursor,
+      query.limit,
+      query.sort,
+    );
+  }
+
   @Get('me/dashboard')
   @UseGuards(FanBearerGuard)
   @ApiBearerAuth()
@@ -171,9 +263,20 @@ export class SubscriptionsController {
     description:
       'Offset-paginated dashboard. Pass `page` and `limit` to control pagination.',
   })
-  @ApiQuery({ name: 'page', required: false, description: 'Page number (1-based, default 1)' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default 20, max 100)' })
-  @ApiResponse({ status: 200, description: 'Fan dashboard summary with pagination' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: 'Page number (1-based, default 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Items per page (default 20, max 100)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Fan dashboard summary with pagination',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   getFanDashboard(
     @Req() req: RequestWithFan,
@@ -186,20 +289,66 @@ export class SubscriptionsController {
     );
   }
 
+  @Get('dashboard/creator-summary')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Get creator dashboard summary with subscriber metrics and recent activity',
+    description:
+      'Returns creator-specific metrics including total subscribers, MRR, active subscriptions, and recent activity. ' +
+      'Only the creator themselves can access their own dashboard summary.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Creator dashboard summary with metrics',
+    type: CreatorDashboardSummaryDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - you can only view your own dashboard summary',
+  })
+  async getCreatorDashboardSummary(
+    @CurrentUser() user: JwtUserPayload,
+  ): Promise<CreatorDashboardSummaryDto> {
+    if (!user?.userId) {
+      throw new BadRequestException('User ID is required');
+    }
+    const summary = await this.subscriptionsService.getCreatorDashboardSummary(
+      user.userId,
+    );
+    return summary as CreatorDashboardSummaryDto;
+  }
+
   @Post('checkout')
   @Throttle({ short: { limit: 10, ttl: 60000 } })
   @UseGuards(FeatureFlagGuard)
   @RequireFeatureFlag('newSubscriptionFlow')
-  @ApiOperation({ summary: 'Create a subscription checkout session', description: 'Initiates a new checkout session for subscribing to a creator plan. The session expires after 15 minutes.' })
-  @ApiResponse({ status: 201, description: 'Checkout session created', type: CheckoutResponseDto })
-  @ApiResponse({ status: 403, description: 'New subscription flow is disabled' })
+  @ApiOperation({
+    summary: 'Create a subscription checkout session',
+    description:
+      'Initiates a new checkout session for subscribing to a creator plan. The session expires after 15 minutes.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Checkout session created',
+    type: CheckoutResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'New subscription flow is disabled',
+  })
   @ApiResponse({ status: 404, description: 'Plan not found' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
-  createCheckout(
+  async createCheckout(
     @Body() body: CreateCheckoutDto,
     @Headers('x-network') requestNetwork?: string,
   ) {
-    const checkout = this.subscriptionsService.createCheckout(
+    const checkout = await this.subscriptionsService.createCheckout(
       body.fanAddress,
       body.creatorAddress,
       body.planId,
@@ -226,9 +375,17 @@ export class SubscriptionsController {
   }
 
   @Get('checkout/:id')
-  @ApiOperation({ summary: 'Get a checkout session by ID', description: 'Returns full checkout details including transaction hash and error if present.' })
+  @ApiOperation({
+    summary: 'Get a checkout session by ID',
+    description:
+      'Returns full checkout details including transaction hash and error if present.',
+  })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
-  @ApiResponse({ status: 200, description: 'Checkout session details', type: CheckoutResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Checkout session details',
+    type: CheckoutResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Checkout session has expired' })
   @ApiResponse({ status: 404, description: 'Checkout not found' })
   getCheckout(@Param('id') checkoutId: string) {
@@ -253,9 +410,17 @@ export class SubscriptionsController {
   }
 
   @Get('checkout/:id/plan')
-  @ApiOperation({ summary: 'Get plan summary for a checkout session', description: 'Returns creator name, asset, amount, and billing interval for the plan attached to this checkout.' })
+  @ApiOperation({
+    summary: 'Get plan summary for a checkout session',
+    description:
+      'Returns creator name, asset, amount, and billing interval for the plan attached to this checkout.',
+  })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
-  @ApiResponse({ status: 200, description: 'Plan summary', type: PlanSummaryResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Plan summary',
+    type: PlanSummaryResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Checkout or plan not found' })
   getPlanSummary(@Param('id') checkoutId: string) {
     const checkout = this.subscriptionsService.getCheckout(checkoutId);
@@ -263,18 +428,34 @@ export class SubscriptionsController {
   }
 
   @Get('checkout/:id/price')
-  @ApiOperation({ summary: 'Get price breakdown for a checkout session', description: 'Returns subtotal, platform fee, network fee, and total for the checkout.' })
+  @ApiOperation({
+    summary: 'Get price breakdown for a checkout session',
+    description:
+      'Returns subtotal, platform fee, network fee, and total for the checkout.',
+  })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
-  @ApiResponse({ status: 200, description: 'Price breakdown', type: PriceBreakdownResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Price breakdown',
+    type: PriceBreakdownResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Checkout not found' })
   getPriceBreakdown(@Param('id') checkoutId: string) {
     return this.subscriptionsService.getPriceBreakdown(checkoutId);
   }
 
   @Get('checkout/:id/wallet')
-  @ApiOperation({ summary: 'Get wallet status for a checkout session', description: 'Returns the fan wallet balances and connection status for the checkout session.' })
+  @ApiOperation({
+    summary: 'Get wallet status for a checkout session',
+    description:
+      'Returns the fan wallet balances and connection status for the checkout session.',
+  })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
-  @ApiResponse({ status: 200, description: 'Wallet status', type: WalletStatusResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Wallet status',
+    type: WalletStatusResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Checkout not found' })
   getWalletStatus(@Param('id') checkoutId: string) {
     const checkout = this.subscriptionsService.getCheckout(checkoutId);
@@ -282,9 +463,17 @@ export class SubscriptionsController {
   }
 
   @Get('checkout/:id/preview')
-  @ApiOperation({ summary: 'Get transaction preview for a checkout session', description: 'Returns a preview of the Stellar transaction including from/to addresses, asset, amount, fee, and memo.' })
+  @ApiOperation({
+    summary: 'Get transaction preview for a checkout session',
+    description:
+      'Returns a preview of the Stellar transaction including from/to addresses, asset, amount, fee, and memo.',
+  })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
-  @ApiResponse({ status: 200, description: 'Transaction preview', type: TransactionPreviewResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Transaction preview',
+    type: TransactionPreviewResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Checkout not found' })
   getTransactionPreview(@Param('id') checkoutId: string) {
     return this.subscriptionsService.getTransactionPreview(checkoutId);
@@ -292,10 +481,16 @@ export class SubscriptionsController {
 
   @Post('checkout/:id/validate')
   @Throttle({ short: { limit: 10, ttl: 60000 } })
-  @ApiOperation({ summary: 'Validate fan wallet balance for a checkout session' })
+  @ApiOperation({
+    summary: 'Validate fan wallet balance for a checkout session',
+  })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
-  @ApiResponse({ status: 200, description: 'Balance validation result', type: ValidateBalanceResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Balance validation result',
+    type: ValidateBalanceResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Checkout not found' })
   validateBalance(
     @Param('id') checkoutId: string,
@@ -314,14 +509,21 @@ export class SubscriptionsController {
   @ApiOperation({ summary: 'Confirm a subscription checkout' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
-  @ApiResponse({ status: 200, description: 'Subscription confirmed', type: ConfirmSubscriptionResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Subscription confirmed',
+    type: ConfirmSubscriptionResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Checkout expired' })
   @ApiResponse({ status: 404, description: 'Checkout not found' })
   confirmSubscription(
     @Param('id') checkoutId: string,
     @Body() body: ConfirmSubscriptionDto,
   ) {
-    return this.subscriptionsService.confirmSubscription(checkoutId, body.txHash);
+    return this.subscriptionsService.confirmSubscription(
+      checkoutId,
+      body.txHash,
+    );
   }
 
   @Post('checkout/:id/fail')
@@ -331,10 +533,7 @@ export class SubscriptionsController {
   @ApiParam({ name: 'id', description: 'Checkout session ID' })
   @ApiResponse({ status: 200, description: 'Checkout marked as failed' })
   @ApiResponse({ status: 404, description: 'Checkout not found' })
-  failCheckout(
-    @Param('id') checkoutId: string,
-    @Body() body: FailCheckoutDto,
-  ) {
+  failCheckout(@Param('id') checkoutId: string, @Body() body: FailCheckoutDto) {
     return this.subscriptionsService.failCheckout(
       checkoutId,
       body.error,
@@ -348,12 +547,106 @@ export class SubscriptionsController {
   @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiResponse({ status: 200, description: 'Subscription cancelled' })
   @ApiResponse({ status: 404, description: 'Subscription not found' })
-  cancelSubscription(
-    @Body() body: CancelSubscriptionDto,
-  ) {
+  cancelSubscription(@Body() body: CancelSubscriptionDto) {
     return this.subscriptionsService.cancelSubscription(
       body.fanAddress,
       body.creatorAddress,
     );
+  }
+
+  // ── Admin endpoints (require ADMIN role) ────────────────────────────────
+
+  @Get('admin/status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: '[Admin] Get subscription service status including pause state',
+    description:
+      'Returns the current pause state of the subscription contract. ' +
+      'Requires ADMIN role.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Service status',
+    schema: {
+      type: 'object',
+      properties: {
+        paused: { type: 'boolean' },
+        pausedAt: { type: 'string', example: '2026-08-26T14:30:00Z' },
+        pausedBy: { type: 'string', example: 'GADMIN...' },
+        reason: { type: 'string', example: 'Scheduled maintenance' },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden (insufficient role)' })
+  getStatus() {
+    return this.pauseService.getState();
+  }
+
+  @Post('admin/pause')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: '[Admin] Pause subscription service',
+    description:
+      'Pauses the subscription contract, denying all new subscriptions and gating. ' +
+      'Requires ADMIN role. ' +
+      'Checkout requests will return 503 Service Unavailable while paused.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Subscription service paused',
+    schema: {
+      type: 'object',
+      properties: {
+        paused: { type: 'boolean' },
+        pausedAt: { type: 'string' },
+        pausedBy: { type: 'string' },
+        reason: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden (insufficient role)' })
+  pause(
+    @Req() req: { user?: { sub: string } },
+    @Body('reason') reason?: string,
+  ) {
+    const adminId = req.user?.sub || 'unknown';
+    return this.pauseService.pause(adminId, reason);
+  }
+
+  @Post('admin/unpause')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: '[Admin] Unpause subscription service',
+    description:
+      'Unpauses the subscription contract, restoring normal operation. ' +
+      'Requires ADMIN role. ' +
+      'Gating checks and checkout requests will resume normal processing.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Subscription service unpaused',
+    schema: {
+      type: 'object',
+      properties: {
+        paused: { type: 'boolean' },
+        pausedAt: { type: 'string', nullable: true },
+        pausedBy: { type: 'string', nullable: true },
+        reason: { type: 'string', nullable: true },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden (insufficient role)' })
+  unpause(@Req() req: { user?: { sub: string } }) {
+    const adminId = req.user?.sub || 'unknown';
+    return this.pauseService.unpause(adminId);
   }
 }

@@ -13,6 +13,7 @@ import {
   SubscriptionIndexEntity,
   SubscriptionStatus,
 } from './entities/subscription-index.entity';
+import { MockRpcAdapter, RPC_BALANCE_ADAPTER } from './rpc-adapter';
 
 function makeChainReader(): SubscriptionChainReaderService {
   return {
@@ -58,7 +59,10 @@ describe('SubscriptionsService', () => {
           (sub) => sub.fan === data.fan && sub.creator === data.creator,
         );
         const next = makeSub({
-          id: existingIndex >= 0 ? currentSubs[existingIndex].id : `sub-${currentSubs.length + 1}`,
+          id:
+            existingIndex >= 0
+              ? currentSubs[existingIndex].id
+              : `sub-${currentSubs.length + 1}`,
           fan: data.fan,
           creator: data.creator,
           planId: data.planId,
@@ -72,8 +76,11 @@ describe('SubscriptionsService', () => {
         }
         return next;
       }),
-      findCurrentForFanCreator: jest.fn(async (fan, creator) =>
-        currentSubs.find((sub) => sub.fan === fan && sub.creator === creator) ?? null,
+      findCurrentForFanCreator: jest.fn(
+        async (fan, creator) =>
+          currentSubs.find(
+            (sub) => sub.fan === fan && sub.creator === creator,
+          ) ?? null,
       ),
       isSubscriber: jest.fn(async (fan, creator) => {
         const sub = currentSubs.find(
@@ -121,9 +128,13 @@ describe('SubscriptionsService', () => {
       providers: [
         SubscriptionsService,
         { provide: EventBus, useValue: eventBus },
-        { provide: SubscriptionChainReaderService, useValue: makeChainReader() },
+        {
+          provide: SubscriptionChainReaderService,
+          useValue: makeChainReader(),
+        },
         { provide: SUBSCRIPTION_EVENT_PUBLISHER, useValue: eventPublisher },
         { provide: SubscriptionIndexRepository, useValue: repo },
+        { provide: RPC_BALANCE_ADAPTER, useClass: MockRpcAdapter },
       ],
     }).compile();
 
@@ -200,66 +211,161 @@ describe('SubscriptionsService', () => {
 
   it('filters by status=active via findWithCursor', async () => {
     const fan = 'GFANADDRESS777777777777777777777777777777777777777777777777';
-    await service.addSubscription(fan, 'GAAAAAAAAAAAAAAA', 1, Math.floor(Date.now() / 1000) + 3600);
+    await service.addSubscription(
+      fan,
+      'GAAAAAAAAAAAAAAA',
+      1,
+      Math.floor(Date.now() / 1000) + 3600,
+    );
 
-    await service.listSubscriptions(fan, SubscriptionStatus.ACTIVE, undefined, undefined, 20);
+    await service.listSubscriptions(
+      fan,
+      SubscriptionStatus.ACTIVE,
+      undefined,
+      undefined,
+      20,
+    );
 
-    expect(repo.findWithCursor).toHaveBeenCalledWith(fan, SubscriptionStatus.ACTIVE, undefined, undefined, 20);
+    expect(repo.findWithCursor).toHaveBeenCalledWith(
+      fan,
+      SubscriptionStatus.ACTIVE,
+      undefined,
+      undefined,
+      20,
+    );
   });
 
   it('filters by status=expired via findWithCursor', async () => {
     const fan = 'GFANADDRESS888888888888888888888888888888888888888888888888';
-    await service.addSubscription(fan, 'GAAAAAAAAAAAAAAA', 1, Math.floor(Date.now() / 1000) - 3600);
+    await service.addSubscription(
+      fan,
+      'GAAAAAAAAAAAAAAA',
+      1,
+      Math.floor(Date.now() / 1000) - 3600,
+    );
 
-    await service.listSubscriptions(fan, SubscriptionStatus.EXPIRED, undefined, undefined, 20);
+    await service.listSubscriptions(
+      fan,
+      SubscriptionStatus.EXPIRED,
+      undefined,
+      undefined,
+      20,
+    );
 
-    expect(repo.findWithCursor).toHaveBeenCalledWith(fan, SubscriptionStatus.EXPIRED, undefined, undefined, 20);
+    expect(repo.findWithCursor).toHaveBeenCalledWith(
+      fan,
+      SubscriptionStatus.EXPIRED,
+      undefined,
+      undefined,
+      20,
+    );
   });
 
   it('passes sort=expiry to findWithCursor', async () => {
     const fan = 'GFANADDRESS999999999999999999999999999999999999999999999999';
     await service.listSubscriptions(fan, undefined, 'expiry', undefined, 20);
 
-    expect(repo.findWithCursor).toHaveBeenCalledWith(fan, undefined, 'expiry', undefined, 20);
+    expect(repo.findWithCursor).toHaveBeenCalledWith(
+      fan,
+      undefined,
+      'expiry',
+      undefined,
+      20,
+    );
   });
 
   it('listCreatorSubscribers sorts by expiry when sort=expiry', async () => {
-    const creator = 'GCREATOR1111111111111111111111111111111111111111111111111111';
+    const creator =
+      'GCREATOR1111111111111111111111111111111111111111111111111111';
     const now = Math.floor(Date.now() / 1000);
     currentSubs.push(
-      makeSub({ id: 'sub-a', fan: 'GFAN_A', creator, expiryUnix: now + 7200, createdAt: new Date(Date.now() - 1000) }),
-      makeSub({ id: 'sub-b', fan: 'GFAN_B', creator, expiryUnix: now + 3600, createdAt: new Date() }),
+      makeSub({
+        id: 'sub-a',
+        fan: 'GFAN_A',
+        creator,
+        expiryUnix: now + 7200,
+        createdAt: new Date(Date.now() - 1000),
+      }),
+      makeSub({
+        id: 'sub-b',
+        fan: 'GFAN_B',
+        creator,
+        expiryUnix: now + 3600,
+        createdAt: new Date(),
+      }),
     );
 
-    const result = await service.listCreatorSubscribers(creator, undefined, undefined, 20, 'expiry');
+    const result = await service.listCreatorSubscribers(
+      creator,
+      undefined,
+      undefined,
+      20,
+      'expiry',
+    );
 
     expect(result.data[0].fanAddress).toBe('GFAN_B'); // earlier expiry first
     expect(result.data[1].fanAddress).toBe('GFAN_A');
   });
 
   it('listCreatorSubscribers sorts by created desc by default', async () => {
-    const creator = 'GCREATOR2222222222222222222222222222222222222222222222222222';
+    const creator =
+      'GCREATOR2222222222222222222222222222222222222222222222222222';
     const now = Math.floor(Date.now() / 1000);
     currentSubs.push(
-      makeSub({ id: 'sub-c', fan: 'GFAN_C', creator, expiryUnix: now + 3600, createdAt: new Date(Date.now() - 5000) }),
-      makeSub({ id: 'sub-d', fan: 'GFAN_D', creator, expiryUnix: now + 3600, createdAt: new Date() }),
+      makeSub({
+        id: 'sub-c',
+        fan: 'GFAN_C',
+        creator,
+        expiryUnix: now + 3600,
+        createdAt: new Date(Date.now() - 5000),
+      }),
+      makeSub({
+        id: 'sub-d',
+        fan: 'GFAN_D',
+        creator,
+        expiryUnix: now + 3600,
+        createdAt: new Date(),
+      }),
     );
 
-    const result = await service.listCreatorSubscribers(creator, undefined, undefined, 20);
+    const result = await service.listCreatorSubscribers(
+      creator,
+      undefined,
+      undefined,
+      20,
+    );
 
     expect(result.data[0].fanAddress).toBe('GFAN_D'); // most recently created first
     expect(result.data[1].fanAddress).toBe('GFAN_C');
   });
 
   it('listCreatorSubscribers filters by status=active', async () => {
-    const creator = 'GCREATOR3333333333333333333333333333333333333333333333333333';
+    const creator =
+      'GCREATOR3333333333333333333333333333333333333333333333333333';
     const now = Math.floor(Date.now() / 1000);
     currentSubs.push(
-      makeSub({ id: 'sub-e', fan: 'GFAN_E', creator, expiryUnix: now + 3600, status: SubscriptionStatus.ACTIVE }),
-      makeSub({ id: 'sub-f', fan: 'GFAN_F', creator, expiryUnix: now - 3600, status: SubscriptionStatus.EXPIRED }),
+      makeSub({
+        id: 'sub-e',
+        fan: 'GFAN_E',
+        creator,
+        expiryUnix: now + 3600,
+        status: SubscriptionStatus.ACTIVE,
+      }),
+      makeSub({
+        id: 'sub-f',
+        fan: 'GFAN_F',
+        creator,
+        expiryUnix: now - 3600,
+        status: SubscriptionStatus.EXPIRED,
+      }),
     );
 
-    const result = await service.listCreatorSubscribers(creator, 'active', undefined, 20);
+    const result = await service.listCreatorSubscribers(
+      creator,
+      'active',
+      undefined,
+      20,
+    );
 
     expect(result.data).toHaveLength(1);
     expect(result.data[0].fanAddress).toBe('GFAN_E');
@@ -274,7 +380,13 @@ describe('SubscriptionsService', () => {
         makeSub({ id: 'sub-3', fan, creator: 'GCCCCCCCCCCCCCCCC' }),
       );
 
-      const result = await service.listSubscriptions(fan, undefined, undefined, undefined, 2);
+      const result = await service.listSubscriptions(
+        fan,
+        undefined,
+        undefined,
+        undefined,
+        2,
+      );
 
       expect(result.data).toHaveLength(2);
       expect(result.nextCursor).toBeTruthy();
@@ -289,10 +401,22 @@ describe('SubscriptionsService', () => {
         makeSub({ id: 'sub-c', fan, creator: 'GCCCCCCCCCCCCCCCC' }),
       );
 
-      const result = await service.listSubscriptions(fan, undefined, undefined, 'sub-a', 2);
+      const result = await service.listSubscriptions(
+        fan,
+        undefined,
+        undefined,
+        'sub-a',
+        2,
+      );
 
       expect(result.data.length).toBeGreaterThan(0);
-      expect(repo.findWithCursor).toHaveBeenCalledWith(fan, undefined, undefined, 'sub-a', 2);
+      expect(repo.findWithCursor).toHaveBeenCalledWith(
+        fan,
+        undefined,
+        undefined,
+        'sub-a',
+        2,
+      );
     });
 
     it('respects the limit parameter', async () => {
@@ -302,7 +426,13 @@ describe('SubscriptionsService', () => {
         makeSub({ id: 'sub-y', fan, creator: 'GBBBBBBBBBBBBBBBB' }),
       );
 
-      const result = await service.listSubscriptions(fan, undefined, undefined, undefined, 1);
+      const result = await service.listSubscriptions(
+        fan,
+        undefined,
+        undefined,
+        undefined,
+        1,
+      );
 
       expect(result.data).toHaveLength(1);
       expect(result.limit).toBe(1);
@@ -310,9 +440,17 @@ describe('SubscriptionsService', () => {
 
     it('returns empty data for stale cursor without crashing', async () => {
       const fan = 'GFANPAG444444444444444444444444444444444444444444444444444';
-      currentSubs.push(makeSub({ id: 'sub-z', fan, creator: 'GAAAAAAAAAAAAAAA' }));
+      currentSubs.push(
+        makeSub({ id: 'sub-z', fan, creator: 'GAAAAAAAAAAAAAAA' }),
+      );
 
-      const result = await service.listSubscriptions(fan, undefined, undefined, 'sub-zzzz', 20);
+      const result = await service.listSubscriptions(
+        fan,
+        undefined,
+        undefined,
+        'sub-zzzz',
+        20,
+      );
 
       expect(result.data).toHaveLength(0);
       expect(result.hasMore).toBe(false);
@@ -357,17 +495,37 @@ describe('SubscriptionsService', () => {
       const expiry = Math.floor(Date.now() / 1000) + 3600;
       const result = await service.addSubscription(fan, creator, 1, expiry);
 
-      expect(result).toMatchObject({ fan, creator, planId: 1, expiryUnix: expiry, status: SubscriptionStatus.ACTIVE });
-      expect(repo.upsertManual).toHaveBeenCalledWith(expect.objectContaining({ fan, creator, planId: 1, expiryUnix: expiry }));
+      expect(result).toMatchObject({
+        fan,
+        creator,
+        planId: 1,
+        expiryUnix: expiry,
+        status: SubscriptionStatus.ACTIVE,
+      });
+      expect(repo.upsertManual).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fan,
+          creator,
+          planId: 1,
+          expiryUnix: expiry,
+        }),
+      );
     });
 
     it('addSubscription publishes SubscriptionCreatedEvent', async () => {
       const handler = jest.fn();
       eventBus.subscribe('subscription.created', handler);
 
-      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 3600);
+      await service.addSubscription(
+        fan,
+        creator,
+        1,
+        Math.floor(Date.now() / 1000) + 3600,
+      );
 
-      expect(handler).toHaveBeenCalledWith(expect.objectContaining({ type: 'subscription.created', fan, creator }));
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'subscription.created', fan, creator }),
+      );
     });
 
     it('addSubscription sets status to expired when expiry is in the past', async () => {
@@ -378,28 +536,58 @@ describe('SubscriptionsService', () => {
     });
 
     it('renewSubscription updates expiry and returns entity', async () => {
-      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 60);
+      await service.addSubscription(
+        fan,
+        creator,
+        1,
+        Math.floor(Date.now() / 1000) + 60,
+      );
       const result = await service.renewSubscription(fan, creator, 1);
 
-      expect(result).toMatchObject({ fan, creator, planId: 1, status: SubscriptionStatus.ACTIVE });
+      expect(result).toMatchObject({
+        fan,
+        creator,
+        planId: 1,
+        status: SubscriptionStatus.ACTIVE,
+      });
       expect(result.expiryUnix).toBeGreaterThan(Math.floor(Date.now() / 1000));
     });
 
     it('renewSubscription accepts explicit expiry', async () => {
       const explicitExpiry = Math.floor(Date.now() / 1000) + 86400;
-      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 60);
-      const result = await service.renewSubscription(fan, creator, 1, explicitExpiry);
+      await service.addSubscription(
+        fan,
+        creator,
+        1,
+        Math.floor(Date.now() / 1000) + 60,
+      );
+      const result = await service.renewSubscription(
+        fan,
+        creator,
+        1,
+        explicitExpiry,
+      );
 
       expect(result.expiryUnix).toBe(explicitExpiry);
     });
 
     it('renewSubscription throws when plan does not belong to creator', async () => {
-      await expect(service.renewSubscription(fan, 'GOTHER_CREATOR_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', 1))
-        .rejects.toThrow('Plan does not belong to the specified creator');
+      await expect(
+        service.renewSubscription(
+          fan,
+          'GOTHER_CREATOR_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+          1,
+        ),
+      ).rejects.toThrow('Plan does not belong to the specified creator');
     });
 
     it('isSubscriber returns true for active subscription', async () => {
-      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 3600);
+      await service.addSubscription(
+        fan,
+        creator,
+        1,
+        Math.floor(Date.now() / 1000) + 3600,
+      );
       const result = await service.isSubscriber(fan, creator);
       expect(result).toBe(true);
     });
@@ -409,8 +597,62 @@ describe('SubscriptionsService', () => {
       expect(result).toBe(false);
     });
 
+    it('isSubscriber checks chain as fallback when index says no', async () => {
+      const chainReader = makeChainReader();
+      chainReader.getConfiguredContractId = jest.fn().mockReturnValue('CCONTRACT');
+      chainReader.readIsSubscriber = jest.fn().mockResolvedValue({
+        ok: true,
+        isSubscriber: true,
+      });
+
+      const moduleRef = await Test.createTestingModule({
+        providers: [
+          SubscriptionsService,
+          { provide: EventBus, useValue: eventBus },
+          { provide: RPC_BALANCE_ADAPTER, useValue: new MockRpcAdapter() },
+          { provide: SubscriptionIndexRepository, useValue: repo },
+          { provide: SubscriptionChainReaderService, useValue: chainReader },
+        ],
+      }).compile();
+
+      const serviceWithChainReader = moduleRef.get(SubscriptionsService);
+
+      const result = await serviceWithChainReader.isSubscriber(fan, creator);
+      expect(result).toBe(true);
+      expect(chainReader.readIsSubscriber).toHaveBeenCalledWith('CCONTRACT', fan, creator);
+    });
+
+    it('isSubscriber returns false when chain read fails', async () => {
+      const chainReader = makeChainReader();
+      chainReader.getConfiguredContractId = jest.fn().mockReturnValue('CCONTRACT');
+      chainReader.readIsSubscriber = jest.fn().mockResolvedValue({
+        ok: false,
+        error: 'RPC timeout',
+      });
+
+      const moduleRef = await Test.createTestingModule({
+        providers: [
+          SubscriptionsService,
+          { provide: EventBus, useValue: eventBus },
+          { provide: RPC_BALANCE_ADAPTER, useValue: new MockRpcAdapter() },
+          { provide: SubscriptionIndexRepository, useValue: repo },
+          { provide: SubscriptionChainReaderService, useValue: chainReader },
+        ],
+      }).compile();
+
+      const serviceWithChainReader = moduleRef.get(SubscriptionsService);
+
+      const result = await serviceWithChainReader.isSubscriber(fan, creator);
+      expect(result).toBe(false);
+    });
+
     it('getSubscription returns the subscription entity', async () => {
-      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 3600);
+      await service.addSubscription(
+        fan,
+        creator,
+        1,
+        Math.floor(Date.now() / 1000) + 3600,
+      );
       const result = await service.getSubscription(fan, creator);
 
       expect(result).not.toBeNull();
@@ -424,22 +666,43 @@ describe('SubscriptionsService', () => {
     });
 
     it('cancelSubscription returns success result', async () => {
-      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 3600);
+      await service.addSubscription(
+        fan,
+        creator,
+        1,
+        Math.floor(Date.now() / 1000) + 3600,
+      );
       const result = await service.cancelSubscription(fan, creator);
 
-      expect(result).toMatchObject({ success: true, fan, creator, status: SubscriptionStatus.CANCELLED });
+      expect(result).toMatchObject({
+        success: true,
+        fan,
+        creator,
+        status: SubscriptionStatus.CANCELLED,
+      });
       expect(result.cancelledAt).toBeDefined();
     });
 
     it('cancelSubscription throws NotFoundException when subscription does not exist', async () => {
-      await expect(service.cancelSubscription(fan, creator)).rejects.toThrow('Subscription not found');
+      await expect(service.cancelSubscription(fan, creator)).rejects.toThrow(
+        'Subscription not found',
+      );
     });
 
     it('expireSubscription updates status to expired', async () => {
-      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 3600);
+      await service.addSubscription(
+        fan,
+        creator,
+        1,
+        Math.floor(Date.now() / 1000) + 3600,
+      );
       await service.expireSubscription(fan, creator);
 
-      expect(repo.updateStatus).toHaveBeenCalledWith(fan, creator, SubscriptionStatus.EXPIRED);
+      expect(repo.updateStatus).toHaveBeenCalledWith(
+        fan,
+        creator,
+        SubscriptionStatus.EXPIRED,
+      );
     });
 
     it('createCheckout creates a pending checkout session', () => {
@@ -458,7 +721,9 @@ describe('SubscriptionsService', () => {
     });
 
     it('createCheckout throws when plan not found', () => {
-      expect(() => service.createCheckout(fan, creator, 999)).toThrow('Plan not found');
+      expect(() => service.createCheckout(fan, creator, 999)).toThrow(
+        'Plan not found',
+      );
     });
 
     it('getCheckout retrieves an existing checkout', () => {
@@ -470,21 +735,35 @@ describe('SubscriptionsService', () => {
     });
 
     it('getCheckout throws when checkout not found', () => {
-      expect(() => service.getCheckout('nonexistent')).toThrow('Checkout not found');
+      expect(() => service.getCheckout('nonexistent')).toThrow(
+        'Checkout not found',
+      );
     });
 
     it('confirmSubscription creates new subscription and returns success', async () => {
       const checkout = service.createCheckout(fan, creator, 1);
-      const result = await service.confirmSubscription(checkout.id, 'tx-hash-123');
+      const result = await service.confirmSubscription(
+        checkout.id,
+        'tx-hash-123',
+      );
 
-      expect(result).toMatchObject({ success: true, status: 'completed', txHash: 'tx-hash-123', lifecycleEvent: 'created' });
+      expect(result).toMatchObject({
+        success: true,
+        status: 'completed',
+        txHash: 'tx-hash-123',
+        lifecycleEvent: 'created',
+      });
       expect(result.subscriptionId).toBeDefined();
     });
 
     it('getPlanSummary returns plan details', () => {
       const summary = service.getPlanSummary(1);
 
-      expect(summary).toMatchObject({ id: 1, creatorAddress: 'GAAAAAAAAAAAAAAA', assetCode: 'XLM' });
+      expect(summary).toMatchObject({
+        id: 1,
+        creatorAddress: 'GAAAAAAAAAAAAAAA',
+        assetCode: 'XLM',
+      });
       expect(summary.amount).toBe('10');
       expect(summary.intervalDays).toBe(30);
     });
@@ -503,19 +782,19 @@ describe('SubscriptionsService', () => {
       expect(parseFloat(breakdown.total)).toBeGreaterThan(0);
     });
 
-    it('validateBalance returns valid for sufficient balance', () => {
-      const result = service.validateBalance(fan, 'XLM', '10');
+    it('validateBalance returns valid for sufficient balance', async () => {
+      const result = await service.validateBalance(fan, 'XLM', '10');
       expect(result).toMatchObject({ valid: true });
     });
 
-    it('validateBalance returns invalid with shortfall for insufficient balance', () => {
-      const result = service.validateBalance(fan, 'XLM', '2000');
+    it('validateBalance returns invalid with shortfall for insufficient balance', async () => {
+      const result = await service.validateBalance(fan, 'XLM', '2000');
       expect(result.valid).toBe(false);
       expect(result.shortfall).toBeDefined();
     });
 
-    it('getWalletStatus returns balances for supported assets', () => {
-      const wallet = service.getWalletStatus(fan);
+    it('getWalletStatus returns balances for supported assets', async () => {
+      const wallet = await service.getWalletStatus(fan);
 
       expect(wallet.address).toBe(fan);
       expect(wallet.isConnected).toBe(true);
@@ -527,7 +806,11 @@ describe('SubscriptionsService', () => {
       const checkout = service.createCheckout(fan, creator, 1);
       const preview = service.getTransactionPreview(checkout.id);
 
-      expect(preview).toMatchObject({ checkoutId: checkout.id, from: fan, to: creator });
+      expect(preview).toMatchObject({
+        checkoutId: checkout.id,
+        from: fan,
+        to: creator,
+      });
       expect(parseFloat(preview.amount)).toBeGreaterThan(0);
     });
 
@@ -535,7 +818,11 @@ describe('SubscriptionsService', () => {
       const checkout = service.createCheckout(fan, creator, 1);
       const result = service.failCheckout(checkout.id, 'network error');
 
-      expect(result).toMatchObject({ success: false, status: 'failed', error: 'network error' });
+      expect(result).toMatchObject({
+        success: false,
+        status: 'failed',
+        error: 'network error',
+      });
     });
 
     it('failCheckout marks checkout as rejected when isRejected is true', () => {
@@ -554,7 +841,12 @@ describe('SubscriptionsService', () => {
     });
 
     it('getFanDashboardSummary returns dashboard with pagination', async () => {
-      await service.addSubscription(fan, creator, 1, Math.floor(Date.now() / 1000) + 3600);
+      await service.addSubscription(
+        fan,
+        creator,
+        1,
+        Math.floor(Date.now() / 1000) + 3600,
+      );
       const result = await service.getFanDashboardSummary(fan, 1, 20);
 
       expect(result.fan).toBe(fan);
@@ -601,5 +893,42 @@ describe('SubscriptionsService', () => {
         subscriptionId: subscription.id,
       }),
     );
+  });
+
+  describe('getActiveCreatorIdsForFan', () => {
+    const fan = 'GFANFEED1111111111111111111111111111111111111111111111111';
+
+    it('returns the distinct creator IDs the fan actively subscribes to', async () => {
+      await service.addSubscription(
+        fan,
+        'GCREATORFEED1111111111111111111111111111111111111111111111',
+        1,
+        Math.floor(Date.now() / 1000) + 3600,
+      );
+      await service.addSubscription(
+        fan,
+        'GCREATORFEED2222222222222222222222222222222222222222222222',
+        2,
+        Math.floor(Date.now() / 1000) + 3600,
+      );
+
+      const creatorIds = await service.getActiveCreatorIdsForFan(fan);
+
+      expect(creatorIds).toEqual(
+        expect.arrayContaining([
+          'GCREATORFEED1111111111111111111111111111111111111111111111',
+          'GCREATORFEED2222222222222222222222222222222222222222222222',
+        ]),
+      );
+      expect(creatorIds).toHaveLength(2);
+    });
+
+    it('returns an empty array when the fan has no active subscriptions', async () => {
+      const creatorIds = await service.getActiveCreatorIdsForFan(
+        'GNOSUBSCRIPTIONS11111111111111111111111111111111111111111',
+      );
+
+      expect(creatorIds).toEqual([]);
+    });
   });
 });

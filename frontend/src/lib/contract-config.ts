@@ -201,6 +201,7 @@ export function getStellarRuntimeConfig() {
     horizonUrl: config.horizonUrl,
     sorobanRpcUrl: config.sorobanRpcUrl,
     subscriptionContractId: config.contractIds.subscription,
+    tokenContractId: config.contractIds.token,
   };
 }
 

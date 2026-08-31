@@ -17,9 +17,12 @@ import {
 } from "@/lib/checkout";
 import { useTransaction } from "@/hooks/useTransaction";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { FeatureFlag } from "@/lib/feature-flags";
 import { useToast } from "@/contexts/ToastContext";
 import { createTrackedTransaction, getExplorerUrl } from "@/lib/transaction-history";
+import { buildSubscriptionTx, submitTransaction } from "@/lib/stellar";
+import { signTransaction } from "@/lib/wallet";
 
 import { createAppError } from "@/types/errors";
 import PlanSummaryComponent from "./PlanSummary";
@@ -31,6 +34,7 @@ import CheckoutResultDisplay from "./CheckoutResult";
 import TxFailureRecovery from "./TxFailureRecovery";
 import TransactionProgress from "./TransactionProgress"; 
 import { ReferralCodeInput } from "@/components/referral/ReferralCodeInput";
+import { claimReferralCode } from "@/lib/referral";
 
 export type CheckoutStep = "select" | "preview" | "confirm" | "result";
 
@@ -50,6 +54,7 @@ export default function CheckoutFlow({
   onCancel,
 }: CheckoutFlowProps) {
   const { showError, showSuccess } = useToast();
+  const { mismatch } = useNetworkGuard();
 
   // Checkout state
   const [checkoutId, setCheckoutId] = useState<string | null>(null);
@@ -198,25 +203,99 @@ export default function CheckoutFlow({
   const handleSubmit = useCallback(async () => {
     if (!checkoutId) return;
 
-    await tx.execute(async () => {
-      const txHash = `tx_${Date.now()}_${Math.random()
-        .toString(36)
-        .slice(2, 11)}`;
-
-      // Simulate transaction submission
-      await new Promise((resolve, reject) => {
-        setTimeout(() => {
-          const shouldFail = Math.random() < 0.1; // 10% chance of failure
-          if (shouldFail) {
-            reject(new Error("Transaction rejected by user"));
-          } else {
-            resolve(txHash);
-          }
-        }, 2000);
+    if (mismatch) {
+      showError("NETWORK_MISMATCH", {
+        message: "Your wallet is on the wrong network",
+        description: "Please switch networks in your wallet and try again.",
       });
+      return;
+    }
 
-      // Confirm with backend
+    await tx.execute(async () => {
+      const tokenAddress =
+        selectedAsset?.issuer ||
+        selectedAsset?.code ||
+        priceBreakdown?.currency ||
+        "XLM";
+
+      // Build transaction
+      let xdr: string;
+      try {
+        xdr = await buildSubscriptionTx(
+          fanAddress,
+          creatorAddress,
+          planId,
+          tokenAddress
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+
+        // Check for protocol paused state
+        if (message.includes('paused') || message.includes('halted')) {
+          throw createAppError('PROTOCOL_PAUSED', {
+            message: 'Subscription protocol is temporarily paused',
+            description: 'New subscriptions are currently not being accepted. Please try again later.',
+          });
+        }
+
+        // Check for insufficient balance or token mismatch
+        if (message.includes('insufficient') || message.includes('not enough')) {
+          throw createAppError('INSUFFICIENT_BALANCE', {
+            message: 'Insufficient balance for this subscription',
+            description: 'Your wallet does not have enough of the required asset.',
+          });
+        }
+
+        // Check for token mismatch
+        if (message.includes('token') || message.includes('asset')) {
+          throw createAppError('TOKEN_MISMATCH', {
+            message: 'Token or asset mismatch error',
+            description: 'The asset you selected is not compatible with this plan. Try selecting a different asset.',
+          });
+        }
+
+        throw err;
+      }
+
+      // Sign transaction
+      const signedXdr = await signTransaction(xdr);
+
+      // Generate idempotency key using checkout ID and a timestamp to prevent duplicate submissions
+      const idempotencyKey = `${checkoutId}-${Math.floor(Date.now() / 1000)}`;
+
+      // Submit transaction
+      const txHash = await submitTransaction(signedXdr);
+
+      // Confirm with backend (backend uses txHash to verify on-chain)
       const result = await apiConfirmSubscription(checkoutId, txHash);
+
+      // Ensure failed checkouts stay in pending/failed state, not ACTIVE
+      if (result.status === 'FAILED' || result.status === 'PENDING') {
+        const trackedTransaction = createTrackedTransaction({
+          checkoutId,
+          txHash,
+          type: "subscription",
+          description: planSummary
+            ? `Subscription to ${planSummary.creatorName}${planSummary.name ? ` • ${planSummary.name}` : ""}`
+            : "Subscription payment",
+          amount: priceBreakdown?.total ?? checkout?.total ?? "0",
+          currency: priceBreakdown?.currency ?? selectedAsset?.code ?? "XLM",
+          creatorName: planSummary?.creatorName,
+          planName: planSummary?.name,
+        });
+
+        const nextResult = {
+          ...result,
+          txHash,
+          explorerUrl: result.explorerUrl || getExplorerUrl(txHash),
+        };
+
+        setCheckoutResult(nextResult);
+        setCurrentStep("result");
+        onComplete?.(nextResult);
+        return { ...nextResult, trackedTransaction };
+      }
+
       const trackedTransaction = createTrackedTransaction({
         checkoutId,
         txHash,
@@ -241,7 +320,20 @@ export default function CheckoutFlow({
       onComplete?.(nextResult);
       return { ...nextResult, trackedTransaction };
     });
-  }, [checkoutId, tx, onComplete]);
+  }, [
+    checkoutId,
+    tx,
+    onComplete,
+    fanAddress,
+    creatorAddress,
+    planId,
+    selectedAsset,
+    priceBreakdown,
+    mismatch,
+    showError,
+    planSummary,
+    checkout,
+  ]);
 
   // Handle failure
   const handleFail = useCallback(
@@ -370,10 +462,33 @@ export default function CheckoutFlow({
           {referralEnabled && (
             <ReferralCodeInput
               onValidated={(code, valid) => {
-                if (valid) setAppliedReferralCode(code);
-                else setAppliedReferralCode(null);
+                if (!valid) {
+                  setAppliedReferralCode(null);
+                  return;
+                }
+                setAppliedReferralCode(code);
+                // Record a pending claim now; the backend attributes it (and
+                // pays the code owner) only on the first SubscriptionCreatedEvent.
+                void claimReferralCode(code, fanAddress).then((result) => {
+                  if (!result.ok) {
+                    setAppliedReferralCode(null);
+                    showError("REFERRAL_CLAIM_FAILED", {
+                      message: "Referral code not applied",
+                      description: result.reason,
+                    });
+                  }
+                });
               }}
             />
+          )}
+          {referralEnabled && appliedReferralCode && (
+            <p
+              role="status"
+              className="text-xs font-medium text-green-600 dark:text-green-400"
+            >
+              ✓ Referral code {appliedReferralCode} will be applied on your first
+              subscription.
+            </p>
           )}
           <div className="flex gap-3">
             {onCancel && (

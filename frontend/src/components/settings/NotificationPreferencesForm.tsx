@@ -10,6 +10,8 @@ import {
   type PreferenceKey,
 } from '@/lib/notification-preferences';
 
+const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS === 'true';
+
 // ── Toggle ─────────────────────────────────────────────────────────────────
 
 interface ToggleProps {
@@ -58,8 +60,6 @@ function SectionHeader({ title, description }: { title: string; description: str
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-const USE_MOCK = true; // flip to false when backend is live
-
 export function NotificationPreferencesForm() {
   const [prefs, setPrefs] = useState<NotificationPreferences>(DEFAULT_PREFERENCES);
   const [loading, setLoading] = useState(true);
@@ -67,16 +67,22 @@ export function NotificationPreferencesForm() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
-  // Load preferences
+  // Load preferences from the versioned API (respects NEXT_PUBLIC_API_URL)
   useEffect(() => {
-    if (USE_MOCK) {
-      setLoading(false);
-      return;
-    }
+    let cancelled = false;
     fetchNotificationPreferences()
-      .then(setPrefs)
-      .catch((e: Error) => setLoadError(e.message))
-      .finally(() => setLoading(false));
+      .then((data) => {
+        if (!cancelled) setPrefs({ ...DEFAULT_PREFERENCES, ...data });
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setLoadError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const set = useCallback((key: PreferenceKey, value: boolean) => {

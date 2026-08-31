@@ -1,79 +1,54 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import Image from 'next/image';
-import { Search, Download } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Badge from '../ui/Badge';
 import DataTable, { ColumnDef, SortState } from '../ui/DataTable';
-import { useImageLoad } from '@/hooks/useImageLoad';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { apiClient } from '@/clients/api-client';
 
-type SubscriberStatus = 'Active' | 'Cancelled' | 'Past Due';
+type SubscriberStatus = 'active' | 'expired';
 
 interface Subscriber {
   id: string;
-  name: string;
-  email: string;
-  avatar: string;
-  plan: string;
-  tier: string;
-  joinDate: string;
-  renewDate: string;
+  fanAddress: string;
+  creatorAddress: string;
+  planId: number;
   status: SubscriberStatus;
-  totalPaid: number;
+  expiresAt: string;
+  createdAt: string;
 }
 
-const MOCK_DATA: Subscriber[] = [
-  { id: '1', name: 'Alice Smith', email: 'alice@example.com', avatar: 'https://i.pravatar.cc/150?u=1', plan: 'VIP Access', tier: '$20/mo', joinDate: '2023-01-15', renewDate: '2023-02-15', status: 'Active', totalPaid: 240 },
-  { id: '2', name: 'Bob Johnson', email: 'bob@example.com', avatar: 'https://i.pravatar.cc/150?u=2', plan: 'Supporter', tier: '$5/mo', joinDate: '2023-05-20', renewDate: '2023-06-20', status: 'Active', totalPaid: 45 },
-  { id: '3', name: 'Charlie Brown', email: 'charlie@example.com', avatar: 'https://i.pravatar.cc/150?u=3', plan: 'VIP Access', tier: '$20/mo', joinDate: '2022-11-01', renewDate: '2023-11-01', status: 'Past Due', totalPaid: 400 },
-  { id: '4', name: 'Diana Prince', email: 'diana@example.com', avatar: 'https://i.pravatar.cc/150?u=4', plan: 'Exclusive Content', tier: '$10/mo', joinDate: '2023-06-10', renewDate: '2023-07-10', status: 'Cancelled', totalPaid: 30 },
-  { id: '5', name: 'Evan Davis', email: 'evan@example.com', avatar: 'https://i.pravatar.cc/150?u=5', plan: 'Supporter', tier: '$5/mo', joinDate: '2023-07-01', renewDate: '2023-08-01', status: 'Active', totalPaid: 5 },
-  { id: '6', name: 'Fiona Gallagher', email: 'fiona@example.com', avatar: 'https://i.pravatar.cc/150?u=6', plan: 'VIP Access', tier: '$20/mo', joinDate: '2023-02-28', renewDate: '2023-03-28', status: 'Active', totalPaid: 100 },
-  { id: '7', name: 'George Miller', email: 'george@example.com', avatar: 'https://i.pravatar.cc/150?u=7', plan: 'Exclusive Content', tier: '$10/mo', joinDate: '2023-03-15', renewDate: '2023-04-15', status: 'Active', totalPaid: 50 },
-  { id: '8', name: 'Hannah Abbott', email: 'hannah@example.com', avatar: 'https://i.pravatar.cc/150?u=8', plan: 'Supporter', tier: '$5/mo', joinDate: '2023-04-10', renewDate: '2023-05-10', status: 'Cancelled', totalPaid: 15 },
-  { id: '9', name: 'Ian Malcolm', email: 'ian@example.com', avatar: 'https://i.pravatar.cc/150?u=9', plan: 'VIP Access', tier: '$20/mo', joinDate: '2023-01-05', renewDate: '2023-02-05', status: 'Past Due', totalPaid: 20 },
-  { id: '10', name: 'Julia Roberts', email: 'julia@example.com', avatar: 'https://i.pravatar.cc/150?u=10', plan: 'Exclusive Content', tier: '$10/mo', joinDate: '2023-05-05', renewDate: '2023-06-05', status: 'Active', totalPaid: 20 },
-  { id: '11', name: 'Kevin Hart', email: 'kevin@example.com', avatar: 'https://i.pravatar.cc/150?u=11', plan: 'Supporter', tier: '$5/mo', joinDate: '2023-06-25', renewDate: '2023-07-25', status: 'Active', totalPaid: 10 },
-  { id: '12', name: 'Laura Dern', email: 'laura@example.com', avatar: 'https://i.pravatar.cc/150?u=12', plan: 'VIP Access', tier: '$20/mo', joinDate: '2023-02-14', renewDate: '2023-03-14', status: 'Active', totalPaid: 120 },
-];
 
-type SubscriberKey = 'name' | 'plan' | 'joinDate' | 'status' | 'totalPaid';
+type SubscriberKey = 'fanAddress' | 'status' | 'createdAt' | 'expiresAt';
 
 const COLUMNS: ColumnDef<Subscriber, SubscriberKey>[] = [
   {
-    key: 'name',
-    header: 'Fan',
-    sortable: true,
+    key: 'fanAddress',
+    header: 'Subscriber',
+    sortable: false,
     render: (sub) => (
-      <div className="flex items-center gap-3">
-        <SubscriberAvatar src={sub.avatar} name={sub.name} />
-        <div>
-          <div className="font-medium text-gray-900 dark:text-white">{sub.name}</div>
-          <div className="text-xs text-gray-500">{sub.email}</div>
-        </div>
+      <div>
+        <div className="font-medium text-gray-900 dark:text-white">{sub.fanAddress.slice(0, 16)}...</div>
+        <div className="text-xs text-gray-500">Plan #{sub.planId}</div>
       </div>
     ),
   },
   {
-    key: 'plan',
-    header: 'Plan',
+    key: 'createdAt',
+    header: 'Joined',
     sortable: true,
     render: (sub) => (
-      <div>
-        <div className="font-medium text-gray-900 dark:text-white">{sub.plan}</div>
-        <div className="text-xs text-gray-500">{sub.tier}</div>
+      <div className="text-sm text-gray-900 dark:text-white">
+        {new Date(sub.createdAt).toLocaleDateString()}
       </div>
     ),
   },
   {
-    key: 'joinDate',
-    header: 'Dates',
+    key: 'expiresAt',
+    header: 'Expires',
     sortable: true,
     render: (sub) => (
-      <div>
-        <div className="text-gray-900 dark:text-white">Joined: {sub.joinDate}</div>
-        <div className="text-xs text-gray-500">Renews: {sub.renewDate}</div>
+      <div className="text-sm text-gray-900 dark:text-white">
+        {new Date(sub.expiresAt).toLocaleDateString()}
       </div>
     ),
   },
@@ -82,71 +57,34 @@ const COLUMNS: ColumnDef<Subscriber, SubscriberKey>[] = [
     header: 'Status',
     sortable: true,
     render: (sub) => {
-      const variant = sub.status === 'Active' ? 'success' : sub.status === 'Past Due' ? 'error' : 'default';
-      return <Badge variant={variant}>{sub.status}</Badge>;
+      const variant = sub.status === 'active' ? 'success' : 'default';
+      return <Badge variant={variant}>{sub.status.charAt(0).toUpperCase() + sub.status.slice(1)}</Badge>;
     },
-  },
-  {
-    key: 'totalPaid',
-    header: 'Total Paid',
-    sortable: true,
-    className: 'text-right font-medium text-gray-900 dark:text-white',
-    headerClassName: 'text-right',
-    render: (sub) => `$${sub.totalPaid.toFixed(2)}`,
   },
 ];
 
-/** Avatar with lazy-load skeleton, used in both table and card views */
-function SubscriberAvatar({ src, name }: { src: string; name: string }) {
-  const { isLoaded, onLoad } = useImageLoad();
-  return (
-    <div className="image-skeleton-wrapper relative w-9 h-9 rounded-full shrink-0">
-      <Image
-        className={`lazy-image w-9 h-9 rounded-full object-cover ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-        src={src}
-        alt={name}
-        width={36}
-        height={36}
-        loading="lazy"
-        onLoad={onLoad}
-      />
-      {!isLoaded && <Skeleton className="absolute inset-0" rounded="full" />}
-    </div>
-  );
-}
-
 /** Mobile card view for a single subscriber row */
 function SubscriberCard({ sub }: { sub: Subscriber }) {
-  const variant = sub.status === 'Active' ? 'success' : sub.status === 'Past Due' ? 'error' : 'default';
+  const variant = sub.status === 'active' ? 'success' : 'default';
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
-      <div className="flex items-center gap-3">
-        <SubscriberAvatar src={sub.avatar} name={sub.name} />
+      <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-medium text-gray-900 dark:text-white truncate">{sub.name}</p>
-          <p className="text-xs text-gray-500 truncate">{sub.email}</p>
+          <p className="font-medium text-gray-900 dark:text-white truncate">{sub.fanAddress.slice(0, 16)}...</p>
+          <p className="text-xs text-gray-500">Plan #{sub.planId}</p>
         </div>
-        <div className="ml-auto shrink-0">
-          <Badge variant={variant}>{sub.status}</Badge>
+        <div className="shrink-0">
+          <Badge variant={variant}>{sub.status.charAt(0).toUpperCase() + sub.status.slice(1)}</Badge>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 text-sm">
         <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Plan</p>
-          <p className="font-medium text-gray-900 dark:text-white">{sub.plan}</p>
-          <p className="text-xs text-gray-500">{sub.tier}</p>
-        </div>
-        <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Total paid</p>
-          <p className="font-medium text-gray-900 dark:text-white">${sub.totalPaid.toFixed(2)}</p>
-        </div>
-        <div>
           <p className="text-xs text-gray-500 dark:text-gray-400">Joined</p>
-          <p className="text-gray-900 dark:text-white">{sub.joinDate}</p>
+          <p className="text-gray-900 dark:text-white">{new Date(sub.createdAt).toLocaleDateString()}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Renews</p>
-          <p className="text-gray-900 dark:text-white">{sub.renewDate}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Expires</p>
+          <p className="text-gray-900 dark:text-white">{new Date(sub.expiresAt).toLocaleDateString()}</p>
         </div>
       </div>
     </div>
@@ -154,54 +92,51 @@ function SubscriberCard({ sub }: { sub: Subscriber }) {
 }
 
 export default function SubscribersTable() {
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [sort, setSort] = useState<SortState<SubscriberKey>>({ key: 'joinDate', direction: 'desc' });
-  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState<'active' | 'expired' | undefined>(undefined);
+  const [sort, setSort] = useState<SortState<SubscriberKey>>({ key: 'createdAt', direction: 'desc' });
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
+  const [hasMore, setHasMore] = useState(false);
 
-  const filtered = useMemo(() => {
-    let result = MOCK_DATA;
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter((s) => s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q));
+  const PAGE_SIZE = 20;
+
+  // Fetch subscribers from API
+  useEffect(() => {
+    async function fetchSubscribers() {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await apiClient.getCreatorSubscribers({
+          cursor,
+          limit: PAGE_SIZE,
+          status: statusFilter,
+          sort: sort.key === 'expiresAt' ? 'expiry' : 'created',
+        });
+        setSubscribers(response.data || []);
+        setNextCursor(response.nextCursor || undefined);
+        setHasMore(response.hasMore || false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load subscribers');
+        setSubscribers([]);
+      } finally {
+        setLoading(false);
+      }
     }
-    if (statusFilter !== 'All') {
-      result = result.filter((s) => s.status === statusFilter);
+
+    fetchSubscribers();
+  }, [cursor, statusFilter, sort]);
+
+  const handleNextPage = () => {
+    if (nextCursor && hasMore) {
+      setCursor(nextCursor);
     }
-    return result;
-  }, [search, statusFilter]);
+  };
 
-  // Reset page when filters change
-  React.useEffect(() => { setPage(1); }, [search, statusFilter]);
-
-  const PAGE_SIZE = 5;
-
-  // Client-side sort for mobile card view (DataTable handles its own sort)
-  const sorted = useMemo(() => {
-    const key = sort.key;
-    if (!key) return filtered;
-    return [...filtered].sort((a, b) => {
-      const av = a[key as keyof Subscriber];
-      const bv = b[key as keyof Subscriber];
-      if (av == null && bv == null) return 0;
-      if (av == null) return 1;
-      if (bv == null) return -1;
-      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
-      return sort.direction === 'asc' ? cmp : -cmp;
-    });
-  }, [filtered, sort]);
-
-  const totalMobilePages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const pagedMobile = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  const handleExportCSV = () => {
-    const headers = ['Name', 'Email', 'Plan', 'Tier', 'Join Date', 'Renew Date', 'Status', 'Total Paid'];
-    const rows = filtered.map((s) => `"${s.name}","${s.email}","${s.plan}","${s.tier}","${s.joinDate}","${s.renewDate}","${s.status}","${s.totalPaid}"`);
-    const blob = new Blob([[headers.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'subscribers_export.csv'; a.click();
-    URL.revokeObjectURL(url);
+  const handlePrevPage = () => {
+    setCursor(undefined);
   };
 
   return (
@@ -209,87 +144,77 @@ export default function SubscribersTable() {
       {/* Controls */}
       <div className="flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-end">
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" aria-hidden />
-            <input
-              type="search"
-              placeholder="Search by name or email…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search subscribers"
-              className="w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors"
-            />
-          </div>
           <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            value={statusFilter || ''}
+            onChange={(e) => setStatusFilter(e.target.value as 'active' | 'expired' | undefined || undefined)}
             aria-label="Filter by status"
-            className="w-full sm:w-44 pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors appearance-none"
+            disabled={loading}
+            className="w-full sm:w-44 pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors appearance-none disabled:opacity-50"
           >
-            <option value="All">All Statuses</option>
-            <option value="Active">Active</option>
-            <option value="Cancelled">Cancelled</option>
-            <option value="Past Due">Past Due</option>
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="expired">Expired</option>
           </select>
         </div>
-        <button
-          onClick={handleExportCSV}
-          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors w-full md:w-auto justify-center"
-        >
-          <Download className="w-4 h-4" aria-hidden />
-          Export CSV
-        </button>
       </div>
 
-      <DataTable<Subscriber, SubscriberKey>
-        columns={COLUMNS}
-        data={filtered}
-        keyExtractor={(s) => s.id}
-        sort={sort}
-        onSortChange={setSort}
-        page={page}
-        onPageChange={setPage}
-        pageSize={PAGE_SIZE}
-        emptyMessage="No subscribers found matching your criteria."
-        caption="Subscribers"
-        className="hidden sm:block"
-      />
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+          <p className="text-sm text-red-700 dark:text-red-300">Error loading subscribers: {error}</p>
+        </div>
+      )}
 
-      {/* Mobile card stack — shown only on small screens */}
-      <div className="sm:hidden space-y-3" aria-label="Subscribers">
-        {pagedMobile.length === 0 ? (
-          <p className="text-center text-sm text-gray-500 dark:text-gray-400 py-8">
-            No subscribers found matching your criteria.
+      {loading && subscribers.length === 0 ? (
+        <div className="hidden sm:block space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-12 rounded-lg bg-gray-200 dark:bg-gray-700" />
+          ))}
+        </div>
+      ) : subscribers.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-600 p-8 text-center">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            No subscribers yet. When you have subscribers, they'll appear here.
           </p>
-        ) : (
-          pagedMobile.map((sub) => <SubscriberCard key={sub.id} sub={sub} />)
-        )}
-        {totalMobilePages > 1 && (
-          <div className="flex items-center justify-between pt-2">
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              Page {page} of {totalMobilePages}
-            </span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                aria-label="Previous page"
-                className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                Prev
-              </button>
-              <button
-                onClick={() => setPage((p) => Math.min(totalMobilePages, p + 1))}
-                disabled={page === totalMobilePages}
-                aria-label="Next page"
-                className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                Next
-              </button>
-            </div>
+        </div>
+      ) : (
+        <>
+          <DataTable<Subscriber, SubscriberKey>
+            columns={COLUMNS}
+            data={subscribers}
+            keyExtractor={(s) => s.id}
+            sort={sort}
+            onSortChange={setSort}
+            emptyMessage="No subscribers found."
+            caption="Subscribers"
+            className="hidden sm:block"
+          />
+
+          {/* Mobile card stack — shown only on small screens */}
+          <div className="sm:hidden space-y-3" aria-label="Subscribers">
+            {subscribers.map((sub) => <SubscriberCard key={sub.id} sub={sub} />)}
+            {hasMore && (
+              <div className="flex gap-2 justify-center pt-2">
+                <button
+                  onClick={handlePrevPage}
+                  disabled={!cursor}
+                  aria-label="Previous page"
+                  className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Prev
+                </button>
+                <button
+                  onClick={handleNextPage}
+                  disabled={!hasMore}
+                  aria-label="Next page"
+                  className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }

@@ -10,6 +10,10 @@ vi.mock('@/lib/wallet', () => ({
   connectWallet: vi.fn(),
   isWalletInstalled: vi.fn(),
   getWalletInstallUrl: vi.fn(),
+  isWalletConnectEnabled: vi.fn(() => false),
+  WALLETCONNECT_UNSUPPORTED_MESSAGE: 'WalletConnect is not available yet',
+  WALLETCONNECT_UNSUPPORTED_DESCRIPTION:
+    'WalletConnect support is coming soon. Please connect with Freighter or Lobstr for now.',
 }));
 
 // Mock the toast context
@@ -28,7 +32,7 @@ vi.mock('@/lib/error-copy', () => ({
   errorToastWithCause: vi.fn(() => ({ title: 'Test Error', message: 'Test error message' })),
 }));
 
-import { connectWallet, isWalletInstalled, getWalletInstallUrl } from '@/lib/wallet';
+import { connectWallet, isWalletInstalled, getWalletInstallUrl, isWalletConnectEnabled } from '@/lib/wallet';
 
 describe('WalletSelectionModal', () => {
   const mockOnConnect = vi.fn();
@@ -83,12 +87,25 @@ describe('WalletSelectionModal', () => {
   it('shows installation status for wallets', () => {
     renderModal();
 
-    // Freighter is installed
-    expect(screen.queryByText('Not Installed')).not.toBeInTheDocument();
-    
-    // Lobstr and WalletConnect are not installed
-    const lobstrNotInstalled = screen.getAllByText('Not Installed');
-    expect(lobstrNotInstalled).toHaveLength(2);
+    // Lobstr is not installed
+    expect(screen.getByText('Not Installed')).toBeInTheDocument();
+    // WalletConnect is feature-flagged off → Coming soon CTA
+    expect(screen.getByText('Coming soon')).toBeInTheDocument();
+    expect(screen.getByText('Not supported yet — use Freighter or Lobstr')).toBeInTheDocument();
+  });
+
+  it('shows unsupported CTA for WalletConnect without crashing Freighter', async () => {
+    const { isWalletConnectEnabled } = await import('@/lib/wallet');
+    (isWalletConnectEnabled as any).mockReturnValue(false);
+
+    renderModal();
+
+    const wcButton = screen.getByText('WalletConnect').closest('button');
+    await userEvent.click(wcButton!);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('WalletConnect is not available yet');
+    expect(connectWallet).not.toHaveBeenCalled();
+    expect(screen.getByText('Freighter')).toBeInTheDocument();
   });
 
   it('opens installation page when clicking non-installed wallet', async () => {

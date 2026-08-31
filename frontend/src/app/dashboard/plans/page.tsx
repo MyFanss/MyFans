@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { AlertCircle, CheckCircle2, Clock3, Wallet } from 'lucide-react';
 import { BaseCard } from '@/components/cards';
 import { PlanCard } from '@/components/cards/PlanCard';
 import { SubscriptionPlanForm } from '@/components/plan';
 import { useWallet } from '@/hooks/useWallet';
+import { useAuth } from '@/hooks/useAuth';
 import {
   type PlanFormValues,
   type PlanInterval,
@@ -15,8 +17,10 @@ import {
   toAtomicPlanAmount,
 } from '@/lib/plan-form';
 import { createCreatorPlanOnSoroban } from '@/lib/stellar';
+import NetworkMismatchBanner from '@/components/NetworkMismatchBanner';
 import { createAppError } from '@/types/errors';
 import { DashboardSectionBoundary } from '@/components/dashboard';
+import { createPlan, getCreatorPlans, generatePlanIdempotencyKey, type CreatePlanRequest } from '@/lib/api/plans';
 
 interface CreatorDashboardPlan {
   id: string;
@@ -149,9 +153,61 @@ function createPlanRecord(
 }
 
 export default function PlansPage() {
+  const router = useRouter();
+  const { isAuthenticated, sessionData, isLoading: authLoading } = useAuth();
   const { connectionState, isConnected, address, connect, disconnect } = useWallet();
   const [plans, setPlans] = useState<CreatorDashboardPlan[]>(() => loadStoredPlans());
+  const [apiPlans, setApiPlans] = useState<CreatorDashboardPlan[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const plansRef = useRef<CreatorDashboardPlan[]>([]);
+
+  // Authorization check
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      setAuthError('You must be logged in to view plans');
+      router.push('/auth/sign-in');
+    } else if (!authLoading && sessionData && !sessionData.is_creator) {
+      setAuthError('Only creators can manage subscription plans');
+    }
+  }, [isAuthenticated, authLoading, sessionData, router]);
+
+  // Load plans from API
+  useEffect(() => {
+    if (!isAuthenticated || !sessionData?.creator?.id || authLoading) {
+      return;
+    }
+
+    const loadApiPlans = async () => {
+      const creatorId = sessionData?.creator?.id;
+      if (!creatorId) return;
+      try {
+        setLoading(true);
+        const result = await getCreatorPlans(creatorId, 1, 50);
+        const converted: CreatorDashboardPlan[] = result.data.map((plan) => ({
+          id: `api-${plan.id}`,
+          name: `Plan ${plan.id}`,
+          description: `${plan.amount} ${plan.asset} every ${plan.intervalDays} days`,
+          tokenAddress: plan.asset,
+          price: Number(plan.amount),
+          priceInput: plan.amount,
+          interval: plan.intervalDays >= 365 ? 'year' : 'month',
+          tier: 'basic' as PlanTier,
+          status: 'on-chain' as const,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          planId: plan.id,
+        }));
+        setApiPlans(converted);
+      } catch (err) {
+        console.error('Failed to load plans from API:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadApiPlans();
+  }, [isAuthenticated, sessionData, authLoading]);
 
   useEffect(() => {
     plansRef.current = plans;
@@ -177,6 +233,13 @@ export default function PlansPage() {
         });
       }
 
+      if (!sessionData?.creator?.id) {
+        throw createAppError('CREATOR_NOT_FOUND', {
+          message: 'Creator information not found',
+          description: 'Unable to verify creator identity for plan creation.',
+        });
+      }
+
       const previousPlans = plansRef.current;
       const optimisticPlan = createPlanRecord(values, {
         status: 'pending',
@@ -186,12 +249,31 @@ export default function PlansPage() {
       setPlans((current) => [optimisticPlan, ...current]);
 
       try {
+        // Step 1: Build and sign Soroban transaction
         const result = await createCreatorPlanOnSoroban({
           creatorAddress: address,
           tokenAddress: values.tokenAddress.trim(),
           amountAtomic: toAtomicPlanAmount(values.price),
           intervalDays: getIntervalDays(values.interval),
         });
+
+        // Step 2: Record plan in backend with idempotent call
+        const planRequest: CreatePlanRequest = {
+          creator: address,
+          asset: values.tokenAddress.trim(),
+          amount: values.price,
+          intervalDays: getIntervalDays(values.interval),
+        };
+
+        const idempotencyKey = generatePlanIdempotencyKey(planRequest);
+
+        try {
+          await createPlan(planRequest, idempotencyKey);
+        } catch (backendError) {
+          console.warn('Backend plan recording failed, but on-chain plan was created:', backendError);
+          // Don't fail the entire operation if backend recording fails
+          // The plan exists on-chain, and users can retry plan creation
+        }
 
         const confirmedPlan: CreatorDashboardPlan = {
           ...optimisticPlan,
@@ -211,19 +293,45 @@ export default function PlansPage() {
         throw error;
       }
     },
-    [address, isConnected],
+    [address, isConnected, sessionData],
   );
 
-  const sortedPlans = [...plans].sort((left, right) => {
+  // Combine API plans and local plans
+  const allPlans = [...apiPlans, ...plans];
+  const uniquePlans = Array.from(
+    new Map(allPlans.map((plan) => [plan.id, plan])).values(),
+  );
+
+  const sortedPlans = [...uniquePlans].sort((left, right) => {
     const statusOrder = STATUS_ORDER[left.status] - STATUS_ORDER[right.status];
     if (statusOrder !== 0) return statusOrder;
 
     return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
   });
 
-  const livePlans = plans.filter((plan) => plan.status === 'on-chain').length;
-  const pendingPlans = plans.filter((plan) => plan.status === 'pending').length;
-  const draftPlans = plans.filter((plan) => plan.status === 'draft').length;
+  const livePlans = sortedPlans.filter((plan) => plan.status === 'on-chain').length;
+  const pendingPlans = sortedPlans.filter((plan) => plan.status === 'pending').length;
+  const draftPlans = sortedPlans.filter((plan) => plan.status === 'draft').length;
+
+  if (authError) {
+    return (
+      <div className="max-w-full space-y-6">
+        <div className="rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-900 p-4">
+          <p className="text-red-700 dark:text-red-300 font-medium text-sm">{authError}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (authLoading) {
+    return (
+      <div className="max-w-full space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-full space-y-6">
@@ -233,6 +341,9 @@ export default function PlansPage() {
           Create token-priced plans for your fans, sign them with your creator wallet, and keep the dashboard in sync with pending and confirmed Soroban state.
         </p>
       </div>
+
+      {/* create_plan signing/submitting is refused on a network mismatch. */}
+      <NetworkMismatchBanner />
 
       <DashboardSectionBoundary label="Wallet status">
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">

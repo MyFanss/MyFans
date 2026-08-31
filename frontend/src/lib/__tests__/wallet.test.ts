@@ -12,8 +12,11 @@ import {
   signTransactionLegacy,
   getConnectedAddressLegacy,
   isWalletConnectedLegacy,
+  isWalletConnectEnabled,
 } from '../wallet';
 import { createAppError } from '@/types/errors';
+import { resetFeatureFlagsForTests } from '@/lib/feature-flags';
+import { clearWalletSession, setWalletSession } from '@/lib/client-session';
 
 // Mock window object
 const mockFreighter = {
@@ -34,6 +37,9 @@ const mockWindow = {
 describe('wallet library', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetFeatureFlagsForTests();
+    clearWalletSession();
+    delete process.env.NEXT_PUBLIC_FEATURE_WALLET_CONNECT;
     Object.defineProperty(window, 'freighter', {
       value: mockFreighter,
       writable: true,
@@ -46,6 +52,9 @@ describe('wallet library', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    resetFeatureFlagsForTests();
+    delete process.env.NEXT_PUBLIC_FEATURE_WALLET_CONNECT;
+    delete process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID;
   });
 
   describe('isWalletInstalled', () => {
@@ -57,7 +66,14 @@ describe('wallet library', () => {
       expect(isWalletInstalled('lobstr')).toBe(true);
     });
 
-    it('returns true for WalletConnect (protocol does not require installation)', () => {
+    it('returns false for WalletConnect when feature flag is off (stub)', () => {
+      expect(isWalletConnectEnabled()).toBe(false);
+      expect(isWalletInstalled('walletconnect')).toBe(false);
+    });
+
+    it('returns true for WalletConnect when feature flag is enabled', () => {
+      process.env.NEXT_PUBLIC_FEATURE_WALLET_CONNECT = 'true';
+      expect(isWalletConnectEnabled()).toBe(true);
       expect(isWalletInstalled('walletconnect')).toBe(true);
     });
 
@@ -105,10 +121,28 @@ describe('wallet library', () => {
       expect(mockLobstr.getPublicKey).toHaveBeenCalled();
     });
 
-    it('throws error for WalletConnect (not implemented)', async () => {
-      await expect(connectWallet('walletconnect')).rejects.toThrow(
-        'WalletConnect integration is not yet implemented'
-      );
+    it('throws structured unsupported error when WalletConnect flag is off', async () => {
+      await expect(connectWallet('walletconnect')).rejects.toMatchObject({
+        code: 'WALLET_NOT_INSTALLED',
+      });
+    });
+
+    it('requires a project id when WalletConnect flag is on', async () => {
+      process.env.NEXT_PUBLIC_FEATURE_WALLET_CONNECT = 'true';
+      delete process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID;
+
+      await expect(connectWallet('walletconnect')).rejects.toMatchObject({
+        code: 'WALLET_CONNECT_CONFIG_MISSING',
+      });
+    });
+
+    it('does not affect Freighter when WalletConnect stub fails', async () => {
+      await expect(connectWallet('walletconnect')).rejects.toMatchObject({
+        code: 'WALLET_NOT_INSTALLED',
+      });
+
+      mockFreighter.getPublicKey.mockResolvedValue(mockAddress);
+      await expect(connectWallet('freighter')).resolves.toBe(mockAddress);
     });
 
     it('throws error when wallet is not installed', async () => {
@@ -169,10 +203,9 @@ describe('wallet library', () => {
       expect(mockLobstr.signTransaction).toHaveBeenCalledWith(mockXdr);
     });
 
-    it('throws error for WalletConnect signing (not implemented)', async () => {
-      await expect(signTransaction(mockXdr, 'walletconnect')).rejects.toThrow(
-        'WalletConnect integration is not yet implemented'
-      );
+    it('signs with Freighter even when WalletConnect is stubbed', async () => {
+      mockFreighter.signTransaction.mockResolvedValue(mockSignedXdr);
+      await expect(signTransaction(mockXdr)).resolves.toBe(mockSignedXdr);
     });
 
     it('throws error when wallet is not installed', async () => {
@@ -195,6 +228,51 @@ describe('wallet library', () => {
       await expect(signTransaction(mockXdr, 'freighter')).rejects.toThrow(
         'No signed transaction returned from Freighter'
       );
+    });
+  });
+
+  describe('signTransaction – dispatch by connected wallet type', () => {
+    const mockXdr = 'AAAAAgAAAAA...';
+    const mockSignedXdr = 'AAAAAgAAAAB...';
+
+    afterEach(() => {
+      clearWalletSession();
+    });
+
+    it('uses the wallet type from the session store when none is passed', async () => {
+      setWalletSession({ address: 'G_LOBSTR', walletType: 'lobstr' });
+      mockLobstr.signTransaction.mockResolvedValue(mockSignedXdr);
+
+      const result = await signTransaction(mockXdr);
+
+      expect(result).toBe(mockSignedXdr);
+      expect(mockLobstr.signTransaction).toHaveBeenCalledWith(mockXdr);
+      expect(mockFreighter.signTransaction).not.toHaveBeenCalled();
+    });
+
+    it('an explicit wallet type overrides the session store', async () => {
+      setWalletSession({ address: 'G_LOBSTR', walletType: 'lobstr' });
+      mockFreighter.signTransaction.mockResolvedValue(mockSignedXdr);
+
+      await signTransaction(mockXdr, 'freighter');
+
+      expect(mockFreighter.signTransaction).toHaveBeenCalledWith(mockXdr);
+      expect(mockLobstr.signTransaction).not.toHaveBeenCalled();
+    });
+
+    it('falls back to Freighter when no session and no explicit type', async () => {
+      clearWalletSession();
+      mockFreighter.signTransaction.mockResolvedValue(mockSignedXdr);
+
+      await signTransaction(mockXdr);
+
+      expect(mockFreighter.signTransaction).toHaveBeenCalledWith(mockXdr);
+    });
+
+    it('errors clearly for an unknown wallet type', async () => {
+      await expect(
+        signTransaction(mockXdr, 'ledger' as never),
+      ).rejects.toMatchObject({ code: 'UNSUPPORTED_WALLET' });
     });
   });
 

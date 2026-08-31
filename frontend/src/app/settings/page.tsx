@@ -7,10 +7,17 @@ import { NotificationPreferencesForm } from "@/components/settings/NotificationP
 import { useTheme, type Theme } from "@/contexts/ThemeContext";
 import { useConsent } from "@/contexts/ConsentContext";
 import { useToast } from "@/contexts/ToastContext";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FeatureFlag } from "@/lib/feature-flags";
 import { ProfileSettingsPanel } from "@/components/settings/profile-settings-panel";
+import { WalletSettingsPanel } from "@/components/settings/WalletSettingsPanel";
+import { ReferralSharePanel } from "@/components/referral/ReferralSharePanel";
+import { csrfFetch } from "@/lib/api/csrf-fetch";
+import { getVersionedApiBaseUrl } from "@/lib/api/base-url";
 
 export default function SettingsPage() {
   const { showSuccess, showError, showInfo, showWarning } = useToast();
+  const referralEnabled = useFeatureFlag(FeatureFlag.REFERRAL_CODES);
   const [role, setRole] = useState<Role>("creator");
   const [activeSectionId, setActiveSectionId] = useState("profile");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -19,7 +26,6 @@ export default function SettingsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteComplete, setDeleteComplete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [copyFeedback, setCopyFeedback] = useState("");
   const { navItems } = useSettings(role);
   const { theme, preference, setTheme } = useTheme();
   const { consent, setConsent } = useConsent();
@@ -33,47 +39,17 @@ export default function SettingsPage() {
         ? {
             profileHint:
               "This profile appears publicly to fans and potential subscribers.",
-            walletLabel: "Creator payout wallet",
-            walletAddress: "0xA47bF8934d6a79c161c29d98392B2f2217c2f107",
-            walletNote:
-              "Payouts are sent to this wallet after each settlement cycle.",
-            notifications: [
-              "New subscriber alerts",
-              "Comment and message activity",
-              "Weekly payout summaries",
-            ],
             deletionCopy:
               "Deleting a creator account removes profile data, subscription history visibility, and unreleased content drafts.",
           }
         : {
             profileHint:
               "This profile is visible when creators view your engagement and support activity.",
-            walletLabel: "Fan payment wallet",
-            walletAddress: "0xB06cb7A62Bd658fb6312F6d8Ab2dA7b778bc67c0",
-            walletNote:
-              "This wallet is used for subscription renewals and one-time support payments.",
-            notifications: [
-              "Creator post updates",
-              "Renewal reminders",
-              "Payment receipts",
-            ],
             deletionCopy:
               "Deleting a fan account removes saved payment methods, followed creators, and personal notification history.",
           },
     [role],
   );
-
-  const handleCopyWallet = async () => {
-    try {
-      await navigator.clipboard.writeText(content.walletAddress);
-      showSuccess("Address copied", "Wallet address copied to clipboard.");
-    } catch {
-      showError("UNKNOWN_ERROR", {
-        message: "Copy failed",
-        description: "Please copy manually.",
-      });
-    }
-  };
 
   const handleDeleteAccount = async (
     event: React.FormEvent<HTMLFormElement>,
@@ -82,13 +58,48 @@ export default function SettingsPage() {
     if (deleteInput !== "DELETE" || !deletePassword || isDeleting) return;
 
     setIsDeleting(true);
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-    setIsDeleting(false);
-    setDeleteComplete(true);
-    showWarning(
-      "Account deleted",
-      "Your account deletion request has been processed.",
-    );
+    setDeleteError(null);
+
+    try {
+      const apiBaseUrl = getVersionedApiBaseUrl();
+      const response = await csrfFetch(`${apiBaseUrl}/users/delete-account`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          password: deletePassword,
+          confirmation: deleteInput === 'DELETE',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error((errorData as any).message || 'Account deletion failed');
+      }
+
+      setIsDeleting(false);
+      setDeleteComplete(true);
+      showWarning(
+        "Account deleted",
+        "Your account has been successfully deleted. You will be logged out shortly.",
+      );
+
+      // Redirect after a short delay
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 2000);
+    } catch (err) {
+      setIsDeleting(false);
+      setDeleteError(
+        err instanceof Error ? err.message : 'Failed to delete account'
+      );
+      showError("ACCOUNT_DELETION_FAILED", {
+        message: "Could not delete account",
+        description: err instanceof Error ? err.message : 'Please try again later',
+      });
+    }
   };
 
   const canDelete =
@@ -207,37 +218,18 @@ export default function SettingsPage() {
     /* ── WALLET ── */
     if (activeSectionId === "wallet") {
       return (
-        <section className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
-            Wallet
-          </h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            {content.walletNote}
-          </p>
-
-          <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 p-3">
-            <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
-              {content.walletLabel}
-            </p>
-            {/* break-all forces the long hex string to wrap instead of overflow */}
-            <p className="mt-1 break-all font-mono text-sm text-slate-800 dark:text-slate-200">
-              {content.walletAddress}
-            </p>
-            <button
-              className="mt-3 w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 transition hover:border-slate-400 dark:hover:border-slate-500 sm:w-auto"
-              onClick={handleCopyWallet}
-              type="button"
-            >
-              Copy wallet
-            </button>
-          </div>
-
-          <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-sm text-slate-700 dark:text-slate-300">
-            {role === "creator"
-              ? "Linked payout method: ACH ending in 2291"
-              : "Linked payment method: Visa ending in 1144"}
-          </div>
-        </section>
+        <WalletSettingsPanel
+          role={role}
+          onCopySuccess={() =>
+            showSuccess("Address copied", "Wallet address copied to clipboard.")
+          }
+          onCopyError={() =>
+            showError("UNKNOWN_ERROR", {
+              message: "Copy failed",
+              description: "Please copy manually.",
+            })
+          }
+        />
       );
     }
 
@@ -460,6 +452,40 @@ export default function SettingsPage() {
       );
     }
 
+    /* ── REFERRAL CODE (creator only) ── */
+    if (role === "creator" && activeSectionId === "referral") {
+      if (!referralEnabled) {
+        return (
+          <section className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
+              Referral Code
+            </h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              This feature is not yet available.
+            </p>
+          </section>
+        );
+      }
+
+      return (
+        <section className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5">
+          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
+            Referral Code
+          </h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            Share your unique referral code to earn rewards when others sign up.
+          </p>
+          <div className="mt-4">
+            <ReferralSharePanel
+              code="REF123456"
+              useCount={5}
+              maxUses={100}
+            />
+          </div>
+        </section>
+      );
+    }
+
     /* ── SUBSCRIPTIONS (fan only) ── */
     if (role === "fan" && activeSectionId === "subscriptions") {
       return (
@@ -504,8 +530,12 @@ export default function SettingsPage() {
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             Review recent support and subscription activity.
           </p>
-          <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-sm text-slate-700 dark:text-slate-300">
-            Last 30 days: $84.50 total across subscriptions and tips.
+          <div className="mt-4">
+            {/* This component should be wired to the real spending-cap API */}
+            {/* Using getSpendingHistory() from @/lib/api/spending */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-sm text-slate-700 dark:text-slate-300">
+              Loading spending history...
+            </div>
           </div>
         </section>
       );

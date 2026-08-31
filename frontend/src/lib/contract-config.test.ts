@@ -98,6 +98,7 @@ describe('contract-config', () => {
       horizonUrl: 'https://custom-horizon.example',
       sorobanRpcUrl: 'https://custom-rpc.example',
       subscriptionContractId: OTHER_VALID_CONTRACT,
+      tokenContractId: VALID_CONTRACT,
     });
   });
 });

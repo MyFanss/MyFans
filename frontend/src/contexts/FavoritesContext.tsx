@@ -9,6 +9,8 @@ interface FavoritesContextValue {
   isLoading: boolean;
   isPending: (creatorId: string) => boolean;
   toggle: (creatorId: string) => Promise<void>;
+  isAuthenticated: boolean;
+  error: string | null;
 }
 
 const FavoritesContext = createContext<FavoritesContextValue | undefined>(undefined);
@@ -23,6 +25,8 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [pendingIds, setPendingIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const favoritesRef = useRef<string[]>([]);
   const pendingIdsRef = useRef<string[]>([]);
 
@@ -38,6 +42,7 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
     let isActive = true;
 
     const loadFavorites = async () => {
+      setError(null);
       try {
         const creatorIds = await getFavorites();
 
@@ -47,8 +52,20 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
 
         favoritesRef.current = creatorIds;
         setFavorites(creatorIds);
+        setIsAuthenticated(true);
       } catch (error) {
-        logFavoritesError('Failed to load favorites.', error);
+        if (!isActive) {
+          return;
+        }
+
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load favorites';
+        if (errorMessage === 'Unauthorized') {
+          setIsAuthenticated(false);
+          setError(null);
+        } else {
+          setIsAuthenticated(true);
+          logFavoritesError('Failed to load favorites.', error);
+        }
       } finally {
         if (isActive) {
           setIsLoading(false);
@@ -108,7 +125,12 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
         return nextFavorites;
       });
 
-      logFavoritesError('Failed to update favorites.', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update favorites';
+      if (errorMessage === 'Unauthorized') {
+        setIsAuthenticated(false);
+      } else {
+        logFavoritesError('Failed to update favorites.', error);
+      }
     } finally {
       setPendingIds((current) => {
         const nextPending = current.filter((id) => id !== creatorId);
@@ -119,7 +141,7 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <FavoritesContext.Provider value={{ favorites, isFavorite, isLoading, isPending, toggle }}>
+    <FavoritesContext.Provider value={{ favorites, isFavorite, isLoading, isPending, toggle, isAuthenticated, error }}>
       {children}
     </FavoritesContext.Provider>
   );

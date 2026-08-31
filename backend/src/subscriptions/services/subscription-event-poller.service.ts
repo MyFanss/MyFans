@@ -2,10 +2,12 @@ import {
   Injectable,
   Logger,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { EventBus } from '../../events/event-bus';
 import {
+  SubscriptionCreatedEvent,
   SubscriptionCancelledEvent,
   SubscriptionRenewedEvent,
 } from '../../events/domain-events';
@@ -17,12 +19,40 @@ import { SubscriptionIndexRepository, UpsertEventData } from '../repositories/su
 import { SorobanRpcService } from '../../common/services/soroban-rpc.service';
 import { RequestContextService } from '../../common/services/request-context.service';
 import { FeatureFlagsService } from '../../feature-flags/feature-flags.service';
-import {
-  TARGET_EVENTS,
-  normalizeSubscriptionEventType,
-} from '../subscription-event-fixture';
+import { SubscriptionCacheService } from '../subscription-cache.service';
+import { SubscriptionChainReaderService } from '../subscription-chain-reader.service';
+import { BusinessMetricsService } from '../../metrics/business-metrics.service';
 
 type TargetEventType = typeof TARGET_EVENTS[number];
+
+/**
+ * Ledger clocks can lag/lead the wall clock slightly. Chain reads whose
+ * skew exceeds this tolerance are still used (LedgerClockService already
+ * skew-corrects the derived expiry), but we log loudly so it's visible in
+ * monitoring rather than silently trusting a badly drifted ledger clock.
+ */
+const LEDGER_SKEW_TOLERANCE_MS = 60_000;
+
+/** Raw chain event shape as received from SorobanRpcService.getNetworkEvents(). */
+interface RawChainEvent {
+  id: string;
+  topic: unknown[];
+  ledger: number;
+  index: number;
+  value: { xdr?: unknown };
+  txHash?: string;
+}
+
+/** An event that has passed the contract/topic filter and is ready to be indexed. */
+interface ParsedEvent {
+  raw: RawChainEvent;
+  ledgerSeq: number;
+  eventIndex: number;
+  eventType: TargetEventType;
+  fan: string;
+  creator: string;
+  planId: number;
+}
 
 @Injectable()
 export class SubscriptionEventPollerService implements OnModuleInit {
@@ -36,6 +66,11 @@ export class SubscriptionEventPollerService implements OnModuleInit {
     private readonly sorobanRpc: SorobanRpcService,
     private readonly requestContext: RequestContextService,
     private readonly featureFlags: FeatureFlagsService,
+    private readonly chainReader: SubscriptionChainReaderService,
+    @Optional()
+    private readonly cache?: SubscriptionCacheService,
+    @Optional()
+    private readonly businessMetrics?: BusinessMetricsService,
   ) {}
 
   async onModuleInit() {
@@ -49,6 +84,20 @@ export class SubscriptionEventPollerService implements OnModuleInit {
     }
     this.contractId = id;
     this.logger.log(`Poller initialized for contract: ${this.contractId}`);
+
+    this.featureFlags.logPollerFlagResolution();
+
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
+    const isEnabled = this.featureFlags.isSorobanPollerEnabled();
+    if (isEnabled && isProduction) {
+      const rpcUrl = this.configService.get<string>('SOROBAN_RPC_URL')?.trim();
+      if (!rpcUrl) {
+        throw new Error(
+          'Soroban poller is enabled in production but SOROBAN_RPC_URL is not configured. ' +
+          'Either set SOROBAN_RPC_URL or disable the poller via FEATURE_SOROBAN_POLLER=false.',
+        );
+      }
+    }
   }
 
   /**
@@ -81,6 +130,7 @@ export class SubscriptionEventPollerService implements OnModuleInit {
     const startTime = Date.now();
     let processed = 0;
     let errors = 0;
+    const counters = { created: 0, renewed: 0, cancelled: 0 };
 
     try {
       const checkpoint = await this.indexRepo.getLatestCheckpoint();
@@ -115,99 +165,181 @@ export class SubscriptionEventPollerService implements OnModuleInit {
         const events = eventsResponse.events ?? [];
         this.logger.debug(`Fetched ${events.length} events from ${eventsResponse.startLedger}-${eventsResponse.latestLedger}`);
 
-        for (const event of events) {
-          if (await this.processEvent(event)) {
-            processed++;
+        const results = await this.processEventBatch(events as RawChainEvent[]);
+        for (const result of results) {
+          if (!result.ok) {
+            errors++;
+            continue;
           }
+          processed++;
+          counters[result.kind]++;
         }
 
         cursor = eventsResponse.nextToken;
       } while (cursor);
 
       const duration = Date.now() - startTime;
+      this.businessMetrics?.recordPollerLag(duration);
       const correlationId = this.requestContext.getCorrelationId();
-      this.logger.log(`Poll complete: processed=${processed}, errors=${errors}, checkpoint=${checkpoint} -> ${latestLedger}, duration=${duration}ms, correlationId=${correlationId}`);
+      this.logger.log(
+        `Poll complete: processed=${processed} (created=${counters.created}, renewed=${counters.renewed}, cancelled=${counters.cancelled}), errors=${errors}, checkpoint=${checkpoint} -> ${latestLedger}, duration=${duration}ms, correlationId=${correlationId}`,
+      );
     } catch (error) {
       errors++;
       this.logger.error(`Poll failed: ${error}`);
     }
   }
 
-  private async processEvent(event: any): Promise<boolean> {
-    const { id, topic, ledger, index, value } = event;
-    const [ledgerSeq, eventIndex] = id.split(':').map(Number);
+  /**
+   * Processes a page of raw chain events as a batch:
+   *  1. Filters to our contract + target event types.
+   *  2. Drops anything already indexed (idempotency on ledgerSeq:eventIndex),
+   *     without spending an RPC call on it.
+   *  3. Batches the remaining `subscribed`/`extended` events into concurrent
+   *     chain-expiry reads via SubscriptionChainReaderService (the reader has
+   *     no native multi-call batch endpoint, so "batching" here means firing
+   *     the simulations concurrently rather than serially awaiting each one).
+   *  4. Upserts + publishes a domain event per successfully-read event.
+   */
+  private async processEventBatch(
+    events: RawChainEvent[],
+  ): Promise<Array<{ ok: boolean; kind: 'created' | 'renewed' | 'cancelled' }>> {
+    const parsed: ParsedEvent[] = [];
 
-    // Filter: our contract, target events
-    if (!topic || topic[0] !== this.contractId) return false;
-    const eventType = normalizeSubscriptionEventType(topic[1]?.toString());
-    if (!eventType) {
-      this.logger.debug(`Ignoring unsupported subscription event for contract ${this.contractId}: ${topic[1]}`);
-      return false;
-    }
+    for (const event of events) {
+      const { id, topic } = event;
+      if (!id || !topic) continue;
+      const [ledgerSeq, eventIndex] = id.split(':').map(Number);
 
-    try {
-      // Already indexed? Idempotent
+      if (topic[0] !== this.contractId) continue;
+      const eventType = topic[1]?.toString();
+      if (!TARGET_EVENTS.includes(eventType as any)) continue;
+
+      // Already indexed? Idempotent — skip without touching the chain.
       const existing = await this.indexRepo.findByEventId(ledgerSeq, eventIndex);
-      if (existing) return true;
+      if (existing) continue;
 
-      // Parse: topics: [contract, type, fan, creator], data: plan_id or true
       const fan = topic[2]?.toString() ?? '';
       const creator = topic[3]?.toString() ?? '';
-      const data = value?.xdr ?? {}; // Plan ID u32
+      const data = event.value?.xdr ?? 0;
 
-      let planId: number = 0;
-      let expiryUnix: number;
-      let status: SubscriptionStatus = SubscriptionStatus.ACTIVE;
-
-      if (eventType === 'cancelled') {
-        status = SubscriptionStatus.CANCELLED;
-        expiryUnix = Math.floor(Date.now() / 1000); // immediate
-      } else {
-        // subscribed/extended: need expiry from contract view
-        // TODO: batch invoke is_subscriber?expiry for fan/creator
-        // Stub: fetch expiry
-        expiryUnix = await this.fetchExpiryFromChain(fan, creator);
-        planId = Number(data) || 0;
-      }
-
-      const upsertData: UpsertEventData = {
-        fan,
-        creator,
-        planId,
-        expiryUnix,
-        status,
+      parsed.push({
+        raw: event,
         ledgerSeq,
         eventIndex,
-        txHash: event.txHash, // if avail
-        eventType: eventType as any,
-      };
-
-      const indexed = await this.indexRepo.upsertEvent(upsertData);
-
-      // Publish domain event
-      await this.publishDomainEvent(indexed);
-
-      this.logger.debug(`Indexed ${eventType} ${fan.slice(0,8)} -> ${creator.slice(0,8)}`);
-      return true;
-    } catch (err) {
-      this.logger.warn(`Failed to process event ${ledgerSeq}:${eventIndex}: ${err}`);
-      return false;
+        eventType: eventType as TargetEventType,
+        fan,
+        creator,
+        planId: Number(data) || 0,
+      });
     }
+
+    if (parsed.length === 0) return [];
+
+    // Batch the chain-expiry reads for subscribed/extended events concurrently.
+    const needsExpiry = parsed.filter((p) => p.eventType !== 'cancelled');
+    const expiryResults = await Promise.all(
+      needsExpiry.map((p) => this.chainReader.readExpiryUnix(this.contractId, p.fan, p.creator)),
+    );
+    const expiryByKey = new Map<string, number | null>();
+    needsExpiry.forEach((p, i) => {
+      const key = `${p.ledgerSeq}:${p.eventIndex}`;
+      const result = expiryResults[i];
+      if (result.ok) {
+        if (Math.abs(result.skewMs) > LEDGER_SKEW_TOLERANCE_MS) {
+          this.logger.warn(
+            `Ledger clock skew ${result.skewMs}ms exceeds tolerance (${LEDGER_SKEW_TOLERANCE_MS}ms) while reading expiry for ${p.fan.slice(0, 8)} -> ${p.creator.slice(0, 8)}; using skew-corrected value anyway.`,
+          );
+        }
+        expiryByKey.set(key, result.expiryUnix);
+      } else {
+        this.logger.warn(
+          `Chain expiry read failed for ${p.fan.slice(0, 8)} -> ${p.creator.slice(0, 8)}: ${result.error}. Will retry next poll cycle.`,
+        );
+        expiryByKey.set(key, null);
+      }
+    });
+
+    const results: Array<{ ok: boolean; kind: 'created' | 'renewed' | 'cancelled' }> = [];
+
+    for (const p of parsed) {
+      try {
+        let expiryUnix: number;
+        let status: SubscriptionStatus = SubscriptionStatus.ACTIVE;
+
+        if (p.eventType === 'cancelled') {
+          status = SubscriptionStatus.CANCELLED;
+          expiryUnix = Math.floor(Date.now() / 1000); // immediate
+        } else {
+          const key = `${p.ledgerSeq}:${p.eventIndex}`;
+          const resolved = expiryByKey.get(key);
+          if (resolved == null) {
+            // Chain read failed — skip for now; next poll cycle retries since
+            // this event hasn't been indexed yet (idempotency key untouched).
+            results.push({ ok: false, kind: p.eventType === 'subscribed' ? 'created' : 'renewed' });
+            continue;
+          }
+          expiryUnix = resolved;
+        }
+
+        const upsertData: UpsertEventData = {
+          fan: p.fan,
+          creator: p.creator,
+          planId: p.planId,
+          expiryUnix,
+          status,
+          ledgerSeq: p.ledgerSeq,
+          eventIndex: p.eventIndex,
+          txHash: p.raw.txHash,
+          eventType: p.eventType,
+        };
+
+        const indexed = await this.indexRepo.upsertEvent(upsertData);
+
+        // Chain state changed (subscribed/extended/cancelled) — bust any
+        // cached gated-content check so the next request reflects it
+        // immediately instead of waiting out the TTL.
+        this.cache?.invalidate(p.fan, p.creator);
+
+        // Publish domain event
+        await this.publishDomainEvent(indexed);
+
+        this.logger.debug(`Indexed ${p.eventType} ${p.fan.slice(0, 8)} -> ${p.creator.slice(0, 8)}`);
+        results.push({
+          ok: true,
+          kind: p.eventType === 'subscribed' ? 'created' : p.eventType === 'extended' ? 'renewed' : 'cancelled',
+        });
+      } catch (err) {
+        this.logger.warn(`Failed to process event ${p.ledgerSeq}:${p.eventIndex}: ${err}`);
+        results.push({ ok: false, kind: p.eventType === 'subscribed' ? 'created' : p.eventType === 'extended' ? 'renewed' : 'cancelled' });
+      }
+    }
+
+    return results;
   }
 
-  private async fetchExpiryFromChain(fan: string, creator: string): Promise<number> {
-    // Integrate with SubscriptionChainReaderService or direct RPC invoke
-    // Stub for now - implement read_subscriber_expiry view
-    return Math.floor(Date.now() / 1000) + 30 * 24 * 3600; // 30 days
-  }
-
-  private async publishDomainEvent(index: SubscriptionIndexEntity): Promise<void> {
+  /**
+   * Publishes the correctly-typed domain event for an indexed chain event.
+   * `subscribed` (first payment) and `extended` (renewal) are distinct so
+   * downstream consumers (welcome notifications, referral bonuses, metrics)
+   * only fire "first subscribe" behavior once, not on every renewal.
+   */
+  private publishDomainEvent(index: SubscriptionIndexEntity): void {
     const now = Math.floor(Date.now() / 1000);
     switch (index.eventType) {
       case 'subscribed':
+        this.eventBus.publish(
+          new SubscriptionCreatedEvent(
+            index.fan,
+            index.creator,
+            index.planId,
+            index.expiryUnix,
+          ),
+        );
+        break;
       case 'extended':
         this.eventBus.publish(
-          new SubscriptionRenewedEvent( // or Created if no prior
+          new SubscriptionRenewedEvent(
             index.id,
             index.fan,
             index.creator,

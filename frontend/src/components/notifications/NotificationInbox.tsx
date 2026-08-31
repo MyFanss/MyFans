@@ -8,14 +8,13 @@ import {
   markAllNotificationsRead,
   deleteNotification,
   MOCK_NOTIFICATIONS,
+  shouldUseMockNotifications,
 } from '@/lib/notifications';
 import NotificationItem from './NotificationItem';
 import NotificationDetail from './NotificationDetail';
 import NotificationSkeleton from '../ui/NotificationSkeleton';
 
 type Filter = 'all' | 'unread';
-
-// USE_MOCK is evaluated dynamically to allow tests to override it.
 
 export default function NotificationInbox() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -28,7 +27,7 @@ export default function NotificationInbox() {
     setLoading(true);
     setError(null);
     try {
-      const useMock = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS !== 'false';
+      const useMock = shouldUseMockNotifications();
       const data = useMock
         ? MOCK_NOTIFICATIONS
         : await fetchNotifications(filter === 'unread');
@@ -48,24 +47,21 @@ export default function NotificationInbox() {
       prev.map((n: Notification) => (n.id === id ? { ...n, is_read: isRead } : n)),
     );
     if (selected?.id === id) setSelected((s: Notification | null) => s ? { ...s, is_read: isRead } : s);
-    const useMock = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS !== 'false';
-    if (!useMock) {
+    if (!shouldUseMockNotifications()) {
       await markNotificationRead(id, isRead).catch(() => load());
     }
   }, [selected, load]);
 
   const handleMarkAllRead = useCallback(async () => {
     setNotifications((prev: Notification[]) => prev.map((n: Notification) => ({ ...n, is_read: true })));
-    const useMock = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS !== 'false';
-    if (!useMock) {
+    if (!shouldUseMockNotifications()) {
       await markAllNotificationsRead().catch(() => load());
     }
   }, [load]);
 
   const handleDelete = useCallback(async (id: string) => {
     setNotifications((prev: Notification[]) => prev.filter((n: Notification) => n.id !== id));
-    const useMock = process.env.NEXT_PUBLIC_USE_MOCK_NOTIFICATIONS !== 'false';
-    if (!useMock) {
+    if (!shouldUseMockNotifications()) {
       await deleteNotification(id).catch(() => load());
     }
   }, [load]);
@@ -85,14 +81,26 @@ export default function NotificationInbox() {
             </span>
           )}
         </div>
-        {unreadCount > 0 && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={handleMarkAllRead}
-            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            onClick={load}
+            disabled={loading}
+            className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 disabled:opacity-50"
+            title="Refresh notifications"
           >
-            Mark all as read
+            <svg className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
           </button>
-        )}
+          {unreadCount > 0 && (
+            <button
+              onClick={handleMarkAllRead}
+              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Mark all as read
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filter tabs */}

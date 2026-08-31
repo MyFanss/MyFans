@@ -4,7 +4,8 @@ import { IdempotencyService } from './idempotency.service';
 
 /**
  * Scheduled job that purges expired idempotency key records.
- * Runs every hour — keeps the table lean without hammering the DB.
+ * Default: every hour. Override with IDEMPOTENCY_CLEANUP_CRON env var
+ * (any valid cron expression, e.g. "0 */2 * * *" for every 2 hours).
  */
 @Injectable()
 export class IdempotencyCleanupService {
@@ -12,7 +13,7 @@ export class IdempotencyCleanupService {
 
   constructor(private readonly idempotencyService: IdempotencyService) {}
 
-  @Cron(CronExpression.EVERY_HOUR)
+  @Cron(process.env.IDEMPOTENCY_CLEANUP_CRON ?? CronExpression.EVERY_HOUR)
   async handleCron(): Promise<void> {
     this.logger.debug('Running idempotency key expiration cleanup...');
     const deleted = await this.idempotencyService.purgeExpired();

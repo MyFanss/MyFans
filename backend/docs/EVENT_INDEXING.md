@@ -1,52 +1,108 @@
-# Event indexing
+# Event Indexing — Soroban RPC Poller & Subscription Index
 
-This document defines the canonical subscription event contract used by the Soroban poller and the backend indexer.
+## Overview
 
-## Canonical event names
+The subscription-event-poller polls Soroban RPC for contract events (`subscribed`, `extended`, `cancelled`) and indexes them into the `subscription_index` table. This document describes the idempotency guarantees and the data structure that makes duplicate-free processing possible.
 
-The poller only indexes these canonical names:
+## Idempotency Guarantee
 
-- `subscribed`
-- `extended`
-- `cancelled`
+The poller is **idempotent** under at-least-once delivery from Soroban RPC. No duplicate rows or email notifications will be created even if:
 
-These names are stored in the shared fixture at `backend/src/subscriptions/fixtures/subscription-event-fixture.json` and are exported via `TARGET_EVENTS` in `backend/src/subscriptions/subscription-event-fixture.ts`.
+- The same event is delivered multiple times (RPC retry / at-least-once semantics).
+- Events arrive out-of-order (ledger sequence out of order within a polling cycle).
+- The poller crashes and restarts mid-cycle.
 
-## Compatibility aliases
+### Idempotency Key
 
-Historical or renamed topic strings are normalized before indexing. The poller accepts the following aliases and canonicalizes them:
+Each chain event is uniquely identified by the composite key `(ledgerSeq, eventIndex)`:
 
-| Legacy/renamed topic | Canonical topic |
-|---|---|
-| `subscription_created` | `subscribed` |
-| `subscription_extended` | `extended` |
-| `subscription_cancelled` | `cancelled` |
+- `ledgerSeq`: The Stellar ledger sequence number in which the event occurred.
+- `eventIndex`: The zero-based index of the event within that ledger's contract event list.
 
-Any other topic is ignored as unknown and is not indexed.
+This pair is guaranteed unique by the Soroban RPC API and serves as a stable, reorg-safe identifier.
 
-## Poller behavior
+### Duplicate Detection
 
-1. Verify the event was emitted by the configured subscription contract.
-2. Read the topic name at index 1.
-3. Normalize the topic using the alias map from the shared fixture.
-4. Accept only canonical target events.
-5. Ignore unknown values, log them at debug level, and continue.
-6. Upsert ledger/event idempotently so duplicate polling is harmless.
+The `subscription_index` table enforces a unique constraint on `(ledgerSeq, eventIndex)`:
 
-## Processing contract
+```sql
+UNIQUE('ledgerSeq', 'eventIndex')
+```
 
-The backend parser expects the subscription event schema below:
+When the poller attempts to insert an event already in the index:
 
-- `subscribed`: topics `(name, fan, creator)`, data `plan_id`
-- `extended`: topics `(name, fan, creator)`, data `plan_id`
-- `cancelled`: topics `(name, fan, creator)`, data `(true, reason)`
+1. **Before insert:** The poller calls `findByEventId(ledgerSeq, eventIndex)` to check if the event is already indexed. If found, it skips the event entirely (no database round-trip).
+2. **On duplicate insert attempt:** If the event is inserted anyway (race condition between check and insert), the database constraint prevents the duplicate row and raises a unique-violation error (`code 23505`). The repository catches this and fetches the existing row, returning it instead.
 
-If the event payload is structurally different, the parser should skip it rather than silently creating bad state.
+### Email Deduplication
 
-## Versioning and CI policy
+The email outbox (`email_outbox` table) has an independent `dedupe_key` unique constraint that serves as a secondary defense layer. When a replayed event publishes the same domain event, the outbox dedupes by `dedupe_key` before enqueueing a duplicate email.
 
-- The fixture is the source of truth for the canonical target event set.
-- Any change to event names requires updating the fixture first.
-- CI fails if the poller target list and the shared fixture diverge.
-- The parser must ignore unrecognized event names and never treat them as valid subscriptions.
-- Backward-compatible aliases are accepted for a transition window, but the canonical name remains stable.
+## Idempotency in Practice
+
+### Replay Scenario
+
+1. Poller cycle 1: Receives event `(ledger=100, index=0)`.
+   - `findByEventId(100, 0)` returns null (not yet indexed).
+   - `upsertEvent()` inserts the row.
+   - Domain event `SubscriptionCreatedEvent` is published.
+   - Email is enqueued with `dedupe_key = event_100_0_created`.
+
+2. Poller cycle 2: Receives the same event again (RPC retry).
+   - `findByEventId(100, 0)` returns the existing row (found).
+   - Skips processing; no insert, no domain event, no email.
+
+### Out-of-Order Scenario
+
+Poller cycle receives events in order `[ledger=20, index=0]`, `[ledger=10, index=0]`, `[ledger=15, index=0]`:
+
+1. All three are checked against `findByEventId()` and inserted in the order received.
+2. The resulting index contains all three rows, ordered by insertion (query results will show them in any order depending on the query's `ORDER BY` clause).
+3. The checkpoint (max `ledgerSeq` in the index) moves forward to `20`, skipping ledgers `10–19` in the next poll cycle.
+4. If ledgers `10–19` contained other events, they are fetched in the next cycle and indexed with their correct `ledgerSeq` values.
+
+### Reorg Handling (Future)
+
+The Stellar network is unlikely to undergo a deep reorg, but if one occurs:
+
+- Reorg depth is typically 1–2 ledgers (not structural).
+- The poller's checkpoint mechanism (max `ledgerSeq` as cursor) means events from reorg'd ledgers are fetched again in the next poll.
+- Because `(ledgerSeq, eventIndex)` uniqueness is enforced, re-indexed events from the reorg'd ledger replace the old ones (or are skipped if already present).
+
+## Configuration
+
+The poller is controlled by the `FEATURE_SOROBAN_POLLER` flag:
+
+- **Default (production):** Enabled if `SOROBAN_RPC_URL` and `CONTRACT_ID_SUBSCRIPTION` are configured; otherwise disabled.
+- **Default (test):** Disabled unless explicitly set to `true`.
+- **Startup validation:** If enabled in production but `SOROBAN_RPC_URL` is missing, the app exits with a clear error (fail-fast).
+
+See `.env.example` and `docs/FEATURE_FLAGS.md` for details.
+
+## Monitoring
+
+The poller logs:
+- **Startup:** Flag resolution (`enabled`, `disabled`, reason with config presence).
+- **Each poll cycle:** Processed event counts by type, error counts, checkpoint progression, duration, correlation ID.
+- **Duplicate detection:** Warnings when unique violations are caught and existing rows fetched.
+
+Metrics:
+- `soroban_events_processed_total` (per type: `subscribed`, `extended`, `cancelled`)
+- `soroban_poller_errors_total`
+- `soroban_poller_duration_ms` (histogram)
+- `soroban_events_duplicates_dropped_total` (incremented when constraint violation is caught)
+
+## Testing
+
+See `backend/src/subscriptions/services/subscription-event-poller-*.spec.ts`:
+
+- `subscription-event-poller-ledger.spec.ts`: Feature flag and RPC resilience tests.
+- `subscription-event-poller-idempotency.spec.ts`: Replay, out-of-order, constraint, and email dedup tests.
+- `subscription-event-poller-correlation.spec.ts`: Correlation ID propagation and context management.
+
+## Related Issues
+
+- #1581: Feature flag per-environment defaults and fail-fast validation.
+- #1582: Idempotency key enforcement and replay/out-of-order testing.
+- #1583: Dashboard API (consumes deduplicated index).
+- #1584: Subscribers API (consumes deduplicated index).

@@ -16,6 +16,9 @@ export interface SubscriptionErrorResponse {
   path: string;
 }
 
+// Machine-readable error codes are SCREAMING_SNAKE_CASE.
+const MACHINE_ERROR_CODE = /^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$/;
+
 @Catch()
 export class SubscriptionsExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(SubscriptionsExceptionFilter.name);
@@ -34,7 +37,7 @@ export class SubscriptionsExceptionFilter implements ExceptionFilter {
       exception instanceof HttpException ? exception.getResponse() : null;
 
     let message = 'Internal server error';
-    let error = 'INTERNAL_ERROR';
+    let error: string | undefined;
 
     if (exception instanceof HttpException) {
       if (typeof exceptionResponse === 'string') {
@@ -50,7 +53,15 @@ export class SubscriptionsExceptionFilter implements ExceptionFilter {
             : Array.isArray(resp.message)
               ? resp.message.join('; ')
               : exception.message;
-        error = typeof resp.error === 'string' ? resp.error : this.statusToError(status);
+        // Keep a caller-supplied machine code (e.g. VALIDATION_FAILED) but drop
+        // Nest's human reason phrases ("Bad Request") so statusToError below
+        // yields the stable code clients actually match on.
+        if (
+          typeof resp.error === 'string' &&
+          MACHINE_ERROR_CODE.test(resp.error)
+        ) {
+          error = resp.error;
+        }
       }
     } else if (exception instanceof Error) {
       message = exception.message;
@@ -68,9 +79,7 @@ export class SubscriptionsExceptionFilter implements ExceptionFilter {
       path: req.url,
     };
 
-    this.logger.warn(
-      `${req.method} ${req.url} ${status} – ${message}`,
-    );
+    this.logger.warn(`${req.method} ${req.url} ${status} – ${message}`);
 
     res.status(status).json(body);
   }

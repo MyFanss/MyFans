@@ -1,4 +1,27 @@
 import { createAppError, type AppError } from '@/types/errors';
+import { FeatureFlag, isFeatureEnabled } from '@/lib/feature-flags';
+import { getWalletSession } from '@/lib/client-session';
+import type { WalletType } from '@/types/wallet';
+import {
+  connectWalletConnect as connectWalletConnectClient,
+  disconnectWalletConnect,
+  getWalletConnectAddress,
+  isWalletConnectConfigured,
+  signWithWalletConnectClient,
+} from '@/lib/walletconnect';
+
+/** Clear copy when WalletConnect is stubbed / not yet available */
+export const WALLETCONNECT_UNSUPPORTED_MESSAGE = 'WalletConnect is not available yet';
+export const WALLETCONNECT_UNSUPPORTED_DESCRIPTION =
+  'WalletConnect support is coming soon. Please connect with Freighter or Lobstr for now.';
+
+/**
+ * Whether WalletConnect is enabled via feature flag.
+ * Defaults to false — the provider is a stub until fully integrated.
+ */
+export function isWalletConnectEnabled(): boolean {
+  return isFeatureEnabled(FeatureFlag.WALLET_CONNECT);
+}
 
 /** Base wallet interface */
 interface BaseWallet {
@@ -57,8 +80,8 @@ export function isWalletInstalled(walletType: 'freighter' | 'lobstr' | 'walletco
     case 'lobstr':
       return !!windowWithWallets.lobstr;
     case 'walletconnect':
-      // WalletConnect doesn't require installation - it's a protocol
-      return true;
+      // Protocol wallets need no extension; still gated by feature flag.
+      return isWalletConnectEnabled();
     default:
       return false;
   }
@@ -153,17 +176,44 @@ export async function connectWalletLegacy(): Promise<string | null> {
   }
 }
 
+/** Options accepted by {@link signTransaction}. */
+export interface SignTransactionOptions {
+  /**
+   * Which wallet to sign with. When omitted, the wallet recorded in the
+   * session store at connect time is used, falling back to Freighter for
+   * legacy callers that never persisted a wallet type.
+   */
+  walletType?: WalletType;
+  /** Network name (e.g. `testnet`) — forwarded to wallets that need it. */
+  network?: string;
+  /** Network passphrase — required by WalletConnect, ignored by extensions. */
+  networkPassphrase?: string;
+}
+
 /**
- * Sign a transaction using a specific wallet
+ * Resolve which wallet should sign: an explicit choice wins, otherwise the
+ * wallet the fan connected with (from the session store), otherwise Freighter.
+ */
+export function resolveSigningWalletType(explicit?: WalletType): WalletType {
+  if (explicit) return explicit;
+  return getWalletSession()?.walletType ?? 'freighter';
+}
+
+/**
+ * Sign a transaction using the connected wallet.
+ *
+ * Dispatches to the Freighter, Lobstr, or WalletConnect signer based on
+ * {@link SignTransactionOptions.walletType} (or the connected wallet in the
+ * session store). A bare wallet-type string is also accepted for convenience.
  *
  * @param xdr - Transaction XDR string
- * @param walletType - Type of wallet to use for signing
+ * @param options - Signing options, or a wallet-type string
  * @returns Signed transaction XDR
- * @throws AppError if signing fails
+ * @throws AppError if signing fails or the wallet type is unknown
  */
 export async function signTransaction(
   xdr: string,
-  opts?: { network?: string; networkPassphrase?: string },
+  options: SignTransactionOptions | WalletType = {},
 ): Promise<string> {
   if (typeof window === 'undefined') {
     throw createAppError('WALLET_NOT_FOUND', {
@@ -171,13 +221,31 @@ export async function signTransaction(
     });
   }
 
+  const opts: SignTransactionOptions =
+    typeof options === 'string' ? { walletType: options } : options;
+  const walletType = resolveSigningWalletType(opts.walletType);
+  const signOpts = { network: opts.network, networkPassphrase: opts.networkPassphrase };
+
   try {
-    const windowWithWallets = window as Window & { freighter?: FreighterWallet };
-    const freighterWallet = windowWithWallets.freighter;
-    if (!freighterWallet) {
-      throw createAppError('WALLET_NOT_FOUND', { message: 'Freighter wallet not found' });
+    let signedXdr: string;
+
+    switch (walletType) {
+      case 'freighter':
+        signedXdr = await signWithFreighter(xdr);
+        break;
+      case 'lobstr':
+        signedXdr = await signWithLobstr(xdr);
+        break;
+      case 'walletconnect':
+        signedXdr = await signWithWalletConnect(xdr, signOpts);
+        break;
+      default:
+        throw createAppError('UNSUPPORTED_WALLET', {
+          message: `Cannot sign: unknown wallet type "${String(walletType)}"`,
+          description:
+            'Reconnect your wallet and try again. If this keeps happening, disconnect and pick a wallet from the list.',
+        });
     }
-    const signedXdr = await freighterWallet.signTransaction(xdr);
 
     if (!signedXdr) {
       throw createAppError('WALLET_SIGNATURE_FAILED', {
@@ -236,13 +304,24 @@ export async function getConnectedAddress(walletType: 'freighter' | 'lobstr' | '
       case 'lobstr':
         return await windowWithWallets.lobstr?.getPublicKey() ?? null;
       case 'walletconnect':
-        // WalletConnect implementation would go here
-        return null;
+        return isWalletConnectEnabled() ? await getWalletConnectAddress() : null;
       default:
         return null;
     }
   } catch {
     return null;
+  }
+}
+
+/**
+ * Disconnect a wallet. Only WalletConnect holds a session that must be torn
+ * down explicitly; Freighter/Lobstr are stateless from our side, so this is a
+ * no-op for them (callers still clear their own UI/session state).
+ */
+export async function disconnectWallet(walletType?: WalletType): Promise<void> {
+  const type = walletType ?? getWalletSession()?.walletType;
+  if (type === 'walletconnect') {
+    await disconnectWalletConnect();
   }
 }
 
@@ -325,9 +404,24 @@ async function connectLobstr(): Promise<string> {
 }
 
 async function connectWalletConnect(): Promise<string> {
-  // WalletConnect implementation would go here
-  // For now, throw an error as it's not implemented
-  throw new Error('WalletConnect integration is not yet implemented');
+  if (!isWalletConnectEnabled()) {
+    // Flag off: keep the clear "coming soon" CTA without crashing other flows.
+    throw createAppError('UNSUPPORTED_WALLET', {
+      message: WALLETCONNECT_UNSUPPORTED_MESSAGE,
+      description: WALLETCONNECT_UNSUPPORTED_DESCRIPTION,
+      actions: [
+        { label: 'Use Freighter', type: 'retry', primary: true },
+      ],
+    });
+  }
+
+  if (!isWalletConnectConfigured()) {
+    throw createAppError('WALLET_CONNECT_CONFIG_MISSING', {
+      message: 'WalletConnect project ID is not configured',
+    });
+  }
+
+  return connectWalletConnectClient();
 }
 
 async function signWithFreighter(xdr: string): Promise<string> {
@@ -358,7 +452,16 @@ async function signWithLobstr(xdr: string): Promise<string> {
   return signedXdr;
 }
 
-async function signWithWalletConnect(xdr: string): Promise<string> {
-  // WalletConnect implementation would go here
-  throw new Error('WalletConnect integration is not yet implemented');
+async function signWithWalletConnect(
+  xdr: string,
+  opts?: { network?: string; networkPassphrase?: string },
+): Promise<string> {
+  if (!isWalletConnectEnabled()) {
+    throw createAppError('UNSUPPORTED_WALLET', {
+      message: WALLETCONNECT_UNSUPPORTED_MESSAGE,
+      description: WALLETCONNECT_UNSUPPORTED_DESCRIPTION,
+    });
+  }
+
+  return signWithWalletConnectClient(xdr, opts);
 }

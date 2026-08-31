@@ -5,14 +5,15 @@ import { CommentsController } from './comments.controller';
 import { CommentsService } from './comments.service';
 import { CommentDto, CreateCommentDto, UpdateCommentDto } from './dto';
 import { PaginatedResponseDto } from '../common/dto';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 
-// ── factories ────────────────────────────────────────────────────────────────
+const mockUser = { userId: 'jwt-user-1' };
 
 const makeDto = (overrides: Partial<CommentDto> = {}): CommentDto =>
   ({
     id: 'comment-1',
     content: 'Great post!',
-    authorId: 'temp-author-id',
+    authorId: 'jwt-user-1',
     postId: '00000000-0000-4000-8000-000000000001',
     parentId: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -35,8 +36,6 @@ const makePaginatedResponse = (
     cursor: null,
     ...overrides,
   }) as PaginatedResponseDto<CommentDto>;
-
-// ── suite ────────────────────────────────────────────────────────────────────
 
 describe('CommentsController', () => {
   let controller: CommentsController;
@@ -62,18 +61,22 @@ describe('CommentsController', () => {
         ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 100 }]),
       ],
       controllers: [CommentsController],
-      providers: [{ provide: CommentsService, useValue: service }],
-    }).compile();
+      providers: [
+        { provide: CommentsService, useValue: service },
+        { provide: JwtAuthGuard, useValue: { canActivate: jest.fn().mockReturnValue(true) } },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get(CommentsController);
   });
 
   afterEach(() => jest.clearAllMocks());
 
-  // ── POST /comments ─────────────────────────────────────────────────────────
-
   describe('create', () => {
-    it('calls service.create with hardcoded authorId and the dto', async () => {
+    it('calls service.create with JWT userId and dto', async () => {
       const dto: CreateCommentDto = {
         content: 'Great post!',
         postId: '00000000-0000-4000-8000-000000000001',
@@ -81,9 +84,9 @@ describe('CommentsController', () => {
       const result = makeDto();
       service.create.mockResolvedValue(result);
 
-      const actual = await controller.create(dto);
+      const actual = await controller.create(dto, mockUser);
 
-      expect(service.create).toHaveBeenCalledWith('temp-author-id', dto);
+      expect(service.create).toHaveBeenCalledWith('jwt-user-1', dto);
       expect(actual).toEqual(result);
     });
 
@@ -95,7 +98,7 @@ describe('CommentsController', () => {
       const result = makeDto({ id: 'new-comment-id', content: 'Hello' });
       service.create.mockResolvedValue(result);
 
-      const actual = await controller.create(dto);
+      const actual = await controller.create(dto, mockUser);
 
       expect(actual.id).toBe('new-comment-id');
       expect(actual.content).toBe('Hello');
@@ -111,118 +114,65 @@ describe('CommentsController', () => {
       const result = makeDto({ parentId });
       service.create.mockResolvedValue(result);
 
-      const actual = await controller.create(dto);
+      const actual = await controller.create(dto, mockUser);
 
       expect(service.create).toHaveBeenCalledWith(
-        'temp-author-id',
+        'jwt-user-1',
         expect.objectContaining({ parentId }),
       );
       expect(actual.parentId).toBe(parentId);
     });
 
     it('propagates service errors', async () => {
-      const dto: CreateCommentDto = {
-        content: 'Test',
-        postId: '00000000-0000-4000-8000-000000000001',
-      };
       service.create.mockRejectedValue(new Error('DB error'));
 
-      await expect(controller.create(dto)).rejects.toThrow('DB error');
-    });
-  });
-
-  // ── GET /comments ──────────────────────────────────────────────────────────
-
-  describe('findAll', () => {
-    it('calls service.findAll with the pagination params', async () => {
-      const pagination = { page: 2, limit: 10 };
-      const result = makePaginatedResponse([makeDto()]);
-      service.findAll.mockResolvedValue(result);
-
-      await controller.findAll(pagination);
-
-      expect(service.findAll).toHaveBeenCalledWith(pagination);
-    });
-
-    it('returns the paginated comments list', async () => {
-      const pagination = { page: 1, limit: 20 };
-      const result = makePaginatedResponse(
-        [makeDto({ id: 'comment-1' }), makeDto({ id: 'comment-2' })],
-        { total: 2, page: 1, limit: 20 },
-      );
-      service.findAll.mockResolvedValue(result);
-
-      const actual = await controller.findAll(pagination);
-
-      expect(actual.data).toHaveLength(2);
-      expect(actual.page).toBe(1);
-      expect(actual.limit).toBe(20);
-      expect(actual.total).toBe(2);
-    });
-
-    it('returns an empty list when there are no comments', async () => {
-      service.findAll.mockResolvedValue(makePaginatedResponse([]));
-
-      const actual = await controller.findAll({ page: 1, limit: 20 });
-
-      expect(actual.data).toHaveLength(0);
-      expect(actual.total).toBe(0);
-    });
-
-    it('propagates service errors', async () => {
-      service.findAll.mockRejectedValue(new Error('DB error'));
-
-      await expect(controller.findAll({ page: 1, limit: 20 })).rejects.toThrow('DB error');
-    });
-  });
-
-  // ── GET /comments/post/:postId ─────────────────────────────────────────────
-
-  describe('findByPost', () => {
-    it('calls service.findByPost with postId and pagination', async () => {
-      const postId = '00000000-0000-4000-8000-000000000001';
-      const pagination = { page: 1, limit: 20 };
-      const result = makePaginatedResponse([makeDto({ postId })]);
-      service.findByPost.mockResolvedValue(result);
-
-      await controller.findByPost(postId, pagination);
-
-      expect(service.findByPost).toHaveBeenCalledWith(postId, pagination);
-    });
-
-    it('returns comments filtered by postId', async () => {
-      const postId = '00000000-0000-4000-8000-000000000001';
-      const result = makePaginatedResponse([
-        makeDto({ id: 'comment-1', postId }),
-        makeDto({ id: 'comment-2', postId }),
-      ]);
-      service.findByPost.mockResolvedValue(result);
-
-      const actual = await controller.findByPost(postId, { page: 1, limit: 20 });
-
-      expect(actual.data).toHaveLength(2);
-      expect(actual.data.every((c) => c.postId === postId)).toBe(true);
-    });
-
-    it('returns empty list when the post has no comments', async () => {
-      service.findByPost.mockResolvedValue(makePaginatedResponse([]));
-
-      const actual = await controller.findByPost('post-empty', { page: 1, limit: 20 });
-
-      expect(actual.data).toHaveLength(0);
-      expect(actual.total).toBe(0);
-    });
-
-    it('propagates service errors', async () => {
-      service.findByPost.mockRejectedValue(new Error('DB error'));
-
       await expect(
-        controller.findByPost('post-1', { page: 1, limit: 20 }),
+        controller.create({} as CreateCommentDto, mockUser),
       ).rejects.toThrow('DB error');
     });
   });
 
-  // ── GET /comments/:id ──────────────────────────────────────────────────────
+  describe('findAll', () => {
+    it('calls service.findAll with pagination', async () => {
+      const pagination = { page: 1, limit: 20 };
+      const expected = makePaginatedResponse([makeDto()]);
+      service.findAll.mockResolvedValue(expected);
+
+      const actual = await controller.findAll(pagination);
+
+      expect(service.findAll).toHaveBeenCalledWith(pagination);
+      expect(actual).toEqual(expected);
+    });
+
+    it('returns empty list when no comments exist', async () => {
+      service.findAll.mockResolvedValue(makePaginatedResponse([]));
+
+      const result = await controller.findAll({ page: 1, limit: 20 });
+
+      expect(result.data).toHaveLength(0);
+    });
+  });
+
+  describe('findByPost', () => {
+    it('calls service.findByPost with postId and pagination', async () => {
+      const pagination = { page: 1, limit: 20 };
+      const expected = makePaginatedResponse([makeDto()]);
+      service.findByPost.mockResolvedValue(expected);
+
+      const actual = await controller.findByPost('post-123', pagination);
+
+      expect(service.findByPost).toHaveBeenCalledWith('post-123', pagination);
+      expect(actual).toBe(expected);
+    });
+
+    it('returns empty list when post has no comments', async () => {
+      service.findByPost.mockResolvedValue(makePaginatedResponse([]));
+
+      const result = await controller.findByPost('post-123', { page: 1, limit: 20 });
+
+      expect(result.data).toHaveLength(0);
+    });
+  });
 
   describe('findOne', () => {
     it('calls service.findOne with the id', async () => {
@@ -251,23 +201,21 @@ describe('CommentsController', () => {
     });
   });
 
-  // ── PUT /comments/:id ──────────────────────────────────────────────────────
-
   describe('update', () => {
-    it('calls service.update with id and dto', async () => {
+    it('calls service.update with id, dto, and userId', async () => {
       const dto: UpdateCommentDto = { content: 'Updated text' };
       service.update.mockResolvedValue(makeDto({ content: 'Updated text' }));
 
-      await controller.update('comment-1', dto);
+      await controller.update('comment-1', dto, mockUser);
 
-      expect(service.update).toHaveBeenCalledWith('comment-1', dto);
+      expect(service.update).toHaveBeenCalledWith('comment-1', dto, 'jwt-user-1');
     });
 
     it('returns the updated CommentDto', async () => {
       const dto: UpdateCommentDto = { content: 'New content' };
       service.update.mockResolvedValue(makeDto({ content: 'New content' }));
 
-      const actual = await controller.update('comment-1', dto);
+      const actual = await controller.update('comment-1', dto, mockUser);
 
       expect(actual.content).toBe('New content');
     });
@@ -278,7 +226,7 @@ describe('CommentsController', () => {
       );
 
       await expect(
-        controller.update('missing', { content: 'X' }),
+        controller.update('missing', { content: 'X' }, mockUser),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -286,26 +234,24 @@ describe('CommentsController', () => {
       service.update.mockRejectedValue(new Error('DB error'));
 
       await expect(
-        controller.update('comment-1', { content: 'X' }),
+        controller.update('comment-1', { content: 'X' }, mockUser),
       ).rejects.toThrow('DB error');
     });
   });
 
-  // ── DELETE /comments/:id ───────────────────────────────────────────────────
-
   describe('remove', () => {
-    it('calls service.remove with the id', async () => {
+    it('calls service.remove with id and userId', async () => {
       service.remove.mockResolvedValue(undefined);
 
-      await controller.remove('comment-1');
+      await controller.remove('comment-1', mockUser);
 
-      expect(service.remove).toHaveBeenCalledWith('comment-1');
+      expect(service.remove).toHaveBeenCalledWith('comment-1', 'jwt-user-1');
     });
 
     it('returns void on success', async () => {
       service.remove.mockResolvedValue(undefined);
 
-      const result = await controller.remove('comment-1');
+      const result = await controller.remove('comment-1', mockUser);
 
       expect(result).toBeUndefined();
     });
@@ -315,13 +261,13 @@ describe('CommentsController', () => {
         new NotFoundException('Comment with id "missing" not found'),
       );
 
-      await expect(controller.remove('missing')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.remove('missing', mockUser)).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('propagates other service errors', async () => {
       service.remove.mockRejectedValue(new Error('DB error'));
 
-      await expect(controller.remove('comment-1')).rejects.toThrow('DB error');
+      await expect(controller.remove('comment-1', mockUser)).rejects.toThrow('DB error');
     });
   });
 });

@@ -19,6 +19,17 @@ export class SubsystemStatusDto {
   error?: string;
 }
 
+export class RedisStatusDto {
+  @ApiProperty({ enum: ['up', 'down', 'not_configured'] })
+  status: 'up' | 'down' | 'not_configured';
+
+  @ApiProperty({ required: false, example: 5 })
+  latencyMs?: number;
+
+  @ApiProperty({ required: false, example: 'Connection refused' })
+  error?: string;
+}
+
 export class SorobanStatusDto {
   @ApiProperty({ enum: ['up', 'down', 'degraded'] })
   status: 'up' | 'down' | 'degraded';
@@ -73,8 +84,12 @@ export class AggregatedSubsystemsDto {
   @ApiProperty({ type: SubsystemStatusDto })
   database: SubsystemStatusDto;
 
-  @ApiProperty({ type: SubsystemStatusDto })
-  redis: SubsystemStatusDto;
+  @ApiProperty({
+    type: RedisStatusDto,
+    required: false,
+    description: 'Omitted when Redis is not configured.',
+  })
+  redis?: RedisStatusDto;
 
   @ApiProperty({ type: SorobanStatusDto })
   sorobanRpc: SorobanStatusDto;
@@ -98,7 +113,6 @@ export class AggregatedHealthDto extends HealthStatusDto {
 }
 
 export class QueueSnapshotDto {
-  @ApiProperty({ type: Object, additionalProperties: { type: 'number' } })
   [key: string]: unknown;
 }
 
@@ -106,6 +120,8 @@ export class QueueMetricsDto {
   @ApiProperty({ example: '2024-01-01T00:00:00.000Z' })
   timestamp: string;
 
-  @ApiProperty({ type: QueueSnapshotDto })
+  // Open-ended map of queue name -> depth. The shape is described here because
+  // an index signature cannot carry its own @ApiProperty decorator.
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'number' } })
   queues: QueueSnapshotDto;
 }

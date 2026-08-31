@@ -1,7 +1,10 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 import { SocialLinksDto } from './social-links.dto';
-import { SocialLinksResponseDto } from './user-profile.dto';
+import { SocialLinksResponseDto, SocialLinksListItemDto } from './user-profile.dto';
+import { SocialLink } from './social-link.entity';
 import {
   isAllowedDomain,
   getAllowedDomains,
@@ -16,7 +19,7 @@ type SocialLinksPayload = Partial<{
   otherLink: string | null;
 }>;
 
-export type SocialLinksListItem = SocialLinksResponseDto & { id: string };
+export type SocialLinksListItem = SocialLinksListItemDto;
 
 /**
  * SocialLinksService
@@ -30,8 +33,10 @@ export type SocialLinksListItem = SocialLinksResponseDto & { id: string };
  */
 @Injectable()
 export class SocialLinksService {
-  private readonly records = new Map<string, SocialLinksListItem>();
-  private nextId = 1;
+  constructor(
+    @InjectRepository(SocialLink)
+    private readonly socialLinkRepository: Repository<SocialLink>,
+  ) {}
 
   /**
    * Validates that all URL-type social link fields in the DTO belong
@@ -85,38 +90,45 @@ export class SocialLinksService {
     return payload;
   }
 
-  createSocialLinks(dto: SocialLinksDto): SocialLinksPayload {
+  async createSocialLinks(dto: SocialLinksDto): Promise<SocialLinksListItem> {
     const payload = this.extractUpdatePayload(dto);
-    const id = String(this.nextId++);
-    this.records.set(id, {
-      id,
-      ...this.toResponseDto(payload),
-    });
+    const entity = this.socialLinkRepository.create(payload);
+    const saved = await this.socialLinkRepository.save(entity);
 
-    return payload;
+    return {
+      id: saved.id,
+      ...this.toResponseDto(saved),
+    };
   }
 
-  updateSocialLinks(id: string, dto: SocialLinksDto): SocialLinksPayload {
+  async updateSocialLinks(
+    id: string,
+    dto: SocialLinksDto,
+  ): Promise<SocialLinksListItem> {
     const payload = this.extractUpdatePayload(dto);
-    const current = this.records.get(id) ?? {
-      id,
-      websiteUrl: null,
-      twitterHandle: null,
-      instagramHandle: null,
-      otherLink: null,
-    };
+    const existing = await this.socialLinkRepository.findOne({ where: { id } });
 
-    this.records.set(id, {
-      ...current,
+    const merged = this.socialLinkRepository.create({
+      ...(existing ?? {
+        websiteUrl: null,
+        twitterHandle: null,
+        instagramHandle: null,
+        otherLink: null,
+      }),
+      id,
       ...payload,
     });
+    const saved = await this.socialLinkRepository.save(merged);
 
-    return payload;
+    return {
+      id: saved.id,
+      ...this.toResponseDto(saved),
+    };
   }
 
-  listSocialLinks(
+  async listSocialLinks(
     pagination: PaginationDto = {},
-  ): PaginatedResponseDto<SocialLinksListItem> {
+  ): Promise<PaginatedResponseDto<SocialLinksListItem>> {
     const page =
       Number.isInteger(pagination.page) &&
       pagination.page &&
@@ -130,10 +142,18 @@ export class SocialLinksService {
         ? Math.min(pagination.limit, 100)
         : 20;
     const skip = (page - 1) * limit;
-    const allRecords = Array.from(this.records.values());
-    const data = allRecords.slice(skip, skip + limit);
 
-    return new PaginatedResponseDto(data, allRecords.length, page, limit);
+    const [records, total] = await this.socialLinkRepository.findAndCount({
+      skip,
+      take: limit,
+      order: { createdAt: 'ASC' },
+    });
+    const data = records.map((record) => ({
+      id: record.id,
+      ...this.toResponseDto(record),
+    }));
+
+    return new PaginatedResponseDto(data, total, page, limit);
   }
 
   /**

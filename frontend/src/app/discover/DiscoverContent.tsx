@@ -13,7 +13,7 @@ import {
   SortOption,
 } from "@/lib/creator-profile";
 import { FeatureFlag } from "@/lib/feature-flags";
-import { searchCreators, PublicCreator } from "@/lib/api/creators";
+import { searchCreators, publicCreatorToProfile } from "@/lib/api/creators";
 import { usePrefetchCreatorRoute } from "@/hooks/usePrefetchCreatorRoute";
 import { CreatorCardSkeleton } from "@/components/ui/CreatorCardSkeleton";
 
@@ -21,23 +21,7 @@ const DEBOUNCE_DELAY = 300;
 const INITIAL_LOAD = 12;
 const LOAD_MORE_COUNT = 8;
 
-const USE_API = process.env.NEXT_PUBLIC_USE_CREATORS_API === "true";
-
-/** Map API result to the shape CreatorCard expects */
-function apiCreatorToProfile(c: PublicCreator): CreatorProfile {
-  return {
-    id: c.id,
-    username: c.username,
-    displayName: c.display_name,
-    bio: c.bio ?? "",
-    avatarUrl: c.avatar_url ?? undefined,
-    subscriberCount: 0,
-    subscriptionPrice: 0,
-    isVerified: false,
-    categories: [],
-    socialLinks: [],
-  };
-}
+const ALLOW_MOCK_FALLBACK = process.env.NODE_ENV === "development";
 
 function DiscoverContentInner() {
   const router = useRouter();
@@ -103,40 +87,41 @@ function DiscoverContentInner() {
     let cancelled = false;
 
     async function load() {
-      if (USE_API) {
-        try {
-          const result = await searchCreators({
-            q: debouncedSearch || undefined,
-            limit: INITIAL_LOAD,
-          });
-          if (!cancelled) {
-            setDisplayedCreators(result.data.map(apiCreatorToProfile));
-            setTotal(result.data.length);
+      setIsLoading(true);
+      try {
+        const result = await searchCreators({
+          q: debouncedSearch || undefined,
+          limit: INITIAL_LOAD,
+        });
+        if (!cancelled) {
+          setDisplayedCreators(result.data.map(publicCreatorToProfile));
+          setTotal(result.data.length);
+          setHasMore(result.hasMore);
+          setNextCursor(result.nextCursor);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          if (ALLOW_MOCK_FALLBACK) {
+            const result = getCreators({
+              search: debouncedSearch,
+              categories: selectedCategories,
+              sort,
+              page: 1,
+              limit: INITIAL_LOAD,
+            });
+            setDisplayedCreators(result.creators);
+            setTotal(result.total);
             setHasMore(result.hasMore);
-            setNextCursor(result.nextCursor);
-          }
-        } catch {
-          if (!cancelled) {
+          } else {
             setDisplayedCreators([]);
             setTotal(0);
             setHasMore(false);
           }
         }
-      } else {
-        requestAnimationFrame(() => {
-          const result = getCreators({
-            search: debouncedSearch,
-            categories: selectedCategories,
-            sort,
-            page: 1,
-            limit: INITIAL_LOAD,
-          });
-          if (!cancelled) {
-            setDisplayedCreators(result.creators);
-            setTotal(result.total);
-            setHasMore(result.hasMore);
-          }
-        });
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     }
 
@@ -150,33 +135,31 @@ function DiscoverContentInner() {
 
     setIsLoading(true);
 
-    if (USE_API) {
-      try {
-        const result = await searchCreators({
-          q: debouncedSearch || undefined,
-          cursor: nextCursor ?? undefined,
-          limit: LOAD_MORE_COUNT,
-        });
-        setDisplayedCreators((prev) => [...prev, ...result.data.map(apiCreatorToProfile)]);
-        setHasMore(result.hasMore);
-        setNextCursor(result.nextCursor);
-      } catch {
-        // silently keep current results on load-more failure
-      }
-    } else {
-      const nextPage = Math.floor(displayedCreators.length / LOAD_MORE_COUNT) + 2;
-      const result = getCreators({
-        search: debouncedSearch,
-        categories: selectedCategories,
-        sort,
-        page: nextPage,
+    try {
+      const result = await searchCreators({
+        q: debouncedSearch || undefined,
+        cursor: nextCursor ?? undefined,
         limit: LOAD_MORE_COUNT,
       });
-      setDisplayedCreators((prev) => [...prev, ...result.creators]);
+      setDisplayedCreators((prev) => [...prev, ...result.data.map(publicCreatorToProfile)]);
       setHasMore(result.hasMore);
+      setNextCursor(result.nextCursor);
+    } catch {
+      if (ALLOW_MOCK_FALLBACK) {
+        const nextPage = Math.floor(displayedCreators.length / LOAD_MORE_COUNT) + 2;
+        const result = getCreators({
+          search: debouncedSearch,
+          categories: selectedCategories,
+          sort,
+          page: nextPage,
+          limit: LOAD_MORE_COUNT,
+        });
+        setDisplayedCreators((prev) => [...prev, ...result.creators]);
+        setHasMore(result.hasMore);
+      }
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   }, [isLoading, hasMore, debouncedSearch, selectedCategories, sort, nextCursor, displayedCreators.length]);
 
   // Intersection observer for infinite scroll

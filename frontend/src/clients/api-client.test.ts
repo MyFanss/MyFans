@@ -141,4 +141,41 @@ describe('ApiClient', () => {
 
     expect(invalidateCsrfToken).toHaveBeenCalled();
   });
+
+  it('wraps bare DTO response from getCurrentUser', async () => {
+    const bareUser = {
+      id: '1',
+      username: 'test',
+      followers: 0,
+      following: 0,
+      isVerified: false,
+      createdAt: '2024',
+      email: 'test@example.com',
+      avatar: 'https://example.com/avatar.jpg',
+      bio: 'Test bio'
+    };
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue(bareUser),
+    });
+
+    const result = await apiClient.getCurrentUser();
+
+    expect(result).toEqual({ success: true, data: bareUser });
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual(bareUser);
+  });
+
+  it('preserves wrapped response from getCurrentUser', async () => {
+    const wrappedResponse = { success: true, data: mockUser };
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue(wrappedResponse),
+    });
+
+    const result = await apiClient.getCurrentUser();
+
+    expect(result).toEqual(wrappedResponse);
+    expect(result.success).toBe(true);
+  });
 });

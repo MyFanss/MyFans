@@ -1,20 +1,20 @@
-import React from 'react';
-
-
-import { useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import type { 
   ApiResponse, 
   User, CreateUserRequest, GetCurrentUserResponse, 
   Post, CreatePostRequest, GetPostsResponse, 
-  Subscription, CreateSubscriptionRequest, GetSubscriptionsResponse 
+  Subscription, CreateSubscriptionRequest, GetSubscriptionsResponse,
+  PaginatedResponse, SubscriptionHistoryItem, PaymentRecord,
+  GetSubscriptionHistoryParams, GetPaymentHistoryParams
 } from '@/types';
 import { retryWithBackoff, getAuthHeaders, handleApiError, shouldRetry } from '@/lib/api-utils';
 import { getCsrfToken, invalidateCsrfToken } from '@/lib/csrf';
+import { getApiBaseUrl } from '@/lib/api/base-url';
 import type { AppError } from '@/types';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+const API_BASE = getApiBaseUrl();
 
 class ApiClient {
   async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -56,7 +56,13 @@ class ApiClient {
 
   // User endpoints
   async getCurrentUser(): Promise<GetCurrentUserResponse> {
-    return this.request<ApiResponse<User>>('/users/me');
+    const response = await this.request<User | ApiResponse<User>>('/users/me');
+    // Adapter: backend may return bare DTO or wrapped response
+    if ('success' in response) {
+      return response as ApiResponse<User>;
+    }
+    // Wrap bare DTO response
+    return { success: true, data: response as User };
   }
 
   async getUser(id: string): Promise<ApiResponse<User>> {
@@ -94,7 +100,36 @@ class ApiClient {
     });
   }
 
-  // Extensible: add more endpoints
+  async getSubscriptionHistory(params: GetSubscriptionHistoryParams = {}): Promise<PaginatedResponse<SubscriptionHistoryItem>> {
+    const search = new URLSearchParams();
+    if (params.status) search.set('status', params.status);
+    if (params.sort) search.set('sort', params.sort);
+    if (params.cursor) search.set('cursor', params.cursor);
+    if (params.limit) search.set('limit', String(params.limit));
+    const queryString = search.toString();
+    return this.request<PaginatedResponse<SubscriptionHistoryItem>>(`/subscriptions/me/list${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async getPaymentHistory(params: GetPaymentHistoryParams = {}): Promise<PaginatedResponse<PaymentRecord>> {
+    const search = new URLSearchParams();
+    if (params.creator) search.set('creator', params.creator);
+    if (params.from) search.set('from', params.from);
+    if (params.to) search.set('to', params.to);
+    if (params.page) search.set('page', String(params.page));
+    if (params.limit) search.set('limit', String(params.limit));
+    const queryString = search.toString();
+    return this.request<PaginatedResponse<PaymentRecord>>(`/analytics/payments${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async getCreatorSubscribers(params: { page?: number; limit?: number; search?: string; status?: string; sort?: string; cursor?: string } = {}): Promise<PaginatedResponse<any>> {
+    const search = new URLSearchParams();
+    if (params.cursor) search.set('cursor', params.cursor);
+    if (params.limit) search.set('limit', String(params.limit));
+    if (params.status) search.set('status', params.status);
+    if (params.sort) search.set('sort', params.sort);
+    const queryString = search.toString();
+    return this.request<PaginatedResponse<any>>(`/subscriptions/me/creator-subscribers${queryString ? `?${queryString}` : ''}`);
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -109,7 +144,7 @@ export async function getCurrentUserOrThrow(): Promise<User> {
   const res = await apiClient.getCurrentUser();
   if (!res.success) {
     const error: AppError = {
-      code: 'NOT_FOUND' as any,
+      code: 'NOT_FOUND',
       message: res.error || 'User not found',
       severity: 'error',
       category: 'server',
@@ -119,6 +154,7 @@ export async function getCurrentUserOrThrow(): Promise<User> {
   }
   return res.data!;
 }
+
 
 // Add more orThrow helpers as needed
 

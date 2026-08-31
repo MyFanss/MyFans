@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -6,6 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
+import * as crypto from 'crypto';
 import { IdempotencyService } from './idempotency.service';
 
 /** Header name clients must send. */
@@ -13,6 +15,14 @@ export const IDEMPOTENCY_KEY_HEADER = 'idempotency-key';
 
 /** Maximum allowed key length to prevent abuse. */
 const MAX_KEY_LENGTH = 255;
+
+/**
+ * Checkout/payment routes where the Idempotency-Key header is mandatory
+ * (not just tracked-if-present). A missing key on these routes is rejected
+ * with 400 rather than silently allowed through, since a retried payment
+ * mutation without a key can double-charge or double-create a subscription.
+ */
+const REQUIRED_IDEMPOTENCY_PATH_PREFIXES = ['/v1/subscriptions/checkout'];
 
 @Injectable()
 export class IdempotencyMiddleware implements NestMiddleware {
@@ -23,9 +33,15 @@ export class IdempotencyMiddleware implements NestMiddleware {
   async use(req: Request, res: Response, next: NextFunction): Promise<void> {
     const rawKey = req.headers[IDEMPOTENCY_KEY_HEADER] as string | undefined;
 
-    // No key supplied — pass through (key is optional; callers that want
-    // idempotency protection must supply it).
     if (!rawKey) {
+      if (this.isRequiredRoute(req.path)) {
+        throw new BadRequestException(
+          `Idempotency-Key header is required for ${req.method} ${req.path}.`,
+        );
+      }
+      // No key supplied on a non-payment route — pass through (key is
+      // optional there; callers that want idempotency protection must
+      // supply it).
       return next();
     }
 
@@ -101,13 +117,34 @@ export class IdempotencyMiddleware implements NestMiddleware {
   }
 
   /**
-   * Build a caller fingerprint.
-   * Uses the authenticated user's ID when available (set by auth middleware),
-   * otherwise falls back to the client IP address.
+   * Whether the given request path is a checkout/payment route on which
+   * the Idempotency-Key header is mandatory rather than opt-in.
+   */
+  private isRequiredRoute(path: string): boolean {
+    return REQUIRED_IDEMPOTENCY_PATH_PREFIXES.some((prefix) =>
+      path.startsWith(prefix),
+    );
+  }
+
+  /**
+   * Build a caller fingerprint that includes the caller identity and request
+   * body hash. The body hash ensures that reusing the same idempotency key
+   * with a different payload is detected and rejected with 409 Conflict.
    */
   private buildFingerprint(req: Request): string {
+    const identity = this.callerIdentity(req);
+    const bodyHash = this.hashBody(req.body);
+    return `${identity}|${bodyHash}`;
+  }
+
+  private callerIdentity(req: Request): string {
     const userId = (req as any).user?.id ?? (req as any).user?.userId;
     if (userId) return `user:${userId}`;
     return `ip:${req.ip ?? 'unknown'}`;
+  }
+
+  private hashBody(body: unknown): string {
+    const serialised = body ? JSON.stringify(body) : '';
+    return crypto.createHash('sha256').update(serialised).digest('hex');
   }
 }

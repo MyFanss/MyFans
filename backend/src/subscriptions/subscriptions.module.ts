@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ConfigModule } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggingModule } from '../common/logging.module';
-import { EventsModule } from '../events/events.module';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { SubscriptionLifecycleIndexerController } from './subscription-lifecycle-indexer.controller';
 import { SubscriptionLifecycleIndexerService } from './subscription-lifecycle-indexer.service';
@@ -16,24 +16,36 @@ import { SubscriptionChainSyncService } from './services/subscription-chain-sync
 import { SpendingCapService } from './services/spending-cap.service';
 import { SUBSCRIPTION_EVENT_PUBLISHER } from './events';
 import { FanBearerGuard } from './guards/fan-bearer.guard';
+import { HybridFanAuthGuard } from './guards/hybrid-fan-auth.guard';
+import { OptionalHybridFanAuthGuard } from './guards/optional-hybrid-fan-auth.guard';
 import { GatedContentGuard } from './gated-content.guard';
 import { FeatureFlagGuard } from '../feature-flags/feature-flag.guard';
 import { SubscriptionCacheService } from './subscription-cache.service';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
+import { SubscriptionPauseService } from './subscription-pause.service';
 import { SubscriptionsController } from './subscriptions.controller';
 import { SpendingCapController } from './spending-cap.controller';
 import { SubscriptionsService } from './subscriptions.service';
-import { RPC_BALANCE_ADAPTER, MockRpcAdapter } from './rpc-adapter';
+import { RPC_BALANCE_ADAPTER, MockRpcAdapter, HorizonRpcAdapter } from './rpc-adapter';
 import { LedgerClockService } from './ledger-clock.service';
+import { LoggingSubscriptionEventPublisher } from './subscription-event-publisher.service';
+import { StellarService } from '../common/stellar.service';
+import { SorobanRpcService } from '../common/services/soroban-rpc.service';
 
 @Module({
   imports: [
     ConfigModule,
     ScheduleModule,
     TypeOrmModule.forFeature([SubscriptionIndexEntity, FanSpendingCapEntity]),
-    EventsModule,
     LoggingModule,
     FeatureFlagsModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get('JWT_SECRET'),
+      }),
+      inject: [ConfigService],
+    }),
   ],
   controllers: [SubscriptionsController, SpendingCapController, SubscriptionLifecycleIndexerController],
   providers: [
@@ -46,15 +58,38 @@ import { LedgerClockService } from './ledger-clock.service';
     SubscriptionChainReaderService,
     LedgerClockService,
     SubscriptionCacheService,
+    SubscriptionPauseService,
     GatedContentGuard,
     FanBearerGuard,
+    HybridFanAuthGuard,
+    OptionalHybridFanAuthGuard,
     FeatureFlagGuard,
     SubscriptionLifecycleIndexerService,
+    StellarService,
+    SorobanRpcService,
+    MockRpcAdapter,
+    HorizonRpcAdapter,
+    {
+      provide: RPC_BALANCE_ADAPTER,
+      useFactory: (mock: MockRpcAdapter, real: HorizonRpcAdapter) =>
+        process.env.SUBSCRIPTIONS_USE_MOCK_RPC === 'true' ||
+        process.env.NODE_ENV === 'test'
+          ? mock
+          : real,
+      inject: [MockRpcAdapter, HorizonRpcAdapter],
+    },
     {
       provide: SUBSCRIPTION_EVENT_PUBLISHER,
-      useValue: { emit: () => undefined },
+      useClass: LoggingSubscriptionEventPublisher,
     },
   ],
-  exports: [SubscriptionsService, SubscriptionLifecycleIndexerService, SubscriptionIndexRepository, SubscriptionChainSyncService],
+  exports: [
+    SubscriptionsService,
+    SubscriptionLifecycleIndexerService,
+    SubscriptionIndexRepository,
+    SubscriptionChainSyncService,
+    HybridFanAuthGuard,
+    OptionalHybridFanAuthGuard,
+  ],
 })
 export class SubscriptionsModule {}
