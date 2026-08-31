@@ -8,9 +8,13 @@ wallets. This document covers configuration; the connection UI lives in
 
 | Wallet | Connect | Sign | Notes |
 |--------|---------|------|-------|
-| Freighter | ✅ browser extension | ✅ | Reference implementation |
-| Lobstr | ✅ browser extension | ✅ | Same `signTransaction` dispatch path as Freighter |
+| Freighter | ✅ browser extension | ✅ | Reference wallet — the only one guaranteed through every flow. The local onboarding guide ([LOCAL_QUICKSTART.md](./LOCAL_QUICKSTART.md)) is Freighter-only |
+| Lobstr | ✅ browser extension | ✅ | Same `signTransaction` dispatch path as Freighter, but less battle-tested |
 | WalletConnect | ✅ QR / deep link | ✅ | Behind the `walletConnect` feature flag, off by default |
+
+> **Local development:** use **Freighter**. Connect + sign work for Lobstr, but
+> Freighter is the validated path for subscribing and for connecting to a
+> local Stellar sandbox (see [local quickstart](LOCAL_QUICKSTART.md)).
 
 ### How signing is dispatched
 
