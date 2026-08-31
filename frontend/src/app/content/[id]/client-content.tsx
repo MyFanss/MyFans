@@ -18,6 +18,11 @@ import {
   type ContentAccessReason,
   type ContentMetadata,
 } from '@/lib/api/content';
+import {
+  getPostLikeCount,
+  getPostLikeStatus,
+  togglePostLike,
+} from '@/lib/api/likes';
 
 interface ClientContentProps {
   content: ContentMetadata;
@@ -90,6 +95,37 @@ export function ClientContent({ content }: ClientContentProps) {
   }, [gated, access.status, content.id]);
 
   const isUnlocked = !gated || access.status === 'granted';
+  const [likeState, setLikeState] = useState({ liked: false, count: content.metadata?.likeCount ?? 0 });
+
+  useEffect(() => {
+    if (!isUnlocked) {
+      setLikeState({ liked: false, count: content.metadata?.likeCount ?? 0 });
+      return;
+    }
+
+    let cancelled = false;
+
+    Promise.all([
+      getPostLikeStatus(content.id),
+      getPostLikeCount(content.id),
+    ])
+      .then(([liked, count]) => {
+        if (cancelled) return;
+        setLikeState({ liked, count });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLikeState({
+            liked: false,
+            count: content.metadata?.likeCount ?? 0,
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [content.id, content.metadata?.likeCount, isUnlocked]);
 
   const handleSubscribe = useCallback(() => {
     // Route to the real subscribe/checkout flow — no client-side unlock.
@@ -98,11 +134,37 @@ export function ClientContent({ content }: ClientContentProps) {
 
   const handleLike = useCallback(
     async (liked: boolean): Promise<void> => {
-      // Like is only reachable while unlocked (see GatedContentViewer
-      // `canInteract`); wiring it to the API is tracked separately.
-      void liked;
+      if (!isUnlocked) return;
+
+      const previous = likeState;
+      const nextLiked = liked;
+      const delta = nextLiked && !previous.liked ? 1 : !nextLiked && previous.liked ? -1 : 0;
+
+      setLikeState((current) => ({
+        liked: nextLiked,
+        count: Math.max(0, current.count + delta),
+      }));
+
+      try {
+        const result = await togglePostLike(content.id, nextLiked);
+        const nextCount = typeof result.count === 'number' ? result.count : await getPostLikeCount(content.id);
+        setLikeState({
+          liked: Boolean(result.liked),
+          count: nextCount,
+        });
+      } catch (error) {
+        setLikeState(previous);
+        const status = typeof error === 'object' && error !== null && 'status' in error ? Number((error as { status?: number }).status) : undefined;
+
+        if (status === 401 || status === 403) {
+          router.push(`/auth/sign-in?redirectTo=${encodeURIComponent(`/content/${content.id}`)}`);
+          return;
+        }
+
+        throw error;
+      }
     },
-    [],
+    [content.id, isUnlocked, likeState, router],
   );
 
   const handleShare = useCallback(() => {
@@ -151,7 +213,8 @@ export function ClientContent({ content }: ClientContentProps) {
         isGated={gated}
         canInteract={isUnlocked}
         creator={content.creator}
-        metadata={content.metadata as never}
+        metadata={{ ...content.metadata, likeCount: likeState.count } as never}
+        liked={likeState.liked}
         relatedContent={content.relatedContent}
         onCheckAccess={handleCheckAccess}
         onSubscribe={handleSubscribe}
