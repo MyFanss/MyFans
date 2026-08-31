@@ -499,17 +499,22 @@ export default function OnboardingPage() {
             <p className="mt-2 text-gray-600 dark:text-gray-400">
               {isCreatorCopy
                 ? "Your creator setup is wrapped up. Head to the dashboard to publish and manage subscribers."
-                : "Your account is all set up and ready to go"}
+                : "Your account is all set up. Discover creators and subscribe to exclusive content."}
             </p>
+            {/* Role-based deep link: creators → dashboard, fans → discover.   */}
+            {/* "both" is treated as creator-first: they can subscribe from      */}
+            {/* the dashboard and switch to the discover tab at any time.         */}
             <div className="mt-8 flex flex-wrap justify-center gap-4">
               <button
                 type="button"
                 onClick={() => {
-                  window.location.href = "/dashboard";
+                  const isCreatorIntent =
+                    onboardingIntent === "creator" || onboardingIntent === "both";
+                  window.location.href = isCreatorIntent ? "/dashboard" : "/discover";
                 }}
                 className="rounded-lg bg-purple-500 px-6 py-2.5 text-sm font-medium text-white hover:bg-purple-600"
               >
-                Go to Dashboard
+                {isCreatorCopy ? "Go to Dashboard" : "Discover creators"}
               </button>
               <button
                 type="button"
