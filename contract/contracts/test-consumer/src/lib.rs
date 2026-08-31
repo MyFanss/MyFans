@@ -577,6 +577,7 @@ mod test {
             Address, Env, Error as SorobanError, String,
         };
         use subscription::{Error as SubError, MyfansContract, MyfansContractClient};
+        use treasury::{Treasury, TreasuryClient};
 
         fn deploy_token(env: &Env) -> (MyFansTokenClient<'_>, Address) {
             let admin = Address::generate(env);
@@ -650,7 +651,10 @@ mod test {
             });
 
             let (token, admin) = deploy_token(&env);
-            let fee_recipient = Address::generate(&env);
+            let treasury_id = env.register_contract(None, Treasury);
+            let treasury_client = TreasuryClient::new(&env, &treasury_id);
+            treasury_client.initialize(&admin, &token.address);
+            let fee_recipient = treasury_id;
             let sub = deploy_subscription(&env, &admin, &fee_recipient, &token.address);
 
             let creator = Address::generate(&env);
@@ -737,7 +741,10 @@ mod test {
             });
 
             let (token, admin) = deploy_token(&env);
-            let fee_recipient = Address::generate(&env);
+            let treasury_id = env.register_contract(None, Treasury);
+            let treasury_client = TreasuryClient::new(&env, &treasury_id);
+            treasury_client.initialize(&admin, &token.address);
+            let fee_recipient = treasury_id;
             let sub = deploy_subscription(&env, &admin, &fee_recipient, &token.address);
 
             let creator = Address::generate(&env);

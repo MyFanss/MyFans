@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
-    String, Symbol,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, token, vec, Address,
+    Env, IntoVal, String, Symbol,
 };
 
 #[contracttype]
@@ -85,7 +85,7 @@ pub enum Error {
     AdminNotInitialized = 5,
     /// Code 6 – fee recipient is the Stellar null/burn address.
     InvalidFeeRecipient = 6,
-    /// Code 7 – fee basis points exceed 10 000 (100 %).
+    /// Code 7 – fee basis points exceed 1 000 (10 %).
     InvalidFeeBps = 7,
     /// Code 8 – token address is the Stellar null/burn address.
     InvalidTokenAddress = 8,
@@ -111,9 +111,15 @@ fn require_valid_fee_recipient(env: &Env, addr: &Address) {
     }
 }
 
-/// Protocol fee in basis points must not exceed 100% (10_000 bps).
+/// Maximum protocol fee in basis points (1_000 bps = 10%).
+///
+/// Enforced in both `init` and `set_fee_bps` so that no caller — including the
+/// admin — can configure a fee that captures more than 10% of a payment.
+pub const MAX_FEE_BPS: u32 = 1_000;
+
+/// Protocol fee in basis points must not exceed [`MAX_FEE_BPS`] (10%).
 fn require_valid_fee_bps(env: &Env, fee_bps: u32) {
-    if fee_bps > 10_000 {
+    if fee_bps > MAX_FEE_BPS {
         panic_with_error!(env, Error::InvalidFeeBps);
     }
 }
@@ -134,7 +140,9 @@ impl MyfansContract {
     /// Requires `admin` to authorize the call.
     ///
     /// Validates:
-    /// * `fee_bps` must be ≤ 10000 (100%).
+    /// * `fee_bps` must be ≤ [`MAX_FEE_BPS`] (1_000 bps = 10%).
+    /// * `fee_recipient` must be a valid non-null address and should be the
+    ///   deployed treasury contract, which collects protocol fees via `deposit`.
     /// * `token` must be a valid non-null address.
     /// * `price` must be strictly positive.
     pub fn init(
@@ -241,13 +249,8 @@ impl MyfansContract {
         let token_client = token::Client::new(&env, &plan.asset);
         token_client.transfer(&fan, &plan.creator, &creator_amount);
         if fee > 0 {
-            // Deferred read: only fetch fee_recipient when a fee is actually owed.
-            let fee_recipient: Address = env
-                .storage()
-                .instance()
-                .get(&DataKey::FeeRecipient)
-                .unwrap();
-            token_client.transfer(&fan, &fee_recipient, &fee);
+            // Deferred read: only touch the treasury when a fee is actually owed.
+            Self::collect_fee(&env, fan.clone(), plan.creator.clone(), fee);
         }
 
         let expiry = env.ledger().sequence() + (plan.interval_days * 17280);
@@ -330,13 +333,8 @@ impl MyfansContract {
         let token_client = token::Client::new(&env, &token);
         token_client.transfer(&fan, &creator, &creator_amount);
         if fee > 0 {
-            // Deferred read: only fetch fee_recipient when a fee is actually owed.
-            let fee_recipient: Address = env
-                .storage()
-                .instance()
-                .get(&DataKey::FeeRecipient)
-                .unwrap();
-            token_client.transfer(&fan, &fee_recipient, &fee);
+            // Deferred read: only touch the treasury when a fee is actually owed.
+            Self::collect_fee(&env, fan.clone(), creator.clone(), fee);
         }
 
         let new_expiry = sub.expiry + extra_ledgers as u64;
@@ -440,13 +438,8 @@ impl MyfansContract {
         let token_client = token::Client::new(&env, &token);
         token_client.transfer(&fan, &creator, &creator_amount);
         if fee > 0 {
-            // Deferred read: only fetch fee_recipient when a fee is actually owed.
-            let fee_recipient: Address = env
-                .storage()
-                .instance()
-                .get(&DataKey::FeeRecipient)
-                .unwrap();
-            token_client.transfer(&fan, &fee_recipient, &fee);
+            // Deferred read: only touch the treasury when a fee is actually owed.
+            Self::collect_fee(&env, fan.clone(), creator.clone(), fee);
         }
 
         let expires_at_ledger = env.ledger().sequence() + duration_ledgers;
@@ -544,7 +537,7 @@ impl MyfansContract {
         );
     }
 
-    /// Update protocol fee basis points (admin only). `new_fee_bps` must be <= 10_000.
+    /// Update protocol fee basis points (admin only). `new_fee_bps` must be <= [`MAX_FEE_BPS`] (1_000 bps = 10%).
     ///
     /// Emits `fee_updated` (on-chain symbol; product docs: fee-updated) with data `(old_bps, new_bps)`.
     pub fn set_fee_bps(env: Env, new_fee_bps: u32) {
@@ -571,6 +564,32 @@ impl MyfansContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false)
+    }
+
+    /// Route the protocol fee into the treasury contract.
+    ///
+    /// `fee_recipient` must be the address of a deployed `treasury` contract.
+    /// Calling its `deposit(from, amount)` performs the token transfer, so the
+    /// treasury's pause state is honored and its `deposit` event is emitted.
+    /// This contract additionally emits a `fee_collected` event so indexers can
+    /// observe the split without parsing treasury storage.
+    fn collect_fee(env: &Env, fan: Address, creator: Address, fee: i128) {
+        let fee_recipient: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeRecipient)
+            .unwrap();
+
+        env.invoke_contract::<()>(
+            &fee_recipient,
+            &Symbol::new(env, "deposit"),
+            vec![env, fan.clone().into_val(env), fee.into_val(env)],
+        );
+
+        env.events().publish(
+            (Symbol::new(env, "fee_collected"), fan, creator),
+            (fee, fee_recipient),
+        );
     }
 
     /// Returns (expiry_ledger_seq, expiry_unix_timestamp) for the subscription.

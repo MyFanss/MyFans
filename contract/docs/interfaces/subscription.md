@@ -9,7 +9,7 @@ Advanced subscription with ledger expiry.
 | `init` | `admin: Address, fee_bps: u32, fee_recipient: Address, token: Address, price: i128` | `()` | admin | `soroban contract invoke ... init -- ADMIN 100 TREASURY TOKEN 1000` | None |
 | `admin` | `()` | `Address` | none | `soroban contract invoke ... admin` | None |
 | `create_plan` | `creator: Address, asset: Address, amount: i128, interval_days: u32` | `u32` | creator | `soroban contract invoke ... create_plan -- CREATOR TOKEN 1000 30` | `("plan_created", plan_id) -> creator` |
-| `subscribe` | `fan: Address, plan_id: u32, token: Address` | `()` | fan | `soroban contract invoke ... subscribe -- FAN 1 TOKEN` | `("subscribed", plan_id) -> fan` |
+| `subscribe` | `fan: Address, plan_id: u32, token: Address` | `()` | fan | `soroban contract invoke ... subscribe -- FAN 1 TOKEN` | `("subscribed", plan_id) -> fan`; `("fee_collected", fan, creator) -> (fee, treasury)` when `fee > 0` |
 | `is_subscriber` | `fan: Address, creator: Address` | `bool` | none | `soroban contract invoke ... is_subscriber -- FAN CREATOR` | None |
 | `extend_subscription` | `fan: Address, creator: Address, extra_ledgers: u32, token: Address` | `()` | fan | `soroban contract invoke ... extend_subscription -- FAN CREATOR 100 TOKEN` | `("extended", plan_id) -> fan` |
 | `cancel` | `fan: Address, creator: Address, reason: u32` | `()` | fan | `soroban contract invoke ... cancel -- FAN CREATOR 0` | `("cancelled", fan, creator) -> (true, reason)` |
@@ -20,6 +20,11 @@ Advanced subscription with ledger expiry.
 | `is_paused` | `()` | `bool` | none | `soroban contract invoke ... is_paused` | None |
 | `get_expiry_unix` | `fan: Address, creator: Address` | `(u64, u64)` | none | `soroban contract invoke ... get_expiry_unix -- FAN CREATOR` | None |
 | `ping` | `()` | `u32` (ledger sequence) | none | `soroban contract invoke ... ping` | None |
+
+## Fee security
+
+- `init` and `set_fee_bps` are **admin-only** and reject any `fee_bps > MAX_FEE_BPS` where `MAX_FEE_BPS = 1_000` (10%). The fee can never be set to 100%.
+- `fee_recipient` must be the deployed **treasury** contract; the fee portion of every payment (`subscribe`, `create_subscription`, `extend_subscription`) is routed into it via `treasury.deposit(from, amount)`. See [treasury-contracts.md](treasury-contracts.md).
 
 ## Overview
 Subscription plans with extend/cancel; overlaps main contract. Uses ledger seq for expiry.

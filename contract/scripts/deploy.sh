@@ -166,6 +166,7 @@ echo "[deploy] building contracts"
 PACKAGES=(
   "myfans-token"
   "creator-registry"
+  "treasury"
   "subscription"
   "content-access"
   "earnings"
@@ -314,10 +315,12 @@ check_token_dependency() {
 TOKEN_ID="$(deploy_contract "myfans-token")"
 CREATOR_REGISTRY_ID="$(deploy_contract "creator-registry")"
 
-# subscription and content-access depend on token — validate before deploying
+# treasury, subscription and content-access depend on token — validate before deploying
+check_token_dependency "treasury" "$TOKEN_ID"
 check_token_dependency "subscription" "$TOKEN_ID"
 check_token_dependency "content-access" "$TOKEN_ID"
 
+TREASURY_ID="$(deploy_contract "treasury")"
 SUBSCRIPTION_ID="$(deploy_contract "subscription")"
 CONTENT_ACCESS_ID="$(deploy_contract "content-access")"
 EARNINGS_ID="$(deploy_contract "earnings")"
@@ -326,6 +329,8 @@ EARNINGS_ID="$(deploy_contract "earnings")"
 check_method "$TOKEN_ID"            "initialize"  "myfans-token"
 check_method "$TOKEN_ID"            "admin"       "myfans-token"
 check_method "$CREATOR_REGISTRY_ID" "initialize"  "creator-registry"
+check_method "$TREASURY_ID"         "initialize"  "treasury"
+check_method "$TREASURY_ID"         "admin"       "treasury"
 check_method "$SUBSCRIPTION_ID"     "init"        "subscription"
 check_method "$SUBSCRIPTION_ID"     "is-paused"   "subscription"
 check_method "$CONTENT_ACCESS_ID"   "initialize"  "content-access"
@@ -345,11 +350,16 @@ invoke_contract "$TOKEN_ID" initialize \
 echo "[deploy] initializing creator-registry"
 invoke_contract "$CREATOR_REGISTRY_ID" initialize --admin "$SOURCE_PUBLIC_KEY" >/dev/null
 
-echo "[deploy] initializing subscription (depends on token)"
+echo "[deploy] initializing treasury (protocol fee collector, depends on token)"
+invoke_contract "$TREASURY_ID" initialize \
+  --admin "$SOURCE_PUBLIC_KEY" \
+  --token-address "$TOKEN_ID" >/dev/null
+
+echo "[deploy] initializing subscription (depends on token; fees routed to treasury)"
 invoke_contract "$SUBSCRIPTION_ID" init \
   --admin "$SOURCE_PUBLIC_KEY" \
   --fee-bps 0 \
-  --fee-recipient "$SOURCE_PUBLIC_KEY" \
+  --fee-recipient "$TREASURY_ID" \
   --token "$TOKEN_ID" \
   --price 10000000 >/dev/null
 
@@ -378,6 +388,9 @@ smoke_check() {
 TOKEN_VERIFY="$(invoke_contract_view "$TOKEN_ID" admin)"
 smoke_check "token.admin" "$SOURCE_PUBLIC_KEY" "$TOKEN_VERIFY"
 
+TREASURY_VERIFY="$(invoke_contract_view "$TREASURY_ID" admin)"
+smoke_check "treasury.admin" "$SOURCE_PUBLIC_KEY" "$TREASURY_VERIFY"
+
 SUBSCRIPTION_VERIFY="$(invoke_contract_view "$SUBSCRIPTION_ID" is-paused)"
 smoke_check "subscription.is-paused" "false" "$SUBSCRIPTION_VERIFY"
 
@@ -404,6 +417,7 @@ cat > "$OUTPUT_JSON" <<JSON
   "contracts": {
     "token": "$TOKEN_ID",
     "creatorRegistry": "$CREATOR_REGISTRY_ID",
+    "treasury": "$TREASURY_ID",
     "subscriptions": "$SUBSCRIPTION_ID",
     "contentAccess": "$CONTENT_ACCESS_ID",
     "earnings": "$EARNINGS_ID"
@@ -411,6 +425,7 @@ cat > "$OUTPUT_JSON" <<JSON
   "verification": {
     "tokenAdmin": "$TOKEN_VERIFY",
     "creatorRegistryLookup": "$CREATOR_REGISTRY_VERIFY",
+    "treasuryAdmin": "$TREASURY_VERIFY",
     "subscriptionsPaused": "$SUBSCRIPTION_VERIFY",
     "contentAccessHasAccess": "$CONTENT_ACCESS_VERIFY",
     "earningsAdmin": "$EARNINGS_VERIFY"
@@ -428,6 +443,7 @@ STELLAR_SOURCE_ACCOUNT=$SOURCE_PUBLIC_KEY
 # Canonical contract IDs (preferred for backend / new .env)
 CONTRACT_ID_MYFANS_TOKEN=$TOKEN_ID
 CONTRACT_ID_CREATOR_REGISTRY=$CREATOR_REGISTRY_ID
+CONTRACT_ID_TREASURY=$TREASURY_ID
 CONTRACT_ID_SUBSCRIPTION=$SUBSCRIPTION_ID
 CONTRACT_ID_CONTENT_ACCESS=$CONTENT_ACCESS_ID
 CONTRACT_ID_EARNINGS=$EARNINGS_ID
@@ -435,6 +451,7 @@ CONTRACT_ID_EARNINGS=$EARNINGS_ID
 # Aliases — same values; kept for backward compatibility with existing tooling
 TOKEN_CONTRACT_ID=$TOKEN_ID
 CREATOR_REGISTRY_CONTRACT_ID=$CREATOR_REGISTRY_ID
+TREASURY_CONTRACT_ID=$TREASURY_ID
 SUBSCRIPTIONS_CONTRACT_ID=$SUBSCRIPTION_ID
 SUBSCRIPTION_CONTRACT_ID=$SUBSCRIPTION_ID
 CONTRACT_ID_SUBSCRIPTIONS=$SUBSCRIPTION_ID

@@ -53,7 +53,7 @@ Contracts covered here (deployed by `contract/scripts/deploy.sh`):
 
 | Method | Required signer(s) | Valid invocation example | Invalid invocation example |
 | --- | --- | --- | --- |
-| `init(env, admin, fee_bps, fee_recipient, token, price)` | `admin` | `admin` signs and initializes once with config values. | Non-admin caller initializes without `admin` signature. |
+| `init(env, admin, fee_bps, fee_recipient, token, price)` | `admin` | `admin` signs and initializes once with config values; `fee_bps` must be ≤ 1 000 (10%) and `fee_recipient` must be the treasury contract. | Non-admin caller initializes without `admin` signature; `fee_bps` over the cap is rejected. |
 | `create_plan(env, creator, asset, amount, interval_days)` | `creator` | `creator` signs and creates a plan. | Non-creator caller submits plan for `creator`. |
 | `subscribe(env, fan, plan_id, _token)` | `fan` | `fan` signs and subscribes to `plan_id`. | Another address tries to subscribe using `fan` as parameter without `fan` auth. |
 | `is_subscriber(env, fan, creator)` | `none` | Any caller checks subscription status. | Expecting signer/auth to be required for read. |
@@ -63,6 +63,12 @@ Contracts covered here (deployed by `contract/scripts/deploy.sh`):
 | `pause(env)` | `admin` | Current admin signs and pauses contract. | Non-admin caller pauses contract. |
 | `unpause(env)` | `admin` | Current admin signs and unpauses contract. | Non-admin caller unpauses contract. |
 | `is_paused(env)` | `none` | Any caller reads paused state. | Expecting signer/auth to be required for read. |
+| `set_fee_bps(env, new_fee_bps)` | `admin` | Current admin updates fee bps (must be ≤ 1 000 = 10%). | Non-admin caller changes the protocol fee. |
+| `set_fee_recipient(env, new_fee_recipient)` | `admin` | Current admin rotates the treasury contract address. | Non-admin caller rotates the fee recipient. |
+
+> **Fee collection:** `subscribe`, `create_subscription` and `extend_subscription` route the
+> fee into the treasury contract (`fee_recipient`) via its `deposit(from, amount)` entry
+> point, which requires the fan's auth and honors the treasury's pause state.
 
 ## content-access
 
@@ -89,7 +95,7 @@ Contracts covered here (deployed by `contract/scripts/deploy.sh`):
 | Method | Required signer(s) | Valid invocation example | Invalid invocation example |
 | --- | --- | --- | --- |
 | `initialize(env, admin, token_address)` | `admin` | `admin` signs to initialize with token config. | Caller invokes without `admin` signature; `require_auth` fails. |
-| `deposit(env, from, amount)` | `from` | `from` signs and transfers tokens into treasury. | Third party calls deposit for `from` without `from` auth. |
+| `deposit(env, from, amount)` | `from` | `from` signs and transfers tokens into treasury (used by the subscription contract to collect protocol fees). | Third party calls deposit for `from` without `from` auth. |
 | `withdraw(env, to, amount)` | `admin` | Current admin signs and withdraws to `to`. | Non-admin (including `to`) withdraws without `admin` auth. |
 | `set_paused(env, paused)` | `admin` | Current admin signs and pauses/unpauses contract. | Non-admin caller sets paused state. |
 | `set_min_balance(env, amount)` | `admin` | Current admin signs and sets minimum balance floor. | Non-admin caller changes min balance. |

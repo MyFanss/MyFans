@@ -6,6 +6,7 @@ use soroban_sdk::{
     xdr::{ScAddress, SorobanAuthorizationEntry},
     Address, Env, Error as SorobanError, IntoVal, String, Symbol, TryFromVal, TryIntoVal,
 };
+use treasury::{Treasury, TreasuryClient};
 
 fn setup_test() -> (
     Env,
@@ -35,11 +36,20 @@ fn setup_test() -> (
     (env, client, admin, token_client, token_admin_client)
 }
 
+/// Register and initialize a treasury contract that the subscription routes
+/// protocol fees into, returning its address.
+fn setup_treasury(env: &Env, token_address: &Address, admin: &Address) -> Address {
+    let treasury_id = env.register_contract(None, Treasury);
+    let treasury_client = TreasuryClient::new(env, &treasury_id);
+    treasury_client.initialize(admin, token_address);
+    treasury_id
+}
+
 #[test]
 fn test_subscribe_full_flow() {
     let (env, client, admin, token, token_admin) = setup_test();
 
-    let fee_recipient = Address::generate(&env);
+    let fee_recipient = setup_treasury(&env, &token.address, &admin);
 
     // fee_bps = 500 (5%)
     client.init(&admin, &500, &fee_recipient, &token.address, &1000);
@@ -70,17 +80,34 @@ fn test_subscribe_full_flow() {
 }
 
 #[test]
-fn test_init_rejects_fee_bps_over_10000() {
+fn test_init_rejects_fee_bps_over_cap() {
     let (env, client, admin, token, _token_admin) = setup_test();
     let fee_recipient = Address::generate(&env);
 
-    let result = client.try_init(&admin, &10001, &fee_recipient, &token.address, &1000);
+    let result = client.try_init(&admin, &(MAX_FEE_BPS + 1), &fee_recipient, &token.address, &1000);
     assert_eq!(
         result,
         Err(Ok(SorobanError::from_contract_error(
             Error::InvalidFeeBps as u32,
         )))
     );
+}
+
+/// The cap (1_000 bps = 10%) is the highest fee `init` accepts.
+#[test]
+fn test_init_accepts_fee_bps_at_cap() {
+    let (env, client, admin, token, _token_admin) = setup_test();
+    let fee_recipient = Address::generate(&env);
+
+    client.init(&admin, &MAX_FEE_BPS, &fee_recipient, &token.address, &1000);
+
+    let stored_fee_bps: u32 = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::FeeBps)
+            .unwrap()
+    });
+    assert_eq!(stored_fee_bps, MAX_FEE_BPS);
 }
 
 #[test]
@@ -247,7 +274,7 @@ fn test_platform_fee_zero() {
 #[test]
 fn test_cancel_subscription() {
     let (env, client, admin, token, token_admin) = setup_test();
-    let fee_recipient = Address::generate(&env);
+    let fee_recipient = setup_treasury(&env, &token.address, &admin);
     client.init(&admin, &500, &fee_recipient, &token.address, &1000);
 
     let creator = Address::generate(&env);
@@ -266,7 +293,7 @@ fn test_cancel_subscription() {
 #[test]
 fn test_create_subscription_payment_flow() {
     let (env, client, admin, token, token_admin) = setup_test();
-    let fee_recipient = Address::generate(&env);
+    let fee_recipient = setup_treasury(&env, &token.address, &admin);
     client.init(&admin, &500, &fee_recipient, &token.address, &1000);
     let creator = Address::generate(&env);
     let fan = Address::generate(&env);
@@ -434,7 +461,7 @@ fn test_extend_fails_if_expired() {
 #[test]
 fn test_subscription_state_after_snapshot_restore() {
     let (env, client, admin, token, token_admin) = setup_test();
-    let fee_recipient = Address::generate(&env);
+    let fee_recipient = setup_treasury(&env, &token.address, &admin);
     client.init(
         &admin,
         &DUMMY_FEE_BPS,
@@ -1018,7 +1045,7 @@ fn test_subscription_key_helper_keeps_legacy_variant() {
 #[test]
 fn test_cancel_after_snapshot_restore() {
     let (env, client, admin, token, token_admin) = setup_test();
-    let fee_recipient = Address::generate(&env);
+    let fee_recipient = setup_treasury(&env, &token.address, &admin);
     client.init(
         &admin,
         &DUMMY_FEE_BPS,
@@ -1250,8 +1277,8 @@ fn test_unpause_non_admin_rejected() {
 #[test]
 fn test_set_fee_recipient_admin_updates_storage_emits_event_and_routes_fees() {
     let (env, client, admin, token, token_admin) = setup_test();
-    let fee_recipient = Address::generate(&env);
-    let new_recipient = Address::generate(&env);
+    let fee_recipient = setup_treasury(&env, &token.address, &admin);
+    let new_recipient = setup_treasury(&env, &token.address, &admin);
     client.init(&admin, &500, &fee_recipient, &token.address, &1000);
 
     client.set_fee_recipient(&new_recipient);
@@ -1356,7 +1383,7 @@ fn test_set_fee_recipient_requires_admin_authorization() {
 #[test]
 fn test_set_fee_bps_admin_updates_storage_emits_event_and_fees() {
     let (env, client, admin, token, token_admin) = setup_test();
-    let fee_recipient = Address::generate(&env);
+    let fee_recipient = setup_treasury(&env, &token.address, &admin);
     client.init(&admin, &500, &fee_recipient, &token.address, &1000);
 
     client.set_fee_bps(&250u32);
@@ -1385,11 +1412,11 @@ fn test_set_fee_bps_admin_updates_storage_emits_event_and_fees() {
 }
 
 #[test]
-fn test_set_fee_bps_accepts_boundary_10000() {
+fn test_set_fee_bps_accepts_boundary_cap() {
     let (env, client, admin, token, _) = setup_test();
     let fee_recipient = Address::generate(&env);
     client.init(&admin, &0, &fee_recipient, &token.address, &1000);
-    client.set_fee_bps(&10_000u32);
+    client.set_fee_bps(&MAX_FEE_BPS);
 
     let stored: u32 = env.as_contract(&client.address, || {
         env.storage()
@@ -1397,16 +1424,16 @@ fn test_set_fee_bps_accepts_boundary_10000() {
             .get::<DataKey, u32>(&DataKey::FeeBps)
             .unwrap()
     });
-    assert_eq!(stored, 10_000);
+    assert_eq!(stored, MAX_FEE_BPS);
 }
 
 #[test]
-fn test_set_fee_bps_rejects_over_10000() {
+fn test_set_fee_bps_rejects_over_cap() {
     let (env, client, admin, token, _) = setup_test();
     let fee_recipient = Address::generate(&env);
     client.init(&admin, &100, &fee_recipient, &token.address, &1000);
 
-    let r = client.try_set_fee_bps(&10_001u32);
+    let r = client.try_set_fee_bps(&(MAX_FEE_BPS + 1));
     assert_eq!(
         r,
         Err(Ok(SorobanError::from_contract_error(
@@ -1452,6 +1479,109 @@ fn test_set_fee_bps_requires_admin_authorization() {
         r.is_err(),
         "set_fee_bps must fail without authorization entry"
     );
+}
+
+// ── fee routing to the treasury contract ─────────────────────────────────────
+
+/// subscribe routes the protocol fee into the treasury contract via its
+/// `deposit` entry point: the treasury balance increases by the fee and both
+/// the treasury `deposit` event and the subscription `fee_collected` event are
+/// emitted.
+#[test]
+fn test_subscribe_routes_fee_to_treasury_via_deposit() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = setup_treasury(&env, &token.address, &admin);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &10000);
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+
+    // 5% of 1000 → fee 50 lands in the treasury contract, creator gets 950.
+    assert_eq!(token.balance(&fee_recipient), 50);
+    assert_eq!(token.balance(&creator), 950);
+    assert_eq!(token.balance(&fan), 9000);
+
+    // The treasury's `deposit` event fired with (from=fan, amount=50, token).
+    let events = env.events().all();
+    let deposit_ev = events.iter().find(|e| {
+        e.1.first()
+            .is_some_and(|t| t.try_into_val(&env).ok() == Some(Symbol::new(&env, "deposit")))
+    });
+    assert!(
+        deposit_ev.is_some(),
+        "treasury deposit event must be emitted when a fee is collected"
+    );
+    let (from, amount, _token): (Address, i128, Address) =
+        deposit_ev.unwrap().2.try_into_val(&env).unwrap();
+    assert_eq!(from, fan);
+    assert_eq!(amount, 50);
+
+    // The subscription's `fee_collected` event carries (fee, treasury).
+    let ev = find_event(&env, "fee_collected").expect("fee_collected event not emitted");
+    assert_eq!(ev.1.len(), 3, "topics: name, fan, creator");
+    let (fee, treasury): (i128, Address) = ev.2.try_into_val(&env).unwrap();
+    assert_eq!(fee, 50);
+    assert_eq!(treasury, fee_recipient);
+}
+
+/// All payment entry points — subscribe, create_subscription and
+/// extend_subscription — route the fee to the treasury and emit `fee_collected`.
+#[test]
+fn test_all_payment_paths_collect_fee_to_treasury() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = setup_treasury(&env, &token.address, &admin);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &100_000);
+
+    // Direct subscription: fee = 5% of price (1000) = 50.
+    client.create_subscription(&fan, &creator, &17280);
+    assert_eq!(token.balance(&fee_recipient), 50);
+
+    // Plan subscription: fee = 5% of plan amount (1000) = 50.
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    client.subscribe(&fan, &plan_id, &token.address);
+    assert_eq!(token.balance(&fee_recipient), 100);
+
+    // Extension charges the plan amount again: another 50.
+    client.extend_subscription(&fan, &creator, &17280, &token.address);
+    assert_eq!(token.balance(&fee_recipient), 150);
+
+    let fee_collected_count = env
+        .events()
+        .all()
+        .iter()
+        .filter(|e| {
+            e.1.first().is_some_and(|t| {
+                t.try_into_val(&env).ok() == Some(Symbol::new(&env, "fee_collected"))
+            })
+        })
+        .count();
+    assert_eq!(fee_collected_count, 3);
+}
+
+/// A paused treasury blocks fee collection, so subscribe reverts.
+#[test]
+#[should_panic]
+fn test_subscribe_reverts_when_treasury_paused() {
+    let (env, client, admin, token, token_admin) = setup_test();
+    let fee_recipient = setup_treasury(&env, &token.address, &admin);
+    let treasury_client = TreasuryClient::new(&env, &fee_recipient);
+    client.init(&admin, &500, &fee_recipient, &token.address, &1000);
+
+    let creator = Address::generate(&env);
+    let fan = Address::generate(&env);
+    token_admin.mint(&fan, &10000);
+
+    let plan_id = client.create_plan(&creator, &token.address, &1000, &30);
+    treasury_client.set_paused(&true);
+    client.subscribe(&fan, &plan_id, &token.address);
 }
 
 // ── admin() view ──────────────────────────────────────────────────────────
@@ -1582,8 +1712,8 @@ fn test_init_stores_fee_bps_zero() {
 fn test_init_stores_max_fee_bps() {
     let (env, client, admin, token, _) = setup_test();
     let fee_recipient = Address::generate(&env);
-    // 10_000 bps = 100% is the maximum valid value
-    client.init(&admin, &10_000, &fee_recipient, &token.address, &1000);
+    // MAX_FEE_BPS = 1_000 bps = 10% is the maximum valid value
+    client.init(&admin, &MAX_FEE_BPS, &fee_recipient, &token.address, &1000);
     assert_eq!(client.admin(), admin);
 }
 

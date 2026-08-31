@@ -2,6 +2,19 @@
 
 A Soroban contract that holds platform funds, enforces an admin-controlled minimum balance, and supports pause/unpause for emergency stops.
 
+## Fee configuration is immutable here
+
+The treasury contract has **no fee parameter** — the protocol fee is configured entirely in the
+[subscription contract](../subscription/README.md):
+
+- `init(admin, fee_bps, fee_recipient, ...)` and `set_fee_bps` are **admin-only** and the fee is
+  **capped at `MAX_FEE_BPS = 1_000` (10%)**.
+- `fee_recipient` must be this treasury contract. When a fan subscribes, the subscription
+  contract calls `deposit(from, amount)` here, so the fee flows through the treasury's own
+  deposit path (pause honored, `deposit` event emitted).
+- Funds accumulated here can only leave via `withdraw`, which requires the **admin** and
+  respects `min_balance`.
+
 ## Public Functions
 
 ### `initialize(env, admin, token_address)`

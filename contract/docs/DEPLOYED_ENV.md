@@ -19,6 +19,7 @@ Use these in **backend** `.env` when copying from a deploy output:
 |----------|----------|
 | `CONTRACT_ID_MYFANS_TOKEN` | MyFans token |
 | `CONTRACT_ID_CREATOR_REGISTRY` | Creator registry |
+| `CONTRACT_ID_TREASURY` | Treasury (protocol fee collector) |
 | `CONTRACT_ID_SUBSCRIPTION` | Subscription (singular) |
 | `CONTRACT_ID_CONTENT_ACCESS` | Content access |
 | `CONTRACT_ID_EARNINGS` | Earnings |
@@ -37,6 +38,7 @@ The same values are repeated under legacy names so existing scripts and env file
 |-------|---------|
 | `TOKEN_CONTRACT_ID` | `CONTRACT_ID_MYFANS_TOKEN` |
 | `CREATOR_REGISTRY_CONTRACT_ID` | `CONTRACT_ID_CREATOR_REGISTRY` |
+| `TREASURY_CONTRACT_ID` | `CONTRACT_ID_TREASURY` |
 | `SUBSCRIPTIONS_CONTRACT_ID` | `CONTRACT_ID_SUBSCRIPTION` |
 | `CONTRACT_ID_SUBSCRIPTIONS` | `CONTRACT_ID_SUBSCRIPTION` |
 | `SUBSCRIPTION_CONTRACT_ID` | `CONTRACT_ID_SUBSCRIPTION` |
