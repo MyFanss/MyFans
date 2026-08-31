@@ -17,7 +17,7 @@ const mockUser = {
   id: 'user-1',
   email: 'test@example.com',
   username: 'testuser',
-  role: 'USER',
+  role: 'ADMIN',
 };
 
 describe('Auth Module (e2e)', () => {

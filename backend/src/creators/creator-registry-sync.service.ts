@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreatorOnchainMapping } from './entities/creator-onchain-mapping.entity';
+import { BusinessMetricsService } from '../metrics/business-metrics.service';
 
 export interface ReconcileRecord {
   creatorId: string;
@@ -41,6 +42,8 @@ export class CreatorRegistrySyncService {
   constructor(
     @InjectRepository(CreatorOnchainMapping)
     private readonly mappingRepository: Repository<CreatorOnchainMapping>,
+    @Optional()
+    private readonly businessMetrics?: BusinessMetricsService,
   ) {}
 
   /**
@@ -115,6 +118,10 @@ export class CreatorRegistrySyncService {
       if (record.drift) result.driftFound++;
       if (record.error) result.errors++;
     }
+
+    // Expose the latest drift count as a Prometheus gauge so registry
+    // divergence is observable without parsing audit logs.
+    this.businessMetrics?.recordCreatorRegistryDrift(result.driftFound);
 
     this.logAudit(result);
     return result;

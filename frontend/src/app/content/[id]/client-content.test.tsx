@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ClientContent } from './client-content';
 import type { ContentMetadata } from '@/lib/api/content';
@@ -12,6 +13,12 @@ vi.mock('@/lib/api/content', () => ({
   getContentAccess: vi.fn(),
 }));
 
+vi.mock('@/lib/api/likes', () => ({
+  getPostLikeStatus: vi.fn(),
+  getPostLikeCount: vi.fn(),
+  togglePostLike: vi.fn(),
+}));
+
 // Lightweight stand-in so we can assert on the gate props without pulling
 // in the full viewer (toast context, next/image, etc.).
 vi.mock('@/components/GatedContentViewer', () => ({
@@ -20,6 +27,8 @@ vi.mock('@/components/GatedContentViewer', () => ({
     isSubscribed: boolean;
     canInteract?: boolean;
     contentUrl?: string;
+    liked?: boolean;
+    onLike?: (liked: boolean) => Promise<void>;
   }) => (
     <div
       data-testid="viewer"
@@ -28,7 +37,18 @@ vi.mock('@/components/GatedContentViewer', () => ({
       data-can-interact={String(props.canInteract)}
     >
       {props.isSubscribed ? (
-        <span data-testid="media">{props.contentUrl}</span>
+        <>
+          <span data-testid="media">{props.contentUrl}</span>
+          <button
+            type="button"
+            data-testid="like-button"
+            data-liked={String(Boolean(props.liked))}
+            disabled={!props.canInteract}
+            onClick={() => void props.onLike?.(!Boolean(props.liked))}
+          >
+            {Boolean(props.liked) ? 'liked' : 'not-liked'}
+          </button>
+        </>
       ) : (
         <span data-testid="teaser">locked</span>
       )}
@@ -49,6 +69,11 @@ vi.mock('./content-comments', () => ({
 }));
 
 import { getContentAccess } from '@/lib/api/content';
+import {
+  getPostLikeStatus,
+  getPostLikeCount,
+  togglePostLike,
+} from '@/lib/api/likes';
 
 const baseContent: ContentMetadata = {
   id: 'c-1',
@@ -77,6 +102,9 @@ describe('ClientContent gating', () => {
   beforeEach(() => {
     window.localStorage.clear();
     vi.mocked(getContentAccess).mockReset();
+    vi.mocked(getPostLikeStatus).mockReset();
+    vi.mocked(getPostLikeCount).mockReset();
+    vi.mocked(togglePostLike).mockReset();
     push.mockReset();
   });
   afterEach(() => {
@@ -145,5 +173,46 @@ describe('ClientContent gating', () => {
     expect(push).toHaveBeenCalledWith('/subscribe/creator-1');
     // Still locked — nothing flipped client-side.
     expect(screen.getByTestId('viewer')).toHaveAttribute('data-subscribed', 'false');
+  });
+
+  it('loads server like state and posts the toggle for unlocked content', async () => {
+    vi.mocked(getContentAccess).mockResolvedValue({ hasAccess: true, reason: 'granted' });
+    vi.mocked(getPostLikeStatus).mockResolvedValue(true);
+    vi.mocked(getPostLikeCount).mockResolvedValue(12);
+    vi.mocked(togglePostLike).mockResolvedValue({ liked: false, count: 11 });
+
+    render(<ClientContent content={baseContent} />);
+
+    await waitFor(() => expect(getPostLikeStatus).toHaveBeenCalledWith('c-1'));
+    await waitFor(() => expect(getPostLikeCount).toHaveBeenCalledWith('c-1'));
+
+    const viewer = screen.getByTestId('viewer');
+    expect(viewer).toHaveAttribute('data-can-interact', 'true');
+
+    await waitFor(() => expect(screen.getByTestId('like-button')).toHaveAttribute('data-liked', 'true'));
+
+    await userEvent.click(screen.getByTestId('like-button'));
+    await waitFor(() => expect(togglePostLike).toHaveBeenCalledWith('c-1', false));
+  });
+
+  it('redirects unauthenticated users when the server rejects a like', async () => {
+    vi.mocked(getContentAccess).mockResolvedValue({ hasAccess: true, reason: 'granted' });
+    vi.mocked(getPostLikeStatus).mockResolvedValue(false);
+    vi.mocked(getPostLikeCount).mockResolvedValue(9);
+    vi.mocked(togglePostLike).mockRejectedValueOnce(Object.assign(new Error('Unauthorized'), { status: 401 }));
+
+    render(<ClientContent content={baseContent} />);
+
+    await waitFor(() => expect(getPostLikeStatus).toHaveBeenCalledWith('c-1'));
+
+    const viewer = screen.getByTestId('viewer');
+    expect(viewer).toHaveAttribute('data-can-interact', 'true');
+
+    const button = screen.getByTestId('like-button');
+    await userEvent.click(button);
+
+    await vi.waitFor(() => {
+      expect(push).toHaveBeenCalledWith('/auth/sign-in?redirectTo=%2Fcontent%2Fc-1');
+    });
   });
 });

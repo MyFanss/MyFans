@@ -15,6 +15,7 @@ export class BusinessMetricsService {
   private pollerLagMs = 0;
   private hmacFailures = 0;
   private readonly checkoutErrors = new Map<string, number>();
+  private creatorRegistryDriftCount = 0;
 
   recordCheckoutDuration(durationMs: number, status: string): void {
     let entry = this.checkoutDurations.get(status);
@@ -44,6 +45,10 @@ export class BusinessMetricsService {
 
   incrementCheckoutError(reason: string): void {
     this.checkoutErrors.set(reason, (this.checkoutErrors.get(reason) ?? 0) + 1);
+  }
+
+  recordCreatorRegistryDrift(count: number): void {
+    this.creatorRegistryDriftCount = count;
   }
 
   toPrometheus(): string {
@@ -78,6 +83,11 @@ export class BusinessMetricsService {
     for (const [reason, count] of this.checkoutErrors) {
       lines.push(`myfans_checkout_errors_total{reason="${esc(reason)}"} ${count}`);
     }
+
+    // Creator registry drift gauge (latest reconcile result)
+    lines.push('# HELP myfans_creator_registry_drift_count Creator-registry mappings flagged as drifted by the latest reconcile');
+    lines.push('# TYPE myfans_creator_registry_drift_count gauge');
+    lines.push(`myfans_creator_registry_drift_count ${this.creatorRegistryDriftCount}`);
 
     return lines.join('\n') + '\n';
   }

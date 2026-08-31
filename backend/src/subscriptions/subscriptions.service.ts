@@ -700,6 +700,14 @@ export class SubscriptionsService {
       throw new NotFoundException('Plan not found');
     }
 
+    // A fan can only subscribe to a creator that exists in the API-side
+    // creator registry. On-chain-only creators (no CreatorProfile / registry
+    // mapping) are rejected here with a clear error instead of producing a
+    // checkout for a creator whose profile 404s (#1625).
+    if (!this.creatorProfiles.has(creatorAddress)) {
+      throw new NotFoundException(`Unknown API creator: ${creatorAddress}`);
+    }
+
     const amount = plan.amount;
     const fee = this.calculateFee(amount);
     const total = (parseFloat(amount) + parseFloat(fee)).toFixed(7);
