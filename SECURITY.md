@@ -1,5 +1,20 @@
 # Security findings
 
+## Dependency audit policy
+
+High and critical vulnerabilities in npm packages (backend + frontend) and
+Rust crates (contract) **block PRs**. The audit runs on every pull request,
+every push to `main`, and weekly (Monday 08:00 UTC) via
+`.github/workflows/security-audit.yml`.
+
+- **npm audit** (`--audit-level=high --omit=dev`): low/moderate advisories are
+  reported but do not fail CI.
+- **cargo audit**: severity threshold and approved exceptions are declared in
+  `contract/audit.toml`. Add a new entry there (with a justification comment)
+  to document a known-safe advisory.
+
+See [`docs/testing.md`](docs/testing.md) for full CI details.
+
 ## Finding #7 — no audit trail for admin role changes / moderation actions (#1568)
 
 **Resolved.** A compromised admin token could previously promote accounts

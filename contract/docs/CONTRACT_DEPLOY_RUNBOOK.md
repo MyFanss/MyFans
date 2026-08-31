@@ -59,25 +59,52 @@ stellar keys public-key myfans-deployer
 Auto-generation and friendbot funding are disabled on mainnet. You must supply a pre-funded account.
 
 ```bash
-stellar keys add myfans-deployer-mainnet --secret-key "$STELLAR_SECRET_KEY_MAINNET"
+# Import an existing secret key
+stellar keys add myfans-deployer-mainnet --secret-key "<SECRET_KEY>"
+
+# Confirm
 stellar keys public-key myfans-deployer-mainnet
+```
+
+> **Security:** Never commit secret keys. Store them in your CI secret manager (e.g. GitHub Actions secrets, AWS Secrets Manager) and import them at deploy time.
+
+### CI / non-interactive environments
+
+```bash
+# In the CI job, import the key from a secret before calling the deploy script
+stellar keys add myfans-deployer --secret-key "$STELLAR_SECRET_KEY"
 ```
 
 ---
 
 ## 3. Build and validate WASM artifacts
 
-```bash
-# From repo root — builds all contracts
-cargo build --release --target wasm32-unknown-unknown --manifest-path contract/Cargo.toml
-```
-
-Validate a single artifact (magic bytes):
+Always build and validate before deploying. The `--dry-run` flag does this without submitting any transactions.
 
 ```bash
-xxd -p -l 4 contract/target/wasm32-unknown-unknown/release/myfans_token.wasm
-# Expect: 0061736d  (\0asm)
+# From repository root
+./contract/scripts/deploy.sh \
+  --network testnet \
+  --source myfans-deployer \
+  --dry-run
 ```
+
+Expected output:
+
+```
+[deploy] *** DRY-RUN MODE — no transactions will be submitted ***
+[deploy] network=testnet
+[deploy] building contracts
+[deploy] validating WASM artifacts
+[deploy] verified: target/wasm32-unknown-unknown/release/myfans_token.wasm
+[deploy] verified: target/wasm32-unknown-unknown/release/creator_registry.wasm
+[deploy] verified: target/wasm32-unknown-unknown/release/subscription.wasm
+[deploy] verified: target/wasm32-unknown-unknown/release/content_access.wasm
+[deploy] verified: target/wasm32-unknown-unknown/release/earnings.wasm
+[deploy] dry-run passed — build and config are valid
+```
+
+If any artifact is missing or invalid the script exits non-zero with a clear error.
 
 ---
 
@@ -95,7 +122,7 @@ xxd -p -l 4 contract/target/wasm32-unknown-unknown/release/myfans_token.wasm
 The script:
 
 1. Adds the `testnet` network profile to the local stellar CLI config (idempotent).
-2. Builds all contracts (`myfans-token`, `creator-registry`, `subscription`, `content-access`, `earnings`).
+2. Builds all five contracts (`myfans-token`, `creator-registry`, `subscription`, `content-access`, `earnings`).
 3. Verifies each WASM binary (magic bytes check).
 4. Deploys contracts in dependency order (token first, then registry, then subscription/content-access which depend on token, then earnings).
 5. Initializes each contract with the deployer as admin.
@@ -109,9 +136,7 @@ The script:
 | `contract/deployed-testnet.json` | Contract IDs, network metadata, smoke-test results |
 | `contract/.env.deployed-testnet` | Shell-sourceable env vars for backend/frontend wiring |
 
-Both files are gitignored. **Record the contract IDs** by copy‑pasting the values into your environment's secret manager or `.env` files (see [step 7](#7-wire-contract-ids-into-the-backend-and-frontend) and [`DEPLOYED_ENV.md`](./DEPLOYED_ENV.md)). Never commit these generated files or the deployer's secret key.
-
-> **Note:** The backend's `loadContractIds()` resolution order is: env vars → `CONTRACT_IDS_PATH` → `contract/deployed-testnet.json` (matches `STELLAR_NETWORK`) → `contract/deployed-local.json` → `contract/contract-ids.json`. Writing with `--out contract/deployed-testnet.json` means the backend picks the IDs up automatically when `STELLAR_NETWORK=testnet`.
+Both files are gitignored. Copy the relevant values into your environment's secret manager or `.env` files.
 
 ---
 
@@ -183,13 +208,11 @@ stellar contract invoke \
 
 All commands should return without error. `is-paused` should return `false`; `has-access` should return `false`.
 
-There is also a manual CI smoke workflow (`.github/workflows/futurenet-smoke.yml`) that deploys on futurenet and runs the same post-deploy verification.
-
 ---
 
 ## 7. Wire contract IDs into the backend and frontend
 
-After a successful deploy, **record the contract IDs** from the output env file into your application environments. Empty or placeholder IDs cause frontend runtime checks to throw only at click time, so wiring these values is what makes the app actually work.
+After a successful deploy, copy the contract IDs from the output env file into your application environments.
 
 ### Backend
 
@@ -260,7 +283,7 @@ Soroban contracts are immutable once deployed — you cannot modify or delete a 
 
 ## 9. CI dry-run (non-interactive)
 
-The deploy script supports a `--dry-run` flag that builds and validates WASM artifacts without submitting transactions. This is safe to run on every PR.
+The GitHub Actions `contract-ci.yml` workflow builds and verifies WASM artifacts on every PR. For full deploy validation in CI:
 
 ```yaml
 - name: Import deployer identity
@@ -273,10 +296,10 @@ The deploy script supports a `--dry-run` flag that builds and validates WASM art
       --source myfans-deployer \
       --non-interactive \
       --dry-run
-  working-directory: contract
+  working-directory: .
 ```
 
-When a `STELLAR_SECRET_KEY` is not present, skip the import and dry-run steps so the job remains green for first-time / fork contributors. Never commit `STELLAR_SECRET_KEY` (or any admin secret) to the repository.
+The `--dry-run` flag builds all contracts, validates WASM magic bytes, and exits 0 without submitting any transactions. This is safe to run on every PR.
 
 ---
 
@@ -321,8 +344,8 @@ cargo build --release --target wasm32-unknown-unknown --manifest-path contract/C
 The deployed contract does not expose the expected method. Confirm you built from the correct package and that the interface matches the ABI snapshot:
 
 ```bash
-# From contract/
-npm run check:interfaces
+./contract/scripts/snapshot-abi.sh
+./contract/scripts/check-interface-docs-drift.mjs
 ```
 
 ### Insufficient XLM on mainnet
@@ -337,11 +360,29 @@ This is harmless. The script adds the network profile idempotently; if it alread
 
 ## 11. Checklist
 
-- [ ] `stellar --version` reports a recent version
-- [ ] Deployer identity exists and is funded (`stellar keys public-key myfans-deployer`)
-- [ ] `./contract/scripts/deploy.sh --network testnet --dry-run` exits 0
-- [ ] Testnet deploy completes and writes `contract/.env.deployed-testnet`
-- [ ] Contract IDs are recorded into `backend/.env` and `frontend/.env.local` (see step 7)
-- [ ] Frontend loads without contract-config validation warnings
-- [ ] No `.env.deployed*` files or admin secrets are committed
-- [ ] Mainnet deploy (if any) used `--non-interactive --no-fund`
+Use this checklist for every production deploy:
+
+**Pre-deploy**
+- [ ] `stellar --version` shows the expected version
+- [ ] Deployer identity exists: `stellar keys public-key myfans-deployer-mainnet`
+- [ ] Deployer account is funded (mainnet only)
+- [ ] Dry-run passes: `./contract/scripts/deploy.sh --network mainnet --dry-run`
+- [ ] All contract tests pass in CI
+- [ ] ABI snapshots are up to date: `./contract/scripts/snapshot-abi.sh`
+
+**Deploy**
+- [ ] Deploy script exits 0
+- [ ] `deployed-mainnet.json` written and archived
+- [ ] `.env.deployed-mainnet` written and stored in secret manager
+
+**Post-deploy**
+- [ ] Smoke tests pass (token admin, subscription is-paused, content-access has-access, earnings admin)
+- [ ] Backend `.env` updated with new contract IDs
+- [ ] Frontend `.env` updated with new contract IDs
+- [ ] Backend redeployed and health check passes: `GET /v1/health`
+- [ ] Frontend redeployed and connects to correct contracts
+- [ ] Contract IDs recorded in team runbook / incident log
+
+**Rollback readiness**
+- [ ] Previous known-good WASM artifacts archived
+- [ ] Rollback procedure tested on testnet at least once

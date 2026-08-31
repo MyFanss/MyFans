@@ -14,9 +14,15 @@ describe('BusinessMetricsService', () => {
 
       const output = service.toPrometheus();
 
-      expect(output).toContain('myfans_checkout_duration_seconds_bucket{status="COMPLETED"');
-      expect(output).toContain('myfans_checkout_duration_seconds_sum{status="COMPLETED"}');
-      expect(output).toContain('myfans_checkout_duration_seconds_count{status="COMPLETED"} 2');
+      expect(output).toContain(
+        'myfans_checkout_duration_seconds_bucket{status="COMPLETED"',
+      );
+      expect(output).toContain(
+        'myfans_checkout_duration_seconds_sum{status="COMPLETED"}',
+      );
+      expect(output).toContain(
+        'myfans_checkout_duration_seconds_count{status="COMPLETED"} 2',
+      );
     });
   });
 
@@ -59,8 +65,27 @@ describe('BusinessMetricsService', () => {
 
       const output = service.toPrometheus();
 
-      expect(output).toContain('myfans_checkout_errors_total{reason="timeout"} 2');
-      expect(output).toContain('myfans_checkout_errors_total{reason="insufficient_balance"} 1');
+      expect(output).toContain(
+        'myfans_checkout_errors_total{reason="timeout"} 2',
+      );
+      expect(output).toContain(
+        'myfans_checkout_errors_total{reason="insufficient_balance"} 1',
+      );
+    });
+  });
+
+  describe('creator registry drift gauge', () => {
+    it('records and renders the latest drift count (gauge semantics)', () => {
+      service.recordCreatorRegistryDrift(3);
+      service.recordCreatorRegistryDrift(1);
+
+      const output = service.toPrometheus();
+
+      expect(output).toContain(
+        '# HELP myfans_creator_registry_drift_count Creator-registry mappings flagged as drifted by the latest reconcile',
+      );
+      expect(output).toContain('myfans_creator_registry_drift_count 1');
+      expect(output).not.toContain('myfans_creator_registry_drift_count 3');
     });
   });
 

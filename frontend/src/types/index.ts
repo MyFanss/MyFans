@@ -18,9 +18,11 @@ export {
   getErrorFromUnknown,
 } from './errors';
 
-// API types
-export type { 
-  ApiResponse, 
+// API envelope types — discriminated union ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse
+export type {
+  ApiSuccessResponse,
+  ApiErrorResponse,
+  ApiResponse,
   Pagination,
   // User
   User,
@@ -46,7 +48,14 @@ export type {
   SubscriptionHistoryItem,
   PaymentRecord,
   GetSubscriptionHistoryParams,
-  GetPaymentHistoryParams
+  GetPaymentHistoryParams,
+} from './api';
+
+export {
+  isApiSuccess,
+  isApiError,
+  parseApiErrorEnvelope,
+  unwrapApiResponse,
 } from './api';
 
 // Subscription status — shared type + value constants usable across frontend modules

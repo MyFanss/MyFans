@@ -19,11 +19,15 @@ import { PublicCreatorDto } from './dto/public-creator.dto';
 import { DashboardQueryDto } from './dto/creator-dashboard.dto';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { CreatorRegistrySyncDto } from './dto/creator-registry-sync.dto';
+import { ReconcileRegistryQueryDto } from './dto/reconcile-registry.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth-module/guards/roles.guard';
 import { OptionalJwtAuthGuard } from '../auth-module/guards/optional-jwt-auth.guard';
 import { Public } from '../common/decorators/public.decorator';
+import { Roles } from '../auth-module/decorators/roles.decorator';
 import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
 import type { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
+import { UserRole } from '../common/enums/user-role.enum';
 import { CreatorRegistrySyncService } from './creator-registry-sync.service';
 
 @ApiTags('creators')
@@ -237,9 +241,10 @@ export class CreatorsController {
 
   @Post(':creatorId/onchain-sync')
   @ApiOperation({
-    summary: 'Sync a creator-registry on-chain creator_id with this CreatorProfile (#1454)',
+    summary:
+      'Sync a creator-registry on-chain creator_id with this CreatorProfile (#1454)',
     description:
-      'Called after the creator-registry contract\'s register_creator succeeds during onboarding. ' +
+      "Called after the creator-registry contract's register_creator succeeds during onboarding. " +
       'Writes/updates the creator_onchain_mappings row so reconcile() can later detect drift.',
   })
   @ApiResponse({ status: 201, description: 'Mapping written' })
@@ -252,5 +257,30 @@ export class CreatorsController {
       dto.stellarAddress,
       dto.onchainCreatorId,
     );
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @Post('registry/reconcile')
+  @ApiOperation({
+    summary:
+      '[Admin] Run an on-demand creator-registry drift reconcile (#1625)',
+    description:
+      'Admin-only. Re-reads every creator_onchain_mappings row against the ' +
+      'chain view and flags drift, mirroring the hourly scheduled reconcile(). ' +
+      'Pass ?dryRun=true for a report-only run (no drift markers persisted); ' +
+      'when omitted, falls back to CREATOR_REGISTRY_RECONCILER_DRY_RUN like the cron.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Reconcile result (same shape as the scheduled run)',
+  })
+  @ApiResponse({ status: 403, description: 'Forbidden — admin role required' })
+  reconcileRegistry(@Query() query: ReconcileRegistryQueryDto) {
+    const envDryRun =
+      process.env.CREATOR_REGISTRY_RECONCILER_DRY_RUN === 'true';
+    const dryRun =
+      query.dryRun === undefined ? envDryRun : query.dryRun === 'true';
+    return this.registrySyncService.reconcile(dryRun);
   }
 }

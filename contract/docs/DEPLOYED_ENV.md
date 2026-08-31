@@ -1,6 +1,6 @@
 # `.env.deployed*` environment variables
 
-Files such as `contract/.env.deployed` or `contract/.env.deployed-testnet` are produced by [`scripts/deploy.sh`](../scripts/deploy.sh). They are **not** committed (see repo `.gitignore`). After a deploy, copy the values into your environment — empty contract IDs make frontend runtime checks throw only at click time.
+Files such as `contract/.env.deployed` or `contract/.env.deployed-ci-<matrix>` are produced by [`scripts/deploy.sh`](../scripts/deploy.sh). They are **not** committed (see repo `.gitignore`).
 
 ## Stellar connection
 
@@ -19,6 +19,7 @@ Use these in **backend** `.env` when copying from a deploy output:
 |----------|----------|
 | `CONTRACT_ID_MYFANS_TOKEN` | MyFans token |
 | `CONTRACT_ID_CREATOR_REGISTRY` | Creator registry |
+| `CONTRACT_ID_TREASURY` | Treasury (protocol fee collector) |
 | `CONTRACT_ID_SUBSCRIPTION` | Subscription (singular) |
 | `CONTRACT_ID_CONTENT_ACCESS` | Content access |
 | `CONTRACT_ID_EARNINGS` | Earnings |
@@ -37,6 +38,7 @@ The same values are repeated under legacy names so existing scripts and env file
 |-------|---------|
 | `TOKEN_CONTRACT_ID` | `CONTRACT_ID_MYFANS_TOKEN` |
 | `CREATOR_REGISTRY_CONTRACT_ID` | `CONTRACT_ID_CREATOR_REGISTRY` |
+| `TREASURY_CONTRACT_ID` | `CONTRACT_ID_TREASURY` |
 | `SUBSCRIPTIONS_CONTRACT_ID` | `CONTRACT_ID_SUBSCRIPTION` |
 | `CONTRACT_ID_SUBSCRIPTIONS` | `CONTRACT_ID_SUBSCRIPTION` |
 | `SUBSCRIPTION_CONTRACT_ID` | `CONTRACT_ID_SUBSCRIPTION` |
@@ -63,4 +65,3 @@ See `frontend/src/lib/contract-config.ts` for the exact lookup order.
 
 - **Contract health / `loadContractIds()`** — `backend/src/contract-health/contract-ids.loader.ts` (env, then `CONTRACT_IDS_PATH`, then deploy JSON). Env parsing uses `backend/src/common/contract-deployed-env.ts`.
 - **Subscription chain reads / poller** — subscription id from `CONTRACT_ID_SUBSCRIPTION` and the aliases above, then optional fallback `CONTRACT_ID_MYFANS` where documented in code.
-- The resolver automatically reads `contract/deployed-testnet.json` when `STELLAR_NETWORK=testnet` and `contract/deployed-local.json` as a fallback, so honoring the `--out contract/deployed-<network>.json` convention means the backend needs no manual env wiring.
