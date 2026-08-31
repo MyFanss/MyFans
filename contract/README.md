@@ -20,9 +20,10 @@ See comprehensive method docs (args, auth, examples, events): [docs/interfaces/]
 
 1. `myfans-token`
 2. `creator-registry`
-3. `subscription`
-4. `content-access`
-5. `earnings`
+3. `treasury` (protocol fee collector — wired as the subscription `fee-recipient`)
+4. `subscription`
+5. `content-access`
+6. `earnings`
 
 The deploy script applies this order to keep initialization/dependency flow deterministic.
 

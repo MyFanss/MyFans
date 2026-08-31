@@ -79,9 +79,9 @@ You will keep only these three folders and this README; other files can be remov
 
 ### Suggested contract interface (conceptual)
 
-- `init(admin, protocol_fee_bps, fee_recipient)` – set fee (e.g. basis points) and recipient.
+- `init(admin, protocol_fee_bps, fee_recipient)` – set fee (in basis points) and recipient. **Admin-only**; the fee is capped at `MAX_FEE_BPS = 1_000` (10%) and can never be set to 100%. `fee_recipient` must be the deployed **treasury** contract.
 - `create_plan(creator, asset, amount, interval_days)` – define a subscription plan.
-- `subscribe(fan, plan_id, duration)` – fan subscribes; payment transferred to creator minus fee.
+- `subscribe(fan, plan_id, duration)` – fan subscribes; payment is split: creator receives the amount minus the protocol fee, and the fee is routed into the treasury via its `deposit(from, amount)` entry point (pause honored, `deposit` event emitted).
 - `renew(subscription_id)` – renew if within allowed window.
 - `cancel(subscription_id)` – cancel; no refund of current period (or implement refund rules in contract).
 - `is_subscriber(fan, creator)` → bool (and optionally expiry).
