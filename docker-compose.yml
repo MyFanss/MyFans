@@ -1,0 +1,167 @@
+# MyFans — production-style Docker Compose
+#
+# Services:
+#   postgres        — PostgreSQL 15 database
+#   redis           — Redis 7 cache / session store
+#   api             — NestJS backend (production build)
+#   worker-poller   — Soroban event poller worker
+#   worker-outbox   — Email outbox / transactional-mail worker
+#   frontend        — Next.js frontend (production build)
+#
+# Usage:
+#   cp backend/.env.example backend/.env   # fill in required values
+#   docker compose up
+#
+# Health checks:
+#   Liveness  → GET /v1/health   (process-up, never fails on dep issues)
+#   Readiness → GET /v1/health/ready  (probes DB + Redis; 503 when not ready)
+
+x-backend-env: &backend-env
+  env_file: ./backend/.env
+  environment:
+    NODE_ENV: production
+    DB_HOST: postgres
+    DB_PORT: 5432
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+
+services:
+  # ──────────────────────────────────────────────────────────────
+  # Postgres
+  # ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    user: postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-myfans}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:-myfans}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-myfans} -d ${DB_NAME:-myfans}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ──────────────────────────────────────────────────────────────
+  # Redis
+  # ──────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ──────────────────────────────────────────────────────────────
+  # API — NestJS backend
+  # ──────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    <<: *backend-env
+    ports:
+      - "${PORT:-3001}:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/v1/health/ready || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ──────────────────────────────────────────────────────────────
+  # Worker — Soroban event poller
+  # Same image as api; entry-point overridden to run only the poller.
+  # ──────────────────────────────────────────────────────────────
+  worker-poller:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    <<: *backend-env
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      FEATURE_SOROBAN_POLLER: "true"
+      WORKER_MODE: poller
+    command: ["node", "dist/main", "--worker=poller"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ──────────────────────────────────────────────────────────────
+  # Worker — Email outbox processor
+  # ──────────────────────────────────────────────────────────────
+  worker-outbox:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    <<: *backend-env
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      WORKER_MODE: outbox
+    command: ["node", "dist/main", "--worker=outbox"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ──────────────────────────────────────────────────────────────
+  # Frontend — Next.js
+  # ──────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres_data:

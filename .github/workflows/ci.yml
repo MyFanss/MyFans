@@ -1,0 +1,148 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Backend unit tests
+  # ─────────────────────────────────────────────
+  backend-unit:
+    name: Backend — unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint:check
+
+      - name: Unit tests
+        run: npm test -- --passWithNoTests
+
+  # ─────────────────────────────────────────────
+  # Backend e2e tests (Issue #1646)
+  # Runs security-hardening, csrf, rbac, rate-limit
+  # and all other e2e suites against a real Postgres.
+  # Does NOT require a live Soroban node — mock RPC
+  # is used wherever Stellar calls are made.
+  # ─────────────────────────────────────────────
+  backend-e2e:
+    name: Backend — e2e tests (Postgres)
+    runs-on: ubuntu-latest
+    needs: backend-unit
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: myfans
+          POSTGRES_PASSWORD: myfans_ci
+          POSTGRES_DB: myfans_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U myfans"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      NODE_ENV: test
+      PORT: 3001
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: myfans
+      DB_PASSWORD: myfans_ci
+      DB_NAME: myfans_test
+      JWT_SECRET: ci-test-secret-not-for-production
+      WEBHOOK_SECRET: ci-webhook-secret-not-for-production
+      STELLAR_NETWORK: testnet
+      SOROBAN_RPC_URL: http://localhost:8000
+      STARTUP_MODE: degraded
+      STARTUP_PROBE_DB: "true"
+      STARTUP_PROBE_RPC: "false"
+      FEATURE_SOROBAN_POLLER: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for Postgres
+        run: |
+          until pg_isready -h localhost -p 5432 -U myfans; do
+            echo "Waiting for postgres…"
+            sleep 2
+          done
+
+      - name: Run e2e tests (security, csrf, rbac, rate-limit, and all suites)
+        run: npm run test:e2e -- --testPathPattern="(security-hardening|csrf|rbac|rate-limit|cors-security|app|health|posts|subscriptions|creators|feature-flags|body-limits|api-versioning|social-links|games|likes|content-upload|comments|conversations|idempotency)" --passWithNoTests
+        timeout-minutes: 10
+
+      - name: Upload e2e artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-e2e-logs
+          path: |
+            backend/test-results/
+            backend/logs/
+          retention-days: 7
+
+  # ─────────────────────────────────────────────
+  # Frontend unit / lint
+  # ─────────────────────────────────────────────
+  frontend-unit:
+    name: Frontend — unit tests & lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
