@@ -23,10 +23,30 @@ cp .env.example .env.local
 
 Defaults in `.env.example` point at a local backend (`http://localhost:3001`)
 and Stellar **testnet**, which is what Freighter should also be set to (see
-step 4). If you have Soroban contract IDs from a local deployment
-(`cd contract && ...`, see `contract/README.md`), fill in the
-`NEXT_PUBLIC_*_CONTRACT_ID` values in `.env.local` — the app will otherwise
-show contract-config validation warnings, but the UI still loads.
+step 4).
+
+### Contract IDs
+
+The `NEXT_PUBLIC_*_CONTRACT_ID` values in `.env.example` are left empty. The
+UI still loads without them, but any flow that builds a Soroban transaction
+(e.g. subscribe, gated content) will throw **only at click time**, because
+`validateRuntimeContractConfig` (in `src/lib/contract-config.ts`) is checked
+at runtime. So before exercising on-chain flows, record real contract IDs:
+
+- **Deployed (recommended):** run the testnet deploy to generate
+  `contract/.env.deployed-testnet`, then copy the five `NEXT_PUBLIC_*_CONTRACT_ID`
+  values into `.env.local`. See
+  [`contract/docs/CONTRACT_DEPLOY_RUNBOOK.md`](../../contract/docs/CONTRACT_DEPLOY_RUNBOOK.md)
+  and [`contract/docs/DEPLOYED_ENV.md`](../../contract/docs/DEPLOYED_ENV.md).
+- **Local-only setup (this quickstart):** the backend runs on a local DB with
+  mocked/startup-probe stubs and no live on-chain reads; for the UI to be fully
+  functional you still want testnet IDs from the deploy step above. If you are
+  only exploring the API/UI shell and not submitting transactions, leaving the
+  IDs empty is fine.
+
+> The `.env.example` defaults are for **local development only**. Real deployments
+> should get IDs from a real testnet/mainnet deploy — never invent or hard-code
+> placeholder IDs for production.
 
 ## 3. Install and run (3 min)
 
