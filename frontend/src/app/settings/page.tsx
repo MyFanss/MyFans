@@ -371,34 +371,58 @@ export default function SettingsPage() {
     /* ── PAYOUT (creator only) ── */
     if (role === "creator" && activeSectionId === "payout") {
       return (
-        <section className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
-            Payout Settings
-          </h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Control how and when earnings are settled.
-          </p>
+        <div className="space-y-6">
+          <WalletSettingsPanel
+            role="creator"
+            onCopySuccess={() =>
+              showSuccess("Address copied", "Payout wallet address copied to clipboard.")
+            }
+            onCopyError={() =>
+              showError("UNKNOWN_ERROR", {
+                message: "Copy failed",
+                description: "Please copy manually.",
+              })
+            }
+          />
 
-          <div className="mt-4 flex flex-col gap-3 sm:grid sm:grid-cols-2">
-            <label className="flex flex-col gap-1.5 text-sm text-slate-700 dark:text-slate-300">
-              Payout cadence
-              <select className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-600">
-                <option>Weekly</option>
-                <option>Bi-weekly</option>
-                <option>Monthly</option>
-              </select>
-            </label>
+          <section className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
+              Payout Preferences & Settlement Rules
+            </h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              Control how and when earnings are settled. All payouts are transferred on-chain directly to your verified Stellar payout wallet above.
+            </p>
 
-            <label className="flex flex-col gap-1.5 text-sm text-slate-700 dark:text-slate-300">
-              Minimum threshold
-              <input
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-600"
-                defaultValue="$150"
-                type="text"
-              />
-            </label>
-          </div>
-        </section>
+            <div className="mt-4 rounded-xl border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-900/20 p-4">
+              <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200">
+                On-Chain Withdrawals & Settlement
+              </h3>
+              <p className="mt-1 text-xs sm:text-sm text-blue-800 dark:text-blue-300">
+                Earnings withdrawals and automated settlements are executed directly on the Stellar blockchain. To prevent loss of funds, payouts are strictly restricted to your verified linked wallet and cannot be sent to unverified addresses.
+              </p>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 sm:grid sm:grid-cols-2">
+              <label className="flex flex-col gap-1.5 text-sm text-slate-700 dark:text-slate-300">
+                Payout cadence
+                <select className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-600">
+                  <option>Weekly</option>
+                  <option>Bi-weekly</option>
+                  <option>Monthly</option>
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1.5 text-sm text-slate-700 dark:text-slate-300">
+                Minimum threshold
+                <input
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-600"
+                  defaultValue="$150"
+                  type="text"
+                />
+              </label>
+            </div>
+          </section>
+        </div>
       );
     }
 
