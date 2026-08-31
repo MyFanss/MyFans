@@ -109,11 +109,11 @@ The current frontend wallet implementation does not treat all wallets equally:
 
 | Wallet | Current repo status | Practical difference in MyFans |
 |--------|----------------------|--------------------------------|
-| **Freighter** | Fully wired for connection and transaction signing | Best choice for creator and fan flows that need Soroban transaction approval today |
+| **Freighter** | Fully wired for connection and transaction signing | The reference wallet. **Guaranteed** for every flow; local onboarding (see [frontend/docs/LOCAL_QUICKSTART.md](frontend/docs/LOCAL_QUICKSTART.md)) is Freighter-only |
 | **Lobstr** | Connection and signing dispatch wired (`signTransaction` routes to Lobstr when it is the connected wallet) | Usable for connect + subscribe/cancel signing; still less battle-tested than Freighter |
-| **WalletConnect** | Sign Client wired behind the `walletConnect` feature flag (off by default); requires `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID` | Enable the flag + set a project ID for QR-based mobile wallet connect/sign. With the flag off the UI shows "Coming soon". See [frontend/docs/WALLET_SETUP.md](frontend/docs/WALLET_SETUP.md) |
+| **WalletConnect** | Sign Client wired behind the `walletConnect` feature flag (off by default); requires `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID` | Enable the flag + set a project ID for QR-based mobile wallet connect/sign. With the flag off the UI shows "Coming soon" |
 
-Assume **Freighter is the reference implementation**; Lobstr and WalletConnect share the same `signTransaction` dispatch path but have had less real-world exercise.
+Assume **Freighter is the reference implementation** and the only wallet with a guaranteed full-flow path. Lobstr and WalletConnect share the same `signTransaction` dispatch path but have had less real-world exercise. See **[frontend/docs/WALLET_SETUP.md](frontend/docs/WALLET_SETUP.md)** for the full support matrix, feature-flag config, and signing dispatch order.
 
 ### Tech
 
@@ -192,32 +192,36 @@ Assume **Freighter is the reference implementation**; Lobstr and WalletConnect s
 
 ## Getting Started (After Initialization)
 
+> There is **no `scripts/myfans` wrapper script in the repo**; use the root
+> `package.json` npm scripts directly (or `cd` into each folder).
+
 Install dependencies for all packages:
 
 ```bash
-./scripts/myfans install
-# or: npm run install:all
+npm run install:all
 ```
 
 Build everything:
 
 ```bash
-./scripts/myfans build
-# or: npm run build
+npm run build
 ```
 
 Run dev servers (separate terminals):
 
 ```bash
-./scripts/myfans dev:backend   # NestJS API on :3001
-./scripts/myfans dev:frontend  # Next.js app on :3000
+npm run dev:backend   # NestJS API on :3001
+npm run dev:frontend  # Next.js app on :3000
 ```
 
 Full local verification (lint + test + build):
 
 ```bash
-./scripts/myfans check
+npm run check
 ```
+
+For a frontend-first walkthrough (local env + Freighter + contracts on a local
+sandbox), see **[frontend/docs/LOCAL_QUICKSTART.md](frontend/docs/LOCAL_QUICKSTART.md)**.
 
 Per-package commands are also available via root `package.json` scripts (`build:backend`, `test:contract`, etc.) or by `cd`-ing into each folder:
 
