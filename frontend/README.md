@@ -7,7 +7,8 @@ Next.js app for MyFans: creator/fan UI, Stellar wallet connection
 
 New to the frontend, or need to connect Freighter against your local API?
 See **[docs/LOCAL_QUICKSTART.md](./docs/LOCAL_QUICKSTART.md)** — a
-step-by-step local setup + Freighter connection walkthrough (~15 minutes),
+step-by-step local setup + Freighter connection walkthrough (~15 minutes, or
+~20 to also deploy contracts on a local sandbox and go end-to-end),
 including a troubleshooting section for common wallet/CORS/CSP issues.
 
 Short version:
@@ -23,6 +24,14 @@ The app expects the backend on `http://localhost:3001` by default
 (`NEXT_PUBLIC_API_URL` in `.env.example`); Next.js proxies same-origin
 `/api/v1/*` calls to it (see `next.config.ts`).
 
+## Wallet support
+
+**Freighter is the reference wallet** — the local quickstart is Freighter-only
+and it's the wallet guaranteed to work end-to-end. Lobstr is wired for connect
+and sign, and WalletConnect is behind an off-by-default feature flag. See
+**[docs/WALLET_SETUP.md](./docs/WALLET_SETUP.md)** for the support matrix and
+signing dispatch order.
+
 ## Scripts
 
 - `npm run dev` — start the Next.js dev server on `:3000`.
@@ -36,6 +45,8 @@ The app expects the backend on `http://localhost:3001` by default
 
 - [`docs/LOCAL_QUICKSTART.md`](./docs/LOCAL_QUICKSTART.md) — local env +
   Freighter quickstart and troubleshooting.
+- [`docs/WALLET_SETUP.md`](./docs/WALLET_SETUP.md) — wallet support matrix
+  (Freighter / Lobstr / WalletConnect) and WalletConnect config.
 - [`docs/CSP.md`](./docs/CSP.md) — Content-Security-Policy `connect-src`
   host allowlist (API origin + Stellar/Soroban RPC hosts) and how to
   update it when RPC endpoints change.

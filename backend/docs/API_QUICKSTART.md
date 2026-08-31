@@ -23,18 +23,47 @@ A practical guide to getting the MyFans backend API running locally, making your
 
 ## 1. Start the backend locally
 
-The fastest path is Docker Compose (no local Postgres or Node install needed):
+The fastest path is Docker Compose (no local Postgres or Node install needed).
+All services — API, Postgres, Redis, email-outbox worker, and Soroban-event
+poller — are started in one command.
 
 ```bash
 # From repository root
-cp .env.dev.example .env.dev
-# Edit .env.dev — at minimum set JWT_SECRET to a random value:
-# node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+cp backend/.env.example backend/.env.dev
+# Edit backend/.env.dev — at minimum set:
+#   JWT_SECRET  (generate: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))")
+#   DB_PASSWORD (any strong password)
 
 docker compose -f docker-compose.dev.yml --profile dev up
 ```
 
 The backend starts on **http://localhost:3001** with hot reload.
+
+### Services started by compose
+
+| Service | Description | Port |
+|---------|-------------|------|
+| `postgres` | PostgreSQL 15 (persistent volume) | 5432 |
+| `redis` | Redis 7 cache / session store | 6379 |
+| `api` | NestJS backend (hot-reload) | 3001 |
+| `worker-poller` | Soroban event poller — indexes chain events so subscription state stays current | — |
+| `worker-outbox` | Transactional email outbox processor — delivers queued emails | — |
+| `frontend` | Next.js dev server | 3000 |
+
+All services must report **healthy** before dependent services start.
+The API readiness probe (`/v1/health/ready`) is used as the gate — it
+checks Postgres and Redis before the frontend is allowed to connect.
+
+### Verifying compose health
+
+```bash
+# All services should show "healthy"
+docker compose -f docker-compose.dev.yml ps
+
+# Tail logs for a specific service
+docker compose -f docker-compose.dev.yml logs -f worker-poller
+docker compose -f docker-compose.dev.yml logs -f worker-outbox
+```
 
 Verify it's up:
 

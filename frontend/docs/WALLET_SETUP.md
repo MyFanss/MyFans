@@ -8,9 +8,13 @@ wallets. This document covers configuration; the connection UI lives in
 
 | Wallet | Connect | Sign | Notes |
 |--------|---------|------|-------|
-| Freighter | ✅ browser extension | ✅ | Reference implementation |
-| Lobstr | ✅ browser extension | ✅ | Same `signTransaction` dispatch path as Freighter |
+| Freighter | ✅ browser extension | ✅ | Reference wallet — the only one guaranteed through every flow. The local onboarding guide ([LOCAL_QUICKSTART.md](./LOCAL_QUICKSTART.md)) is Freighter-only |
+| Lobstr | ✅ browser extension | ✅ | Same `signTransaction` dispatch path as Freighter, but less battle-tested |
 | WalletConnect | ✅ QR / deep link | ✅ | Behind the `walletConnect` feature flag, off by default |
+
+> **Local development:** use **Freighter**. Connect + sign work for Lobstr, but
+> Freighter is the validated path for subscribing and for connecting to a
+> local Stellar sandbox (see [local quickstart](LOCAL_QUICKSTART.md)).
 
 ### How signing is dispatched
 
@@ -71,6 +75,14 @@ config / the backend `/config/network` endpoint via `useBackendNetwork()` and
 appears on a genuine public-network build; testnet builds always read
 "Stellar Testnet".
 
+## Creator Payout Wallet (Single Source of Truth)
+
+For creators, the linked Stellar wallet is the single source of truth for all on-chain payouts and earnings withdrawals:
+- **Unified Settings Surface**: `/dashboard/settings` redirects to `/settings`, ensuring all profile, wallet, and payout settings reside on a single surface without divergence.
+- **Payout Destination = Verified Wallet**: Creator payout settings (`/settings` → Payout Settings) directly read and manage the linked Stellar address from `useWallet()`.
+- **On-Chain Settlement**: All automated payouts and manual withdrawals (`/earnings`) are executed on-chain to the verified connected wallet.
+- **Mismatch Prevention**: Attempting to withdraw to an address that does not match the linked wallet is blocked in validation (`WALLET_ADDRESS_MISMATCH`). To change the payout destination, creators must connect and verify the new wallet.
+
 ## Testing
 
 - `src/lib/__tests__/wallet.test.ts` — connect + signing dispatch per wallet type.
@@ -78,3 +90,7 @@ appears on a genuine public-network build; testnet builds always read
   disconnect, missing project ID.
 - `src/lib/__tests__/network-label.test.ts` / `src/hooks/__tests__/useBackendNetwork.test.ts`
   — network label never says "Mainnet" off the public network.
+- `src/components/settings/WalletSettingsPanel.test.tsx` — single source wallet display and copy behavior.
+- `src/app/settings/payout-settings.test.tsx` — single source payout wallet in Payout Settings.
+- `src/app/dashboard/settings/settings-redirect.test.ts` — settings surface redirection.
+- `src/components/earnings/WithdrawalUI.test.tsx` & `src/components/earnings/withdrawal-integration.test.tsx` — earnings withdrawal validation and mismatch blocking.

@@ -23,7 +23,6 @@ import { SubscriptionCacheService } from '../subscription-cache.service';
 import { SubscriptionChainReaderService } from '../subscription-chain-reader.service';
 import { BusinessMetricsService } from '../../metrics/business-metrics.service';
 
-const TARGET_EVENTS = ['subscribed', 'extended', 'cancelled'] as const;
 type TargetEventType = typeof TARGET_EVENTS[number];
 
 /**

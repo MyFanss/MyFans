@@ -84,6 +84,8 @@ export function WithdrawalUI({ availableBalance, currency }: WithdrawalUIProps) 
       newErrors.address = `${method === 'wallet' ? 'Wallet' : 'Bank'} address is required`;
     } else if (method === 'wallet' && !address.startsWith('G')) {
       newErrors.address = 'Invalid Stellar address';
+    } else if (method === 'wallet' && isWalletConnected && walletAddress && address !== walletAddress) {
+      newErrors.address = 'Withdrawal address must match your connected Stellar wallet (wallet address mismatch)';
     }
 
     if (method === 'wallet' && !isWalletConnected) {
@@ -168,11 +170,8 @@ export function WithdrawalUI({ availableBalance, currency }: WithdrawalUIProps) 
 
           {/* Amount */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Withdrawal Amount
-            </label>
             <Input
-              label="Amount"
+              label="Withdrawal Amount"
               type="number"
               step="0.01"
               min="0"
@@ -182,18 +181,14 @@ export function WithdrawalUI({ availableBalance, currency }: WithdrawalUIProps) 
                 if (errors.amount) setErrors({ ...errors, amount: '' });
               }}
               placeholder="0.00"
-              className={errors.amount ? 'border-red-500' : ''}
+              error={errors.amount}
             />
-            {errors.amount && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{errors.amount}</p>}
           </div>
 
           {/* Method */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Withdrawal Method
-            </label>
             <Select
-              label="Method"
+              label="Withdrawal Method"
               options={WITHDRAWAL_METHODS}
               value={method}
               onChange={(e) => {
@@ -229,11 +224,8 @@ export function WithdrawalUI({ availableBalance, currency }: WithdrawalUIProps) 
 
           {/* Address */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              {method === 'wallet' ? 'Stellar Wallet Address' : 'Bank Account'}
-            </label>
             <Input
-              label={method === 'wallet' ? 'Wallet Address' : 'Bank Account'}
+              label={method === 'wallet' ? 'Stellar Wallet Address' : 'Bank Account'}
               type="text"
               value={address}
               onChange={(e) => {
@@ -242,9 +234,9 @@ export function WithdrawalUI({ availableBalance, currency }: WithdrawalUIProps) 
                 setWithdrawalError(null);
               }}
               placeholder={method === 'wallet' ? 'G...' : 'Account details'}
-              className={errors.address ? 'border-red-500' : ''}
+              error={errors.address}
+              hint={method === 'wallet' ? 'On-chain payout address must match your connected Stellar wallet.' : undefined}
             />
-            {errors.address && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{errors.address}</p>}
             {errors.wallet && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{errors.wallet}</p>}
           </div>
 
@@ -256,16 +248,6 @@ export function WithdrawalUI({ availableBalance, currency }: WithdrawalUIProps) 
           >
             {tx.isPending ? 'Processing...' : 'Request Withdrawal'}
           </button>
-
-          {/* Validation Errors */}
-          {Object.keys(errors).length > 0 && Object.values(errors).some(e => e) && (
-            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-900">
-              <p className="text-xs font-medium text-red-700 dark:text-red-300 mb-1">Validation Error</p>
-              {Object.values(errors).map((error, i) => error && (
-                <p key={i} className="text-xs text-red-600 dark:text-red-400">• {error}</p>
-              ))}
-            </div>
-          )}
 
           {/* API/Chain Error */}
           {withdrawalError && (
