@@ -4,21 +4,29 @@ import { WithdrawalUI } from './WithdrawalUI';
 import * as earningsApi from '@/lib/earnings-api';
 import * as walletModule from '@/hooks/useWallet';
 
+import React from 'react';
+
 vi.mock('@/lib/earnings-api');
 vi.mock('@/hooks/useWallet');
 vi.mock('@/hooks/useTransaction', () => ({
-  useTransaction: () => ({
-    isPending: false,
-    isSuccess: false,
-    error: null,
-    execute: vi.fn(async (fn) => {
-      try {
-        return await fn();
-      } catch (err) {
-        throw err;
-      }
-    }),
-  }),
+  useTransaction: ({ onSuccess, onError }: any = {}) => {
+    const [isSuccess, setIsSuccess] = React.useState(false);
+    return {
+      isPending: false,
+      isSuccess,
+      error: null,
+      execute: vi.fn(async (fn) => {
+        try {
+          const result = await fn();
+          setIsSuccess(true);
+          onSuccess?.(result);
+          return result;
+        } catch (err) {
+          onError?.(err);
+        }
+      }),
+    };
+  },
 }));
 
 describe('WithdrawalUI', () => {
@@ -52,7 +60,7 @@ describe('WithdrawalUI', () => {
 
   it('renders withdrawal form', () => {
     render(<WithdrawalUI availableBalance="100.00" currency="XLM" />);
-    expect(screen.getByText('Request Withdrawal')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /request withdrawal/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/withdrawal amount/i)).toBeInTheDocument();
   });
 
@@ -229,5 +237,28 @@ describe('WithdrawalUI', () => {
     await waitFor(() => {
       expect(screen.getByText(/error type:/i)).toBeInTheDocument();
     });
+  });
+
+  it('blocks withdrawal when destination address does not match connected wallet (no silent mismatch)', async () => {
+    render(<WithdrawalUI availableBalance="100.00" currency="XLM" />);
+
+    const amountInput = screen.getByLabelText(/withdrawal amount/i);
+    const addressInput = screen.getByLabelText(/stellar wallet address/i);
+
+    fireEvent.change(amountInput, { target: { value: '10.00' } });
+    fireEvent.change(addressInput, { target: { value: 'GDIFFERENTADDRESS1234567890' } });
+
+    const submitButton = screen.getByRole('button', { name: /request withdrawal/i });
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/withdrawal address must match your connected stellar wallet/i)).toBeInTheDocument();
+    });
+    expect(earningsApi.requestWithdrawal).not.toHaveBeenCalled();
+  });
+
+  it('explains on-chain withdraw requirement in hint copy', () => {
+    render(<WithdrawalUI availableBalance="100.00" currency="XLM" />);
+    expect(screen.getByText(/on-chain payout address must match your connected stellar wallet/i)).toBeInTheDocument();
   });
 });

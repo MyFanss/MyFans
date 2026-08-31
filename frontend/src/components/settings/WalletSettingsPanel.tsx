@@ -37,7 +37,7 @@ export function WalletSettingsPanel({
     role === 'creator' ? 'Creator payout wallet' : 'Fan payment wallet';
   const walletNote =
     role === 'creator'
-      ? 'Payouts are sent to this Stellar wallet after each settlement cycle.'
+      ? 'Payouts and earnings withdrawals are settled directly on-chain to this verified Stellar wallet after each settlement cycle.'
       : 'This Stellar wallet is used for subscription renewals and one-time support payments.';
 
   const handleCopy = async () => {

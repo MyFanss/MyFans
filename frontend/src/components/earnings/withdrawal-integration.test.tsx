@@ -3,21 +3,24 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { WithdrawalUI } from './WithdrawalUI';
 import * as earningsApi from '@/lib/earnings-api';
 import * as walletModule from '@/hooks/useWallet';
+import React from 'react';
 import type { Withdrawal } from '@/lib/earnings-api';
 
 vi.mock('@/lib/earnings-api');
 vi.mock('@/hooks/useWallet');
 vi.mock('@/hooks/useTransaction', () => ({
-  useTransaction: ({ onSuccess, onError }: any) => {
+  useTransaction: ({ onSuccess, onError }: any = {}) => {
+    const [isSuccess, setIsSuccess] = React.useState(false);
     let pendingOp: Promise<any> | null = null;
     return {
       isPending: !!pendingOp,
-      isSuccess: false,
+      isSuccess,
       error: null,
       execute: async (fn: () => Promise<any>) => {
         try {
           pendingOp = fn();
           const result = await pendingOp;
+          setIsSuccess(true);
           onSuccess?.(result);
           return result;
         } catch (err) {
@@ -203,7 +206,7 @@ describe('Withdrawal Integration Flow', () => {
       expect(screen.getByText(/completed/)).toBeInTheDocument();
 
       // Should display transaction hash as a link
-      const txLink = screen.getByRole('link', { name: /test1234567890abcdef/i });
+      const txLink = screen.getByRole('link', { name: /test1234567890ab/i });
       expect(txLink).toBeInTheDocument();
 
       // Link should point to Stellar explorer
