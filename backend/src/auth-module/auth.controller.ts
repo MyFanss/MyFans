@@ -2,6 +2,9 @@ import { Controller, Get, Query, UseGuards, Request } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
+import { Roles } from './decorators/roles.decorator';
+import { UserRole } from '../common/enums/user-role.enum';
 import { PaginationDto, PaginatedResponseDto } from '../common/dto';
 
 @ApiTags('auth')
@@ -19,8 +22,9 @@ export class AuthController {
   }
 
   @Get('users')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'List users (paginated)' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] List users (paginated)' })
   @ApiQuery({
     name: 'cursor',
     required: false,
@@ -42,6 +46,7 @@ export class AuthController {
     type: PaginatedResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden — admin role required' })
   async getUsers(
     @Query() pagination: PaginationDto,
   ): Promise<PaginatedResponseDto<any>> {
