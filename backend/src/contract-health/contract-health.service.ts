@@ -11,6 +11,7 @@ export interface ContractCheckResult {
 @Injectable()
 export class ContractHealthService {
   private readonly logger = new Logger(ContractHealthService.name);
+  private up = 0;
   private readonly rpcUrl =
     process.env.SOROBAN_RPC_URL ?? 'https://soroban-testnet.stellar.org';
 
@@ -21,7 +22,14 @@ export class ContractHealthService {
     params: unknown[] = [],
   ): Promise<ContractCheckResult> {
     if (!contractId) {
-      return { contract: name, contractId, ok: false, error: 'Contract ID is empty', durationMs: 0 };
+      this.up = 0;
+      return {
+        contract: name,
+        contractId,
+        ok: false,
+        error: 'Contract ID is empty',
+        durationMs: 0,
+      };
     }
 
     const start = Date.now();
@@ -48,25 +56,59 @@ export class ContractHealthService {
       const durationMs = Date.now() - start;
 
       if (!res.ok) {
-        return { contract: name, contractId, ok: false, error: `HTTP ${res.status}`, durationMs };
+        this.up = 0;
+        return {
+          contract: name,
+          contractId,
+          ok: false,
+          error: `HTTP ${res.status}`,
+          durationMs,
+        };
       }
 
-      const json = (await res.json()) as { error?: { message: string }; result?: unknown };
+      const json = (await res.json()) as {
+        error?: { message: string };
+        result?: unknown;
+      };
 
       if (json.error) {
-        return { contract: name, contractId, ok: false, error: json.error.message, durationMs };
+        this.up = 0;
+        return {
+          contract: name,
+          contractId,
+          ok: false,
+          error: json.error.message,
+          durationMs,
+        };
       }
 
       this.logger.log(`Contract check passed: ${name} (${durationMs}ms)`);
+      this.up = 1;
       return { contract: name, contractId, ok: true, durationMs };
     } catch (err) {
+      this.up = 0;
       const durationMs = Date.now() - start;
-      return { contract: name, contractId, ok: false, error: err.message, durationMs };
+      return {
+        contract: name,
+        contractId,
+        ok: false,
+        error: (err as Error).message,
+        durationMs,
+      };
     }
   }
 
+  getUpGauge(): number {
+    return this.up;
+  }
+
   // Minimal XDR stub — in real usage replace with @stellar/stellar-sdk TransactionBuilder
-  private buildInvokeXdr(contractId: string, method: string, _params: unknown[]): string {
+  private buildInvokeXdr(
+    contractId: string,
+    method: string,
+    _params: unknown[],
+  ): string {
+    void _params;
     // Returns a placeholder; real XDR built by stellar-sdk in production
     return `invoke:${contractId}:${method}`;
   }

@@ -6,9 +6,10 @@ import { HttpMetricsService } from '../common/services/http-metrics.service';
 import { RpcMetricsService } from '../common/services/rpc-metrics.service';
 import { BusinessMetricsService } from './business-metrics.service';
 import { ModerationModule } from '../moderation/moderation.module';
+import { ContractHealthModule } from '../contract-health/contract-health.module';
 
 @Module({
-  imports: [ConfigModule, ModerationModule],
+  imports: [ConfigModule, ModerationModule, ContractHealthModule],
   controllers: [MetricsController],
   providers: [HttpMetricsService, RpcMetricsService, BusinessMetricsService, MetricsGuard],
   exports: [HttpMetricsService, RpcMetricsService, BusinessMetricsService],

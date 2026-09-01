@@ -10,6 +10,7 @@ import { Game, GameStatus } from './entities/game.entity';
 import { Player } from './entities/player.entity';
 import { ListGamesDto } from './dto/list-games.dto';
 import { SubmitScoreDto } from './dto/submit-score.dto';
+import { CreateGameDto } from './dto/create-game.dto';
 import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
 
 @Injectable()
@@ -22,7 +23,43 @@ export class GamesService {
     private dataSource: DataSource,
   ) {}
 
-  async findAll(listGamesDto: ListGamesDto): Promise<PaginatedResponseDto<Game>> {
+  async create(dto: CreateGameDto, userId: string): Promise<Game> {
+    return this.dataSource.transaction(async (manager) => {
+      const game = manager.create(Game, {
+        status: GameStatus.PENDING,
+        number_of_players: dto.numberOfPlayers,
+        game_settings: {
+          starting_cash: dto.startingCash,
+          randomize_turn_order: dto.randomizeTurnOrder,
+        },
+        host_user_id: userId,
+      });
+      const saved = await manager.save(Game, game);
+      await manager.save(
+        Player,
+        manager.create(Player, {
+          game_id: saved.id,
+          user_id: userId,
+          balance: dto.startingCash,
+          turn_order: 1,
+        }),
+      );
+      return saved;
+    });
+  }
+
+  async findOne(id: string): Promise<Game> {
+    const game = await this.gameRepository.findOne({
+      where: { id },
+      relations: ['players'],
+    });
+    if (!game) throw new NotFoundException('Game not found');
+    return game;
+  }
+
+  async findAll(
+    listGamesDto: ListGamesDto,
+  ): Promise<PaginatedResponseDto<Game>> {
     const { page = 1, limit = 20, status } = listGamesDto;
 
     const queryBuilder = this.gameRepository
@@ -124,8 +161,10 @@ export class GamesService {
         );
       }
 
-      game.status = GameStatus.IN_PROGRESS;
-      return await manager.save(Game, game);
+      return await manager.save(Game, {
+        ...game,
+        status: GameStatus.IN_PROGRESS,
+      });
     });
   }
 

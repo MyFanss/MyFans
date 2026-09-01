@@ -31,11 +31,15 @@ import { EarningsModule } from './earnings/earnings.module';
 import { FavoritesModule } from './favorites/favorites.module';
 import { FeedModule } from './feed/feed.module';
 import { CommentsModule } from './comments/comments.module';
+import { ContentModule } from './content/content.module';
+import { ConversationsModule } from './conversations/conversations.module';
+import { GamesModule } from './games/games.module';
 import { LikesModule } from './likes/likes.module';
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
 import { CorrelationExceptionFilter } from './common/filters/correlation-exception.filter';
 import { RequestContextService } from './common/services/request-context.service';
-import { ContentModule } from './content/content.module';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { NetworkConfigModule } from './config/network-config.module';
 import { PostsModule } from './posts/posts.module';
 import { WebhookModule } from './webhook/webhook.module';
@@ -57,6 +61,20 @@ const IDEMPOTENCY_ROUTES = [
 
 @Module({
   imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres',
+        host: config.get('DB_HOST', 'localhost'),
+        port: Number(config.get('DB_PORT', 5432)),
+        username: config.get('DB_USER', 'myfans'),
+        password: config.get('DB_PASSWORD', ''),
+        database: config.get('DB_NAME', 'myfans'),
+        autoLoadEntities: true,
+        synchronize: false,
+      }),
+    }),
     ThrottlerModule.forRoot([
       { name: 'auth', ttl: 60000, limit: 5 },
       { name: 'short', ttl: 60000, limit: 10 },
@@ -82,8 +100,10 @@ const IDEMPOTENCY_ROUTES = [
     FavoritesModule,
     FeedModule,
     CommentsModule,
-    LikesModule,
     ContentModule,
+    ConversationsModule,
+    GamesModule,
+    LikesModule,
     NetworkConfigModule,
     PostsModule,
     WebhookModule,

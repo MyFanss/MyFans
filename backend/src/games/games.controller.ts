@@ -20,6 +20,7 @@ import {
 import { GamesService } from './games.service';
 import { ListGamesDto } from './dto/list-games.dto';
 import { SubmitScoreDto } from './dto/submit-score.dto';
+import { CreateGameDto } from './dto/create-game.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
 
@@ -27,6 +28,14 @@ import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
 @Controller({ path: 'games', version: '1' })
 export class GamesController {
   constructor(private readonly gamesService: GamesService) {}
+
+  @Post()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a game as the authenticated host' })
+  create(@Body() dto: CreateGameDto, @CurrentUser() user: { userId: string }) {
+    return this.gamesService.create(dto, user.userId);
+  }
 
   @Get()
   @ApiOperation({ summary: 'List games with pagination' })
@@ -48,6 +57,12 @@ export class GamesController {
   @ApiResponse({ status: 200, description: 'Paginated list of games' })
   async findAll(@Query() listGamesDto: ListGamesDto) {
     return await this.gamesService.findAll(listGamesDto);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a game by ID' })
+  findOne(@Param('id') id: string) {
+    return this.gamesService.findOne(id);
   }
 
   /**
@@ -112,7 +127,9 @@ export class GamesController {
   @Post(':id/score')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Submit the authenticated player's current/final score" })
+  @ApiOperation({
+    summary: "Submit the authenticated player's current/final score",
+  })
   @ApiParam({ name: 'id', description: 'Game ID' })
   @ApiResponse({ status: 201, description: 'Score recorded' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
