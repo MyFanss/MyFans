@@ -1,25 +1,12 @@
-import {
-  Controller,
-  Get,
-  Header,
-  Optional,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Header, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import type { MetricsSnapshot } from '../common/services/http-metrics.service';
 import { HttpMetricsService } from '../common/services/http-metrics.service';
-import {
-  RpcMetricsService,
-  RpcMetricsSnapshot,
-} from '../common/services/rpc-metrics.service';
-import {
-  ModerationSlaService,
-  ModerationSlaSnapshot,
-} from '../moderation/moderation-sla.service';
+import { RpcMetricsService, RpcMetricsSnapshot } from '../common/services/rpc-metrics.service';
+import { BusinessMetricsService } from './business-metrics.service';
+import { ModerationSlaService, ModerationSlaSnapshot } from '../moderation/moderation-sla.service';
 import { Public } from '../common/decorators/public.decorator';
 import { MetricsGuard } from './metrics.guard';
-import { ContractHealthService } from '../contract-health/contract-health.service';
 
 export type MetricSeverity = 'warning' | 'critical';
 
@@ -53,8 +40,8 @@ export class MetricsController {
   constructor(
     private readonly httpMetrics: HttpMetricsService,
     private readonly rpcMetrics: RpcMetricsService,
+    private readonly businessMetrics: BusinessMetricsService,
     private readonly moderationSla: ModerationSlaService,
-    @Optional() private readonly contractHealth?: ContractHealthService,
   ) {}
 
   /**
@@ -66,20 +53,11 @@ export class MetricsController {
   @Get()
   @Public()
   @UseGuards(MetricsGuard)
-  @ApiOperation({
-    summary:
-      'Per-endpoint HTTP latency, error rate metrics, Soroban RPC metrics, and moderation queue SLA',
-  })
-  @ApiQuery({
-    name: 'route',
-    required: false,
-    description: 'Filter HTTP endpoints by route prefix, e.g. /v1/auth',
-  })
+  @ApiOperation({ summary: 'Per-endpoint HTTP latency, error rate metrics, Soroban RPC metrics, and moderation queue SLA' })
+  @ApiQuery({ name: 'route', required: false, description: 'Filter HTTP endpoints by route prefix, e.g. /v1/auth' })
   @ApiResponse({ status: 200, description: 'Metrics snapshot' })
   @ApiResponse({ status: 401, description: 'Missing or invalid scrape token' })
-  async getMetrics(
-    @Query('route') routeFilter?: string,
-  ): Promise<FullMetricsSnapshot> {
+  async getMetrics(@Query('route') routeFilter?: string): Promise<FullMetricsSnapshot> {
     const [httpSnap, rpcSnap, slaSnap] = await Promise.all([
       Promise.resolve(this.httpMetrics.snapshot()),
       Promise.resolve(this.rpcMetrics.snapshot()),
@@ -100,19 +78,11 @@ export class MetricsController {
   @Public()
   @UseGuards(MetricsGuard)
   @Header('Content-Type', 'text/plain; version=0.0.4')
-  @ApiOperation({
-    summary: 'Prometheus scrape endpoint for HTTP and Soroban RPC metrics',
-  })
-  @ApiQuery({
-    name: 'route',
-    required: false,
-    description: 'Filter HTTP endpoints by route prefix, e.g. /v1/auth',
-  })
+  @ApiOperation({ summary: 'Prometheus scrape endpoint for HTTP and Soroban RPC metrics' })
+  @ApiQuery({ name: 'route', required: false, description: 'Filter HTTP endpoints by route prefix, e.g. /v1/auth' })
   @ApiResponse({ status: 200, description: 'Prometheus metrics text format' })
   @ApiResponse({ status: 401, description: 'Missing or invalid scrape token' })
-  async getPrometheusMetrics(
-    @Query('route') routeFilter?: string,
-  ): Promise<string> {
+  async getPrometheusMetrics(@Query('route') routeFilter?: string): Promise<string> {
     const [httpSnap, rpcSnap] = await Promise.all([
       Promise.resolve(this.httpMetrics.snapshot()),
       Promise.resolve(this.rpcMetrics.snapshot()),
@@ -124,7 +94,9 @@ export class MetricsController {
       );
     }
 
-    return this.renderPrometheus(httpSnap, rpcSnap);
+    const httpProm = this.renderPrometheus(httpSnap, rpcSnap);
+    const bizProm = this.businessMetrics.toPrometheus();
+    return httpProm + '\n' + bizProm;
   }
 
   private buildAlerts(
@@ -213,41 +185,22 @@ export class MetricsController {
     rpcSnap: RpcMetricsSnapshot,
   ): string {
     const lines: string[] = [];
-    lines.push(
-      '# HELP backend_http_requests_total Total HTTP requests received',
-    );
+    lines.push('# HELP backend_http_requests_total Total HTTP requests received');
     lines.push('# TYPE backend_http_requests_total counter');
-    lines.push(
-      '# HELP backend_http_request_errors_total Total HTTP errors by class',
-    );
+    lines.push('# HELP backend_http_request_errors_total Total HTTP errors by class');
     lines.push('# TYPE backend_http_request_errors_total counter');
-    lines.push(
-      '# HELP backend_http_request_duration_seconds Histogram of HTTP request durations in seconds',
-    );
+    lines.push('# HELP backend_http_request_duration_seconds Histogram of HTTP request durations in seconds');
     lines.push('# TYPE backend_http_request_duration_seconds histogram');
-    lines.push(
-      '# HELP backend_soroban_rpc_calls_total Total Soroban RPC calls by method and outcome',
-    );
+    lines.push('# HELP backend_soroban_rpc_calls_total Total Soroban RPC calls by method and outcome');
     lines.push('# TYPE backend_soroban_rpc_calls_total counter');
-    lines.push(
-      '# HELP backend_soroban_rpc_duration_seconds_total Total Soroban RPC duration in seconds',
-    );
+    lines.push('# HELP backend_soroban_rpc_duration_seconds_total Total Soroban RPC duration in seconds');
     lines.push('# TYPE backend_soroban_rpc_duration_seconds_total counter');
-    lines.push(
-      '# HELP backend_soroban_rpc_duration_seconds_count Total Soroban RPC duration count',
-    );
+    lines.push('# HELP backend_soroban_rpc_duration_seconds_count Total Soroban RPC duration count');
     lines.push('# TYPE backend_soroban_rpc_duration_seconds_count counter');
-    lines.push(
-      '# HELP contract_health_up Whether the latest configured contract probe succeeded',
-    );
-    lines.push('# TYPE contract_health_up gauge');
-    lines.push(`contract_health_up ${this.contractHealth?.getUpGauge() ?? 0}`);
 
     for (const endpoint of httpSnap.endpoints) {
       const baseLabels = { method: endpoint.method, route: endpoint.route };
-      lines.push(
-        `backend_http_requests_total${this.prometheusLabels(baseLabels)} ${endpoint.requests}`,
-      );
+      lines.push(`backend_http_requests_total${this.prometheusLabels(baseLabels)} ${endpoint.requests}`);
       lines.push(
         `backend_http_request_errors_total${this.prometheusLabels({ ...baseLabels, code: '4xx' })} ${endpoint.errors4xx}`,
       );
@@ -257,8 +210,7 @@ export class MetricsController {
 
       const histogramBuckets = this.cumulativeHistogram(endpoint.histogram);
       for (const [bound, count] of Object.entries(histogramBuckets)) {
-        const le =
-          bound === 'Infinity' ? '+Inf' : (Number(bound) / 1000).toFixed(3);
+        const le = bound === 'Infinity' ? '+Inf' : (Number(bound) / 1000).toFixed(3);
         lines.push(
           `backend_http_request_duration_seconds_bucket${this.prometheusLabels({ ...baseLabels, le })} ${count}`,
         );
@@ -297,9 +249,7 @@ export class MetricsController {
     return parts.length ? `{${parts.join(',')}}` : '';
   }
 
-  private cumulativeHistogram(
-    histogram: Record<number, number>,
-  ): Record<number, number> {
+  private cumulativeHistogram(histogram: Record<number, number>): Record<number, number> {
     const ordered = Object.keys(histogram)
       .map((key) => (key === 'Infinity' ? Infinity : Number(key)))
       .sort((a, b) => a - b);

@@ -1,6 +1,9 @@
-import { isStellarAccountAddress, sanitizeStellarAddress } from './stellar-address';
+import {
+  isStellarAccountAddress,
+  sanitizeStellarAddress,
+} from './stellar-address';
 
-const VALID = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+const VALID = `G${'A'.repeat(55)}`;
 
 describe('isStellarAccountAddress', () => {
   it('accepts a valid G-strkey', () => {
@@ -8,7 +11,11 @@ describe('isStellarAccountAddress', () => {
   });
 
   it('rejects address not starting with G', () => {
-    expect(isStellarAccountAddress('SAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN')).toBe(false);
+    expect(
+      isStellarAccountAddress(
+        'SAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN',
+      ),
+    ).toBe(false);
   });
 
   it('rejects address shorter than 56 chars', () => {
@@ -28,7 +35,7 @@ describe('isStellarAccountAddress', () => {
   });
 
   it('rejects null byte injection', () => {
-    expect(isStellarAccountAddress('GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN\0')).toBe(false);
+    expect(isStellarAccountAddress(VALID + '\0')).toBe(false);
   });
 
   it('rejects chars outside base-32 alphabet (lowercase)', () => {
@@ -58,32 +65,5 @@ describe('sanitizeStellarAddress', () => {
 
   it('returns null when stripped result is not a valid address', () => {
     expect(sanitizeStellarAddress('not-an-address')).toBeNull();
-  });
-});
-
-import { AuthService } from '../auth/auth.service';
-import { BadRequestException } from '@nestjs/common';
-
-describe('AuthService.createSession', () => {
-  let service: AuthService;
-
-  beforeEach(() => { service = new AuthService(null as any); });
-
-  it('returns session for valid address', async () => {
-    const result = await service.createSession(VALID);
-    expect(result.userId).toBe(VALID);
-    expect(result.token).toBeTruthy();
-  });
-
-  it('throws BadRequestException for SQL injection', async () => {
-    await expect(service.createSession("' OR '1'='1")).rejects.toThrow(BadRequestException);
-  });
-
-  it('throws BadRequestException for oversized input', async () => {
-    await expect(service.createSession('G' + 'A'.repeat(200))).rejects.toThrow(BadRequestException);
-  });
-
-  it('throws BadRequestException for empty string', async () => {
-    await expect(service.createSession('')).rejects.toThrow(BadRequestException);
   });
 });

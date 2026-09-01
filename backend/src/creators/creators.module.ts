@@ -8,12 +8,16 @@ import { CreatorRegistrySyncService } from './creator-registry-sync.service';
 import { User } from '../users/entities/user.entity';
 import { CreatorOnchainMapping } from './entities/creator-onchain-mapping.entity';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { FavoritesModule } from '../favorites/favorites.module';
+import { MetricsModule } from '../metrics/metrics.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, CreatorOnchainMapping]),
     ScheduleModule,
     SubscriptionsModule,
+    FavoritesModule,
+    MetricsModule,
   ],
   controllers: [CreatorsController],
   providers: [CreatorsService, CreatorDashboardService, CreatorRegistrySyncService],

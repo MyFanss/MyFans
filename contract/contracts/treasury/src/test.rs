@@ -827,8 +827,32 @@ fn test_unauthorized_deposit_reverts() {
     let treasury_id = env.register_contract(None, Treasury);
     let treasury_client = TreasuryClient::new(&env, &treasury_id);
 
-    env.mock_all_auths();
+    // Signer-specific auth: the admin signs for the token mint and for
+    // treasury initialize. No mock_all_auths in the auth test path.
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &token_address,
+            fn_name: "mint",
+            args: soroban_sdk::vec![&env, user.clone().into_val(&env), 1000_i128.into_val(&env)],
+            sub_invokes: &[],
+        },
+    }]);
     admin_client.mint(&user, &1000);
+
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &treasury_id,
+            fn_name: "initialize",
+            args: soroban_sdk::vec![
+                &env,
+                admin.clone().into_val(&env),
+                token_address.clone().into_val(&env),
+            ],
+            sub_invokes: &[],
+        },
+    }]);
     treasury_client.initialize(&admin, &token_address);
 
     // Attempt deposit without any auth.
@@ -1032,7 +1056,11 @@ fn test_set_admin_transfers_admin_role() {
     let treasury_client = TreasuryClient::new(&env, &treasury_id);
 
     treasury_client.initialize(&admin, &token_address);
-    assert_eq!(treasury_client.admin(), admin, "admin must be initial admin");
+    assert_eq!(
+        treasury_client.admin(),
+        admin,
+        "admin must be initial admin"
+    );
 
     treasury_client.set_admin(&new_admin);
     assert_eq!(
@@ -1121,7 +1149,10 @@ fn test_set_admin_emits_event() {
             topic.try_into_val(&env).ok() == Some(Symbol::new(&env, "admin_transferred"))
         })
     });
-    assert!(at_event.is_some(), "admin_transferred event must be emitted");
+    assert!(
+        at_event.is_some(),
+        "admin_transferred event must be emitted"
+    );
 
     let event = at_event.unwrap();
     let (old, new): (Address, Address) = event.2.try_into_val(&env).unwrap();

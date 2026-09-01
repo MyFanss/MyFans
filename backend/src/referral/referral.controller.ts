@@ -21,7 +21,8 @@ import { ReferralService } from './referral.service';
 import { CreateReferralCodeDto } from './dto/create-referral-code.dto';
 import { RedeemReferralCodeDto } from './dto/redeem-referral-code.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
-import { CurrentUser, JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
+import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
+import type { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 
 @ApiTags('referral')
 @Controller({ path: 'referral', version: '1' })
@@ -64,6 +65,14 @@ export class ReferralController {
     return this.referralService.deactivateCode(user.userId, id);
   }
 
+  /** GET /v1/referral/rewards — list rewards I've earned as a code owner */
+  @Get('rewards')
+  @ApiOperation({ summary: 'List referral rewards earned by the current user' })
+  @ApiResponse({ status: 200, description: 'List of rewards' })
+  listRewards(@CurrentUser() user: JwtUserPayload) {
+    return this.referralService.listRewards(user.userId);
+  }
+
   /** GET /v1/referral/codes/:id/redemptions — list redemptions for a code */
   @Get('codes/:id/redemptions')
   @ApiOperation({ summary: 'List redemptions for a referral code' })
@@ -85,13 +94,24 @@ export class ReferralController {
     return this.referralService.validateCode(dto.code);
   }
 
-  /** POST /v1/referral/redeem — redeem a code */
+  /**
+   * POST /v1/referral/redeem — claim a code for the current user.
+   *
+   * Records a pending redemption only. The reward is granted (and the code's
+   * use count incremented) when the fan's first `SubscriptionCreatedEvent`
+   * is attributed to the claim — never on renewal.
+   */
   @Post('redeem')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Redeem a referral / invite code' })
-  @ApiResponse({ status: 201, description: 'Code redeemed' })
-  @ApiResponse({ status: 400, description: 'Invalid or exhausted code' })
-  @ApiResponse({ status: 409, description: 'Already redeemed' })
+  @ApiOperation({
+    summary: 'Claim a referral / invite code (pending until first subscribe)',
+  })
+  @ApiResponse({ status: 201, description: 'Code claimed' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid, exhausted, or self-referral code',
+  })
+  @ApiResponse({ status: 409, description: 'Already claimed' })
   redeemCode(
     @CurrentUser() user: JwtUserPayload,
     @Body() dto: RedeemReferralCodeDto,

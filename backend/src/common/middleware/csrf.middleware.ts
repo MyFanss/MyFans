@@ -2,7 +2,8 @@ import { Injectable, NestMiddleware, ForbiddenException } from '@nestjs/common';
 import type { Request, Response, NextFunction } from 'express';
 import * as crypto from 'crypto';
 
-export const CSRF_COOKIE = '__Host-csrf';
+const IS_PROD = process.env.NODE_ENV === 'production';
+export const CSRF_COOKIE = IS_PROD ? '__Host-csrf' : 'csrf-token';
 export const CSRF_HEADER = 'x-csrf-token';
 
 /**
@@ -17,8 +18,14 @@ export const CSRF_HEADER = 'x-csrf-token';
 @Injectable()
 export class CsrfMiddleware implements NestMiddleware {
   private readonly SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+  private readonly EXEMPT_PREFIXES = ['/webhook', '/v1/webhook', '/api/webhook'];
 
   use(req: Request, res: Response, next: NextFunction): void {
+    // Webhook routes are exempt — they use HMAC signature verification.
+    if (this.isExemptPath(req.path)) {
+      return next();
+    }
+
     // Ensure a CSRF cookie exists (set on first GET, reused thereafter)
     let cookieToken: string = (req.cookies as Record<string, string>)?.[CSRF_COOKIE];
     if (!cookieToken) {
@@ -26,7 +33,7 @@ export class CsrfMiddleware implements NestMiddleware {
       res.cookie(CSRF_COOKIE, cookieToken, {
         httpOnly: false,   // must be readable by JS to echo in header
         sameSite: 'strict',
-        secure: process.env.NODE_ENV === 'production',
+        secure: IS_PROD,
         path: '/',
       });
     }
@@ -45,6 +52,10 @@ export class CsrfMiddleware implements NestMiddleware {
     }
 
     next();
+  }
+
+  private isExemptPath(path: string): boolean {
+    return this.EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix));
   }
 
   /** Requests authenticated via a Bearer token are not subject to CSRF. */

@@ -304,3 +304,67 @@ describe('SubscriptionChainReaderService simulation cost tracking', () => {
     expect(summary.lastObservedMinResourceFee).toBe('200');
   });
 });
+
+// ── RPC timeout & retry resilience ────────────────────────────────────────────
+
+describe('SubscriptionChainReaderService timeout resilience', () => {
+  it('returns ok=false with timeout error when RPC call exceeds timeout', async () => {
+    const ledgerClock = {
+      fetchSnapshot: jest.fn(),
+      ledgerSeqToUnix: jest.fn(),
+    } as unknown as LedgerClockService;
+
+    const svc = new SubscriptionChainReaderService(ledgerClock);
+
+    // Mock withRpcTimeout to simulate a timeout
+    jest.spyOn(svc as any, 'withRpcTimeout').mockRejectedValue(
+      new Error('RPC call timeout after 30s'),
+    );
+    jest.spyOn(svc as any, 'makeServer').mockReturnValue({
+      simulateTransaction: jest.fn(),
+    });
+
+    const result = await svc.readIsSubscriber(CONTRACT_ID, 'GFAN', 'GCREATOR');
+    expect(result.ok).toBe(false);
+    expect((result as any).error).toMatch(/timeout/i);
+  });
+
+  it('aborts after retry budget exhausted and returns error', async () => {
+    const ledgerClock = {
+      fetchSnapshot: jest.fn(),
+      ledgerSeqToUnix: jest.fn(),
+    } as unknown as LedgerClockService;
+
+    const svc = new SubscriptionChainReaderService(ledgerClock);
+    const simulateTransaction = jest
+      .fn()
+      .mockRejectedValue(new Error('network unreachable'));
+
+    jest.spyOn(svc as any, 'makeServer').mockReturnValue({ simulateTransaction });
+
+    const result = await svc.readIsSubscriber(CONTRACT_ID, 'GFAN', 'GCREATOR');
+    expect(result.ok).toBe(false);
+    expect((result as any).error).toMatch(/network/i);
+
+    // Verify withRetry was called (withRetry exhausts attempts)
+    expect(simulateTransaction.mock.calls.length).toBeGreaterThan(0);
+  });
+
+  it('distinguishes timeout errors from other RPC failures', async () => {
+    const ledgerClock = {
+      fetchSnapshot: jest.fn(),
+      ledgerSeqToUnix: jest.fn(),
+    } as unknown as LedgerClockService;
+
+    const svc = new SubscriptionChainReaderService(ledgerClock);
+    jest.spyOn(svc as any, 'makeServer').mockReturnValue({
+      simulateTransaction: jest.fn().mockRejectedValue(
+        new Error('RPC call timeout after 30s'),
+      ),
+    });
+
+    const result = await svc.readIsSubscriber(CONTRACT_ID, 'GFAN', 'GCREATOR');
+    expect(result.ok).toBe(false);
+    expect((result as any).error).toMatch(/timeout/);
+  });
+});

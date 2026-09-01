@@ -1,6 +1,6 @@
 #![no_std]
 use myfans_lib::{ContentType, MyfansError, SubscriptionStatus};
-use soroban_sdk::{contract, contractimpl, Env, Address, Symbol};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol};
 
 /// Data keys for contract storage
 #[derive(Clone, Copy)]
@@ -12,12 +12,11 @@ pub enum DataKey {
 impl DataKey {
     pub fn to_symbol(&self) -> Symbol {
         match self {
-            DataKey::Admin => Symbol::short("admin"),
-            DataKey::Paused => Symbol::short("paused"),
+            DataKey::Admin => symbol_short!("admin"),
+            DataKey::Paused => symbol_short!("paused"),
         }
     }
 }
-use soroban_sdk::{contract, contractimpl, Env, Symbol};
 
 #[contract]
 pub struct TestConsumer;
@@ -25,33 +24,33 @@ pub struct TestConsumer;
 #[contractimpl]
 impl TestConsumer {
     /// Initialize the contract with an admin address.
-    /// 
+    ///
     /// Must be called once per contract instance to set up admin privileges.
     /// Can only be called once; subsequent calls will fail with AlreadyInitialized.
     pub fn initialize(env: Env, admin: Address) -> Result<(), MyfansError> {
         let storage = env.storage().instance();
-        
+
         // Check if already initialized
         if storage.has(&DataKey::Admin.to_symbol()) {
             return Err(MyfansError::AlreadyInitialized);
         }
-        
+
         // Set the admin
         storage.set(&DataKey::Admin.to_symbol(), &admin);
-        
+
         // Initialize paused to false
         storage.set(&DataKey::Paused.to_symbol(), &false);
-        
+
         Ok(())
     }
 
     /// Get the current admin address.
-    /// 
+    ///
     /// Returns the admin address set during initialization.
     /// Fails with NotInitialized if initialize was not called first.
     pub fn admin(env: Env) -> Result<Address, MyfansError> {
         let storage = env.storage().instance();
-        
+
         storage
             .get::<_, Address>(&DataKey::Admin.to_symbol())
             .ok_or(MyfansError::NotInitialized)
@@ -81,7 +80,7 @@ impl TestConsumer {
     /// Get the current paused status.
     pub fn is_paused(env: Env) -> Result<bool, MyfansError> {
         let storage = env.storage().instance();
-        
+
         Ok(storage
             .get::<_, bool>(&DataKey::Paused.to_symbol())
             .unwrap_or(false))
@@ -91,7 +90,7 @@ impl TestConsumer {
     pub fn is_active(env: Env, status: SubscriptionStatus) -> bool {
         let active = status == SubscriptionStatus::Active;
         env.events()
-            .publish((Symbol::new(&env, "test_consumer:is_active"),), active);
+            .publish((Symbol::new(&env, "tc_is_active"),), active);
         active
     }
 
@@ -100,7 +99,7 @@ impl TestConsumer {
     pub fn error_code(env: Env, err: MyfansError) -> u32 {
         let code = err as u32;
         env.events()
-            .publish((Symbol::new(&env, "test_consumer:error_code"),), code);
+            .publish((Symbol::new(&env, "tc_error_code"),), code);
         code
     }
 
@@ -108,7 +107,7 @@ impl TestConsumer {
     pub fn content_code(env: Env, ct: ContentType) -> u32 {
         let code = ct as u32;
         env.events()
-            .publish((Symbol::new(&env, "test_consumer:content_code"),), code);
+            .publish((Symbol::new(&env, "tc_content_code"),), code);
         code
     }
 }
@@ -116,7 +115,7 @@ impl TestConsumer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{Env, Address};
+    use soroban_sdk::{testutils::Address as _, Address, Env};
 
     // ── Unauthorized Caller Tests (Admin-Protected Functions) ────────────
 
@@ -124,113 +123,93 @@ mod test {
     fn test_set_paused_admin_authorization() {
         let env = Env::default();
         env.mock_all_auths();
-        
+
         let id = env.register_contract(None, TestConsumer);
         let client = TestConsumerClient::new(&env, &id);
-        
+
         let admin = Address::generate(&env);
-        
+
         // Initialize
-        let result = client.initialize(&admin);
-        assert_eq!(result, Ok(()));
-        
+        client.initialize(&admin);
+
         // Admin should be able to set paused
-        let result = client.set_paused(&true);
-        assert_eq!(result, Ok(()));
-        
+        client.set_paused(&true);
+
         // Verify paused is set
-        let is_paused = client.is_paused();
-        assert_eq!(is_paused, Ok(true));
+        assert!(client.is_paused());
     }
 
     #[test]
     fn test_set_paused_unauthorized_caller_revert() {
         let env = Env::default();
         env.mock_all_auths();
-        
+
         let id = env.register_contract(None, TestConsumer);
         let client = TestConsumerClient::new(&env, &id);
-        
+
         let admin = Address::generate(&env);
-        let unauthorized = Address::generate(&env);
-        
+
         // Initialize with admin
-        let result = client.initialize(&admin);
-        assert_eq!(result, Ok(()));
-        
-        // Unauthorized caller tries to set paused
+        client.initialize(&admin);
+
+        // Clear auths so admin.require_auth() fails
+        env.set_auths(&[]);
         let result = client.try_set_paused(&true);
-        assert_eq!(
-            result,
-            Err(Ok(soroban_sdk::Error::from_contract_error(
-                MyfansError::NotAuthorized as u32
-            )))
-        );
-        
-        // Paused should still be false
-        let is_paused = client.is_paused();
-        assert_eq!(is_paused, Ok(false));
+        assert!(result.is_err(), "set_paused must fail without admin auth");
+
+        // Re-auth to read state
+        env.mock_all_auths();
+        assert!(!client.is_paused());
     }
 
     #[test]
     fn test_set_paused_multiple_unauthorized_callers() {
         let env = Env::default();
         env.mock_all_auths();
-        
+
         let id = env.register_contract(None, TestConsumer);
         let client = TestConsumerClient::new(&env, &id);
-        
+
         let admin = Address::generate(&env);
-        
+
         // Initialize with admin
-        let result = client.initialize(&admin);
-        assert_eq!(result, Ok(()));
-        
-        // Multiple unauthorized callers should all be rejected
+        client.initialize(&admin);
+
+        // Multiple attempts without auth must all be rejected
         for _ in 0..3 {
-            let unauthorized = Address::generate(&env);
+            env.set_auths(&[]);
             let result = client.try_set_paused(&true);
-            assert_eq!(
-                result,
-                Err(Ok(soroban_sdk::Error::from_contract_error(
-                    MyfansError::NotAuthorized as u32
-                )))
-            );
+            assert!(result.is_err(), "set_paused must fail without admin auth");
         }
-        
-        // Paused should still be false
-        let is_paused = client.is_paused();
-        assert_eq!(is_paused, Ok(false));
+
+        env.mock_all_auths();
+        assert!(!client.is_paused());
     }
 
     #[test]
     fn test_set_paused_admin_can_toggle() {
         let env = Env::default();
         env.mock_all_auths();
-        
+
         let id = env.register_contract(None, TestConsumer);
         let client = TestConsumerClient::new(&env, &id);
-        
+
         let admin = Address::generate(&env);
-        
+
         // Initialize with admin
-        let result = client.initialize(&admin);
-        assert_eq!(result, Ok(()));
-        
+        client.initialize(&admin);
+
         // Admin sets paused to true
-        let result = client.set_paused(&true);
-        assert_eq!(result, Ok(()));
-        assert_eq!(client.is_paused(), Ok(true));
-        
+        client.set_paused(&true);
+        assert!(client.is_paused());
+
         // Admin sets paused to false
-        let result = client.set_paused(&false);
-        assert_eq!(result, Ok(()));
-        assert_eq!(client.is_paused(), Ok(false));
-        
+        client.set_paused(&false);
+        assert!(!client.is_paused());
+
         // Admin sets paused to true again
-        let result = client.set_paused(&true);
-        assert_eq!(result, Ok(()));
-        assert_eq!(client.is_paused(), Ok(true));
+        client.set_paused(&true);
+        assert!(client.is_paused());
     }
 
     // ── SubscriptionStatus ────────────────────────────────────────────────
@@ -304,6 +283,7 @@ mod test {
                 &String::from_str(env, "MFAN"),
                 &7,
                 &0,
+                &admin,
             );
             (client, admin)
         }
@@ -433,6 +413,7 @@ mod test {
                 &String::from_str(env, "MFAN"),
                 &7,
                 &0,
+                &admin,
             );
             (client, admin)
         }
@@ -596,6 +577,7 @@ mod test {
             Address, Env, Error as SorobanError, String,
         };
         use subscription::{Error as SubError, MyfansContract, MyfansContractClient};
+        use treasury::{Treasury, TreasuryClient};
 
         fn deploy_token(env: &Env) -> (MyFansTokenClient<'_>, Address) {
             let admin = Address::generate(env);
@@ -607,6 +589,7 @@ mod test {
                 &String::from_str(env, "MFAN"),
                 &7,
                 &0,
+                &admin,
             );
             (client, admin)
         }
@@ -668,7 +651,10 @@ mod test {
             });
 
             let (token, admin) = deploy_token(&env);
-            let fee_recipient = Address::generate(&env);
+            let treasury_id = env.register_contract(None, Treasury);
+            let treasury_client = TreasuryClient::new(&env, &treasury_id);
+            treasury_client.initialize(&admin, &token.address);
+            let fee_recipient = treasury_id;
             let sub = deploy_subscription(&env, &admin, &fee_recipient, &token.address);
 
             let creator = Address::generate(&env);
@@ -755,7 +741,10 @@ mod test {
             });
 
             let (token, admin) = deploy_token(&env);
-            let fee_recipient = Address::generate(&env);
+            let treasury_id = env.register_contract(None, Treasury);
+            let treasury_client = TreasuryClient::new(&env, &treasury_id);
+            treasury_client.initialize(&admin, &token.address);
+            let fee_recipient = treasury_id;
             let sub = deploy_subscription(&env, &admin, &fee_recipient, &token.address);
 
             let creator = Address::generate(&env);
@@ -804,8 +793,8 @@ mod test {
             }
         }
 
-        fn deploy_token(env: &Env) -> (Address) {
-            let admin = Address::generate(env);
+        fn deploy_token(env: &Env) -> Address {
+            let _admin = Address::generate(env);
             let id = env.register_contract(None, MockToken);
             id
         }
@@ -959,6 +948,7 @@ mod test {
                 &String::from_str(env, "MFAN"),
                 &7,
                 &0,
+                &admin,
             );
             (client, admin)
         }
@@ -1204,7 +1194,10 @@ mod test {
             ];
             for i in 0..all.len() {
                 for j in (i + 1)..all.len() {
-                    assert_ne!(all[i], all[j], "two SubscriptionStatus variants must not share a code");
+                    assert_ne!(
+                        all[i], all[j],
+                        "two SubscriptionStatus variants must not share a code"
+                    );
                 }
             }
         }
@@ -1258,8 +1251,14 @@ mod test {
             let not_authorized = client.error_code(&MyfansError::NotAuthorized);
 
             assert_eq!(already_init, error_codes::subscription::ALREADY_INITIALIZED);
-            assert_eq!(already_init, error_codes::content_access::ALREADY_INITIALIZED);
-            assert_eq!(already_init, error_codes::creator_registry::ALREADY_INITIALIZED);
+            assert_eq!(
+                already_init,
+                error_codes::content_access::ALREADY_INITIALIZED
+            );
+            assert_eq!(
+                already_init,
+                error_codes::creator_registry::ALREADY_INITIALIZED
+            );
             assert_eq!(not_init, error_codes::creator_registry::NOT_INITIALIZED);
             // treasury NOT_INITIALIZED is 5 (its own numbering), not shared with MyfansError::NotInitialized.
             assert_eq!(error_codes::treasury::NOT_INITIALIZED, 5u32);
@@ -1338,7 +1337,7 @@ mod test {
         extern crate std;
 
         use soroban_sdk::{
-            testutils::{Address as _, Ledger},
+            testutils::Address as _,
             token::{StellarAssetClient, TokenClient},
             Address, Env,
         };
@@ -1535,8 +1534,10 @@ mod test {
 
     mod earnings_integration {
         use earnings::{Earnings, EarningsClient};
-        use soroban_sdk::{testutils::Address as _, Address, Env, Error as SorobanError};
-        use proptest::proptest;
+        use soroban_sdk::{
+            testutils::{Address as _, Ledger},
+            Address, Env, Error as SorobanError,
+        };
 
         fn setup(env: &Env) -> (EarningsClient<'_>, Address, Address) {
             env.mock_all_auths();
@@ -1631,7 +1632,10 @@ mod test {
             client.record(&creator, &500);
 
             let result = client.try_withdraw(&creator, &600);
-            assert!(result.is_err(), "expected withdraw to fail with insufficient balance");
+            assert!(
+                result.is_err(),
+                "expected withdraw to fail with insufficient balance"
+            );
         }
 
         /// Withdraw from zero balance returns error.
@@ -1737,7 +1741,7 @@ mod test {
 
             // Advance the ledger (simulates time passing).
             env.ledger().with_mut(|ledger| {
-                ledger.sequence = ledger.sequence.saturating_add(100);
+                ledger.sequence_number = ledger.sequence_number.saturating_add(100);
             });
 
             // ── Restore and verify snapshot consistency ──

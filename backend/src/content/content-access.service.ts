@@ -2,16 +2,26 @@ import { Injectable } from '@nestjs/common';
 import { ContentService } from './content.service';
 import { ContentMetadata } from './entities/content.entity';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { WalletLinksService } from '../wallet-links/wallet-links.service';
 
 export type GatedContentView = Omit<
   Partial<ContentMetadata>,
-  'ipfs_cid' | 'ipfs_url'
+  'description' | 'ipfs_cid' | 'ipfs_url'
 > & {
+  description?: string | null;
   ipfs_cid?: string | null;
   ipfs_url?: string | null;
   locked: boolean;
   preview_message?: string;
 };
+
+/** Identity of the caller requesting content, resolved by whichever guard ran. */
+export interface ContentRequester {
+  /** Platform user UUID, set when the caller authenticated via JWT. */
+  userId?: string;
+  /** Stellar G-address, set when the caller authenticated via Stellar bearer. */
+  fanAddress?: string;
+}
 
 /**
  * Resolves what a given requester is allowed to see for a content item.
@@ -21,24 +31,24 @@ export type GatedContentView = Omit<
  * everyone else gets a teaser with the sensitive fields (description, IPFS
  * pointers) stripped.
  *
- * NOTE: the subscriber check reuses `SubscriptionsService#isSubscriber`,
- * which is keyed on Stellar addresses in the on-chain subscription flow.
- * Until platform user IDs are bridged to wallet addresses (see the caveat
- * documented on `HybridFanAuthGuard`), this treats `requesterId` /
- * `creator_id` as opaque identity strings — the subscriber check only
- * resolves correctly once the caller's identity matches how the
- * subscription was indexed.
+ * The subscription index (`SubscriptionsService#isSubscriber`) is keyed on
+ * Stellar addresses, not platform user UUIDs (see #1561). A JWT-authenticated
+ * caller is therefore resolved to their linked Stellar wallet address (via
+ * `WalletLinksService`) before the subscriber check; a Stellar-bearer caller
+ * (see `HybridFanAuthGuard`, #1562) already carries a Stellar address and is
+ * used as-is. A UUID is never compared directly against a G-address.
  */
 @Injectable()
 export class ContentAccessService {
   constructor(
     private readonly contentService: ContentService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly walletLinksService: WalletLinksService,
   ) {}
 
   async getForRequester(
     id: string,
-    requesterId?: string,
+    requester?: ContentRequester,
   ): Promise<GatedContentView> {
     const content = await this.contentService.findOne(id);
 
@@ -46,13 +56,15 @@ export class ContentAccessService {
       return { ...content, locked: false };
     }
 
-    if (requesterId && requesterId === content.creator_id) {
+    if (requester?.userId && requester.userId === content.creator_id) {
       return { ...content, locked: false };
     }
 
-    const isSubscriber = requesterId
+    const fanAddress = await this.resolveFanAddress(requester);
+
+    const isSubscriber = fanAddress
       ? await this.subscriptionsService.isSubscriber(
-          requesterId,
+          fanAddress,
           content.creator_id,
         )
       : false;
@@ -62,6 +74,23 @@ export class ContentAccessService {
     }
 
     return this.buildTeaser(content);
+  }
+
+  /**
+   * Resolves the requester onto a single Stellar address, or `null` if none
+   * can be determined (anonymous caller, or a JWT-authenticated user with no
+   * linked wallet). A `fanAddress` supplied directly (Stellar bearer auth)
+   * always wins; a `userId` (JWT auth) is looked up in the wallet-link table.
+   */
+  private async resolveFanAddress(
+    requester?: ContentRequester,
+  ): Promise<string | null> {
+    if (!requester) return null;
+    if (requester.fanAddress) return requester.fanAddress;
+    if (requester.userId) {
+      return this.walletLinksService.getPrimaryAddress(requester.userId);
+    }
+    return null;
   }
 
   private buildTeaser(content: ContentMetadata): GatedContentView {

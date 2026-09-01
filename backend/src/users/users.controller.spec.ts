@@ -1,13 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
-import { plainToInstance } from 'class-transformer';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { JwtService } from '@nestjs/jwt';
 import { UserProfileDto } from './dto/user-profile.dto';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
-
-const mockUser = { id: 'jwt-user-1' };
+import { AdminAuditService } from '../admin-audit/admin-audit.service';
+import { RequestContextService } from '../common/services/request-context.service';
 
 const makeUser = (overrides: Record<string, unknown> = {}) => ({
   id: 'jwt-user-1',
@@ -52,7 +51,18 @@ describe('UsersController', () => {
       providers: [
         { provide: UsersService, useValue: service },
         { provide: JwtService, useValue: { verifyAsync: jest.fn() } },
-        { provide: JwtAuthGuard, useValue: { canActivate: jest.fn().mockReturnValue(true) } },
+        {
+          provide: AdminAuditService,
+          useValue: { record: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
+        },
+        {
+          provide: RequestContextService,
+          useValue: { getCorrelationId: jest.fn().mockReturnValue('corr-1') },
+        },
+        {
+          provide: JwtAuthGuard,
+          useValue: { canActivate: jest.fn().mockReturnValue(true) },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -72,9 +82,9 @@ describe('UsersController', () => {
     it('returns a UserProfileDto for the authenticated user', async () => {
       const user = makeUser();
       service.findOne.mockResolvedValue(user as any);
-      const req = { user: { id: 'jwt-user-1' } };
+      const jwtUser = { userId: 'jwt-user-1', email: 'test@example.com' };
 
-      const result = await controller.getMe(req);
+      const result = await controller.getMe(jwtUser);
 
       expect(service.findOne).toHaveBeenCalledWith('jwt-user-1');
       expect(result).toBeInstanceOf(UserProfileDto);
@@ -84,9 +94,9 @@ describe('UsersController', () => {
 
     it('throws when service.findOne rejects', async () => {
       service.findOne.mockRejectedValue(new Error('User not found'));
-      const req = { user: { id: 'missing-user' } };
+      const jwtUser = { userId: 'missing-user', email: 'test@example.com' };
 
-      await expect(controller.getMe(req)).rejects.toThrow('User not found');
+      await expect(controller.getMe(jwtUser)).rejects.toThrow('User not found');
     });
   });
 
@@ -96,7 +106,10 @@ describe('UsersController', () => {
       service.update.mockResolvedValue(updated as any);
       const dto = { display_name: 'New Name' };
 
-      const result = await controller.updateMe(dto as any, mockUser);
+      const result = await controller.updateMe(dto as any, {
+        userId: 'jwt-user-1',
+        email: 'test@example.com',
+      });
 
       expect(service.update).toHaveBeenCalledWith('jwt-user-1', dto);
       expect(result).toBeInstanceOf(UserProfileDto);
@@ -106,7 +119,88 @@ describe('UsersController', () => {
     it('propagates service errors', async () => {
       service.update.mockRejectedValue(new Error('DB error'));
 
-      await expect(controller.updateMe({} as any, mockUser)).rejects.toThrow('DB error');
+      await expect(
+        controller.updateMe({} as any, {
+          userId: 'jwt-user-1',
+          email: 'test@example.com',
+        }),
+      ).rejects.toThrow('DB error');
+    });
+  });
+
+  // #1626 — the controller must fail closed: the target user is ALWAYS the
+  // JWT subject (CurrentUser.userId). A spoofed id in the request body is
+  // stripped by the whitelisting ValidationPipe before it reaches the
+  // controller, but even if one slipped through, the service must never be
+  // invoked with anything other than the authenticated subject.
+  describe('IDOR hardening (#1626)', () => {
+    it('updateMe ignores a spoofed id/userId in the body and targets the JWT subject', async () => {
+      service.update.mockResolvedValue(makeUser() as any);
+      const dto = {
+        id: 'victim-user',
+        userId: 'victim-user',
+        display_name: 'Hacked',
+      };
+
+      await controller.updateMe(dto as any, {
+        userId: 'jwt-user-1',
+        email: 'test@example.com',
+      });
+
+      expect(service.update).toHaveBeenCalledTimes(1);
+      const [targetId, updateArgs] = service.update.mock.calls[0];
+      expect(targetId).toBe('jwt-user-1');
+      expect(updateArgs).toEqual(
+        expect.objectContaining({ display_name: 'Hacked' }),
+      );
+      expect(targetId).not.toBe('victim-user');
+    });
+
+    it('getMe resolves the profile from the JWT subject, never from params/body', async () => {
+      service.findOne.mockResolvedValue(makeUser() as any);
+
+      await controller.getMe({
+        userId: 'jwt-user-1',
+        email: 'test@example.com',
+      });
+
+      expect(service.findOne).toHaveBeenCalledWith('jwt-user-1');
+      expect(service.findOne).toHaveBeenCalledTimes(1);
+    });
+
+    it('updateNotifications never accepts a target user id', async () => {
+      service.updateNotificationPreferences.mockResolvedValue({
+        message: 'ok',
+        preferences: {},
+      } as any);
+      const dto = {
+        id: 'victim-user',
+        email_notifications: true,
+      };
+
+      await controller.updateNotifications(
+        { userId: 'jwt-user-1', email: 'test@example.com' },
+        dto as any,
+      );
+
+      const [targetId] = service.updateNotificationPreferences.mock.calls[0];
+      expect(targetId).toBe('jwt-user-1');
+    });
+
+    it('removeMe deletes the JWT subject even when the body carries an id', async () => {
+      service.validatePassword.mockResolvedValue(true);
+      service.remove.mockResolvedValue(undefined);
+
+      await controller.removeMe(
+        { userId: 'jwt-user-1', email: 'test@example.com' },
+        { password: 'correct', id: 'victim-user' } as any,
+      );
+
+      expect(service.validatePassword).toHaveBeenCalledWith(
+        'jwt-user-1',
+        'correct',
+      );
+      expect(service.remove).toHaveBeenCalledWith('jwt-user-1');
     });
   });
 
@@ -120,9 +214,9 @@ describe('UsersController', () => {
         updatedAt: '2024-01-01T00:00:00.000Z',
       };
       service.updateOnboarding.mockResolvedValue(makeUser() as any);
-      const req = { user: { id: 'user-1' } };
+      const jwtUser = { userId: 'user-1', email: 'test@example.com' };
 
-      await controller.updateOnboarding(req as any, dto as any);
+      await controller.updateOnboarding(jwtUser, dto as any);
 
       expect(service.updateOnboarding).toHaveBeenCalledWith('user-1', {
         currentStep: 'profile',
@@ -141,9 +235,9 @@ describe('UsersController', () => {
         updatedAt: '2024-01-01T00:00:00.000Z',
       };
       service.updateOnboarding.mockResolvedValue(makeUser() as any);
-      const req = { user: { id: 'user-1' } };
+      const jwtUser = { userId: 'user-1', email: 'test@example.com' };
 
-      await controller.updateOnboarding(req as any, dto as any);
+      await controller.updateOnboarding(jwtUser, dto as any);
 
       expect(service.updateOnboarding).toHaveBeenCalledWith(
         'user-1',
@@ -153,10 +247,10 @@ describe('UsersController', () => {
 
     it('propagates service errors', async () => {
       service.updateOnboarding.mockRejectedValue(new Error('Not found'));
-      const req = { user: { id: 'user-1' } };
+      const jwtUser = { userId: 'user-1', email: 'test@example.com' };
 
       await expect(
-        controller.updateOnboarding(req as any, {} as any),
+        controller.updateOnboarding(jwtUser, {} as any),
       ).rejects.toThrow('Not found');
     });
   });
@@ -168,21 +262,28 @@ describe('UsersController', () => {
         message: 'Notification preferences updated successfully',
         preferences: { email_notifications: true, push_notifications: false },
       };
-      service.updateNotificationPreferences.mockResolvedValue(serviceResult as any);
-      const req = { user: { id: 'user-1' } };
+      service.updateNotificationPreferences.mockResolvedValue(
+        serviceResult as any,
+      );
+      const jwtUser = { userId: 'user-1', email: 'test@example.com' };
 
-      const result = await controller.updateNotifications(req as any, dto as any);
+      const result = await controller.updateNotifications(jwtUser, dto as any);
 
-      expect(service.updateNotificationPreferences).toHaveBeenCalledWith('user-1', dto);
+      expect(service.updateNotificationPreferences).toHaveBeenCalledWith(
+        'user-1',
+        dto,
+      );
       expect(result).toEqual(serviceResult);
     });
 
     it('propagates service errors', async () => {
-      service.updateNotificationPreferences.mockRejectedValue(new Error('DB error'));
-      const req = { user: { id: 'user-1' } };
+      service.updateNotificationPreferences.mockRejectedValue(
+        new Error('DB error'),
+      );
+      const jwtUser = { userId: 'user-1', email: 'test@example.com' };
 
       await expect(
-        controller.updateNotifications(req as any, {} as any),
+        controller.updateNotifications(jwtUser, {} as any),
       ).rejects.toThrow('DB error');
     });
   });
@@ -191,30 +292,33 @@ describe('UsersController', () => {
     it('calls service.remove when password is valid', async () => {
       service.validatePassword.mockResolvedValue(true);
       service.remove.mockResolvedValue(undefined);
-      const req = { user: { id: 'user-1' } };
+      const jwtUser = { userId: 'user-1', email: 'test@example.com' };
 
-      await controller.removeMe(req as any, { password: 'correct' });
+      await controller.removeMe(jwtUser, { password: 'correct' });
 
-      expect(service.validatePassword).toHaveBeenCalledWith('user-1', 'correct');
+      expect(service.validatePassword).toHaveBeenCalledWith(
+        'user-1',
+        'correct',
+      );
       expect(service.remove).toHaveBeenCalledWith('user-1');
     });
 
     it('throws UnauthorizedException when password is invalid', async () => {
       service.validatePassword.mockResolvedValue(false);
-      const req = { user: { id: 'user-1' } };
+      const jwtUser = { userId: 'user-1', email: 'test@example.com' };
 
       await expect(
-        controller.removeMe(req as any, { password: 'wrong' }),
+        controller.removeMe(jwtUser, { password: 'wrong' }),
       ).rejects.toThrow(UnauthorizedException);
       expect(service.remove).not.toHaveBeenCalled();
     });
 
     it('does not call remove when validatePassword rejects', async () => {
       service.validatePassword.mockRejectedValue(new Error('DB error'));
-      const req = { user: { id: 'user-1' } };
+      const jwtUser = { userId: 'user-1', email: 'test@example.com' };
 
       await expect(
-        controller.removeMe(req as any, { password: 'any' }),
+        controller.removeMe(jwtUser, { password: 'any' }),
       ).rejects.toThrow('DB error');
       expect(service.remove).not.toHaveBeenCalled();
     });

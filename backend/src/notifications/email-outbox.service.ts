@@ -1,8 +1,13 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { EmailOutboxEntry, EmailOutboxStatus } from './entities/email-outbox-entry.entity';
-import { EMAIL_ADAPTER, EmailAdapter } from './adapters/email-adapter.interface';
+import {
+  EmailOutboxEntry,
+  EmailOutboxStatus,
+} from './entities/email-outbox-entry.entity';
+import { EMAIL_ADAPTER } from './adapters/email-adapter.interface';
+import type { EmailAdapter } from './adapters/email-adapter.interface';
+import { UsersService } from '../users/users.service';
 
 export interface EnqueueEmailRequest {
   dedupeKey: string;
@@ -32,10 +37,13 @@ export class EmailOutboxService {
     private readonly repo: Repository<EmailOutboxEntry>,
     @Inject(EMAIL_ADAPTER)
     private readonly adapter: EmailAdapter,
+    private readonly usersService: UsersService,
   ) {}
 
   async enqueue(request: EnqueueEmailRequest): Promise<EmailOutboxEntry> {
-    const existing = await this.repo.findOne({ where: { dedupe_key: request.dedupeKey } });
+    const existing = await this.repo.findOne({
+      where: { dedupe_key: request.dedupeKey },
+    });
     if (existing) {
       return existing;
     }
@@ -57,7 +65,9 @@ export class EmailOutboxService {
 
   /** Re-attempts delivery of every still-pending row. Intended for a scheduled worker tick. */
   async processPending(): Promise<void> {
-    const pending = await this.repo.find({ where: { status: EmailOutboxStatus.PENDING } });
+    const pending = await this.repo.find({
+      where: { status: EmailOutboxStatus.PENDING },
+    });
     for (const entry of pending) {
       await this.deliver(entry);
     }
@@ -67,21 +77,87 @@ export class EmailOutboxService {
     return this.repo.find({ order: { created_at: 'ASC' } });
   }
 
-  private async deliver(entry: EmailOutboxEntry): Promise<void> {
+  /** List entries that have exhausted all delivery attempts. */
+  async listDeadLetters(): Promise<EmailOutboxEntry[]> {
+    return this.repo.find({
+      where: [
+        { status: EmailOutboxStatus.DEAD_LETTER },
+        { status: EmailOutboxStatus.FAILED },
+      ],
+      order: { updated_at: 'DESC' },
+    });
+  }
+
+  /**
+   * Reset a DEAD_LETTER or FAILED entry back to PENDING so the retry
+   * worker picks it up again. Useful for admin-initiated replays.
+   */
+  async replayById(id: string): Promise<EmailOutboxEntry> {
+    const entry = await this.repo.findOne({ where: { id } });
+    if (!entry) {
+      throw new NotFoundException(`Email outbox entry ${id} not found.`);
+    }
+    if (
+      entry.status !== EmailOutboxStatus.DEAD_LETTER &&
+      entry.status !== EmailOutboxStatus.FAILED
+    ) {
+      throw new NotFoundException(
+        `Entry ${id} is not in a replayable state (current: ${entry.status}).`,
+      );
+    }
+    entry.status = EmailOutboxStatus.PENDING;
+    entry.attempts = 0;
+    entry.last_error = null;
+    return this.repo.save(entry);
+  }
+
+  /**
+   * The target user's `users` row is soft-deleted (see UsersService#remove,
+   * #1566), so a default (non-`withDeleted`) lookup returns nothing for a
+   * deleted account and `findOne` throws `NotFoundException`.
+   */
+  private async isRecipientDeleted(userId: string): Promise<boolean> {
     try {
-      await this.adapter.send({ to: entry.to_user_id, subject: entry.subject, body: entry.body });
+      await this.usersService.findOne(userId);
+      return false;
+    } catch (error) {
+      if (error instanceof NotFoundException) return true;
+      throw error;
+    }
+  }
+
+  private async deliver(entry: EmailOutboxEntry): Promise<void> {
+    if (await this.isRecipientDeleted(entry.to_user_id)) {
+      entry.status = EmailOutboxStatus.SUPPRESSED;
+      entry.last_error = 'Recipient account has been deleted; delivery suppressed.';
+      await this.repo.save(entry);
+      this.logger.log(
+        `Suppressed email ${entry.dedupe_key} for deleted user ${entry.to_user_id}.`,
+      );
+      return;
+    }
+
+    try {
+      const result = await this.adapter.send({
+        to: entry.to_user_id,
+        subject: entry.subject,
+        body: entry.body,
+      });
       entry.status = EmailOutboxStatus.SENT;
       entry.sent_at = new Date();
       entry.last_error = null;
+      entry.provider_message_id = result.messageId ?? null;
       await this.repo.save(entry);
     } catch (error) {
       entry.attempts += 1;
       entry.last_error = error instanceof Error ? error.message : String(error);
       entry.status =
-        entry.attempts >= this.maxAttempts ? EmailOutboxStatus.FAILED : EmailOutboxStatus.PENDING;
+        entry.attempts >= this.maxAttempts
+          ? EmailOutboxStatus.DEAD_LETTER
+          : EmailOutboxStatus.PENDING;
       await this.repo.save(entry);
       this.logger.warn(
-        `Email delivery failed for ${entry.dedupe_key} (attempt ${entry.attempts}): ${entry.last_error}`,
+        `Email delivery failed for ${entry.dedupe_key} (attempt ${entry.attempts}/${this.maxAttempts}): ${entry.last_error}`,
       );
     }
   }

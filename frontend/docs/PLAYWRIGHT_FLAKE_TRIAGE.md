@@ -1,5 +1,32 @@
 # Playwright Flake Triage
 
+## Required PR specs
+
+The following specs run on **every pull request** via `.github/workflows/e2e-pr.yml`
+(sharded across 2 runners):
+
+| Spec | Covers |
+|------|--------|
+| `smoke.spec.ts` | Homepage, wallet connect, gated content gate, subscribe page |
+| `subscribe-flow-complete.spec.ts` | Full subscribe → access gated content journey |
+| `cancel-renew-flow.spec.ts` | Cancel/renew subscription lifecycle |
+| `content-actions.spec.ts` | Like optimistic update, error rollback |
+| `network-status.spec.ts` | Operational / degraded / offline / connection-lost states |
+
+**Flake target:** ≥ 95 % pass rate over a 30-day rolling window.
+A test that flakes more than twice in a week must be fixed or quarantined
+within 5 business days. See [Triage Rules](#triage-rules) below.
+
+### Running required specs locally
+
+```bash
+cd frontend
+npm run test:e2e -- smoke.spec.ts subscribe-flow-complete.spec.ts \
+  cancel-renew-flow.spec.ts content-actions.spec.ts network-status.spec.ts
+```
+
+---
+
 This repo already encodes its baseline retry and timeout behavior in [`frontend/playwright.config.ts`](../playwright.config.ts):
 
 - `npm run test:e2e` runs `playwright test`

@@ -2,7 +2,7 @@ use super::Error as ContractError;
 use super::*;
 use soroban_sdk::token::Client as TokenClient;
 use soroban_sdk::{
-    testutils::{Address as _, Events, Ledger, MockAuth, MockAuthInvoke},
+    testutils::{storage::Persistent as _, Address as _, Events, Ledger, MockAuth, MockAuthInvoke},
     token::StellarAssetClient,
     Address, Env, Error as SorobanError, IntoVal, Symbol, TryIntoVal,
 };
@@ -395,7 +395,7 @@ fn repeated_attempts_before_boundary_all_rejected() {
     );
 }
 
-fn setup_token(env: &Env) -> (Address, TokenClient, StellarAssetClient) {
+fn setup_token(env: &Env) -> (Address, TokenClient<'_>, StellarAssetClient<'_>) {
     let token_admin = Address::generate(env);
     let token_id = env
         .register_stellar_asset_contract_v2(token_admin.clone())
@@ -592,7 +592,10 @@ fn set_rate_limit_reverts_if_not_admin() {
     env.set_auths(empty);
 
     let result = client.try_set_rate_limit(&20u32);
-    assert!(result.is_err(), "set_rate_limit without admin auth must revert");
+    assert!(
+        result.is_err(),
+        "set_rate_limit without admin auth must revert"
+    );
 }
 
 #[test]
@@ -737,8 +740,8 @@ fn initialize_emits_initialized_event() {
 
     client.initialize(&admin);
 
-    let event = find_event(&env, &contract_id, "initialized")
-        .expect("initialized event must be emitted");
+    let event =
+        find_event(&env, &contract_id, "initialized").expect("initialized event must be emitted");
     let data: InitializedEvent = event.2.try_into_val(&env).unwrap();
     assert_eq!(data.admin, admin);
 }
@@ -811,8 +814,8 @@ fn set_spam_fee_emits_spam_fee_set_event() {
     client.initialize(&admin);
     client.set_spam_fee(&token_id, &200i128);
 
-    let event = find_event(&env, &contract_id, "spam_fee_set")
-        .expect("spam_fee_set event must be emitted");
+    let event =
+        find_event(&env, &contract_id, "spam_fee_set").expect("spam_fee_set event must be emitted");
     let data: SpamFeeSetEvent = event.2.try_into_val(&env).unwrap();
     assert_eq!(data.token, token_id);
     assert_eq!(data.amount, 200i128);
@@ -998,13 +1001,15 @@ fn get_creator_id_refreshes_ttl_after_it_decays_below_threshold() {
 
     let creator_key = DataKey::Creator(creator.clone());
 
-    // Decay the key's TTL below the refresh threshold. Keep the contract
-    // instance itself alive across the jump so the invocation below can run.
-    advance(&env, CREATOR_TTL_EXTEND_TO - CREATOR_TTL_THRESHOLD + 1);
+    // Keep the contract instance alive across the ledger jump, then decay the
+    // Creator key TTL below the refresh threshold.
     env.as_contract(&contract_id, || {
         env.storage()
             .instance()
             .extend_ttl(CREATOR_TTL_EXTEND_TO, CREATOR_TTL_EXTEND_TO);
+    });
+    advance(&env, CREATOR_TTL_EXTEND_TO - CREATOR_TTL_THRESHOLD + 1);
+    env.as_contract(&contract_id, || {
         assert!(
             env.storage().persistent().get_ttl(&creator_key) < CREATOR_TTL_THRESHOLD,
             "test setup must decay the Creator key below the refresh threshold"

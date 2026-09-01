@@ -20,7 +20,7 @@ export type RequestWithHybridAuth = Request & {
  *
  *  - Stellar bearer ({@link FanBearerGuard}): `Authorization: Bearer
  *    base64(Stellar G-address)`, matching `AuthService#createSession` in
- *    `src/auth/auth.service.ts`. Used on subscription/fan routes. Resolves
+ *    `src/auth-module/auth.service.ts`. Used on subscription/fan routes. Resolves
  *    directly to a Stellar address (`req.fanAddress`); there is no platform
  *    user account behind it.
  *  - Passport JWT (`JwtAuthGuard` / `src/auth-module`): `Authorization:

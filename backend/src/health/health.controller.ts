@@ -43,11 +43,18 @@ export class HealthController {
     summary: 'Readiness probe',
     description:
       'Reports whether this instance is fit to receive traffic. Probes the ' +
-      'database (mandatory — failure fails readiness) and Soroban RPC ' +
-      '(optional — reported for visibility, does not fail readiness).',
+      'database (mandatory — failure fails readiness), Redis when configured ' +
+      '(failure fails readiness) and Soroban RPC (optional — reported for ' +
+      'visibility, does not fail readiness).',
   })
-  @ApiResponse({ status: 200, description: 'Instance is ready to receive traffic' })
-  @ApiResponse({ status: 503, description: 'Database is unreachable' })
+  @ApiResponse({
+    status: 200,
+    description: 'Instance is ready to receive traffic',
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Database or configured Redis is unreachable',
+  })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   async getReadiness(@Res() res: Response) {
     const readiness = await this.healthService.getReadiness();

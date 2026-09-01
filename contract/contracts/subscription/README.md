@@ -42,7 +42,7 @@ pub struct Subscription {
 | 4 | `SubscriptionExpired` | Subscription exists but its expiry ledger has passed |
 | 5 | `AdminNotInitialized` | Admin key not present; contract was never initialized |
 | 6 | `InvalidFeeRecipient` | Fee recipient is the Stellar null/burn address |
-| 7 | `InvalidFeeBps` | Fee basis points exceed 10 000 (100%) |
+| 7 | `InvalidFeeBps` | Fee basis points exceed 1 000 (10%) |
 | 8 | `InvalidTokenAddress` | Token address is the Stellar null/burn address |
 | 9 | `InvalidPrice` | Subscription price must be strictly positive |
 | 11 | `InvalidPlanParams` | Plan `amount` must be strictly positive and `interval_days` non-zero |
@@ -68,8 +68,13 @@ One-time contract initialization. Stores admin, fee configuration, token address
 
 **Requires `admin` authorization.**
 
-**Panics** with `AlreadyInitialized` if called again, `InvalidFeeBps` if `fee_bps > 10_000`,
+**Panics** with `AlreadyInitialized` if called again, `InvalidFeeBps` if `fee_bps > 1_000` (10%),
 `InvalidTokenAddress` if `token` is the Stellar null address, or `InvalidPrice` if `price <= 0`.
+
+> **Fee security:** the protocol fee is capped at `MAX_FEE_BPS = 1_000` (10%) and can only be
+> changed by the admin (`set_fee_bps`). `fee_recipient` **must** be the deployed treasury
+> contract — `subscribe` / `create_subscription` / `extend_subscription` route the fee into
+> the treasury via its `deposit(from, amount)` entry point.
 
 ---
 
@@ -100,8 +105,12 @@ pub fn subscribe(env: Env, fan: Address, plan_id: u32, _token: Address)
 ```
 
 Subscribes `fan` to an existing plan. Transfers `plan.amount` tokens from `fan` to `plan.creator`
-(minus protocol fee) and to the fee recipient. Expiry is set to
-`current_sequence + interval_days * 17_280`.
+(minus protocol fee) and routes the fee into the treasury contract via its
+`deposit(from, amount)` entry point (so the treasury's pause state is honored and its
+`deposit` event fires). Expiry is set to `current_sequence + interval_days * 17_280`.
+
+**Event** `fee_collected` — topics: `(name, fan, creator)`, data: `(fee, treasury)` — is
+emitted whenever `fee > 0`.
 
 Requires `fan` authorization. Panics with `Paused` if the contract is paused.
 
@@ -224,7 +233,7 @@ Requires admin authorization.
 pub fn set_fee_bps(env: Env, new_fee_bps: u32)
 ```
 
-Updates the protocol fee in basis points. `new_fee_bps` must be ≤ 10 000.
+Updates the protocol fee in basis points. `new_fee_bps` must be ≤ 1 000 (10%).
 
 Requires admin authorization.
 
@@ -306,6 +315,7 @@ Suggested HTTP mapping:
 | `unpaused` | `(name,)` | `admin: Address` |
 | `fee_recipient_updated` | `(name, old, new)` | `()` |
 | `fee_updated` | `(name,)` | `(old_bps: u32, new_bps: u32)` |
+| `fee_collected` | `(name, fan, creator)` | `(fee: i128, treasury: Address)` |
 
 ---
 

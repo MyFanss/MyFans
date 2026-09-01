@@ -10,10 +10,12 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiHeader,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -21,10 +23,13 @@ import {
 import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
 import type { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
-import { OptionalJwtAuthGuard } from '../auth-module/guards/optional-jwt-auth.guard';
+import { OptionalHybridFanAuthGuard } from '../subscriptions/guards/optional-hybrid-fan-auth.guard';
+import type { RequestWithHybridAuth } from '../subscriptions/guards/hybrid-fan-auth.guard';
 import { PaginatedResponseDto, PaginationDto } from '../common/dto';
-import { ContentAccessService } from './content-access.service';
-import type { GatedContentView } from './content-access.service';
+import {
+  ContentAccessService,
+  GatedContentView,
+} from './content-access.service';
 import { ContentService } from './content.service';
 import {
   ContentResponseDto,
@@ -42,6 +47,12 @@ export class ContentController {
   ) {}
 
   @Post()
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description:
+      'Makes retries safe; reusing a key with another body returns 409',
+  })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create content metadata' })
@@ -73,18 +84,22 @@ export class ContentController {
   }
 
   @Get(':id')
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(OptionalHybridFanAuthGuard)
   @ApiOperation({
     summary:
-      'Get content by ID — gated content returns a teaser to non-subscribers',
+      'Get content by ID — gated content returns a teaser to non-subscribers. ' +
+      'Accepts either a platform JWT or a Stellar bearer token (see HybridFanAuthGuard), or no credential at all.',
   })
   @ApiResponse({ status: 200 })
   @ApiResponse({ status: 404 })
   findOne(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: JwtUserPayload,
+    @Req() req: RequestWithHybridAuth,
   ): Promise<GatedContentView> {
-    return this.contentAccessService.getForRequester(id, user?.userId);
+    return this.contentAccessService.getForRequester(id, {
+      userId: req.user?.userId,
+      fanAddress: req.fanAddress,
+    });
   }
 
   @Put(':id')

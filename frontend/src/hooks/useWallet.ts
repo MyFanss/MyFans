@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { WalletType, WalletConnectionState } from "@/types/wallet";
+import { useBackendNetwork } from './useBackendNetwork';
 import {
   connectWallet,
   getConnectedAddress,
@@ -10,7 +11,13 @@ import {
   isAnyWalletConnected,
   getWalletInstallUrl,
   isWalletInstalled,
+  disconnectWallet,
 } from "@/lib/wallet";
+import {
+  clearWalletSession,
+  getWalletSession,
+  setWalletSession,
+} from "@/lib/client-session";
 
 interface UseWalletOptions {
   autoReconnect?: boolean;
@@ -39,6 +46,7 @@ interface UseWalletReturn {
  * Hook for managing wallet connection state with resilience features
  */
 export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
+  const backendNetwork = useBackendNetwork();
   const {
     autoReconnect = true,
     reconnectAttempts = 3,
@@ -70,7 +78,13 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
           status: "connected",
           address: connected.address,
           walletType: connected.walletType,
-          network: "Stellar Mainnet",
+          network: backendNetwork,
+        });
+        // Keep the session store in sync so signTransaction() can pick the
+        // right signer even after a reload.
+        setWalletSession({
+          address: connected.address,
+          walletType: connected.walletType,
         });
         return;
       }
@@ -85,7 +99,7 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
     if (mountedRef.current) {
       setConnectionState({ status: "disconnected" });
     }
-  }, []);
+  }, [backendNetwork]);
 
   // Check for existing connection on mount
   useEffect(() => {
@@ -204,8 +218,10 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
         status: "connected",
         address,
         walletType,
-        network: "Stellar Mainnet",
+        network: backendNetwork,
       });
+      // Persist so signTransaction() dispatches to this wallet at sign time.
+      setWalletSession({ address, walletType });
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to connect";
@@ -216,9 +232,10 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
       });
       throw error;
     }
-  }, []);
+  }, [backendNetwork]);
 
   const disconnect = useCallback(() => {
+    const previousType = getWalletSession()?.walletType;
     setConnectionState({ status: "disconnected" });
     reconnectAttemptsRef.current = 0;
     setIsReconnecting(false);
@@ -226,6 +243,9 @@ export function useWallet(options: UseWalletOptions = {}): UseWalletReturn {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
+    clearWalletSession();
+    // Tear down any WalletConnect session (no-op for Freighter/Lobstr).
+    void disconnectWallet(previousType ?? undefined);
   }, []);
 
   const reconnect = useCallback(async () => {

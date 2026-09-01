@@ -13,10 +13,10 @@ import {
   getConnectedAddressLegacy,
   isWalletConnectedLegacy,
   isWalletConnectEnabled,
-  WALLETCONNECT_UNSUPPORTED_MESSAGE,
 } from '../wallet';
 import { createAppError } from '@/types/errors';
 import { resetFeatureFlagsForTests } from '@/lib/feature-flags';
+import { clearWalletSession, setWalletSession } from '@/lib/client-session';
 
 // Mock window object
 const mockFreighter = {
@@ -38,6 +38,7 @@ describe('wallet library', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetFeatureFlagsForTests();
+    clearWalletSession();
     delete process.env.NEXT_PUBLIC_FEATURE_WALLET_CONNECT;
     Object.defineProperty(window, 'freighter', {
       value: mockFreighter,
@@ -53,6 +54,7 @@ describe('wallet library', () => {
     vi.restoreAllMocks();
     resetFeatureFlagsForTests();
     delete process.env.NEXT_PUBLIC_FEATURE_WALLET_CONNECT;
+    delete process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID;
   });
 
   describe('isWalletInstalled', () => {
@@ -119,12 +121,18 @@ describe('wallet library', () => {
       expect(mockLobstr.getPublicKey).toHaveBeenCalled();
     });
 
-    it('throws structured unsupported error for WalletConnect stub', async () => {
+    it('throws structured unsupported error when WalletConnect flag is off', async () => {
+      await expect(connectWallet('walletconnect')).rejects.toMatchObject({
+        code: 'WALLET_NOT_INSTALLED',
+      });
+    });
+
+    it('requires a project id when WalletConnect flag is on', async () => {
       process.env.NEXT_PUBLIC_FEATURE_WALLET_CONNECT = 'true';
+      delete process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID;
 
       await expect(connectWallet('walletconnect')).rejects.toMatchObject({
-        code: 'UNSUPPORTED_WALLET',
-        message: WALLETCONNECT_UNSUPPORTED_MESSAGE,
+        code: 'WALLET_CONNECT_CONFIG_MISSING',
       });
     });
 
@@ -220,6 +228,51 @@ describe('wallet library', () => {
       await expect(signTransaction(mockXdr, 'freighter')).rejects.toThrow(
         'No signed transaction returned from Freighter'
       );
+    });
+  });
+
+  describe('signTransaction – dispatch by connected wallet type', () => {
+    const mockXdr = 'AAAAAgAAAAA...';
+    const mockSignedXdr = 'AAAAAgAAAAB...';
+
+    afterEach(() => {
+      clearWalletSession();
+    });
+
+    it('uses the wallet type from the session store when none is passed', async () => {
+      setWalletSession({ address: 'G_LOBSTR', walletType: 'lobstr' });
+      mockLobstr.signTransaction.mockResolvedValue(mockSignedXdr);
+
+      const result = await signTransaction(mockXdr);
+
+      expect(result).toBe(mockSignedXdr);
+      expect(mockLobstr.signTransaction).toHaveBeenCalledWith(mockXdr);
+      expect(mockFreighter.signTransaction).not.toHaveBeenCalled();
+    });
+
+    it('an explicit wallet type overrides the session store', async () => {
+      setWalletSession({ address: 'G_LOBSTR', walletType: 'lobstr' });
+      mockFreighter.signTransaction.mockResolvedValue(mockSignedXdr);
+
+      await signTransaction(mockXdr, 'freighter');
+
+      expect(mockFreighter.signTransaction).toHaveBeenCalledWith(mockXdr);
+      expect(mockLobstr.signTransaction).not.toHaveBeenCalled();
+    });
+
+    it('falls back to Freighter when no session and no explicit type', async () => {
+      clearWalletSession();
+      mockFreighter.signTransaction.mockResolvedValue(mockSignedXdr);
+
+      await signTransaction(mockXdr);
+
+      expect(mockFreighter.signTransaction).toHaveBeenCalledWith(mockXdr);
+    });
+
+    it('errors clearly for an unknown wallet type', async () => {
+      await expect(
+        signTransaction(mockXdr, 'ledger' as never),
+      ).rejects.toMatchObject({ code: 'UNSUPPORTED_WALLET' });
     });
   });
 

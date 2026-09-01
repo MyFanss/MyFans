@@ -1,13 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Interval } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { NotificationsService } from './notifications.service';
 import { EmailOutboxService } from './email-outbox.service';
 
 /**
- * Background worker stub: ticks on an interval to drain the pending
- * subscription-lifecycle retry queue and re-attempt any pending outbox
- * emails. Both underlying operations are already idempotent (dedupe-keyed
- * retry jobs, dedupe-keyed outbox rows), so overlapping ticks are safe.
+ * Background worker: runs on a cron schedule (default: every minute) to
+ * drain the pending subscription-lifecycle retry queue and re-attempt any
+ * pending outbox emails. Both underlying operations are already idempotent
+ * (dedupe-keyed retry jobs, dedupe-keyed outbox rows), so overlapping ticks
+ * are safe.
+ *
+ * Override schedule with `EMAIL_OUTBOX_CRON` env var (cron expression).
  */
 @Injectable()
 export class NotificationRetryWorkerService {
@@ -19,7 +22,7 @@ export class NotificationRetryWorkerService {
     private readonly emailOutbox: EmailOutboxService,
   ) {}
 
-  @Interval(60_000)
+  @Cron(process.env.EMAIL_OUTBOX_CRON ?? '* * * * *')
   async tick(): Promise<void> {
     if (this.ticking) return;
     this.ticking = true;

@@ -47,6 +47,25 @@ export class PublicCreatorDto {
   })
   followers_count: number;
 
+  /**
+   * Personalized, viewer-scoped field: whether the *currently authenticated*
+   * caller has favorited this creator. `null` for anonymous requests (no
+   * JWT, or an invalid one) — never computed from another user's data, and
+   * never populated for a request that isn't authenticated as the viewer.
+   *
+   * Deliberately not `@ApiProperty`'d with a static example tied to a user,
+   * and never sourced from private account data (email, wallet address,
+   * payout/balance) — this DTO is the only shape returned from the public
+   * discover/creator-profile endpoints, authenticated or not.
+   */
+  @ApiProperty({
+    description:
+      'Whether the requesting (authenticated) user has favorited this creator. Null when the request is anonymous.',
+    nullable: true,
+    example: null,
+  })
+  isFavorited: boolean | null;
+
   constructor(user: User, creator?: Creator) {
     this.id = user.id;
     this.display_name = user.display_name;
@@ -55,5 +74,6 @@ export class PublicCreatorDto {
     this.bio = creator?.bio ?? null;
     this.is_verified = creator?.is_verified ?? false;
     this.followers_count = creator?.followers_count ?? 0;
+    this.isFavorited = null;
   }
 }

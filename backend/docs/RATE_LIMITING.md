@@ -13,19 +13,17 @@ Rate limiting is enforced globally using `@nestjs/throttler` to protect against 
 | `short` | 10 requests | 60 seconds | Default short window |
 | `medium` | 50 requests | 60 seconds | Authenticated user operations |
 | `long` | 100 requests | 60 seconds | General API endpoints (default) |
-| Auth throttle | 5 requests | 60 seconds | Login/register (strict) |
-| Exempt | Unlimited | N/A | Health check endpoints |
+| `auth` | 5 requests | 60 seconds | Login/register (strict) |
+| Exempt | Unlimited | N/A | Basic liveness endpoint only |
 
 ## Endpoint Categories
 
 ### Health Check Endpoints (Exempt)
-These endpoints are exempt from rate limiting and can be accessed without restrictions:
+Only the inexpensive liveness endpoint is exempt from rate limiting:
 - `GET /v1/health` - Basic health check
-- `GET /v1/health/db` - Database health
-- `GET /v1/health/redis` - Redis health
-- `GET /v1/health/soroban` - Soroban RPC health
-- `GET /v1/health/soroban-contract` - Soroban contract health
-- `GET /v1/health/queue-metrics` - Queue metrics
+
+Dependency and diagnostic health endpoints remain rate limited because they
+perform external or comparatively expensive work.
 
 ### Authentication Endpoints (Strict)
 Rate limited to prevent brute-force attacks:
@@ -71,6 +69,7 @@ Rate limiting is configured in `backend/src/app.module.ts`:
 
 ```typescript
 ThrottlerModule.forRoot([
+  { name: 'auth', ttl: 60000, limit: 5 },
   { name: 'short', ttl: 60000, limit: 10 },
   { name: 'medium', ttl: 60000, limit: 50 },
   { name: 'long', ttl: 60000, limit: 100 },
@@ -79,7 +78,7 @@ ThrottlerModule.forRoot([
 
 ### Custom Throttler Guard
 
-A custom `ThrottlerGuard` (`backend/src/auth/throttler.guard.ts`) extends the NestJS throttler to:
+A custom `ThrottlerGuard` (`backend/src/common/guards/throttler.guard.ts`) extends the NestJS throttler to:
 - Exempt health check endpoints from rate limiting
 - Apply appropriate rate limits based on route
 
@@ -91,7 +90,7 @@ Individual routes can be configured using the `@Throttle()` decorator:
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
   @Post('login')
-  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  @Throttle({ auth: { limit: 5, ttl: 60000 } })
   async login(@Body() body: { address?: string }) {
     // ...
   }
@@ -115,7 +114,7 @@ To adjust rate limits:
 
 1. **Global limits**: Edit `ThrottlerModule.forRoot()` in `backend/src/app.module.ts`
 2. **Per-route limits**: Add or modify `@Throttle()` decorators on controller methods
-3. **New exempt routes**: Update `ThrottlerGuard.isHealthCheckRoute()` in `backend/src/auth/throttler.guard.ts`
+3. **New exempt routes**: Update `ThrottlerGuard` in `backend/src/common/guards/throttler.guard.ts`
 
 ## Distributed Rate Limiting (Production)
 
@@ -142,7 +141,7 @@ ThrottlerModule.forRoot([
 
 ## Testing
 
-Rate limiting is tested in `backend/src/auth/throttler.guard.spec.ts`.
+Rate limiting is tested in `backend/src/common/guards/throttler.guard.spec.ts`.
 
 Run tests:
 ```bash

@@ -20,9 +20,9 @@ same key.
 outlive the session that created it. After expiry the record is deleted by the
 hourly cleanup cron (`IdempotencyCleanupService`) and the key may be reused.
 
-**Cleanup:** `IdempotencyCleanupService` runs `@Cron(EVERY_HOUR)` and calls
-`IdempotencyService.purgeExpired()`, which issues a single `DELETE WHERE
-expires_at < NOW()`.
+**Cleanup:** `IdempotencyCleanupService` runs on a configurable schedule
+(default: every hour) and calls `IdempotencyService.purgeExpired()`, which
+deletes expired records in batches to avoid long-running transactions.
 
 ---
 
@@ -41,12 +41,16 @@ A "collision" occurs when a client sends a second request with the same
 
 ### Key scoping
 
-Keys are scoped to a `(key, fingerprint)` pair where `fingerprint` is:
+Keys are scoped to a `(key, fingerprint)` pair where `fingerprint` encodes:
 
-- `user:<userId>` — when the request is authenticated.
-- `ip:<clientIp>` — for unauthenticated requests.
+- **Caller identity:** `user:<userId>` (authenticated) or `ip:<clientIp>` (anonymous).
+- **Body hash:** SHA-256 of the JSON-serialised request body.
 
-This prevents one user from replaying another user's key.
+The combined fingerprint format is `<identity>|<bodyHash>`. This ensures:
+
+1. One user cannot replay another user's key.
+2. The same key used with a **different request body** is rejected with
+   **409 Conflict** (body mismatch detection).
 
 ### Race condition
 
@@ -66,8 +70,17 @@ underlying issue.
 ## Configuration
 
 ```
-IDEMPOTENCY_TTL_HOURS=24   # optional; defaults to 24
+IDEMPOTENCY_TTL_HOURS=24              # optional; defaults to 24
+IDEMPOTENCY_CLEANUP_CRON="0 * * * *"  # optional; defaults to every hour
+IDEMPOTENCY_CLEANUP_BATCH_SIZE=1000   # optional; defaults to 1000
 ```
+
+## Multi-Instance Safety
+
+The idempotency store is backed by PostgreSQL with a unique constraint on
+`(key, fingerprint)`. This makes it safe for horizontally-scaled deployments —
+all instances share the same database and contention is handled via the unique
+constraint (loser gets 409). No in-memory state is used.
 
 ---
 
@@ -79,5 +92,7 @@ IDEMPOTENCY_TTL_HOURS=24   # optional; defaults to 24
    (method/path mismatch).
 4. Send two concurrent requests with `Idempotency-Key: test-2` → one gets
    `201`, the other gets `409`.
-5. Wait for TTL expiry (or manually delete the record) → same key accepted
+5. Send `POST /v1/posts` with `Idempotency-Key: test-1` but a **different
+   body** → expect `409` (body mismatch).
+6. Wait for TTL expiry (or manually delete the record) → same key accepted
    again as new.

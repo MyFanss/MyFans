@@ -20,9 +20,9 @@ export class OptionalJwtAuthGuard extends AuthGuard('jwt') {
     return true;
   }
 
-  handleRequest(_err: unknown, user: unknown): unknown {
+  handleRequest<TUser = unknown>(_err: unknown, user: TUser): TUser {
     // Never throw here (that's what makes auth "optional"); just pass
     // through whatever passport resolved, or undefined if it resolved none.
-    return user || undefined;
+    return (user || undefined) as TUser;
   }
 }

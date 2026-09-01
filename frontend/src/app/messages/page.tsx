@@ -1,16 +1,29 @@
 import Link from 'next/link';
-import { Conversation, listConversations } from '@/lib/api/messages';
+import { listConversations, type Conversation } from '@/lib/api/messages';
 
 export default async function MessagesPage() {
   let conversations: Conversation[] = [];
   let error: string | null = null;
+  let errorType: 'unauthorized' | 'notfound' | 'server' | null = null;
 
   try {
     const result = await listConversations({ limit: 20 });
     conversations = result.data;
   } catch (err) {
-    error = err instanceof Error ? err.message : 'Failed to load conversations';
+    const message = err instanceof Error ? err.message : 'Failed to load conversations';
+    error = message;
+    if (message.includes('401')) {
+      errorType = 'unauthorized';
+    } else if (message.includes('404')) {
+      errorType = 'notfound';
+    } else if (message.includes('5')) {
+      errorType = 'server';
+    }
   }
+
+  const getOtherParticipant = (conv: Conversation) => {
+    return conv.participant2?.username || conv.participant1?.username || 'Unknown';
+  };
 
   const getOtherParticipantName = (conv: Conversation) => {
     return conv.participant2?.displayName || conv.participant2?.username || 'Unknown';
@@ -48,7 +61,13 @@ export default async function MessagesPage() {
 
           {error && (
             <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <p className="text-red-800 dark:text-red-200">{error}</p>
+              <p className="text-red-800 dark:text-red-200">
+                {errorType === 'unauthorized'
+                  ? 'You must be signed in to view messages. Please sign in to continue.'
+                  : errorType === 'server'
+                    ? 'We encountered an issue loading your conversations. Please try again later.'
+                    : error}
+              </p>
             </div>
           )}
 

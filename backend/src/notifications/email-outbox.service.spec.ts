@@ -1,12 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { EmailOutboxService } from './email-outbox.service';
-import { EmailOutboxEntry, EmailOutboxStatus } from './entities/email-outbox-entry.entity';
+import {
+  EmailOutboxEntry,
+  EmailOutboxStatus,
+} from './entities/email-outbox-entry.entity';
 import { EMAIL_ADAPTER } from './adapters/email-adapter.interface';
 
 const mockRepo = () => ({
   findOne: jest.fn(),
-  create: jest.fn((data: Partial<EmailOutboxEntry>) => ({ ...data }) as EmailOutboxEntry),
+  create: jest.fn(
+    (data: Partial<EmailOutboxEntry>) => ({ ...data }) as EmailOutboxEntry,
+  ),
   save: jest.fn(async (entity: EmailOutboxEntry) => entity),
   find: jest.fn(),
 });
@@ -45,8 +50,11 @@ describe('EmailOutboxService', () => {
         body: 'Body',
       });
 
-      expect(repo.save).toHaveBeenCalledWith(
-        expect.objectContaining({ status: EmailOutboxStatus.PENDING }),
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dedupe_key: 'k1',
+          status: EmailOutboxStatus.PENDING,
+        }),
       );
       expect(adapter.send).toHaveBeenCalledWith({
         to: 'user-1',
@@ -55,10 +63,14 @@ describe('EmailOutboxService', () => {
       });
       expect(result.status).toBe(EmailOutboxStatus.SENT);
       expect(result.sent_at).toBeInstanceOf(Date);
+      expect(repo.save).toHaveBeenCalled();
     });
 
     it('is idempotent on dedupe_key — returns the existing row without re-sending', async () => {
-      const existing = { dedupe_key: 'k1', status: EmailOutboxStatus.SENT } as EmailOutboxEntry;
+      const existing = {
+        dedupe_key: 'k1',
+        status: EmailOutboxStatus.SENT,
+      } as EmailOutboxEntry;
       repo.findOne.mockResolvedValue(existing);
 
       const result = await service.enqueue({
@@ -120,8 +132,22 @@ describe('EmailOutboxService', () => {
   describe('processPending', () => {
     it('re-attempts delivery for every pending row', async () => {
       const rows = [
-        { dedupe_key: 'a', to_user_id: 'u1', subject: 's', body: 'b', attempts: 0, status: EmailOutboxStatus.PENDING },
-        { dedupe_key: 'b', to_user_id: 'u2', subject: 's', body: 'b', attempts: 0, status: EmailOutboxStatus.PENDING },
+        {
+          dedupe_key: 'a',
+          to_user_id: 'u1',
+          subject: 's',
+          body: 'b',
+          attempts: 0,
+          status: EmailOutboxStatus.PENDING,
+        },
+        {
+          dedupe_key: 'b',
+          to_user_id: 'u2',
+          subject: 's',
+          body: 'b',
+          attempts: 0,
+          status: EmailOutboxStatus.PENDING,
+        },
       ] as EmailOutboxEntry[];
       repo.find.mockResolvedValue(rows);
       adapter.send.mockResolvedValue(undefined);
@@ -130,10 +156,16 @@ describe('EmailOutboxService', () => {
 
       expect(adapter.send).toHaveBeenCalledTimes(2);
       expect(repo.save).toHaveBeenCalledWith(
-        expect.objectContaining({ dedupe_key: 'a', status: EmailOutboxStatus.SENT }),
+        expect.objectContaining({
+          dedupe_key: 'a',
+          status: EmailOutboxStatus.SENT,
+        }),
       );
       expect(repo.save).toHaveBeenCalledWith(
-        expect.objectContaining({ dedupe_key: 'b', status: EmailOutboxStatus.SENT }),
+        expect.objectContaining({
+          dedupe_key: 'b',
+          status: EmailOutboxStatus.SENT,
+        }),
       );
     });
   });

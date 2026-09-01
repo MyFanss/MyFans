@@ -1,108 +1,80 @@
-# Contributing to MyFans
+# Contributing Guide
 
-Thank you for your interest in contributing to MyFans! This document provides guidelines and information for contributors.
+## Adding a New Database Entity
 
-## Prerequisites
+When adding a new feature that requires a database table, follow this checklist to ensure your entity is properly registered:
 
-- Node.js 18+ and npm
-- Rust and Cargo
-- Soroban CLI (`cargo install soroban-cli`)
-- PostgreSQL
-- Freighter Wallet browser extension
+### Checklist
 
-## Development Setup
+1. **Create the entity class** in your module's `entities/` directory (e.g., `src/mymodule/entities/my-entity.entity.ts`)
+   - Use `@Entity()` decorator from TypeORM
+   - Define all columns and relationships
 
-### Automated Setup
+2. **Register in module's TypeOrmModule**
+   - Add the entity to `TypeOrmModule.forFeature([MyEntity, ...])` in your module's imports
+   - This makes the entity available for dependency injection at runtime
 
-**Windows:**
-```bash
-setup.bat
+3. **Add to migration datasource** (`backend/src/migration.datasource.ts`)
+   - Import your entity class
+   - Add it to the `entities` array in the `DataSource` config
+   - **Why:** Migrations run outside the NestJS DI container. The datasource must declare all entities so TypeORM CLI and migration runners can reference them. Without this, auto-migration generation and schema comparison may fail or produce incomplete migrations.
+
+4. **Create a migration if adding to existing tables**
+   - If modifying an existing table: `npm run migration:generate -- src/mymodule/<timestamp>-DescribeChange`
+   - If creating a new table, you may rely on TypeORM's auto-generation or write SQL manually
+   - Ensure the migration is added to `migration.datasource.ts`'s migrations array
+
+5. **Test**
+   - Run `npm run migration:run` locally to verify the migration applies cleanly
+   - Verify the table structure with `\d table_name` in psql
+
+### Example
+
+```typescript
+// src/mymodule/entities/my-entity.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+
+@Entity('my_entities')
+export class MyEntity {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  name: string;
+}
 ```
 
-**Linux/Mac:**
-```bash
-chmod +x setup.sh
-./setup.sh
+```typescript
+// src/mymodule/mymodule.module.ts
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { MyEntity } from './entities/my-entity.entity';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([MyEntity])],
+  // ...
+})
+export class MyModule {}
 ```
 
-### Manual Setup
+```typescript
+// backend/src/migration.datasource.ts
+import { MyEntity } from './mymodule/entities/my-entity.entity';
 
-1. **Install Dependencies**
-   ```bash
-   # Frontend
-   cd frontend
-   npm install
+export const migrationDataSource = new DataSource({
+  // ...
+  entities: [
+    // ... existing entities ...
+    MyEntity,
+  ],
+});
+```
 
-   # Backend
-   cd ../backend
-   npm install
+## Testing Migrations
 
-   # Contracts
-   cd ../contract
-   cargo build --release --target wasm32-unknown-unknown
-   ```
+Run the migration integration test to verify all registered entities' tables exist:
 
-2. **Configure Environment**
-   ```bash
-   # Frontend
-   cd frontend
-   cp .env.local.example .env.local
-   # Edit .env.local
+```bash
+npm run test:migrations
+```
 
-   # Backend
-   cd ../backend
-   cp .env.example .env
-   # Edit .env
-   ```
-
-## Running the Application
-
-1. **Database:**
-   ```bash
-   docker run -d -p 5432:5432 \
-     -e POSTGRES_PASSWORD=postgres \
-     -e POSTGRES_DB=myfans \
-     postgres
-   ```
-
-2. **Backend:**
-   ```bash
-   cd backend
-   npm run start:dev
-   # Runs on http://localhost:3001
-   ```
-
-3. **Frontend:**
-   ```bash
-   cd frontend
-   npm run dev
-   # Runs on http://localhost:3000
-   ```
-
-## Testing
-
-- **Frontend:** `cd frontend && npm test`
-- **Backend:** `cd backend && npm test`
-- **Contracts:** `cd contract && cargo test`
-
-## API Reference
-
-For a hands-on guide to running the backend, authenticating, and making your first API calls, see [`backend/docs/API_QUICKSTART.md`](backend/docs/API_QUICKSTART.md).
-
-## Code Style
-
-- Follow existing patterns in the repository
-- Run linters: `npm run lint` in respective directories
-- Ensure tests pass before submitting PR
-
-## Submitting Changes
-
-1. Create a new branch for your changes
-2. Make your changes
-3. Add tests if applicable
-4. Ensure all tests pass
-5. Submit a pull request
-
-## Reporting Issues
-
-Please use the issue templates for bug reports, feature requests, and security issues.
+This test runs all migrations against a fresh Postgres instance and verifies that every expected table and column exists.

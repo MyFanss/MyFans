@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import * as net from 'net';
 import * as tls from 'tls';
 import { DataSource } from 'typeorm';
@@ -10,11 +10,6 @@ import {
   QueueMetricsService,
   QueueSnapshot,
 } from '../common/services/queue-metrics.service';
-import {
-  ContractHealthService,
-  ContractCheckResult,
-} from '../contract-health/contract-health.service';
-import { loadContractIds } from '../contract-health/contract-ids.loader';
 
 export interface HealthCheckResult {
   status: 'up' | 'down' | 'degraded';
@@ -45,9 +40,12 @@ export interface DetailedHealthCheckResult extends HealthCheckResult {
 /**
  * Readiness result — unlike liveness (`getHealth`), this actually probes
  * subsystems. The database is mandatory: a failed DB probe fails readiness
- * so a load balancer stops routing traffic to this instance. Soroban RPC is
- * probed for visibility but is optional and never fails readiness on its own,
- * since the API remains functional for non-chain reads/writes without it.
+ * so a load balancer stops routing traffic to this instance. Redis is
+ * mandatory too when it is configured (an instance whose cache/session store
+ * is down is not fit for traffic); an unconfigured Redis is omitted. Soroban
+ * RPC is probed for visibility but is optional and never fails readiness on
+ * its own, since the API remains functional for non-chain reads/writes
+ * without it.
  */
 export interface ReadinessResult {
   status: 'up' | 'down';
@@ -58,12 +56,9 @@ export interface ReadinessResult {
       latencyMs?: number;
       error?: string;
     };
+    // Omitted when Redis is not configured (optional subsystem).
+    redis?: RedisHealthStatus;
     sorobanRpc: SorobanHealthStatus;
-    contracts: {
-      status: 'up' | 'down' | 'not_configured';
-      results: ContractCheckResult[];
-      error?: string;
-    };
   };
 }
 
@@ -102,7 +97,6 @@ export class HealthService {
     private dataSource: DataSource,
     private sorobanRpcService: SorobanRpcService,
     private queueMetrics: QueueMetricsService,
-    @Optional() private contractHealth?: ContractHealthService,
   ) {}
 
   getHealth(): DetailedHealthCheckResult {
@@ -376,65 +370,34 @@ export class HealthService {
   /**
    * Readiness probe. Unlike `getHealth()` (liveness — always up while the
    * process is running), this actually checks whether the instance is fit
-   * to receive traffic: the database must be reachable, or readiness fails.
-   * Soroban RPC is probed and reported for visibility but does not gate
-   * readiness on its own.
+   * to receive traffic: the database must be reachable, and Redis — when
+   * configured — must answer PING, or readiness fails. Soroban RPC is probed
+   * and reported for visibility but does not gate readiness on its own.
    */
   async getReadiness(): Promise<ReadinessResult> {
-    const [dbHealth, rpcHealth, contracts] = await Promise.all([
+    const [dbHealth, redisHealth, rpcHealth] = await Promise.all([
       this.checkDatabaseWithLatency(),
+      this.checkRedis(),
       this.checkSorobanRpc(),
-      this.checkConfiguredContracts(),
     ]);
 
+    // An unconfigured Redis is omitted from the report and does not gate
+    // readiness. A configured-but-down Redis leaves the instance without its
+    // cache/session store, so it is not fit to receive traffic.
+    const redisConfigured = redisHealth.status !== 'not_configured';
+    const ready =
+      dbHealth.status !== 'down' &&
+      (!redisConfigured || redisHealth.status !== 'down');
+
     return {
-      status:
-        dbHealth.status === 'down' ||
-        (process.env.NODE_ENV === 'production' && contracts.status !== 'up')
-          ? 'down'
-          : 'up',
+      status: ready ? 'up' : 'down',
       timestamp: new Date().toISOString(),
       checks: {
         database: dbHealth,
+        ...(redisConfigured ? { redis: redisHealth } : {}),
         sorobanRpc: rpcHealth,
-        contracts,
       },
     };
-  }
-
-  private async checkConfiguredContracts(): Promise<
-    ReadinessResult['checks']['contracts']
-  > {
-    if (!this.contractHealth) return { status: 'not_configured', results: [] };
-    try {
-      const ids = loadContractIds();
-      const configured = [
-        ['subscriptions', ids.subscriptions, 'plan_count'],
-        ['token', ids.myfansToken, 'balance'],
-      ] as const;
-      if (configured.some(([, id]) => !id)) {
-        return {
-          status: 'not_configured',
-          results: [],
-          error: 'Required contract ID is missing',
-        };
-      }
-      const results = await Promise.all(
-        configured.map(([name, id, method]) =>
-          this.contractHealth!.checkContract(name, id, method),
-        ),
-      );
-      return {
-        status: results.every((result) => result.ok) ? 'up' : 'down',
-        results,
-      };
-    } catch (error) {
-      return {
-        status: 'not_configured',
-        results: [],
-        error: (error as Error).message,
-      };
-    }
   }
 
   async checkSorobanRpc(): Promise<SorobanHealthStatus> {
@@ -454,6 +417,7 @@ export class HealthService {
 
   private readonly HEALTH_CHECKS = [
     { name: 'app', endpoint: '/health' },
+    { name: 'ready', endpoint: '/health/ready' },
     { name: 'detailed', endpoint: '/health/detailed' },
     { name: 'aggregate', endpoint: '/health/aggregate' },
     { name: 'db', endpoint: '/health/db' },

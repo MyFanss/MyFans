@@ -1,15 +1,24 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import Image from "next/image";
+import Link from "next/link";
 import Button from "@/components/Button";
 import { WalletSelectionModal } from "@/components/wallet/WalletSelectionModal";
+import { DiscoverStrip } from "./DiscoverStrip";
 import type { WalletType } from "@/types/wallet";
 import { setWalletSession } from "@/lib/client-session";
 
 /**
- * Hero section for the MyFans landing page
- * Value proposition: MyFans Content Subscription Platform
+ * Hero section for the MyFans landing page (#1661)
+ *
+ * Wallet copy: Freighter is the reference wallet on MyFans (fully wired for
+ * Soroban transaction signing).  Lobstr connection and signing are also wired
+ * but have had less real-world exercise.  WalletConnect is behind a feature
+ * flag and shows "Coming soon" in the modal.
+ *
+ * This hero copy therefore only says "Connect your wallet" — it never
+ * specifically endorses WalletConnect or Lobstr as production-ready choices.
+ * The modal itself labels each wallet's current support level.
  */
 export function Hero() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -25,15 +34,18 @@ export function Hero() {
   const handleWalletConnect = useCallback(
     (address: string, walletType: WalletType) => {
       setWalletSession({ address, walletType });
-      console.log("Connected wallet:", address, walletType);
-      // Optionally redirect to signup/dashboard
     },
     [],
   );
 
   return (
     <>
-      {/* Skip to main content link for accessibility */}
+      {/*
+       * Skip to main content — targets the <main id="main-content"> element
+       * rendered by app/page.tsx.  The sr-only / focus:not-sr-only pattern
+       * keeps it accessible to keyboard users without cluttering the visual
+       * layout.
+       */}
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-4 focus:left-4 focus:rounded-md focus:bg-primary-500 focus:px-4 focus:py-2 focus:text-white focus:font-medium"
@@ -41,8 +53,9 @@ export function Hero() {
         Skip to main content
       </a>
 
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <section
-        className="relative overflow-hidden min-h-[calc(100vh-4rem)] flex items-center justify-center"
+        className="relative overflow-hidden min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center"
         aria-labelledby="hero-heading"
       >
         {/* Gradient background */}
@@ -51,7 +64,7 @@ export function Hero() {
           aria-hidden="true"
         />
 
-        {/* Decorative gradient orbs - with reduced motion support */}
+        {/* Decorative gradient orbs */}
         <div
           className="absolute -top-1/4 -right-1/4 h-[600px] w-[600px] rounded-full bg-gradient-to-br from-primary-400/20 to-primary-600/10 blur-3xl"
           aria-hidden="true"
@@ -61,19 +74,18 @@ export function Hero() {
           aria-hidden="true"
         />
 
-        {/* Main content */}
-        <div className="relative z-10 w-full max-w-5xl px-4 sm:px-6 lg:px-8">
+        <div className="relative z-10 w-full max-w-5xl flex-1 flex flex-col justify-center px-4 sm:px-6 lg:px-8">
           <div className="text-center">
             {/* Badge */}
             <div className="mb-6 inline-flex items-center rounded-full border border-primary-200 bg-primary-50/50 px-4 py-1.5 text-sm font-medium text-primary-700 backdrop-blur-sm dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-300">
               <span className="mr-2 flex h-2">
-                <span className="absolute inline-flex h-2 w-2 animate-ping rounded-full bg-primary-500 opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-500"></span>
+                <span className="absolute inline-flex h-2 w-2 animate-ping rounded-full bg-primary-500 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-500" />
               </span>
               Built on Stellar with Soroban
             </div>
 
-            {/* Main heading with clamp() for responsive font sizes */}
+            {/* Main heading */}
             <h1
               id="hero-heading"
               className="mx-auto mb-6 font-bold tracking-tight text-surface-900 dark:text-white"
@@ -88,7 +100,7 @@ export function Hero() {
               </span>
             </h1>
 
-            {/* Subheading with clamp() for responsive font sizes */}
+            {/* Subheading */}
             <p
               className="mx-auto mb-10 max-w-2xl text-surface-600 dark:text-surface-300"
               style={{
@@ -97,8 +109,11 @@ export function Hero() {
               }}
             >
               MyFans is a decentralized content subscription platform empowering
-              creators to monetize their work directly. Connect your wallet to
-              get started—no middleman, just you and your fans.
+              creators to monetize their work directly. Connect your{" "}
+              <strong className="font-semibold text-surface-900 dark:text-white">
+                Freighter
+              </strong>{" "}
+              wallet to get started — no middleman, just you and your fans.
             </p>
 
             {/* CTA Buttons */}
@@ -128,26 +143,39 @@ export function Hero() {
                 </span>
               </Button>
 
-              <Button
-                variant="tertiary"
-                size="lg"
-                onClick={() => {
-                  const creatorsSection = document.getElementById("creators");
-                  creatorsSection?.scrollIntoView({ behavior: "smooth" });
-                }}
-                className="min-w-[200px]"
+              {/*
+               * "Explore Creators" links directly to /discover rather than
+               * scrolling to an inline section, because the discover strip
+               * is hidden when the API returns no results.
+               */}
+              <Link
+                href="/discover"
+                className="inline-flex min-w-[200px] items-center justify-center rounded-lg border border-surface-300 px-6 py-3 text-base font-semibold text-surface-700 transition-colors hover:bg-surface-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
               >
                 Explore Creators
-              </Button>
+              </Link>
             </div>
 
-            {/* Trust indicators / Social proof */}
+            {/* Freighter install nudge */}
+            <p className="mt-4 text-xs text-surface-400 dark:text-surface-500">
+              Requires the{" "}
+              <a
+                href="https://www.freighter.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2 hover:text-primary-600 dark:hover:text-primary-400"
+              >
+                Freighter browser extension
+              </a>
+              . Lobstr mobile wallet also supported.
+            </p>
+
+            {/* Trust indicators */}
             <div className="mt-16 flex flex-col items-center gap-6">
               <p className="text-sm font-medium text-surface-500 dark:text-surface-400">
                 Trusted by creators worldwide
               </p>
               <div className="flex items-center gap-8">
-                {/* Placeholder stats - replace with actual data */}
                 <div className="text-center">
                   <div
                     className="font-bold text-surface-900 dark:text-white"
@@ -192,32 +220,16 @@ export function Hero() {
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Hero image placeholder - reserved space to prevent CLS */}
-          <div
-            className="mt-16 aspect-video w-full overflow-hidden rounded-2xl bg-surface-100 dark:bg-surface-800"
-            style={{ minHeight: "300px" }}
-          >
-            <div className="flex h-full items-center justify-center text-surface-400 dark:text-surface-500">
-              <div className="text-center">
-                <svg
-                  className="mx-auto mb-4 h-16 w-16"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1}
-                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-                  />
-                </svg>
-                <p className="text-sm">Hero illustration coming soon</p>
-              </div>
-            </div>
-          </div>
+        {/* ── Discover Strip ───────────────────────────────────────────────── */}
+        {/*
+         * Live creator data from GET /api/v1/creators?limit=4.
+         * Hidden automatically when the API returns no results or errors,
+         * so the landing page never shows mock/placeholder creators.
+         */}
+        <div className="relative z-10 w-full">
+          <DiscoverStrip limit={4} />
         </div>
       </section>
 

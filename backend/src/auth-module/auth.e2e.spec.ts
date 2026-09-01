@@ -9,6 +9,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UsersService } from '../users/users.service';
+import { RefreshTokenService } from './refresh-token.service';
 
 const TEST_SECRET = 'e2e-test-secret';
 
@@ -16,7 +17,7 @@ const mockUser = {
   id: 'user-1',
   email: 'test@example.com',
   username: 'testuser',
-  role: 'USER',
+  role: 'ADMIN',
 };
 
 describe('Auth Module (e2e)', () => {
@@ -46,6 +47,10 @@ describe('Auth Module (e2e)', () => {
         AuthService,
         JwtStrategy,
         { provide: UsersService, useValue: mockUsersService },
+        {
+          provide: RefreshTokenService,
+          useValue: { rotate: jest.fn(), issueTokenPair: jest.fn() },
+        },
       ],
     }).compile();
 

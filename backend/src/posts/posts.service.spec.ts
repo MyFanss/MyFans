@@ -49,6 +49,7 @@ describe('PostsService', () => {
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       getMany: jest.fn(),
     };
@@ -176,7 +177,6 @@ describe('PostsService', () => {
 
       expect(repo.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- jest matcher typings are `any`
           where: expect.objectContaining({ deletedAt: expect.anything() }),
         }),
       );
@@ -223,7 +223,6 @@ describe('PostsService', () => {
 
       await service.findByAuthor('author-1', { limit: 20 });
 
-      /* eslint-disable @typescript-eslint/no-unsafe-assignment -- jest matcher typings are `any` */
       expect(repo.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
@@ -232,7 +231,6 @@ describe('PostsService', () => {
           }),
         }),
       );
-      /* eslint-enable @typescript-eslint/no-unsafe-assignment */
     });
 
     it('excludes soft-deleted posts for the author', async () => {

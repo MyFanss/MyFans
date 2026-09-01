@@ -12,12 +12,16 @@ function buildUpstreamUrl(searchParams: URLSearchParams): string {
   const creator = searchParams.get('creator');
   const from = searchParams.get('from') ?? searchParams.get('fromDate');
   const to = searchParams.get('to') ?? searchParams.get('toDate');
+  const type = searchParams.get('type');
+  const status = searchParams.get('status');
 
   if (page) upstream.searchParams.set('page', page);
   if (limit) upstream.searchParams.set('limit', limit);
   if (creator) upstream.searchParams.set('creator', creator);
   if (from) upstream.searchParams.set('from', from);
   if (to) upstream.searchParams.set('to', to);
+  if (type) upstream.searchParams.set('type', type);
+  if (status) upstream.searchParams.set('status', status);
 
   return upstream.toString();
 }

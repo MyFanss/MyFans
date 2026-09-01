@@ -8,6 +8,8 @@ export const FeatureFlag = {
   NEW_SUBSCRIPTION_FLOW: 'newSubscriptionFlow',
   CRYPTO_PAYMENTS: 'cryptoPayments',
   WALLET_CONNECT: 'walletConnect',
+  CONTENT_UPLOADS: 'contentUploads',
+  SOROBAN_POLLER: 'sorobanPoller',
 } as const;
 
 export type FeatureFlag = (typeof FeatureFlag)[keyof typeof FeatureFlag];
@@ -55,6 +57,14 @@ export const featureFlagDefinitions: Record<FeatureFlag, FeatureFlagDefinition> 
     description: 'Enables WalletConnect as a wallet connection option. Disabled by default until the provider is fully integrated.',
     envKey: 'NEXT_PUBLIC_FEATURE_WALLET_CONNECT',
   },
+  [FeatureFlag.CONTENT_UPLOADS]: {
+    description: 'Enables creator content and media uploads to IPFS and storage.',
+    envKey: 'NEXT_PUBLIC_FEATURE_CONTENT_UPLOADS',
+  },
+  [FeatureFlag.SOROBAN_POLLER]: {
+    description: 'Controls polling of on-chain Soroban subscription events.',
+    envKey: 'NEXT_PUBLIC_FEATURE_SOROBAN_POLLER',
+  },
 };
 
 export const defaultFeatureFlags: FeatureFlagSnapshot = Object.freeze({
@@ -65,6 +75,8 @@ export const defaultFeatureFlags: FeatureFlagSnapshot = Object.freeze({
   [FeatureFlag.NEW_SUBSCRIPTION_FLOW]: false,
   [FeatureFlag.CRYPTO_PAYMENTS]: false,
   [FeatureFlag.WALLET_CONNECT]: false,
+  [FeatureFlag.CONTENT_UPLOADS]: false,
+  [FeatureFlag.SOROBAN_POLLER]: false,
 });
 
 let cachedRemoteFlags: FeatureFlagOverrides = {};

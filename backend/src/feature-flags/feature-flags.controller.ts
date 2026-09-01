@@ -4,13 +4,13 @@ import { FeatureFlagsService } from './feature-flags.service';
 import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('feature-flags')
-@Controller({ path: 'feature-flags', version: '1' })
+@Controller({ path: ['feature-flags', 'features'], version: '1' })
 export class FeatureFlagsController {
   constructor(private readonly featureFlagsService: FeatureFlagsService) {}
 
   @Get()
   @Public()
-  @ApiOperation({ summary: 'List all feature flags and their current state' })
+  @ApiOperation({ summary: 'List all feature flags and their current state (public booleans only)' })
   @ApiResponse({ status: 200, description: 'Feature flags map' })
   getFlags() {
     return this.featureFlagsService.getAllFlags();

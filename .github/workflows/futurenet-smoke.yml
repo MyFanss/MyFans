@@ -1,88 +1,228 @@
-name: Futurenet Smoke (manual)
+# Futurenet smoke test — verifies deployed contracts are reachable on Futurenet.
+#
+# Behaviour:
+#   - If ALL required contract IDs and secrets are present → invoke getter methods
+#     on every core contract and report results.
+#   - If ANY required contract ID or secret is missing:
+#       • On the main branch  → fail the job (red CI) so the gap is not silently ignored.
+#       • On other branches   → skip with an explicit warning so feature branches are not
+#         blocked by deployment secrets they don't own.
+#
+# Required GitHub Actions secrets:
+#   FUTURENET_RPC_URL              - Soroban RPC endpoint for Futurenet
+#   CONTRACT_ID_SUBSCRIPTION       - Deployed subscription contract ID
+#   CONTRACT_ID_MYFANS_TOKEN       - Deployed MyFans token contract ID
+#   CONTRACT_ID_CREATOR_REGISTRY   - Deployed creator registry contract ID
+#   CONTRACT_ID_CONTENT_ACCESS     - Deployed content access contract ID
+#   CONTRACT_ID_EARNINGS           - Deployed earnings contract ID
+#
+# Admin key is NEVER passed to this workflow; read-only getter calls only.
 
-# Manual-only: never runs on push/pull_request so it cannot block PR CI.
-# Trigger via: Actions → "Futurenet Smoke (manual)" → Run workflow
+name: Futurenet Smoke
+
 on:
+  # Run daily at 06:00 UTC
+  schedule:
+    - cron: '0 6 * * *'
+  # Run after any push to main (deployment changes)
+  push:
+    branches:
+      - main
+  # Allow manual triggers with optional reason
   workflow_dispatch:
     inputs:
-      stellar_cli:
-        description: "stellar-cli version (e.g. 25.2.0)"
+      reason:
+        description: 'Reason for manual trigger'
         required: false
-        default: "25.2.0"
-
-# Prevent two smoke runs from racing on the same network identity.
-concurrency:
-  group: futurenet-smoke
-  cancel-in-progress: false
+        default: 'manual smoke run'
 
 jobs:
-  smoke:
-    name: Deploy & verify on Futurenet
+  # ─────────────────────────────────────────────────────────────────────────
+  # Guard: check that all required secrets / IDs are present.
+  # ─────────────────────────────────────────────────────────────────────────
+  check-prerequisites:
+    name: Check contract IDs and secrets
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    outputs:
+      ready: ${{ steps.guard.outputs.ready }}
+      missing: ${{ steps.guard.outputs.missing }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install system dependencies
+      - name: Evaluate required inputs
+        id: guard
+        env:
+          RPC_URL:          ${{ secrets.FUTURENET_RPC_URL }}
+          ID_SUBSCRIPTION:  ${{ secrets.CONTRACT_ID_SUBSCRIPTION }}
+          ID_TOKEN:         ${{ secrets.CONTRACT_ID_MYFANS_TOKEN }}
+          ID_REGISTRY:      ${{ secrets.CONTRACT_ID_CREATOR_REGISTRY }}
+          ID_CONTENT:       ${{ secrets.CONTRACT_ID_CONTENT_ACCESS }}
+          ID_EARNINGS:      ${{ secrets.CONTRACT_ID_EARNINGS }}
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y libdbus-1-dev libudev-dev pkg-config
+          missing=""
+          [ -z "$RPC_URL" ]         && missing="$missing FUTURENET_RPC_URL"
+          [ -z "$ID_SUBSCRIPTION" ] && missing="$missing CONTRACT_ID_SUBSCRIPTION"
+          [ -z "$ID_TOKEN" ]        && missing="$missing CONTRACT_ID_MYFANS_TOKEN"
+          [ -z "$ID_REGISTRY" ]     && missing="$missing CONTRACT_ID_CREATOR_REGISTRY"
+          [ -z "$ID_CONTENT" ]      && missing="$missing CONTRACT_ID_CONTENT_ACCESS"
+          [ -z "$ID_EARNINGS" ]     && missing="$missing CONTRACT_ID_EARNINGS"
 
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown,wasm32v1-none
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: contract
-          prefix-key: futurenet-smoke
-
-      - name: Cache stellar CLI binary
-        id: stellar-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/stellar
-          key: stellar-cli-${{ inputs.stellar_cli }}-${{ runner.os }}-v1
-
-      - name: Install Stellar CLI
-        if: steps.stellar-cache.outputs.cache-hit != 'true'
-        run: cargo install stellar-cli --locked --version ${{ inputs.stellar_cli }}
-
-      - name: Deploy and verify on Futurenet
-        id: deploy
-        run: |
-          ./scripts/deploy.sh \
-            --network futurenet \
-            --source "ci-${{ github.run_id }}-${{ github.run_attempt }}" \
-            --out "./deployed-futurenet-smoke.json" \
-            --env-out "./.env.deployed-futurenet-smoke"
-        working-directory: contract
-
-      - name: Smoke summary
-        if: always()
-        run: |
-          echo "## Futurenet Smoke" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [[ "${{ steps.deploy.outcome }}" == "success" ]]; then
-            echo "✅ Deploy + post-deploy verification passed." >> $GITHUB_STEP_SUMMARY
-            if [[ -f contract/deployed-futurenet-smoke.json ]]; then
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo '```json' >> $GITHUB_STEP_SUMMARY
-              cat contract/deployed-futurenet-smoke.json >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-            fi
+          if [ -n "$missing" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            # Trim leading space
+            echo "missing=${missing# }" >> "$GITHUB_OUTPUT"
           else
-            echo "❌ Deploy step failed — check logs above." >> $GITHUB_STEP_SUMMARY
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "missing=" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload deployment artifacts
+  # ─────────────────────────────────────────────────────────────────────────
+  # Fail loudly on main when IDs are missing.
+  # ─────────────────────────────────────────────────────────────────────────
+  fail-on-missing-main:
+    name: "FAIL – contract IDs missing on main"
+    needs: check-prerequisites
+    if: needs.check-prerequisites.outputs.ready == 'false' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report missing secrets and fail
+        run: |
+          echo "::error::Futurenet smoke cannot run on main: missing secrets/IDs:"
+          echo "::error::  ${{ needs.check-prerequisites.outputs.missing }}"
+          echo ""
+          echo "Add the missing secrets under Settings → Secrets and variables → Actions."
+          echo "See .github/workflows/futurenet-smoke.yml for the full list."
+          exit 1
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Skip gracefully on non-main branches when IDs are missing.
+  # ─────────────────────────────────────────────────────────────────────────
+  skip-on-missing-branch:
+    name: "SKIP – contract IDs not configured (non-main)"
+    needs: check-prerequisites
+    if: needs.check-prerequisites.outputs.ready == 'false' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warn and skip
+        run: |
+          echo "::warning::Futurenet smoke skipped – the following secrets/IDs are not set:"
+          echo "::warning::  ${{ needs.check-prerequisites.outputs.missing }}"
+          echo ""
+          echo "This is acceptable on feature branches.  The smoke WILL fail on main"
+          echo "until all required secrets are configured."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Actual smoke test – runs only when all IDs are present.
+  # ─────────────────────────────────────────────────────────────────────────
+  smoke:
+    name: Smoke – invoke contract getters on Futurenet
+    needs: check-prerequisites
+    if: needs.check-prerequisites.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    env:
+      SOROBAN_NETWORK: futurenet
+      SOROBAN_RPC_URL: ${{ secrets.FUTURENET_RPC_URL }}
+      # Contract IDs – masked automatically by Actions because they come from secrets
+      CONTRACT_ID_SUBSCRIPTION:     ${{ secrets.CONTRACT_ID_SUBSCRIPTION }}
+      CONTRACT_ID_MYFANS_TOKEN:     ${{ secrets.CONTRACT_ID_MYFANS_TOKEN }}
+      CONTRACT_ID_CREATOR_REGISTRY: ${{ secrets.CONTRACT_ID_CREATOR_REGISTRY }}
+      CONTRACT_ID_CONTENT_ACCESS:   ${{ secrets.CONTRACT_ID_CONTENT_ACCESS }}
+      CONTRACT_ID_EARNINGS:         ${{ secrets.CONTRACT_ID_EARNINGS }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Install stellar-cli (soroban-cli) at a pinned version
+      - name: Install stellar-cli
+        run: |
+          cargo install stellar-cli --version 21.4.0 --locked --quiet 2>&1 | tail -5
+
+      # Add a network config entry pointing at Futurenet RPC
+      - name: Configure Futurenet network
+        run: |
+          stellar network add \
+            --rpc-url      "$SOROBAN_RPC_URL" \
+            --network-passphrase "Test SDF Future Network ; October 2022" \
+            futurenet
+
+      # ── Subscription contract ──────────────────────────────────────────
+      - name: Smoke – subscription contract (get_config)
+        id: smoke_subscription
+        run: |
+          echo "Calling get_config on subscription contract…"
+          stellar contract invoke \
+            --id      "$CONTRACT_ID_SUBSCRIPTION" \
+            --network futurenet \
+            --fn      get_config \
+            -- 2>&1 | tee /tmp/smoke-subscription.log
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      # ── MyFans token contract ──────────────────────────────────────────
+      - name: Smoke – myfans token contract (name)
+        id: smoke_token
+        run: |
+          echo "Calling name() on myfans token contract…"
+          stellar contract invoke \
+            --id      "$CONTRACT_ID_MYFANS_TOKEN" \
+            --network futurenet \
+            --fn      name \
+            -- 2>&1 | tee /tmp/smoke-token.log
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      # ── Creator registry contract ──────────────────────────────────────
+      - name: Smoke – creator registry contract (get_admin)
+        id: smoke_registry
+        run: |
+          echo "Calling get_admin on creator registry contract…"
+          stellar contract invoke \
+            --id      "$CONTRACT_ID_CREATOR_REGISTRY" \
+            --network futurenet \
+            --fn      get_admin \
+            -- 2>&1 | tee /tmp/smoke-registry.log
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      # ── Content access contract ────────────────────────────────────────
+      - name: Smoke – content access contract (get_admin)
+        id: smoke_content
+        run: |
+          echo "Calling get_admin on content access contract…"
+          stellar contract invoke \
+            --id      "$CONTRACT_ID_CONTENT_ACCESS" \
+            --network futurenet \
+            --fn      get_admin \
+            -- 2>&1 | tee /tmp/smoke-content.log
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      # ── Earnings contract ──────────────────────────────────────────────
+      - name: Smoke – earnings contract (get_admin)
+        id: smoke_earnings
+        run: |
+          echo "Calling get_admin on earnings contract…"
+          stellar contract invoke \
+            --id      "$CONTRACT_ID_EARNINGS" \
+            --network futurenet \
+            --fn      get_admin \
+            -- 2>&1 | tee /tmp/smoke-earnings.log
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      # ── Upload logs as artifact ────────────────────────────────────────
+      - name: Upload smoke logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: futurenet-smoke-${{ github.run_id }}
-          path: |
-            contract/deployed-futurenet-smoke.json
-            contract/.env.deployed-futurenet-smoke
-          retention-days: 7
+          name: futurenet-smoke-logs-${{ github.run_id }}
+          path: /tmp/smoke-*.log
+          retention-days: 14
+
+      # ── Summary ───────────────────────────────────────────────────────
+      - name: Smoke summary
+        if: always()
+        run: |
+          echo "## Futurenet Smoke Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          for f in /tmp/smoke-*.log; do
+            label=$(basename "$f" .log | sed 's/smoke-//')
+            echo "### $label" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          done

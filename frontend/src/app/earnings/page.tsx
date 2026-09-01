@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
 import { FeatureGate } from '@/components/FeatureGate';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ErrorFallback } from '@/components/ErrorFallback';
+import { useAuth } from '@/hooks/useAuth';
 import {
   EarningsSummaryCard,
   EarningsBreakdownCard,
@@ -25,21 +27,70 @@ const EarningsChart = dynamic(
 );
 
 export default function EarningsPage() {
+  const router = useRouter();
+  const { isAuthenticated, sessionData, isLoading } = useAuth();
   const [summary, setSummary] = useState<EarningsSummary | null>(null);
   const [days, setDays] = useState(30);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Check authorization on mount
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      setAuthError('You must be logged in to view earnings');
+      router.push('/auth/sign-in');
+    } else if (!isLoading && sessionData && !sessionData.is_creator) {
+      setAuthError('Only creators can view earnings');
+    }
+  }, [isAuthenticated, isLoading, sessionData, router]);
 
   useEffect(() => {
+    if (!isAuthenticated || !sessionData?.is_creator || isLoading) {
+      return;
+    }
+
     const load = async () => {
       try {
         const data = await fetchEarningsSummary(days);
         setSummary(data);
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('403')) {
+          setAuthError('You do not have permission to view these earnings');
+        }
         setSummary(null);
       }
     };
 
     load();
-  }, [days]);
+  }, [days, isAuthenticated, sessionData, isLoading]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white dark:bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600 dark:text-gray-400">Loading earnings...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (authError) {
+    return (
+      <div className="min-h-screen bg-white dark:bg-slate-900">
+        <header className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-slate-900 sticky top-0 z-40">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Earnings</h1>
+            <ThemeToggle />
+          </div>
+        </header>
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-900 p-6">
+            <p className="text-red-700 dark:text-red-300 font-medium">{authError}</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-900">

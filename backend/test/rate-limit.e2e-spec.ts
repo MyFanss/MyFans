@@ -26,7 +26,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerModule, Throttle } from '@nestjs/throttler';
 import request from 'supertest';
-import { ThrottlerGuard } from '../src/auth/throttler.guard';
+import { ThrottlerGuard } from '../src/common/guards/throttler.guard';
 
 // ── Minimal stub controllers ──────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ class StubAuthController {
   @Post('register')
   @Throttle({ auth: { limit: 2, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
-  register(@Body() body: { address?: string }) {
+  register() {
     return { ok: true };
   }
 }
@@ -165,7 +165,7 @@ describe('Rate Limiting (integration)', () => {
 
   // ── Health check exemption ──────────────────────────────────────────────────
 
-  describe('Health endpoints — exempt from throttling', () => {
+  describe('Health endpoint throttling', () => {
     it('GET /v1/health is never throttled regardless of request count', async () => {
       // Fire well above any limit; all must succeed
       for (let i = 0; i < 10; i++) {
@@ -173,10 +173,11 @@ describe('Rate Limiting (integration)', () => {
       }
     });
 
-    it('GET /v1/health/db is never throttled', async () => {
-      for (let i = 0; i < 10; i++) {
-        await request(app.getHttpServer()).get('/v1/health/db').expect(200);
+    it('GET /v1/health/db remains throttled', async () => {
+      for (let i = 0; i < 5; i++) {
+        await request(app.getHttpServer()).get('/v1/health/db');
       }
+      await request(app.getHttpServer()).get('/v1/health/db').expect(429);
     });
   });
 

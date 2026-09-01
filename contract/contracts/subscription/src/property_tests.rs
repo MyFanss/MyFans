@@ -8,8 +8,9 @@ mod props {
     use proptest::prelude::*;
     use soroban_sdk::{
         testutils::{Address as _, Ledger},
-        token, Address, Env, String,
+        token, Address, Env,
     };
+    use treasury::{Treasury, TreasuryClient};
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
@@ -21,10 +22,15 @@ mod props {
         });
 
         let admin = Address::generate(env);
-        let fee_recipient = Address::generate(env);
 
         let token_address = env.register_stellar_asset_contract_v2(admin.clone());
         let token_admin = token::StellarAssetClient::new(env, &token_address.address());
+
+        // Register the treasury contract the subscription routes fees into.
+        let treasury_id = env.register_contract(None, Treasury);
+        let treasury_client = TreasuryClient::new(env, &treasury_id);
+        treasury_client.initialize(&admin, &token_address.address());
+        let fee_recipient = treasury_id;
 
         let contract_id = env.register_contract(None, MyfansContract);
         let client = MyfansContractClient::new(env, &contract_id);
@@ -48,13 +54,13 @@ mod props {
     // ── fee split invariant ──────────────────────────────────────────────────
 
     proptest! {
-        /// For any valid fee_bps (0..=10_000) and price (1..=1_000_000), the
-        /// creator receives exactly `price - fee` and the fee recipient receives
+        /// For any valid fee_bps (0..=1_000) and price (1..=1_000_000), the
+        /// creator receives exactly `price - fee` and the treasury receives
         /// exactly `fee`, so creator_amount + fee == price (no tokens created or
         /// destroyed).
         #[test]
         fn prop_fee_split_sums_to_price(
-            fee_bps in 0u32..=10_000u32,
+            fee_bps in 0u32..=1_000u32,
             price in 1i128..=1_000_000i128,
         ) {
             let env = Env::default();
@@ -65,9 +71,14 @@ mod props {
             });
 
             let admin = Address::generate(&env);
-            let fee_recipient = Address::generate(&env);
             let token_address = env.register_stellar_asset_contract_v2(admin.clone());
             let token_admin = token::StellarAssetClient::new(&env, &token_address.address());
+
+            // Register the treasury contract the subscription routes fees into.
+            let treasury_id = env.register_contract(None, Treasury);
+            let treasury_client = TreasuryClient::new(&env, &treasury_id);
+            treasury_client.initialize(&admin, &token_address.address());
+            let fee_recipient = treasury_id;
 
             let contract_id = env.register_contract(None, MyfansContract);
             let client = MyfansContractClient::new(&env, &contract_id);
@@ -164,10 +175,10 @@ mod props {
     // ── invalid fee_bps rejected ─────────────────────────────────────────────
 
     proptest! {
-        /// fee_bps > 10_000 must always be rejected with InvalidFeeBps.
+        /// fee_bps > MAX_FEE_BPS (1_000) must always be rejected with InvalidFeeBps.
         #[test]
-        fn prop_init_rejects_fee_bps_over_10000(
-            fee_bps in 10_001u32..=u32::MAX,
+        fn prop_init_rejects_fee_bps_over_cap(
+            fee_bps in 1_001u32..=u32::MAX,
         ) {
             let env = Env::default();
             env.mock_all_auths();

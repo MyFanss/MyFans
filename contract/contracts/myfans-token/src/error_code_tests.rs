@@ -245,7 +245,7 @@ mod cases {
     #[test]
     fn error_code_8_reinit_returns_already_initialized() {
         let env = Env::default();
-        let (client, admin) = setup(&env);
+        let (client, _admin) = setup(&env);
         let new_admin = Address::generate(&env);
         // Try to reinitialize
         let result = client.try_initialize(

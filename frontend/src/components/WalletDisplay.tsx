@@ -6,7 +6,7 @@ interface WalletDisplayProps {
   onDisconnect: () => void;
 }
 
-export default function WalletDisplay({ address, network = 'Mainnet', onDisconnect }: WalletDisplayProps) {
+export default function WalletDisplay({ address, network = 'Stellar', onDisconnect }: WalletDisplayProps) {
   const [copied, setCopied] = useState(false);
 
   const formatAddress = (addr: string) => {

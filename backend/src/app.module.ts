@@ -3,12 +3,10 @@ import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-// Canonical auth/users stack — `src/auth`, `src/refresh-module`, and
-// `src/users-module` are deprecated duplicates not wired here.
-// See backend/docs/AUTH_MODES.md.
+// Canonical auth/users stack. Historical duplicate stacks were removed.
 import { AuthModule } from './auth-module/auth.module';
 import { OpenAPIController } from './common/openapi-publish.controller';
-import { ThrottlerGuard } from './auth/throttler.guard';
+import { ThrottlerGuard } from './common/guards/throttler.guard';
 import { JwtAuthGuard } from './auth-module/guards/jwt-auth.guard';
 import { RolesGuard } from './auth-module/guards/roles.guard';
 import { LoggingModule } from './common/logging.module';
@@ -16,6 +14,7 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 import { CreatorsModule } from './creators/creators.module';
+import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -41,6 +40,10 @@ import { CorrelationExceptionFilter } from './common/filters/correlation-excepti
 import { RequestContextService } from './common/services/request-context.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { NetworkConfigModule } from './config/network-config.module';
+import { PostsModule } from './posts/posts.module';
+import { WebhookModule } from './webhook/webhook.module';
+import { AdminAuditModule } from './admin-audit/admin-audit.module';
 
 /** Routes where idempotency protection is enforced. */
 const IDEMPOTENCY_ROUTES = [
@@ -52,6 +55,8 @@ const IDEMPOTENCY_ROUTES = [
   { path: 'v1/comments/:id', method: RequestMethod.PUT },
   { path: 'v1/conversations', method: RequestMethod.POST },
   { path: 'v1/conversations/:id/messages', method: RequestMethod.POST },
+  { path: 'v1/content', method: RequestMethod.POST },
+  { path: 'v1/webhook', method: RequestMethod.POST },
 ];
 
 @Module({
@@ -78,6 +83,7 @@ const IDEMPOTENCY_ROUTES = [
     ]),
     LoggingModule,
     MetricsModule,
+    EventsModule,
     AuthModule,
     CreatorsModule,
     SubscriptionsModule,
@@ -98,6 +104,10 @@ const IDEMPOTENCY_ROUTES = [
     ConversationsModule,
     GamesModule,
     LikesModule,
+    NetworkConfigModule,
+    PostsModule,
+    WebhookModule,
+    AdminAuditModule,
   ],
   controllers: [AppController, OpenAPIController],
   providers: [
@@ -122,9 +132,14 @@ export class AppModule {
 
     consumer.apply(IdempotencyMiddleware).forRoutes(...IDEMPOTENCY_ROUTES);
 
-    // CSRF double-submit cookie protection on all state-mutating routes
+    // CSRF double-submit cookie protection on all state-mutating routes.
+    // Webhook routes are excluded — they authenticate via HMAC signatures.
     consumer
       .apply(CsrfMiddleware)
+      .exclude(
+        { path: 'v1/webhook', method: RequestMethod.POST },
+        { path: 'v1/webhook/(.*)', method: RequestMethod.POST },
+      )
       .forRoutes(
         { path: '*', method: RequestMethod.POST },
         { path: '*', method: RequestMethod.PUT },

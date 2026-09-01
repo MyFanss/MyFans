@@ -1,0 +1,31 @@
+{
+  "targetEvents": ["subscribed", "extended", "cancelled"],
+  "aliases": {
+    "subscription_created": "subscribed",
+    "subscription_extended": "extended",
+    "subscription_cancelled": "cancelled"
+  },
+  "eventSchemas": {
+    "subscribed": {
+      "topics": ["contract", "event", "fan", "creator"],
+      "data": "plan_id"
+    },
+    "extended": {
+      "topics": ["contract", "event", "fan", "creator"],
+      "data": "plan_id"
+    },
+    "cancelled": {
+      "topics": ["contract", "event", "fan", "creator"],
+      "data": "(true, reason)"
+    }
+  },
+  "versioningPolicy": {
+    "purpose": "Canonical names stay stable for the poller; historical aliases are accepted for backwards compatibility.",
+    "rules": [
+      "Update the fixture before changing event names.",
+      "Normalize aliases to the canonical target event name.",
+      "Ignore unknown event topics instead of indexing them.",
+      "Fail CI if the fixture and parser disagree."
+    ]
+  }
+}

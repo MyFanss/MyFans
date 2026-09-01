@@ -1,10 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, VersioningType } from '@nestjs/common';
+import request from 'supertest';
 import { WebhookController } from './webhook.controller';
 import { WebhookService } from './webhook.service';
 import { WebhookAuditService } from './webhook-audit.service';
 import { WebhookEventProcessorService } from './webhook-event-processor.service';
-import { UserRole } from '../common/enums/user-role.enum';
+import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth-module/guards/roles.guard';
 
 describe('WebhookController', () => {
   let controller: WebhookController;
@@ -62,7 +64,12 @@ describe('WebhookController', () => {
         id: 'evt-123',
         type: 'subscription.created',
         timestamp: Date.now(),
-        data: { fan: 'fan-addr', creator: 'creator-addr', planId: 1, expiry: 1234567890 },
+        data: {
+          fan: 'fan-addr',
+          creator: 'creator-addr',
+          planId: 1,
+          expiry: 1234567890,
+        },
       };
 
       const result = await controller.receive(payload);
@@ -95,7 +102,10 @@ describe('WebhookController', () => {
 
   describe('rotate', () => {
     it('rotates the webhook secret and logs audit entry', async () => {
-      const body = { newSecret: 'new-secret-value', cutoffMs: 12 * 60 * 60 * 1000 };
+      const body = {
+        newSecret: 'new-secret-value',
+        cutoffMs: 12 * 60 * 60 * 1000,
+      };
       const adminUser = { id: 'admin-123' };
 
       const result = await controller.rotate(body, adminUser);
@@ -104,7 +114,10 @@ describe('WebhookController', () => {
         'new-secret-value',
         12 * 60 * 60 * 1000,
       );
-      expect(auditService.logRotation).toHaveBeenCalledWith('admin-123', 12 * 60 * 60 * 1000);
+      expect(auditService.logRotation).toHaveBeenCalledWith(
+        'admin-123',
+        12 * 60 * 60 * 1000,
+      );
       expect(result).toEqual({
         rotated: true,
         cutoffAt: expect.any(Number),
@@ -118,8 +131,14 @@ describe('WebhookController', () => {
 
       await controller.rotate(body, adminUser);
 
-      expect(webhookService.rotate).toHaveBeenCalledWith('new-secret-value', undefined);
-      expect(auditService.logRotation).toHaveBeenCalledWith('admin-456', undefined);
+      expect(webhookService.rotate).toHaveBeenCalledWith(
+        'new-secret-value',
+        undefined,
+      );
+      expect(auditService.logRotation).toHaveBeenCalledWith(
+        'admin-456',
+        undefined,
+      );
     });
   });
 
@@ -173,9 +192,15 @@ describe('WebhookController - Admin Guard Protection', () => {
           },
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => false })
+      .compile();
 
     app = module.createNestApplication();
+    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
     await app.init();
   });
 
@@ -184,21 +209,15 @@ describe('WebhookController - Admin Guard Protection', () => {
   });
 
   it('returns 403 for rotate endpoint without admin role', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/v1/webhook/rotate',
-      payload: { newSecret: 'secret' },
-    });
-
-    expect(response.statusCode).toBe(403);
+    await request(app.getHttpServer())
+      .post('/v1/webhook/rotate')
+      .send({ newSecret: 'secret' })
+      .expect(403);
   });
 
   it('returns 403 for expire-previous endpoint without admin role', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/v1/webhook/expire-previous',
-    });
-
-    expect(response.statusCode).toBe(403);
+    await request(app.getHttpServer())
+      .post('/v1/webhook/expire-previous')
+      .expect(403);
   });
 });

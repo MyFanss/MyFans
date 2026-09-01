@@ -34,6 +34,13 @@ export interface GatedContentViewerProps {
   subscriptionStatus?: SubscriptionStatus | null;
   /** Whether the content requires subscription to access */
   isGated: boolean;
+  /**
+   * Whether interactive controls (like / share) should render. Callers set
+   * this to `false` for a locked viewer so those controls hide with the
+   * gated media instead of sitting under the lock overlay. Defaults to
+   * `true` for backwards compatibility.
+   */
+  canInteract?: boolean;
   /** External loading state */
   isLoading?: boolean;
   /** External error */
@@ -66,6 +73,8 @@ export interface GatedContentViewerProps {
   onCheckAccess?: () => Promise<boolean>;
   /** Callback when user clicks subscribe */
   onSubscribe?: () => void;
+  /** Whether the current viewer has already liked this content */
+  liked?: boolean;
   /** Callback when user likes content — receives new liked state, should return a promise */
   onLike?: (liked: boolean) => Promise<void>;
   /** Callback when user shares content */
@@ -93,6 +102,7 @@ export function GatedContentViewer({
   isSubscribed,
   subscriptionStatus = null,
   isGated,
+  canInteract = true,
   isLoading: externalLoading = false,
   error: externalError = null,
   creator,
@@ -100,6 +110,7 @@ export function GatedContentViewer({
   relatedContent = [],
   onCheckAccess,
   onSubscribe,
+  liked = false,
   onLike,
   onShare,
 }: GatedContentViewerProps) {
@@ -107,7 +118,11 @@ export function GatedContentViewer({
   const subscriptionCopy = subscriptionStatus
     ? getSubscriptionStatusCopy(subscriptionStatus)
     : null;
-  const [isLiked, setIsLiked] = useState(false);
+  const [isLiked, setIsLiked] = useState(Boolean(liked));
+
+  useEffect(() => {
+    setIsLiked(Boolean(liked));
+  }, [liked]);
   const [contentImageLoaded, setContentImageLoaded] = useState<Record<string, boolean>>({});
   
   // Internal access state
@@ -161,10 +176,22 @@ export function GatedContentViewer({
     checkAccess();
   }, [contentId, isGated, isSubscribed, externalLoading, externalError, onCheckAccess, showError]);
   
-  const handleLike = () => {
-    const newLiked = !isLiked;
+  const handleLike = async () => {
+    const previousLiked = isLiked;
+    const newLiked = !previousLiked;
+
     setIsLiked(newLiked);
-    onLike?.(newLiked);
+
+    try {
+      await onLike?.(newLiked);
+    } catch (error) {
+      setIsLiked(previousLiked);
+      const message = error instanceof Error ? error.message : 'Unable to update like.';
+      showError('LIKE_FAILED', {
+        message: 'Could not update like',
+        description: message,
+      });
+    }
   };
 
   const formatDate = (date?: Date | string) => {
@@ -404,7 +431,8 @@ export function GatedContentViewer({
             )}
           </div>
 
-          {/* Action Row */}
+          {/* Action Row — hidden for locked viewers (like/share gate with the media) */}
+          {canInteract && (
           <div className="flex items-center gap-3 py-6 border-y border-gray-100 dark:border-gray-800 mb-8">
             <button
               onClick={handleLike}
@@ -422,7 +450,7 @@ export function GatedContentViewer({
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
               </svg>
-              <span className="font-bold">{formatCount((metadata?.likeCount || 0) + (isLiked ? 1 : 0))}</span>
+              <span className="font-bold">{formatCount(metadata?.likeCount ?? 0)}</span>
             </button>
             
             <button
@@ -449,6 +477,7 @@ export function GatedContentViewer({
               </div>
             )}
           </div>
+          )}
 
           {/* About Section */}
           <div className="mb-10">

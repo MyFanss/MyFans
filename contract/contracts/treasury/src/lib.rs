@@ -2,8 +2,9 @@
 pub mod errors;
 
 pub use errors::TreasuryError as Error;
-use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, token, Address, Env, Symbol};
-use myfans_lib::auth;
+use soroban_sdk::{
+    contract, contractimpl, contracttype, panic_with_error, token, Address, Env, Symbol,
+};
 
 /// Typed storage keys for the treasury contract.
 #[contracttype]
@@ -37,7 +38,9 @@ impl Treasury {
         }
 
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::Token, &token_address);
+        env.storage()
+            .instance()
+            .set(&DataKey::Token, &token_address);
         env.storage().instance().set(&DataKey::Paused, &false);
         env.storage().instance().set(&DataKey::MinBalance, &0i128);
 
@@ -52,8 +55,7 @@ impl Treasury {
     /// Requires authorization from the admin.
     pub fn set_paused(env: Env, paused: bool) {
         let admin = Self::get_admin(&env);
-        let caller = env.invoker();
-        auth::require_authorized(&env, &caller, &admin, &Symbol::new(&env, "set_paused"));
+        admin.require_auth();
         env.storage().instance().set(&DataKey::Paused, &paused);
 
         env.events()
@@ -200,11 +202,17 @@ impl Treasury {
     }
 
     fn get_min_balance(env: &Env) -> i128 {
-        env.storage().instance().get(&DataKey::MinBalance).unwrap_or(0)
+        env.storage()
+            .instance()
+            .get(&DataKey::MinBalance)
+            .unwrap_or(0)
     }
 
     fn is_paused(env: &Env) -> bool {
-        env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
     }
 }
 

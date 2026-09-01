@@ -3,6 +3,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { CreatorsController } from './creators.controller';
 import { CreatorsService } from './creators.service';
 import { CreatorDashboardService } from './creator-dashboard.service';
+import { CreatorRegistrySyncService } from './creator-registry-sync.service';
 import { SearchCreatorsDto } from './dto/search-creators.dto';
 import { PaginatedResponseDto } from '../common/dto';
 import { PublicCreatorDto } from './dto/public-creator.dto';
@@ -22,10 +23,15 @@ type MockDashboardService = {
   getDashboard: jest.Mock;
 };
 
+type MockRegistrySyncService = {
+  syncOnOnboard: jest.Mock;
+};
+
 describe('CreatorsController', () => {
   let controller: CreatorsController;
   let mockCreatorsService: MockCreatorsService;
   let mockDashboardService: MockDashboardService;
+  let mockRegistrySyncService: MockRegistrySyncService;
 
   const mockCreatorsServiceFactory = (): MockCreatorsService => ({
     searchCreators: jest.fn(),
@@ -40,9 +46,14 @@ describe('CreatorsController', () => {
     getDashboard: jest.fn(),
   });
 
+  const mockRegistrySyncServiceFactory = (): MockRegistrySyncService => ({
+    syncOnOnboard: jest.fn(),
+  });
+
   beforeEach(async () => {
     mockCreatorsService = mockCreatorsServiceFactory();
     mockDashboardService = mockDashboardServiceFactory();
+    mockRegistrySyncService = mockRegistrySyncServiceFactory();
 
     const module: TestingModule = await Test.createTestingModule({
       imports: [
@@ -57,6 +68,10 @@ describe('CreatorsController', () => {
         {
           provide: CreatorDashboardService,
           useValue: mockDashboardService,
+        },
+        {
+          provide: CreatorRegistrySyncService,
+          useValue: mockRegistrySyncService,
         },
       ],
     })

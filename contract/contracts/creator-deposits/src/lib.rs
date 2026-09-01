@@ -83,6 +83,9 @@ impl CreatorDeposits {
         env.storage()
             .instance()
             .set(&DataKey::CanonicalToken, &canonical_token);
+
+        env.events()
+            .publish((Symbol::new(&env, TOPIC_INITIALIZED),), ());
     }
 
     pub fn deposit(env: Env, creator: Address, token: Address, amount: i128) {
@@ -296,7 +299,7 @@ mod test {
 
     #[test]
     fn test_invalid_bps_init_reverts() {
-        let (env, admin, treasury, _, _) = setup();
+        let (env, admin, treasury, _, token) = setup();
         let contract_id = env.register_contract(None, CreatorDeposits);
         let client = CreatorDepositsClient::new(&env, &contract_id);
 

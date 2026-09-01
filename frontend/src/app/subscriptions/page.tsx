@@ -7,7 +7,12 @@ import {
   type SubscriptionHistoryItem,
   type PaymentRecord,
 } from '@/lib/subscriptions';
-import { fetchActiveSubscriptions, SubscriptionsUnauthorizedError } from '@/lib/api/subscriptions';
+import {
+  fetchActiveSubscriptions,
+  fetchPaymentHistory,
+  fetchSubscriptionHistory,
+  SubscriptionsUnauthorizedError,
+} from '@/lib/api/subscriptions';
 import { formatCurrency, formatDate, getCurrencySymbol } from '@/lib/formatting';
 import { BaseCard } from '@/components/cards/BaseCard';
 import { Modal } from '@/components/Modal';
@@ -15,7 +20,8 @@ import HistoryCardSkeleton from '@/components/ui/HistoryCardSkeleton';
 import ActiveSubscriptionSkeleton from '@/components/ui/ActiveSubscriptionSkeleton';
 import { useToast } from '@/contexts/ToastContext';
 import { subscriptionActionToast, subscriptionsLoadFailed } from '@/lib/error-copy';
-import { cancelSubscriptionOnSoroban } from '@/lib/stellar';
+import { cancelSubscriptionOnSoroban, extendSubscriptionOnSoroban, getStellarConfig } from '@/lib/stellar';
+import NetworkMismatchBanner from '@/components/NetworkMismatchBanner';
 
 export default function SubscriptionsPage() {
   const { showInfo, showSuccess, showError, showLoading, dismiss } = useToast();
@@ -67,77 +73,52 @@ export default function SubscriptionsPage() {
 
   useEffect(() => {
     let mounted = true;
-    const fetchHistory = async () => {
+    const loadHistory = async () => {
       setIsHistoryLoading(true);
       try {
-        const res = await fetch(`/api/v1/subscriptions/me/list?status=cancelled`);
-        if (!res.ok) throw new Error('Failed to fetch history');
-        const data = await res.json();
-        if (mounted) {
-          const items = Array.isArray(data) ? data : (data.data ?? []);
-          const normalized: SubscriptionHistoryItem[] = items.map((item: Record<string, unknown>) => ({
-            id: String(item.id ?? ''),
-            creatorName: String(item.creatorName ?? item.creator ?? 'Creator'),
-            creatorUsername: String(item.creatorUsername ?? ''),
-            planName: String(item.planName ?? 'Subscription'),
-            price: typeof item.price === 'number' ? item.price : parseFloat(String(item.price || '0')),
-            currency: String(item.currency ?? 'XLM'),
-            startedAt: String(item.startedAt ?? item.createdAt ?? new Date().toISOString()),
-            endedAt: String(item.endedAt ?? item.currentPeriodEnd ?? new Date().toISOString()),
-            cancelReason: item.cancelReason ? String(item.cancelReason) : undefined,
-          }));
-          setHistoryList(normalized);
-        }
+        const items = await fetchSubscriptionHistory();
+        if (mounted) setHistoryList(items);
       } catch (err) {
         console.error(err);
         showError('NETWORK_ERROR', {
           message: 'Couldn’t load subscription history',
           description:
-            'Refresh the page. If it still fails, check your internet and that the app backend is running.',
+            err instanceof SubscriptionsUnauthorizedError
+              ? 'Your session has expired. Sign in again to see your subscription history.'
+              : 'Refresh the page. If it still fails, check your internet and that the app backend is running.',
         });
       } finally {
         if (mounted) setIsHistoryLoading(false);
       }
     };
-    fetchHistory();
+    loadHistory();
     return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     let mounted = true;
-    const fetchPayments = async () => {
+    const loadPayments = async () => {
       setIsPaymentsLoading(true);
       try {
-        const res = await fetch(`/api/v1/analytics/payments`);
-        if (!res.ok) throw new Error('Failed to fetch payments');
-        const data = await res.json();
-        if (mounted) {
-          const items = Array.isArray(data) ? data : (data.data ?? []);
-          const normalized: PaymentRecord[] = items.map((item: Record<string, unknown>) => ({
-            id: String(item.id ?? ''),
-            date: String(item.date ?? item.paidAt ?? item.createdAt ?? new Date().toISOString()),
-            creatorName: String(item.creatorName ?? item.creator ?? 'Creator'),
-            planName: String(item.planName ?? 'Subscription'),
-            amount: typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || '0')),
-            currency: String(item.currency ?? item.asset ?? 'XLM'),
-            status: (item.status as PaymentRecord['status']) || 'completed',
-            description: item.description ? String(item.description) : undefined,
-          }));
-          setPaymentsList(normalized);
-        }
+        const items = await fetchPaymentHistory();
+        if (mounted) setPaymentsList(items);
       } catch (err) {
         console.error(err);
         showError('NETWORK_ERROR', {
           message: 'Couldn’t load payment history',
           description:
-            'Refresh the page. If it still fails, check your internet and that the app backend is running.',
+            err instanceof SubscriptionsUnauthorizedError
+              ? 'Your session has expired. Sign in again to see your payment history.'
+              : 'Refresh the page. If it still fails, check your internet and that the app backend is running.',
         });
       } finally {
         if (mounted) setIsPaymentsLoading(false);
       }
     };
-    fetchPayments();
+    loadPayments();
     return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 
@@ -182,9 +163,31 @@ export default function SubscriptionsPage() {
     setRenewingId(renewTarget.id);
     const loadingToastId = showLoading(`Renewing ${renewTarget.creatorName}...`);
     try {
-      // Simulation of contract call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      
+      // Only active subscriptions carry a resolvable creator G-address today;
+      // re-subscribing from history is a separate (checkout) flow, not a
+      // contract-level renewal, so we don't attempt an on-chain call for it.
+      if (!('creatorId' in renewTarget) || !renewTarget.creatorId) {
+        throw new Error('Re-subscribing from history is not supported here yet.');
+      }
+
+      const freighter = typeof window !== 'undefined'
+        ? (window as unknown as { freighter?: { getPublicKey: () => Promise<string> } }).freighter
+        : undefined;
+      const fanAddress = freighter
+        ? await freighter.getPublicKey().catch(() => 'fan_demo_address')
+        : 'fan_demo_address';
+
+      // Plan metadata (token) isn't threaded through the fan-facing
+      // ActiveSubscription shape yet — fall back to the configured MyFans
+      // token contract, which is what plans are denominated in today.
+      const tokenAddress = getStellarConfig().tokenContractId;
+
+      await extendSubscriptionOnSoroban({
+        fanAddress,
+        creatorAddress: renewTarget.creatorId,
+        tokenAddress,
+      });
+
       showSuccess('Subscription renewed', `${renewTarget.creatorName} ${renewTarget.planName} is active again.`);
 
       // Refresh list after renewal
@@ -262,6 +265,9 @@ export default function SubscriptionsPage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-10">
+        {/* Refuses to sign/submit cancel & renew transactions on a network mismatch. */}
+        <NetworkMismatchBanner />
+
         {/* Active subscriptions */}
         <section aria-labelledby="active-heading">
           <h2 id="active-heading" className="text-lg font-semibold text-gray-900 dark:text-white mb-4">

@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { getConversationById, listMessages, Message } from '@/lib/api/messages';
+import { getConversationById, listMessages, type Message } from '@/lib/api/messages';
 import { MessageThread } from './message-thread';
 
 interface PageProps {

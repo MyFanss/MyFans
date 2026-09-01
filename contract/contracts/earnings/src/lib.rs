@@ -21,6 +21,7 @@ enum DataKey {
 /// |------|---------|
 /// | 1 | `AlreadyInitialized` |
 /// | 2 | `NotInitialized` |
+/// | 3 | `Overflow` |
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -28,6 +29,8 @@ pub enum Error {
     AlreadyInitialized = 1,
     /// Code 2 – admin key not present; contract was never initialized.
     NotInitialized = 2,
+    /// Code 3 – checked arithmetic overflow when recording earnings.
+    Overflow = 3,
 }
 
 #[contract]

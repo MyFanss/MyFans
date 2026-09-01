@@ -8,6 +8,7 @@ use myfans_token::{MyFansToken, MyFansTokenClient};
 use soroban_sdk::testutils::{Events, Ledger as _};
 use soroban_sdk::{String, Symbol, TryIntoVal};
 use subscription::{MyfansContract, MyfansContractClient};
+use treasury::{Treasury, TreasuryClient};
 
 /// Far-future ledger seq so purchased access does not expire in these tests.
 const NO_EXPIRY: u64 = u64::MAX;
@@ -27,13 +28,22 @@ fn setup_token<'a>(f: &'a TestEnv) -> MyFansTokenClient<'a> {
     client
 }
 
+/// Register and initialize a treasury contract (the subscription's fee collector).
+fn setup_treasury<'a>(f: &'a TestEnv, token_id: &soroban_sdk::Address) -> soroban_sdk::Address {
+    let id = f.env.register_contract(None, Treasury);
+    let client = TreasuryClient::new(&f.env, &id);
+    client.initialize(&f.admin, token_id);
+    id
+}
+
 fn setup_subscription<'a>(
     f: &'a TestEnv,
     token_id: &soroban_sdk::Address,
+    fee_recipient: &soroban_sdk::Address,
 ) -> MyfansContractClient<'a> {
     let id = f.env.register_contract(None, MyfansContract);
     let client = MyfansContractClient::new(&f.env, &id);
-    client.init(&f.admin, &500u32, &f.fee_recipient, token_id, &1000i128);
+    client.init(&f.admin, &500u32, fee_recipient, token_id, &1000i128);
     client
 }
 
@@ -52,7 +62,8 @@ fn test_subscription_to_content_unlock_flow() {
     let f = TestEnv::new();
 
     let token = setup_token(&f);
-    let sub = setup_subscription(&f, &token.address);
+    let treasury = setup_treasury(&f, &token.address);
+    let sub = setup_subscription(&f, &token.address, &treasury);
     let content = setup_content(&f, &token.address);
 
     token.mint(&f.fan, &2_000i128);
@@ -63,7 +74,7 @@ fn test_subscription_to_content_unlock_flow() {
     assert!(sub.is_subscriber(&f.fan, &f.creator));
     assert_eq!(token.balance(&f.fan), 1_000i128);
     assert_eq!(token.balance(&f.creator), 950i128);
-    assert_eq!(token.balance(&f.fee_recipient), 50i128);
+    assert_eq!(token.balance(&treasury), 50i128);
 
     let content_id = 1u64;
     assert!(!content.has_access(&f.fan, &f.creator, &content_id));
@@ -104,7 +115,8 @@ fn test_subscription_expires_after_advance_ledger() {
     let f = TestEnv::new();
 
     let token = setup_token(&f);
-    let sub = setup_subscription(&f, &token.address);
+    let treasury = setup_treasury(&f, &token.address);
+    let sub = setup_subscription(&f, &token.address, &treasury);
 
     token.mint(&f.fan, &5_000i128);
     f.env.ledger().with_mut(|li| li.sequence_number = 1_000);
@@ -130,7 +142,8 @@ fn test_shared_token_balance_consistency_across_contracts() {
     let f = TestEnv::new();
 
     let token = setup_token(&f);
-    let sub = setup_subscription(&f, &token.address);
+    let treasury = setup_treasury(&f, &token.address);
+    let sub = setup_subscription(&f, &token.address, &treasury);
     let content = setup_content(&f, &token.address);
 
     token.mint(&f.fan, &3_000i128);
@@ -140,7 +153,7 @@ fn test_shared_token_balance_consistency_across_contracts() {
 
     assert_eq!(token.balance(&f.fan), 2_000i128);
     assert_eq!(token.balance(&f.creator), 950i128);
-    assert_eq!(token.balance(&f.fee_recipient), 50i128);
+    assert_eq!(token.balance(&treasury), 50i128);
 
     content.set_content_price(&f.creator, &1u64, &500i128);
     content.unlock_content(&f.fan, &f.creator, &1u64, &NO_EXPIRY);
@@ -161,7 +174,8 @@ fn test_cancel_subscription_via_shared_fixture() {
     let f = TestEnv::new();
 
     let token = setup_token(&f);
-    let sub = setup_subscription(&f, &token.address);
+    let treasury = setup_treasury(&f, &token.address);
+    let sub = setup_subscription(&f, &token.address, &treasury);
 
     token.mint(&f.fan, &5_000i128);
 
@@ -179,7 +193,8 @@ fn test_duplicate_content_unlock_is_idempotent_via_shared_fixture() {
     let f = TestEnv::new();
 
     let token = setup_token(&f);
-    let sub = setup_subscription(&f, &token.address);
+    let treasury = setup_treasury(&f, &token.address);
+    let sub = setup_subscription(&f, &token.address, &treasury);
     let content = setup_content(&f, &token.address);
 
     token.mint(&f.fan, &5_000i128);
@@ -207,7 +222,8 @@ fn test_create_subscription_direct_via_test_env() {
     let f = TestEnv::new();
 
     let token = setup_token(&f);
-    let sub = setup_subscription(&f, &token.address);
+    let treasury = setup_treasury(&f, &token.address);
+    let sub = setup_subscription(&f, &token.address, &treasury);
 
     token.mint(&f.fan, &5_000i128);
     f.env.ledger().with_mut(|li| li.sequence_number = 1_000);
@@ -220,9 +236,9 @@ fn test_create_subscription_direct_via_test_env() {
     assert_eq!(token.balance(&f.fan), 4_000i128, "fan paid 1000");
     assert_eq!(token.balance(&f.creator), 950i128, "creator gets 950");
     assert_eq!(
-        token.balance(&f.fee_recipient),
+        token.balance(&treasury),
         50i128,
-        "fee_recipient gets 50"
+        "treasury gets 50"
     );
 
     assert!(
@@ -246,7 +262,8 @@ fn test_extend_subscription_via_test_env() {
     let f = TestEnv::new();
 
     let token = setup_token(&f);
-    let sub = setup_subscription(&f, &token.address);
+    let treasury = setup_treasury(&f, &token.address);
+    let sub = setup_subscription(&f, &token.address, &treasury);
 
     token.mint(&f.fan, &10_000i128);
     f.env.ledger().with_mut(|li| li.sequence_number = 1_000);
@@ -263,7 +280,7 @@ fn test_extend_subscription_via_test_env() {
     // second payment: fan paid another 1000
     assert_eq!(token.balance(&f.fan), 8_000i128, "fan paid second 1000");
     assert_eq!(token.balance(&f.creator), 1_900i128, "creator: 2×950");
-    assert_eq!(token.balance(&f.fee_recipient), 100i128, "fee: 2×50");
+    assert_eq!(token.balance(&treasury), 100i128, "fee: 2×50");
 
     assert!(
         sub.is_subscriber(&f.fan, &f.creator),
@@ -278,7 +295,8 @@ fn test_pause_blocks_writes_but_not_views_in_integration() {
     let f = TestEnv::new();
 
     let token = setup_token(&f);
-    let sub = setup_subscription(&f, &token.address);
+    let treasury = setup_treasury(&f, &token.address);
+    let sub = setup_subscription(&f, &token.address, &treasury);
 
     token.mint(&f.fan, &10_000i128);
 
@@ -297,7 +315,7 @@ fn test_pause_blocks_writes_but_not_views_in_integration() {
     );
 
     // write ops are rejected
-    let sub2 = setup_subscription(&f, &token.address);
+    let sub2 = setup_subscription(&f, &token.address, &treasury);
     let result = sub2.try_subscribe(&f.fan, &plan_id, &token.address);
     // note: sub2 is a fresh contract; plan_id doesn't exist there, but paused
     // isn't relevant since sub2 isn't paused — so use sub (the paused one)
@@ -324,7 +342,8 @@ fn test_get_expiry_unix_via_test_env() {
     let f = TestEnv::new();
 
     let token = setup_token(&f);
-    let sub = setup_subscription(&f, &token.address);
+    let treasury = setup_treasury(&f, &token.address);
+    let sub = setup_subscription(&f, &token.address, &treasury);
 
     token.mint(&f.fan, &5_000i128);
 

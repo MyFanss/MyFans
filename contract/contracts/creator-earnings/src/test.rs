@@ -508,11 +508,10 @@ fn remove_authorized_depositor_cannot_deposit() {
 #[test]
 fn remove_authorized_admin_only() {
     let env = Env::default();
+    env.mock_all_auths();
 
     let admin = Address::generate(&env);
-    let creator = Address::generate(&env);
     let depositor = Address::generate(&env);
-    let unauthorized = Address::generate(&env);
 
     let token_admin = Address::generate(&env);
     #[allow(deprecated)]
@@ -524,12 +523,13 @@ fn remove_authorized_admin_only() {
     let contract_id = env.register_contract(None, CreatorEarnings);
     let client = CreatorEarningsClient::new(&env, &contract_id);
 
-    env.mock_all_auths();
     client.initialize(&admin, &token_id);
     client.add_authorized(&depositor);
 
-    // Non-admin tries to remove authorized — should fail
-    let result = client.try_remove_authorized(&unauthorized, &depositor);
+    // Non-admin tries to remove authorized — should fail.
+    // remove_authorized takes only the depositor address; admin auth is enforced via require_auth.
+    env.set_auths(&[]);
+    let result = client.try_remove_authorized(&depositor);
     assert!(result.is_err(), "non-admin remove_authorized should revert");
 }
 
@@ -547,7 +547,7 @@ fn deposit_overflow_reverts() {
     let token_id = env.register_stellar_asset_contract(token_admin.clone());
     let token_admin_client = StellarAssetClient::new(&env, &token_id);
 
-    // Mint a very large amount to depositor
+    // Leave headroom so the second token transfer succeeds, then checked_add overflows.
     token_admin_client.mint(&depositor, &i128::MAX);
 
     let contract_id = env.register_contract(None, CreatorEarnings);
@@ -556,13 +556,13 @@ fn deposit_overflow_reverts() {
     client.initialize(&admin, &token_id);
     client.add_authorized(&depositor);
 
-    // Deposit i128::MAX — this is the first deposit so it should succeed
-    client.deposit(&depositor, &creator, &i128::MAX);
-    assert_eq!(client.balance(&creator), i128::MAX);
+    client.deposit(&depositor, &creator, &(i128::MAX - 1));
+    assert_eq!(client.balance(&creator), i128::MAX - 1);
 
-    // Mint more tokens and attempt another deposit — this should overflow
+    // Depositor has 1 left after the first deposit; top up so transfer of 2 succeeds
+    // and the overflow happens in checked_add instead of the token contract.
     token_admin_client.mint(&depositor, &1);
-    let result = client.try_deposit(&depositor, &creator, &1);
+    let result = client.try_deposit(&depositor, &creator, &2);
     assert_eq!(
         result,
         Err(Ok(SorobanError::from_contract_error(

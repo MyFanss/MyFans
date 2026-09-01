@@ -3,7 +3,6 @@ import { JwtModule } from '@nestjs/jwt';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { EventsModule } from '../events/events.module';
 import { UsersModule } from '../users/users.module';
 import { Notification } from './entities/notification.entity';
 import { EmailOutboxEntry } from './entities/email-outbox-entry.entity';
@@ -15,6 +14,7 @@ import { NotificationsService } from './notifications.service';
 import { NotificationRetryStoreService } from './notification-retry-store.service';
 import { NotificationDigestStoreService } from './notification-digest-store.service';
 import { EmailOutboxService } from './email-outbox.service';
+import { EmailOutboxAdminController } from './email-outbox-admin.controller';
 import { NotificationRetryWorkerService } from './notification-retry-worker.service';
 import { EMAIL_ADAPTER } from './adapters/email-adapter.interface';
 import { ConsoleEmailAdapter } from './adapters/console-email.adapter';
@@ -22,7 +22,6 @@ import { SmtpEmailAdapter } from './adapters/smtp-email.adapter';
 
 @Module({
   imports: [
-    EventsModule,
     ConfigModule,
     UsersModule,
     ScheduleModule,
@@ -41,7 +40,7 @@ import { SmtpEmailAdapter } from './adapters/smtp-email.adapter';
       inject: [ConfigService],
     }),
   ],
-  controllers: [NotificationsController],
+  controllers: [NotificationsController, EmailOutboxAdminController],
   providers: [
     NotificationsService,
     SubscriptionLifecycleNotifierService,

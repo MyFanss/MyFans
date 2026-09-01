@@ -11,13 +11,21 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { CreateNotificationDto, MarkReadDto } from './dto/notification.dto';
-import { AuthGuard } from 'src/utils/auth.guard';
 import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth-module/guards/roles.guard';
 import { Roles } from '../auth-module/decorators/roles.decorator';
+import { CurrentUser } from '../auth-module/decorators/current-user.decorator';
+import type { JwtUserPayload } from '../auth-module/decorators/current-user.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 
 @ApiTags('notifications')
@@ -31,13 +39,25 @@ export class NotificationsController {
   @ApiOperation({ summary: 'List notifications for the current user' })
   @ApiQuery({ name: 'unread_only', required: false, type: Boolean })
   @ApiResponse({ status: 200, description: 'Notifications list' })
-  findAll(@CurrentUser() user: JwtUserPayload, @Query('unread_only') unreadOnly?: string) {
-    return this.notificationsService.findAllForUser(user.userId, unreadOnly === 'true');
+  findAll(
+    @CurrentUser() user: JwtUserPayload,
+    @Query('unread_only') unreadOnly?: string,
+  ) {
+    return this.notificationsService.findAllForUser(
+      user.userId,
+      unreadOnly === 'true',
+    );
   }
 
   @Get('unread-count')
-  @ApiOperation({ summary: 'Get unread notification count for the current user' })
-  @ApiResponse({ status: 200, description: 'Unread count', schema: { example: { count: 5 } } })
+  @ApiOperation({
+    summary: 'Get unread notification count for the current user',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Unread count',
+    schema: { example: { count: 5 } },
+  })
   getUnreadCount(@CurrentUser() user: JwtUserPayload) {
     return this.notificationsService.getUnreadCount(user.userId);
   }

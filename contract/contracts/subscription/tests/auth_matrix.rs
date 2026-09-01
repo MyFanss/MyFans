@@ -19,6 +19,7 @@ use soroban_sdk::{
     Address, Env, String,
 };
 use subscription::{MyfansContract, MyfansContractClient};
+use treasury::{Treasury, TreasuryClient};
 
 // ── shared helpers ────────────────────────────────────────────────────────────
 
@@ -60,6 +61,14 @@ fn setup_subscription<'a>(
     let client = MyfansContractClient::new(env, &id);
     client.init(admin, &500u32, fee_recipient, token_id, &1000i128);
     client
+}
+
+/// Register and initialize a treasury contract (the subscription's fee collector).
+fn setup_treasury(env: &Env, token_id: &Address, admin: &Address) -> Address {
+    let id = env.register_contract(None, Treasury);
+    let client = TreasuryClient::new(env, &id);
+    client.initialize(admin, token_id);
+    id
 }
 
 fn setup_content<'a>(env: &'a Env, token_id: &Address, admin: &Address) -> ContentAccessClient<'a> {
@@ -442,7 +451,7 @@ fn sub_setup(
     Address,
 ) {
     let (token, admin) = setup_token(env);
-    let fee_recipient = Address::generate(env);
+    let fee_recipient = setup_treasury(env, &token.address, &admin);
     let sub = setup_subscription(env, &token.address, &admin, &fee_recipient);
     let creator = Address::generate(env);
     let fan = Address::generate(env);

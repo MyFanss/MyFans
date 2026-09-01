@@ -18,9 +18,39 @@ export function clearStoredUserId(): void {
   localStorage.removeItem(USER_ID_KEY);
 }
 
+/** JWT from auth storage (localStorage `authToken`). */
+export function getStoredAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+export function setStoredAuthToken(token: string): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+}
+
+export function clearStoredAuthToken(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+/**
+ * Resolve JWT for API Authorization header.
+ * Prefers stored token; optional NEXT_PUBLIC_DEV_AUTH_TOKEN in development only.
+ */
+export function resolveAuthToken(): string | null {
+  const stored = getStoredAuthToken();
+  if (stored) return stored;
+  if (process.env.NODE_ENV === "development") {
+    const fromEnv = process.env.NEXT_PUBLIC_DEV_AUTH_TOKEN?.trim();
+    if (fromEnv) return fromEnv;
+  }
+  return null;
+}
+
 /** Dev fallback when nothing is in localStorage (development only). */
 export function resolveUserId(): string | null {
-  if (process.env.NODE_ENV === 'development') {
+  if (process.env.NODE_ENV === "development") {
     const fromEnv = process.env.NEXT_PUBLIC_DEV_USER_ID?.trim();
     if (fromEnv) return fromEnv;
   }

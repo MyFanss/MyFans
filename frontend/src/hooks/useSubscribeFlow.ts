@@ -6,6 +6,7 @@ import type { AppError } from '@/types/errors';
 import { createAppError } from '@/types/errors';
 import { buildSubscriptionTx, submitTransaction } from '@/lib/stellar';
 import { signTransaction } from '@/lib/wallet';
+import { getWalletSession } from '@/lib/client-session';
 import { useTransactionPoller } from './useTransactionPoller';
 import { useNetworkGuard } from './useNetworkGuard';
 
@@ -20,7 +21,7 @@ export function useSubscribeFlow(plan: SubscriptionPlan | null) {
   const [state, setState] = useState<FlowState>({ step: 'wallet-gate' });
   const walletAddressRef = useRef<string>('');
   const retryCountRef = useRef<number>(0);
-  const { mismatch } = useNetworkGuard();
+  const { mismatch, expected } = useNetworkGuard();
 
   // Derive txHash for poller
   const txHash = state.step === 'polling' ? state.txHash : null;
@@ -78,10 +79,13 @@ export function useSubscribeFlow(plan: SubscriptionPlan | null) {
         return;
       }
 
-      // Step 3: sign transaction
+      // Step 3: sign transaction with whichever wallet the fan connected
       let signedXdr: string;
       try {
-        signedXdr = await signTransaction(xdr);
+        signedXdr = await signTransaction(xdr, {
+          walletType: getWalletSession()?.walletType,
+          network: expected,
+        });
       } catch (err) {
         const appError = err as AppError;
         setState({
@@ -138,7 +142,7 @@ export function useSubscribeFlow(plan: SubscriptionPlan | null) {
       // Step 6: polling
       setState({ step: 'polling', plan, txHash });
     },
-    [plan]
+    [plan, expected]
   );
 
   const execute = useCallback(

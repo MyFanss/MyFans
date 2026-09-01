@@ -4,7 +4,6 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggingModule } from '../common/logging.module';
-import { EventsModule } from '../events/events.module';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { SubscriptionLifecycleIndexerController } from './subscription-lifecycle-indexer.controller';
 import { SubscriptionLifecycleIndexerService } from './subscription-lifecycle-indexer.service';
@@ -18,10 +17,12 @@ import { SpendingCapService } from './services/spending-cap.service';
 import { SUBSCRIPTION_EVENT_PUBLISHER } from './events';
 import { FanBearerGuard } from './guards/fan-bearer.guard';
 import { HybridFanAuthGuard } from './guards/hybrid-fan-auth.guard';
+import { OptionalHybridFanAuthGuard } from './guards/optional-hybrid-fan-auth.guard';
 import { GatedContentGuard } from './gated-content.guard';
 import { FeatureFlagGuard } from '../feature-flags/feature-flag.guard';
 import { SubscriptionCacheService } from './subscription-cache.service';
 import { SubscriptionChainReaderService } from './subscription-chain-reader.service';
+import { SubscriptionPauseService } from './subscription-pause.service';
 import { SubscriptionsController } from './subscriptions.controller';
 import { SpendingCapController } from './spending-cap.controller';
 import { SubscriptionsService } from './subscriptions.service';
@@ -29,13 +30,13 @@ import { RPC_BALANCE_ADAPTER, MockRpcAdapter, HorizonRpcAdapter } from './rpc-ad
 import { LedgerClockService } from './ledger-clock.service';
 import { LoggingSubscriptionEventPublisher } from './subscription-event-publisher.service';
 import { StellarService } from '../common/stellar.service';
+import { SorobanRpcService } from '../common/services/soroban-rpc.service';
 
 @Module({
   imports: [
     ConfigModule,
     ScheduleModule,
     TypeOrmModule.forFeature([SubscriptionIndexEntity, FanSpendingCapEntity]),
-    EventsModule,
     LoggingModule,
     FeatureFlagsModule,
     JwtModule.registerAsync({
@@ -57,12 +58,15 @@ import { StellarService } from '../common/stellar.service';
     SubscriptionChainReaderService,
     LedgerClockService,
     SubscriptionCacheService,
+    SubscriptionPauseService,
     GatedContentGuard,
     FanBearerGuard,
     HybridFanAuthGuard,
+    OptionalHybridFanAuthGuard,
     FeatureFlagGuard,
     SubscriptionLifecycleIndexerService,
     StellarService,
+    SorobanRpcService,
     MockRpcAdapter,
     HorizonRpcAdapter,
     {
@@ -79,6 +83,13 @@ import { StellarService } from '../common/stellar.service';
       useClass: LoggingSubscriptionEventPublisher,
     },
   ],
-  exports: [SubscriptionsService, SubscriptionLifecycleIndexerService, SubscriptionIndexRepository, SubscriptionChainSyncService],
+  exports: [
+    SubscriptionsService,
+    SubscriptionLifecycleIndexerService,
+    SubscriptionIndexRepository,
+    SubscriptionChainSyncService,
+    HybridFanAuthGuard,
+    OptionalHybridFanAuthGuard,
+  ],
 })
 export class SubscriptionsModule {}

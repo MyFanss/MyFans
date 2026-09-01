@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { CreatorRegistrySyncService } from './creator-registry-sync.service';
 import { CreatorOnchainMapping } from './entities/creator-onchain-mapping.entity';
+import { BusinessMetricsService } from '../metrics/business-metrics.service';
 
 type MockRepo = {
   findOne: jest.Mock;
@@ -10,22 +11,32 @@ type MockRepo = {
   find: jest.Mock;
 };
 
+type MockMetrics = {
+  recordCreatorRegistryDrift: jest.Mock;
+};
+
 describe('CreatorRegistrySyncService', () => {
   let service: CreatorRegistrySyncService;
   let repo: MockRepo;
+  let metrics: MockMetrics;
 
   beforeEach(async () => {
     repo = {
       findOne: jest.fn(),
-      create: jest.fn((partial) => partial),
+      create: jest.fn((partial) => ({ ...partial })),
       save: jest.fn(async (entity) => entity),
       find: jest.fn(),
+    };
+
+    metrics = {
+      recordCreatorRegistryDrift: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CreatorRegistrySyncService,
         { provide: getRepositoryToken(CreatorOnchainMapping), useValue: repo },
+        { provide: BusinessMetricsService, useValue: metrics },
       ],
     }).compile();
 
@@ -75,14 +86,20 @@ describe('CreatorRegistrySyncService', () => {
         drift_detected_at: null,
       };
       repo.find.mockResolvedValue([mapping]);
-      jest.spyOn(service as any, 'queryOnchainCreatorId').mockResolvedValue('999');
+      jest
+        .spyOn(service as any, 'queryOnchainCreatorId')
+        .mockResolvedValue('999');
 
       const result = await service.reconcile(false);
 
       expect(result.totalScanned).toBe(1);
       expect(result.driftFound).toBe(1);
       expect(result.records[0]).toEqual(
-        expect.objectContaining({ creatorId: 'creator-1', drift: true, chainOnchainId: '999' }),
+        expect.objectContaining({
+          creatorId: 'creator-1',
+          drift: true,
+          chainOnchainId: '999',
+        }),
       );
       expect(repo.save).toHaveBeenCalledWith(
         expect.objectContaining({ drift_detected_at: expect.any(Date) }),
@@ -97,7 +114,9 @@ describe('CreatorRegistrySyncService', () => {
         drift_detected_at: null,
       };
       repo.find.mockResolvedValue([mapping]);
-      jest.spyOn(service as any, 'queryOnchainCreatorId').mockResolvedValue('999');
+      jest
+        .spyOn(service as any, 'queryOnchainCreatorId')
+        .mockResolvedValue('999');
 
       const result = await service.reconcile(true);
 
@@ -114,7 +133,9 @@ describe('CreatorRegistrySyncService', () => {
         drift_detected_at: null,
       };
       repo.find.mockResolvedValue([mapping]);
-      jest.spyOn(service as any, 'queryOnchainCreatorId').mockResolvedValue('456');
+      jest
+        .spyOn(service as any, 'queryOnchainCreatorId')
+        .mockResolvedValue('456');
 
       const result = await service.reconcile();
 
@@ -124,8 +145,18 @@ describe('CreatorRegistrySyncService', () => {
 
     it('counts errors from the chain read without aborting the scan', async () => {
       const mappings = [
-        { creator_id: 'creator-1', stellar_address: 'GADDR1', onchain_creator_id: '456', drift_detected_at: null },
-        { creator_id: 'creator-2', stellar_address: 'GADDR2', onchain_creator_id: '789', drift_detected_at: null },
+        {
+          creator_id: 'creator-1',
+          stellar_address: 'GADDR1',
+          onchain_creator_id: '456',
+          drift_detected_at: null,
+        },
+        {
+          creator_id: 'creator-2',
+          stellar_address: 'GADDR2',
+          onchain_creator_id: '789',
+          drift_detected_at: null,
+        },
       ];
       repo.find.mockResolvedValue(mappings);
       jest
@@ -138,6 +169,41 @@ describe('CreatorRegistrySyncService', () => {
       expect(result.totalScanned).toBe(2);
       expect(result.errors).toBe(1);
       expect(result.driftFound).toBe(0);
+    });
+
+    it('records the drift count via BusinessMetricsService after each run', async () => {
+      const mapping = {
+        creator_id: 'creator-1',
+        stellar_address: 'GADDR1',
+        onchain_creator_id: '456',
+        drift_detected_at: null,
+      };
+      repo.find.mockResolvedValue([mapping]);
+      jest
+        .spyOn(service as any, 'queryOnchainCreatorId')
+        .mockResolvedValue('999');
+
+      await service.reconcile();
+
+      // Drift metric is the Prometheus gauge exposed to dashboards (#1625).
+      expect(metrics.recordCreatorRegistryDrift).toHaveBeenCalledWith(1);
+    });
+
+    it('records zero drift when nothing is out of sync', async () => {
+      const mapping = {
+        creator_id: 'creator-1',
+        stellar_address: 'GADDR1',
+        onchain_creator_id: '456',
+        drift_detected_at: null,
+      };
+      repo.find.mockResolvedValue([mapping]);
+      jest
+        .spyOn(service as any, 'queryOnchainCreatorId')
+        .mockResolvedValue('456');
+
+      await service.reconcile();
+
+      expect(metrics.recordCreatorRegistryDrift).toHaveBeenCalledWith(0);
     });
   });
 });

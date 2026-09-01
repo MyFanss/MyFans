@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as net from 'net';
 import * as tls from 'tls';
-import { EmailAdapter, EmailMessage } from './email-adapter.interface';
+import { EmailAdapter, EmailMessage, EmailSendResult } from './email-adapter.interface';
 
 interface SmtpConfig {
   host: string;
@@ -34,7 +34,7 @@ export class SmtpEmailAdapter implements EmailAdapter {
 
   constructor(private readonly configService: ConfigService) {}
 
-  async send(message: EmailMessage): Promise<void> {
+  async send(message: EmailMessage): Promise<EmailSendResult> {
     const config = this.readConfig();
     const socket = await this.connect(config);
 
@@ -53,10 +53,15 @@ export class SmtpEmailAdapter implements EmailAdapter {
       await this.command(socket, 'DATA', 354);
 
       const data = this.buildMessage(config.from, message);
-      await this.command(socket, `${data}\r\n.`, 250);
+      const dataReply = await this.command(socket, `${data}\r\n.`, 250);
       await this.command(socket, 'QUIT', 221);
 
+      // Extract queue ID from the 250 reply (e.g. "250 2.0.0 Ok: queued as ABC123")
+      const queueMatch = dataReply.match(/queued as (\S+)/i);
+      const messageId = queueMatch?.[1] ?? undefined;
+
       this.logger.log(`[smtp-email] delivered to=${message.to} via ${config.host}:${config.port}`);
+      return { messageId };
     } finally {
       socket.destroy();
     }

@@ -12,6 +12,10 @@ export enum EmailOutboxStatus {
   PENDING = 'pending',
   SENT = 'sent',
   FAILED = 'failed',
+  /** Delivery was skipped because the recipient's account was deleted (#1566). */
+  SUPPRESSED = 'suppressed',
+  /** All delivery attempts exhausted — requires manual intervention or replay. */
+  DEAD_LETTER = 'dead_letter',
 }
 
 /** Durable record of an email queued for delivery, replacing the previous in-memory-only log. */
@@ -42,6 +46,10 @@ export class EmailOutboxEntry {
 
   @Column({ type: 'text', nullable: true })
   last_error: string | null;
+
+  /** Message ID returned by the email provider on successful delivery. */
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  provider_message_id: string | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   sent_at: Date | null;
