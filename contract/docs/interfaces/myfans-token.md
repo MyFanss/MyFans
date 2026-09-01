@@ -14,7 +14,7 @@ Standard token implementation.
 | `transfer_from` | `spender: Address, from: Address, to: Address, amount: i128` | `()` | spender | `soroban contract invoke ... transfer_from -- SPENDER FROM TO 100` | `("transfer", from, to) -> amount` |
 | `clear_allowance` | `from: Address, spender: Address` | `()` | from | `soroban contract invoke ... clear_allowance -- FROM SPENDER` | None |
 | `allowance` | `from: Address, spender: Address` | `i128` | none | `soroban contract invoke ... allowance -- FROM SPENDER` | None |
-| `mint` | `to: Address, amount: i128` | `()` | admin? | `soroban contract invoke ... mint -- TO 1000` | `("mint", to) -> amount` |
+| `mint` | `to: Address, amount: i128` | `()` | admin | `soroban contract invoke ... mint -- TO 1000` | `("mint", to) -> amount` |
 | `burn` | `from: Address, amount: i128` | `()` | from | `soroban contract invoke ... burn -- FROM 100` | `("burn", from) -> amount` |
 | `balance` / `transfer` | `id: Address` / `from: Address, to: Address, amount: i128` | `i128` / `()` | none/from | `soroban contract invoke ... transfer -- FROM TO 100` | `("transfer", from, to) -> amount` |
 

@@ -37,7 +37,7 @@ Contracts covered here (deployed by `contract/scripts/deploy.sh`):
 | `approve(env, from, spender, amount, expiration_ledger)` | `from` | `from` signs and sets allowance to `spender`. | `spender` signs on behalf of `from`. |
 | `transfer_from(env, spender, from, to, amount)` | `spender` | `spender` signs and spends from prior allowance. | `from` signs but `spender` does not. |
 | `allowance(env, from, spender)` | `none` | Any caller queries active allowance. | Expecting signer/auth to be required for read. |
-| `mint(env, to, amount)` | `none` | Any caller invokes mint to increase `to` balance. | Expecting only admin to mint (not enforced by auth checks). |
+| `mint(env, to, amount)` | `admin` | Current admin signs and mints new tokens to `to`. | Non-admin signs and tries to mint; `require_auth` fails. |
 | `balance(env, id)` | `none` | Any caller reads `id` balance. | Expecting signer/auth to be required for read. |
 | `transfer(env, from, to, amount)` | `from` | `from` signs and transfers own balance. | Third-party caller submits transfer from `from` without `from` auth. |
 
