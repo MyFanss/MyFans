@@ -1,8 +1,8 @@
 /**
  * Creator profile data for public fan-facing page.
- * Replace with API calls when backend is ready.
  */
 import { unstable_cache } from 'next/cache';
+import { fetchCreatorPlans } from '@/lib/creator-plans-api';
 
 export interface CreatorProfile {
   id: string;
@@ -537,12 +537,41 @@ export function getCreatorByUsername(username: string): CreatorProfile | null {
 }
 
 /**
- * Cached async accessors — Next.js deduplicates and caches these per request.
+ * Map intervalDays to a billing period label.
+ * Anything not exactly 365 is treated as "month" so the UI always renders
+ * something sensible even if the backend sends unusual values.
+ */
+function intervalToBillingPeriod(intervalDays: number): 'month' | 'year' {
+  return intervalDays === 365 ? 'year' : 'month';
+}
+
+/**
+ * Fetch subscription plans for a creator from the real API.
+ *
+ * The plan `id` is the numeric database/contract id — it is what the
+ * confirm page (/subscribe/[creatorId]/confirm?planId=) expects.
+ *
+ * creatorId: the creator's backend UUID (PublicCreator.id), NOT their username.
+ *
+ * Caching is handled by Next.js unstable_cache with a 60-second window so
+ * repeat SSR renders within the same ISR window are free.
  */
 export const getCreatorPlans = unstable_cache(
-  async (username: string): Promise<CreatorPlan[]> => {
-    const key = username.toLowerCase();
-    return MOCK_PLANS[key] ?? MOCK_PLANS.jane;
+  async (creatorId: string): Promise<CreatorPlan[]> => {
+    try {
+      const result = await fetchCreatorPlans(creatorId, 1, 50);
+      return result.items.map((plan) => ({
+        id: String(plan.id),
+        name: plan.asset,
+        price: parseFloat(plan.amount),
+        currency: plan.asset,
+        billingPeriod: intervalToBillingPeriod(plan.intervalDays),
+      }));
+    } catch {
+      // If the API is unreachable (e.g. backend not running in dev)
+      // return an empty list rather than crashing the page.
+      return [];
+    }
   },
   ['creator-plans'],
   { revalidate: 60, tags: ['creator-plans'] },
@@ -550,7 +579,7 @@ export const getCreatorPlans = unstable_cache(
 
 export const getPreviewContent = unstable_cache(
   async (_username: string): Promise<CreatorPost[]> => {
-    return MOCK_PREVIEW;
+    return [];
   },
   ['creator-preview'],
   { revalidate: 60, tags: ['creator-preview'] },
@@ -558,7 +587,7 @@ export const getPreviewContent = unstable_cache(
 
 export const getPosts = unstable_cache(
   async (_username: string): Promise<CreatorPost[]> => {
-    return MOCK_POSTS;
+    return [];
   },
   ['creator-posts'],
   { revalidate: 60, tags: ['creator-posts'] },

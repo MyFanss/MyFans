@@ -60,10 +60,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 
   const creator = publicCreatorToProfile(apiCreator);
-  // Plans are still mock data — the backend has no marketing-tier/pricing
-  // model yet (see MyFanss/MyFans#1358 for tracking). Everything else on
-  // this page (identity, posts) is real.
-  const plans = await getCreatorPlans(username);
+  const plans = await getCreatorPlans(apiCreator.id);
   return createCreatorMetadata(creator, plans, getCurrencySymbol);
 }
 
@@ -80,7 +77,7 @@ export default async function CreatorProfilePage({ params }: PageProps) {
    * Plans and preview are above-the-fold; posts stream separately.
    */
   const [plans, previewContent] = await Promise.all([
-    getCreatorPlans(username),
+    getCreatorPlans(apiCreator.id),
     getPublishedPostsByAuthor(apiCreator.id, { limit: PREVIEW_COUNT }),
   ]);
 
@@ -95,7 +92,12 @@ export default async function CreatorProfilePage({ params }: PageProps) {
               Subscription plans
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {plans.map((plan) => (
+              {plans.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                This creator has no active plans yet.
+              </p>
+            ) : (
+              plans.map((plan) => (
                 <PlanCard
                   key={plan.id}
                   name={plan.name}
@@ -107,14 +109,15 @@ export default async function CreatorProfilePage({ params }: PageProps) {
                   currencySymbol={getCurrencySymbol(plan.currency)}
                   actionButton={
                     <Link
-                      href={`/subscribe?creator=${username}&plan=${plan.id}`}
+                      href={`/subscribe/${encodeURIComponent(apiCreator.id)}/confirm?planId=${encodeURIComponent(plan.id)}`}
                       className="block w-full py-2 text-center text-sm font-medium rounded-lg bg-primary-600 hover:bg-primary-700 text-white transition-colors"
                     >
                       Subscribe
                     </Link>
                   }
                 />
-              ))}
+              ))
+            )}
             </div>
           </section>
 

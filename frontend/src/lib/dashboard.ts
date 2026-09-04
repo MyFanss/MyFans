@@ -44,16 +44,21 @@ const MOCK_ACTIVITY: ActivityItem[] = [
 
 /**
  * Fetch dashboard data from the real API.
- * Falls back to mock data if API is unavailable (for testing).
- * @param options.simulateError - if true, rejects to test error state (dev only)
- * @param options.useMock - if true, uses mock data instead of real API (test only)
+ * @param options.simulateError - Throws intentionally to test the error state.
+ *   Only active in `development` / `test` environments. In `production` this
+ *   flag is silently ignored so a stray query-param or test helper can never
+ *   trigger an error page for real users.
+ * @param options.useMock - Uses in-memory mock data instead of the API.
+ *   Only honoured in `development` / `test` environments.
  */
 export async function fetchDashboardData(options?: {
   simulateError?: boolean;
   useMock?: boolean;
 }): Promise<DashboardData> {
-  // Test-only mock mode
-  if (options?.useMock) {
+  const isDev = process.env.NODE_ENV !== 'production';
+
+  // Test-only mock mode — never available in production.
+  if (isDev && options?.useMock) {
     if (options?.simulateError) {
       await new Promise((_, reject) => setTimeout(() => reject(new Error('Failed to load dashboard')), 400));
     }
@@ -64,9 +69,13 @@ export async function fetchDashboardData(options?: {
     };
   }
 
-  // Default: fetch from real API
-  if (options?.simulateError) {
-    await new Promise((_, reject) => setTimeout(() => reject(new Error('Failed to load dashboard')), 400));
+  // Dev/test-only error simulation. A query-param like ?simulateError=1 in
+  // Storybook or integration tests can exercise the error state without any
+  // risk of leaking into production.
+  if (isDev && options?.simulateError) {
+    await new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Failed to load dashboard')), 400),
+    );
   }
 
   try {
