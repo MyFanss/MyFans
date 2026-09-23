@@ -23,25 +23,96 @@ A practical guide to getting the MyFans backend API running locally, making your
 
 ## 1. Start the backend locally
 
-The fastest path is Docker Compose (no local Postgres or Node install needed):
+The fastest path is Docker Compose (no local Postgres or Node install needed).
+All services — API, Postgres, Redis, email-outbox worker, and Soroban-event
+poller — are started in one command.
 
 ```bash
 # From repository root
-cp .env.dev.example .env.dev
-# Edit .env.dev — at minimum set JWT_SECRET to a random value:
-# node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+cp backend/.env.example backend/.env.dev
+# Edit backend/.env.dev — at minimum set:
+#   JWT_SECRET  (generate: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))")
+#   DB_PASSWORD (any strong password)
 
 docker compose -f docker-compose.dev.yml --profile dev up
 ```
 
 The backend starts on **http://localhost:3001** with hot reload.
 
+### Services started by compose
+
+| Service | Description | Port |
+|---------|-------------|------|
+| `postgres` | PostgreSQL 15 (persistent volume) | 5432 |
+| `redis` | Redis 7 cache / session store | 6379 |
+| `api` | NestJS backend (hot-reload) | 3001 |
+| `worker-poller` | Soroban event poller — indexes chain events so subscription state stays current | — |
+| `worker-outbox` | Transactional email outbox processor — delivers queued emails | — |
+| `frontend` | Next.js dev server | 3000 |
+
+All services must report **healthy** before dependent services start.
+The API readiness probe (`/v1/health/ready`) is used as the gate — it
+checks Postgres and Redis before the frontend is allowed to connect.
+
+### Verifying compose health
+
+```bash
+# All services should show "healthy"
+docker compose -f docker-compose.dev.yml ps
+
+# Tail logs for a specific service
+docker compose -f docker-compose.dev.yml logs -f worker-poller
+docker compose -f docker-compose.dev.yml logs -f worker-outbox
+```
+
 Verify it's up:
 
 ```bash
 curl http://localhost:3001/v1/health
-# {"status":"ok","timestamp":"..."}
+# {"status":"up","timestamp":"2026-08-28T00:00:00.000Z"}
 ```
+
+### Health and readiness probes
+
+The backend exposes two distinct probe endpoints (both public, no token needed):
+
+| Endpoint | Purpose | Example response / status |
+|----------|---------|---------------------------|
+| `GET /v1/health` | **Liveness** — the process is up and able to handle requests. It is deliberately cheap and never probes dependencies, so a DB/Redis/RPC outage does not trigger an orchestrator restart. | `200` with `{"status":"up","timestamp":"..."}` |
+| `GET /v1/health/ready` | **Readiness** — the instance is fit to receive traffic. Probes the database (mandatory) and Redis when configured (mandatory); Soroban RPC is probed but optional. | `200` when ready, `503` when the database or a configured Redis is down |
+
+```bash
+# Liveness (process up only)
+curl -s http://localhost:3001/v1/health
+
+# Readiness (probes DB, Redis-if-configured, and optional RPC)
+curl -s http://localhost:3001/v1/health/ready
+# 200 {"status":"up","checks":{"database":{"status":"up",...},...}}
+```
+
+Kubernetes probe example — point the liveness probe at `/v1/health` and the
+readiness probe at `/v1/health/ready` so traffic is only routed to instances
+whose dependencies are actually reachable:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /v1/health
+    port: 3001
+  initialDelaySeconds: 10
+  periodSeconds: 10
+readinessProbe:
+  httpGet:
+    path: /v1/health/ready
+    port: 3001
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  failureThreshold: 3
+```
+
+The same split applies to Docker Compose / load-balancer healthchecks: use
+`/v1/health` for "is the container alive" and `/v1/health/ready` for "is it
+safe to route traffic here".
 
 ### Manual setup (without Docker)
 

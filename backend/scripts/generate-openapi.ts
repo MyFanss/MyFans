@@ -4,9 +4,10 @@
  * Output: openapi.json in the backend root directory.
  */
 import { NestFactory } from '@nestjs/core';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
+import { buildOpenApiConfig } from '../src/common/openapi.config';
 
 // Minimal env stubs so the app can bootstrap without real secrets
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'generate-openapi-stub';
@@ -26,14 +27,7 @@ async function generate() {
 
   const app = await NestFactory.create(AppModule, { logger: false });
 
-  const config = new DocumentBuilder()
-    .setTitle('MyFans API')
-    .setDescription('MyFans backend REST API')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-
-  const document = SwaggerModule.createDocument(app, config);
+  const document = SwaggerModule.createDocument(app, buildOpenApiConfig());
 
   const outPath = join(__dirname, '..', 'openapi.json');
   writeFileSync(outPath, JSON.stringify(document, null, 2));

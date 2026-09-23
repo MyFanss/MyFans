@@ -6,6 +6,20 @@ import { buildContentSecurityPolicy } from "./src/lib/csp";
 
 const isProd = process.env.NODE_ENV === 'production';
 
+/**
+ * Demo / component-story pages (`page.demo.tsx` files) are compiled as
+ * routes only when demos are enabled: any non-production build, or an
+ * explicit `NEXT_PUBLIC_FLAG_DEMOS=true` opt-in (e.g. a staging preview).
+ * In a plain production build the `demo.tsx` extension is dropped, so those
+ * files are not treated as pages and never reach the output. See
+ * `docs/DEMO_ROUTES.md`.
+ */
+const demoRoutesEnabled = !isProd || process.env.NEXT_PUBLIC_FLAG_DEMOS === 'true';
+const basePageExtensions = ['tsx', 'ts', 'jsx', 'js'];
+const pageExtensions = demoRoutesEnabled
+  ? ['demo.tsx', 'demo.ts', 'demo.jsx', 'demo.js', ...basePageExtensions]
+  : basePageExtensions;
+
 // Builds the CSP header value, including connect-src hosts derived from
 // NEXT_PUBLIC_SOROBAN_RPC_URL / NEXT_PUBLIC_HORIZON_URL. See src/lib/csp.ts
 // and docs/CSP.md for the full host list and how to update it.
@@ -16,6 +30,7 @@ function getCSP() {
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  pageExtensions,
   turbopack: {
     root: process.cwd(),
   },

@@ -45,6 +45,15 @@ for idempotent backend ingestion.
 - **Malformed metadata URI** → rejected; callers may pass a hash-only value.
 - **Duplicate event delivery** → single row (see idempotency below).
 
+### Mapping and drift
+
+The on-chain registry (`register_creator(caller, creator_address, creator_id)`)
+and the backend's `CreatorProfile` are independent sources of truth keyed
+differently (Stellar address vs. internal UUID). Without an explicit mapping
+and drift check, the two can silently diverge (e.g. a creator re-registers with
+a new `creator_id`, or a registration transaction fails after the backend
+already recorded it as successful).
+
 ## Components
 
 - **Entity**: `backend/src/creators/entities/creator-onchain-mapping.entity.ts`
@@ -60,16 +69,26 @@ for idempotent backend ingestion.
   - `applyRegistryEvent(event)` — upserts the creator by `pubkey` and records
     the event identity. Idempotent on `ledger_seq:event_index`: a duplicate
     delivery is a no-op and yields a single row.
-  - `reconcile(dryRun?)` — re-checks every mapped creator's on-chain state and
-    flags rows where it disagrees with what's stored (`drift_detected_at`).
-    Runs hourly via `@Cron` (see `CREATOR_REGISTRY_RECONCILER_DRY_RUN` env var
-    to run without persisting), mirroring `SubscriptionReconcilerService`.
+  - `reconcile(dryRun?)` — re-checks every mapped creator's on-chain state
+    (including `creator_id`) and flags rows where it disagrees with what's
+    stored (`drift_detected_at`). Runs hourly via `@Cron` (see
+    `CREATOR_REGISTRY_RECONCILER_DRY_RUN` env var to run without persisting),
+    mirroring `SubscriptionReconcilerService`.
+  - **Drift metric**: every `reconcile()` run records the latest drift count
+    via `BusinessMetricsService.recordCreatorRegistryDrift()`, exposed as the
+    `myfans_creator_registry_drift_count` Prometheus gauge so divergence is
+    observable in dashboards.
 - **Sync worker/poller**: `backend/src/creators/creator-registry-event.poller.ts`
   — polls the contract's events, decodes `schema_version`, and calls
   `applyRegistryEvent` for each. Unknown `schema_version` values are logged and
   skipped rather than crashing the worker.
 - **Endpoint**: `POST /v1/creators/:creatorId/onchain-sync` — thin wrapper
   around `syncOnOnboard` for the onboarding flow.
+- **Endpoint**: `POST /v1/creators/registry/reconcile` — admin-only
+  (`@Roles(ADMIN)`), triggers an on-demand `reconcile()` run mirroring the
+  hourly cron. Pass `?dryRun=true` for a report-only run (no drift markers
+  persisted); when omitted it falls back to the
+  `CREATOR_REGISTRY_RECONCILER_DRY_RUN` env var just like the scheduled job.
 
 ## Public profile API
 

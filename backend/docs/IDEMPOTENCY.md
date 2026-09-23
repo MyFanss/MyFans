@@ -34,6 +34,10 @@ request and is subject to normal validation (balance, auth, pause state).
 - Terminal states (`confirmed`, `failed`) are immutable; only `pending` records
   may transition.
 
+**Cleanup:** `IdempotencyCleanupService` runs on a configurable schedule
+(default: every hour) and calls `IdempotencyService.purgeExpired()`, which
+deletes expired records in batches to avoid long-running transactions.
+
 ## EarningsModule withdraw
 
 The creator earnings withdraw flow follows this pattern:
@@ -71,3 +75,59 @@ Administrative drains or overrides are not part of the normal withdraw path and
 must be gated by the `AUTH_MATRIX` role checks. There is no silent admin drain:
 any privileged movement of creator funds requires an explicit, audited role and
 is recorded with the same idempotency guarantees.
+
+Keys are scoped to a `(key, fingerprint)` pair where `fingerprint` encodes:
+
+- **Caller identity:** `user:<userId>` (authenticated) or `ip:<clientIp>` (anonymous).
+- **Body hash:** SHA-256 of the JSON-serialised request body.
+
+The combined fingerprint format is `<identity>|<bodyHash>`. This ensures:
+
+1. One user cannot replay another user's key.
+2. The same key used with a **different request body** is rejected with
+   **409 Conflict** (body mismatch detection).
+
+### Race condition
+
+Two concurrent requests with the same key arrive simultaneously. The first
+writer wins via a PostgreSQL unique constraint on `(key, fingerprint)`. The
+loser receives a `23505` unique-violation error which is mapped to **409
+Conflict**.
+
+### Error responses
+
+On non-2xx handler responses the in-flight record is **deleted** (via
+`release()`), allowing the client to retry with the same key after fixing the
+underlying issue.
+
+---
+
+## Configuration
+
+```
+IDEMPOTENCY_TTL_HOURS=24              # optional; defaults to 24
+IDEMPOTENCY_CLEANUP_CRON="0 * * * *"  # optional; defaults to every hour
+IDEMPOTENCY_CLEANUP_BATCH_SIZE=1000   # optional; defaults to 1000
+```
+
+## Multi-Instance Safety
+
+The idempotency store is backed by PostgreSQL with a unique constraint on
+`(key, fingerprint)`. This makes it safe for horizontally-scaled deployments —
+all instances share the same database and contention is handled via the unique
+constraint (loser gets 409). No in-memory state is used.
+
+---
+
+## Manual Checklist (Replay Hardening)
+
+1. Send `POST /v1/posts` with `Idempotency-Key: test-1` → expect `201`.
+2. Repeat identical request → expect `201` with same body (replay).
+3. Send `PUT /v1/posts/1` with `Idempotency-Key: test-1` → expect `422`
+   (method/path mismatch).
+4. Send two concurrent requests with `Idempotency-Key: test-2` → one gets
+   `201`, the other gets `409`.
+5. Send `POST /v1/posts` with `Idempotency-Key: test-1` but a **different
+   body** → expect `409` (body mismatch).
+6. Wait for TTL expiry (or manually delete the record) → same key accepted
+   again as new.
