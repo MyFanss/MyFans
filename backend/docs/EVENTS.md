@@ -222,6 +222,48 @@ Published when a comment is deleted.
 
 ---
 
+## Subscription Event Poller
+
+The `SubscriptionEventPollerService` polls Soroban contract events and translates them into the domain events above. It is the on-chain source of truth for subscription state and must be safe against duplicate delivery.
+
+### Target events
+
+The poller only processes the following contract topics (`TARGET_EVENTS`):
+
+| Contract topic | Domain event |
+| --- | --- |
+| `subscription_created` | `subscription.created` |
+| `subscription_renewed` | `subscription.renewed` |
+| `subscription_cancelled` | `subscription.cancelled` |
+
+Any other topic is ignored. Malformed payloads (missing/incorrectly typed fields) are logged at `WARN` and skipped without advancing the idempotency ledger for that event, so they can be retried after a fix.
+
+### Idempotency
+
+Every processed event is keyed by `ledgerSeq:eventIndex` (the ledger sequence number and the event's index within that ledger). Before dispatching a handler, the poller checks this key against the idempotency ledger; if the key already exists the event is dropped as a duplicate. This makes duplicate delivery (e.g. overlapping poll windows or a restart replaying the last cursor) safe: handlers for `created`, `renewed`, and `cancelled` are only ever invoked once per on-chain event.
+
+Gaps in ledger sequence numbers are tolerated — the poller resumes from the last committed cursor and does not assume contiguous ledgers. Horizon finality is assumed: events are only processed once they are included in a closed ledger, and the poller does not attempt to handle chain reorgs (Horizon does not expose reorged ledgers).
+
+### Feature flag
+
+The poller is gated by the `FEATURE_FLAG_SUBSCRIPTION_EVENT_POLLER` flag. **Default: disabled (`false`).** It must be explicitly enabled per environment; production enables it only after the poller has been validated against replay fixtures. When disabled, no Soroban polling occurs and subscription state is driven solely by the existing service paths.
+
+### Metrics
+
+The poller exposes Prometheus metrics:
+
+- **`poller_lag`**: difference between the latest closed ledger and the last processed ledger. A growing value indicates the poller is falling behind.
+- **`poller_events_processed_total`**: counter of successfully processed events, labeled by event type.
+- **`poller_duplicates_skipped_total`**: counter of events dropped by the idempotency ledger.
+
+See `backend/docs/METRICS_GRAFANA.md` for dashboard wiring.
+
+### Security
+
+The poller uses a least-privilege read-only credential for Soroban/Horizon access. It never processes unauthenticated admin callbacks; all state changes flow through the poller's own event handlers.
+
+---
+
 ## Metrics
 
 The `EventBus` tracks the following metrics:
@@ -303,13 +345,7 @@ const module = await Test.createTestingModule({
   providers: [MyService, { provide: EventBus, useClass: InProcessEventBus }],
 }).compile();
 
-const eventBus = module.get(EventBus);
-const handler = jest.fn();
-eventBus.subscribe('subscription.created', handler);
-
-// ... trigger publisher ...
-
-expect(handler).toHaveBeenCalledWith(expect.objectContaining({ fan: 'xyz' }));
+const eventBus = module.get<EventBus>(EventBus);
 ```
 
-See `backend/src/events/events.spec.ts` for examples.
+The poller is covered by replay-fixture tests that feed recorded Soroban event batches (including duplicate `ledgerSeq:eventIndex` keys) through the handlers and assert that each event is applied exactly once and that `poller_lag` is reported.
