@@ -1,5 +1,6 @@
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -42,6 +43,23 @@ const IDEMPOTENCY_ROUTES = [
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      cache: true,
+      // Fail fast in production when required env vars are missing.
+      validate: (config: Record<string, unknown>) => {
+        if (process.env.NODE_ENV === 'production') {
+          const required = ['DATABASE_URL', 'JWT_SECRET'];
+          const missing = required.filter((key) => !config[key]);
+          if (missing.length > 0) {
+            throw new Error(
+              `Missing required environment variables: ${missing.join(', ')}`,
+            );
+          }
+        }
+        return config;
+      },
+    }),
     ThrottlerModule.forRoot([
       { name: 'auth', ttl: 60000, limit: 5 },
       { name: 'short', ttl: 60000, limit: 10 },

@@ -52,6 +52,9 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
+  // Single global /v1 prefix for the REST API surface.
+  app.setGlobalPrefix('v1');
+
   app.enableVersioning({
     type: VersioningType.URI,
     defaultVersion: '1',
@@ -61,14 +64,20 @@ async function bootstrap() {
 
   const probeService = app.get(StartupProbeService);
 
-  const config = new DocumentBuilder()
-    .setTitle('MyFans API')
-    .setDescription('MyFans backend REST API')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api-docs', app, document);
+  // Swagger is gated in production: only expose the docs UI when explicitly
+  // enabled via ENABLE_SWAGGER, so production deployments do not leak the
+  // full API inventory by default.
+  const swaggerEnabled = !isProduction || process.env.ENABLE_SWAGGER === 'true';
+  if (swaggerEnabled) {
+    const config = new DocumentBuilder()
+      .setTitle('MyFans API')
+      .setDescription('MyFans backend REST API')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api-docs', app, document);
+  }
 
   let dbResult: { ok: boolean; error?: string };
   try {
