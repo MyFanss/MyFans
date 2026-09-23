@@ -1,6 +1,7 @@
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 // Canonical auth/users stack. Historical duplicate stacks were removed.
@@ -79,14 +80,71 @@ const CSRF_ROUTES = [
   { path: 'v1/*', method: RequestMethod.DELETE },
 ];
 
+/**
+ * Route classes for rate limiting.
+ *
+ * - `auth`   — strict: authentication challenges (login, register, password
+ *              reset, token refresh). 5 requests/min per key.
+ * - `upload` — strict: uploads and other CPU/bandwidth-heavy writes.
+ * - `read`   — loose: general read traffic.
+ * - `short` / `medium` / `long` — legacy buckets kept for backwards
+ *              compatibility with existing @Throttle() decorators.
+ *
+ * When REDIS_URL is configured the throttler uses a shared Redis store so
+ * counters are consistent across instances (required for HA / horizontal
+ * scale). Without REDIS_URL it falls back to the in-memory store, which is
+ * only safe for single-instance deployments.
+ */
+const THROTTLER_TIERS = [
+  { name: 'auth', ttl: 60000, limit: 5 },
+  { name: 'upload', ttl: 60000, limit: 10 },
+  { name: 'read', ttl: 60000, limit: 300 },
+  { name: 'short', ttl: 60000, limit: 10 },
+  { name: 'medium', ttl: 60000, limit: 50 },
+  { name: 'long', ttl: 60000, limit: 100 },
+];
+
+const redisUrl = process.env.REDIS_URL;
+
+/**
+ * Parse the CORS origin allowlist from the environment.
+ *
+ * `CORS_ORIGINS` is a comma-separated list of exact origins (scheme + host +
+ * optional port), e.g. `https://app.example.com,https://staging.example.com`.
+ * Preview deploys can append their own origin without code changes. A single
+ * `*` entry is preserved so the boot guard below can reject the unsafe
+ * wildcard-with-credentials combination in production.
+ */
+function parseCorsOrigins(): string[] {
+  return (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+}
+
+const corsOrigins = parseCorsOrigins();
+const corsCredentials =
+  (process.env.CORS_CREDENTIALS ?? 'true').toLowerCase() !== 'false';
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Fail fast: reflecting arbitrary origins while sending credentials lets any
+// site read authenticated responses. Never allow `*` + credentials in prod.
+if (isProduction && corsCredentials && corsOrigins.includes('*')) {
+  throw new Error(
+    'Invalid CORS configuration: CORS_ORIGINS="*" cannot be combined with ' +
+      'credentials in production. Set CORS_ORIGINS to an explicit allowlist ' +
+      'of trusted origins (see backend/docs/CORS_AND_SECURITY_HEADERS.md).',
+  );
+}
+
 @Module({
   imports: [
-    ThrottlerModule.forRoot([
-      { name: 'auth', ttl: 60000, limit: 5 },
-      { name: 'short', ttl: 60000, limit: 10 },
-      { name: 'medium', ttl: 60000, limit: 50 },
-      { name: 'long', ttl: 60000, limit: 100 },
-    ]),
+    ThrottlerModule.forRoot({
+      throttlers: THROTTLER_TIERS,
+      ...(redisUrl
+        ? { storage: new ThrottlerStorageRedisService(redisUrl) }
+        : {}),
+    }),
     LoggingModule,
     MetricsModule,
     AuthModule,
@@ -127,6 +185,10 @@ const CSRF_ROUTES = [
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
+    // CorrelationIdMiddleware runs first so every downstream middleware,
+    // guard, controller, and the global exception filter can read the
+    // request-scoped correlation id (generated or accepted from
+    // X-Correlation-Id, with charset/length validation).
     consumer
       .apply(CorrelationIdMiddleware, LoggingMiddleware, MetricsMiddleware)
       .forRoutes({ path: '*', method: RequestMethod.ALL });
@@ -139,3 +201,5 @@ export class AppModule {
     consumer.apply(CsrfMiddleware).forRoutes(...CSRF_ROUTES);
   }
 }
+
+export { corsOrigins, corsCredentials };

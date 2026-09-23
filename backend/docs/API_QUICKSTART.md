@@ -299,58 +299,77 @@ curl -s http://localhost:3001/v1/health \
   -i | grep -i x-correlation
 ```
 
+#### Validation rules
+
+Client-supplied correlation ids are accepted only when they are safe to log and
+propagate. The middleware applies the following rules and **regenerates** a fresh
+id whenever a supplied value is rejected:
+
+| Rule | Accepted | Rejected (regenerated) |
+|------|----------|------------------------|
+| Charset | `A–Z`, `a–z`, `0–9`, `-`, `_`, `.` | anything else (spaces, `/`, `\`, control chars, unicode) |
+| Length | 1–128 characters | empty, or longer than 128 characters |
+| Missing header | — | server generates a UUID v4 |
+
+```bash
+# Accepted — echoed back verbatim
+curl -s http://localhost:3001/v1/health -H "X-Correlation-ID: checkout-abc123" -i | grep -i x-correlation
+
+# Rejected (illegal charset) — server substitutes a generated id
+curl -s http://localhost:3001/v1/health -H "X-Correlation-ID: bad id!" -i | grep -i x-correlation
+```
+
+> **Security:** never put PII (emails, wallet addresses, tokens) in a
+> correlation id. Ids are written to logs and returned to clients, so treat them
+> as public, non-sensitive tracing tokens.
+
 ### Content type
 
-All request bodies must be `application/json`. Responses are always `application/json`.
+All request bodies must be `application/json` unless the endpoint documents a
+multipart upload. Responses are `application/json`.
 
 ---
 
 ## 7. Rate limiting
 
-The API uses tiered rate limits enforced by `@nestjs/throttler`:
+Rate limits are enforced per IP (and per user where authenticated). Exceeding a
+limit returns `429 Too Many Requests` with a `Retry-After` header.
 
-| Tier | TTL | Limit | Applied to |
-|------|-----|-------|------------|
-| `auth` | 60 s | 5 req | Auth endpoints |
-| `short` | 60 s | 10 req | Sensitive write endpoints |
-| `medium` | 60 s | 50 req | Standard endpoints |
-| `long` | 60 s | 100 req | Read-heavy endpoints |
-
-When a limit is exceeded the API returns `429 Too Many Requests`. See [`docs/RATE_LIMITING.md`](./RATE_LIMITING.md) for the full policy.
+| Scope | Limit |
+|-------|-------|
+| Auth endpoints (`/v1/auth/*`) | 5 requests / minute / IP |
+| General API | 100 requests / minute / IP |
 
 ---
 
 ## 8. CSRF protection
 
-State-mutating requests (`POST`, `PUT`, `PATCH`, `DELETE`) require a valid CSRF token in the `X-CSRF-Token` header. Fetch a token first:
+State-mutating requests from browsers must include a CSRF token. Fetch one from
+`GET /v1/csrf/token` and send it back in the `X-CSRF-Token` header.
 
 ```bash
-# 1. Fetch CSRF token (public endpoint — no auth needed)
-CSRF_TOKEN=$(curl -s http://localhost:3001/v1/csrf/token | jq -r '.token')
-
-# 2. Use it in state-mutating requests
-curl -s -X POST http://localhost:3001/v1/posts \
+CSRF=$(curl -s http://localhost:3001/v1/csrf/token | jq -r .token)
+curl -s -X PATCH http://localhost:3001/v1/users/me \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-CSRF-Token: $CSRF_TOKEN" \
+  -H "X-CSRF-Token: $CSRF" \
   -H "Content-Type: application/json" \
-  -d '{"title": "Hello", "body": "World"}'
+  -d '{"displayName":"Ada"}'
 ```
-
-CSRF tokens are double-submit cookies — the server sets a cookie and expects the same value in the header. See [`docs/CORS_AND_SECURITY_HEADERS.md`](./CORS_AND_SECURITY_HEADERS.md) for details.
 
 ---
 
 ## 9. Idempotency
 
-Certain write endpoints support idempotency keys to prevent duplicate operations on retry. Send an `Idempotency-Key` header with a unique UUID:
+Endpoints that create resources accept an `Idempotency-Key` header. Replaying a
+request with the same key returns the original response instead of creating a
+duplicate.
 
 ```bash
-curl -s -X POST http://localhost:3001/v1/subscriptions/checkout \
+curl -s -X POST http://localhost:3001/v1/subscriptions \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-CSRF-Token: $CSRF_TOKEN" \
-  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Idempotency-Key: sub-2026-05-30-001" \
   -H "Content-Type: application/json" \
-  -d '{"planId": "<PLAN_ID>"}'
+  -d '{"creatorId":"...","planId":"..."}'
 ```
 
 If the same key is sent again, the server returns the original response instead of re-executing the operation. Keys are scoped per user and expire after 24 hours.
@@ -359,16 +378,28 @@ If the same key is sent again, the server returns the original response instead 
 
 ## 10. Error format
 
-All errors follow a consistent envelope:
+All errors share a single, stable envelope. Every error response includes the
+`correlationId` so a client can quote it in a bug report and a maintainer can
+grep the backend logs for the same request.
 
 ```json
 {
-  "statusCode": 403,
-  "message": "Active subscription required to access this content",
-  "error": "Forbidden",
-  "correlationId": "..."
+  "statusCode": 404,
+  "message": "Post not found",
+  "code": "POST_NOT_FOUND",
+  "correlationId": "9f1c2b7e-4a3d-4f0e-9c1a-2b3c4d5e6f70"
 }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `statusCode` | number | HTTP status code |
+| `message` | string | Human-readable, safe to display |
+| `code` | string | Stable machine-readable error code |
+| `correlationId` | string | Matches the `X-Correlation-ID` response header and the `correlationId` field on every log line for the request |
+
+Validation errors additionally include a `details` array describing each field
+failure; the four fields above are always present.
 
 Common status codes:
 
@@ -382,13 +413,19 @@ Common status codes:
 | `429` | Rate limit exceeded |
 | `500` | Internal server error |
 
+```bash
+# Trigger an error and inspect the envelope + header together
+curl -s http://localhost:3001/v1/posts/does-not-exist \
+  -H "Authorization: Bearer $TOKEN" \
+  -i | grep -iE 'x-correlation|statusCode|correlationId'
+```
+
 ---
 
 ## 11. Running backend tests
 
 ```bash
 cd backend
-
 # Unit tests
 npm run test
 
@@ -400,18 +437,22 @@ npm run test:cov
 
 # End-to-end tests (requires a running Postgres)
 npm run test:e2e
+
+# Lint
+npm run lint
 ```
 
 ---
 
 ## 12. Adding a new endpoint — checklist
 
-1. **Create the DTO** with `class-validator` decorators for input validation.
-2. **Add the service method** with business logic; keep controllers thin.
-3. **Add the controller route** with the appropriate HTTP verb and `@UseGuards()`.
-4. **Document with Swagger** decorators (`@ApiOperation`, `@ApiResponse`).
-5. **Write tests** — unit tests for the service, e2e tests for the route.
-6. **Update this quickstart** if the endpoint introduces a new API area or convention.
+- [ ] Route lives under `/v1/` and is documented in Swagger.
+- [ ] Protected by default; add `@Public()` only when truly public.
+- [ ] Validates input with a DTO (`class-validator`).
+- [ ] Returns the standard pagination envelope for list endpoints.
+- [ ] Throws `HttpException` subclasses so the global filter emits the standard error envelope (including `correlationId`).
+- [ ] Never logs PII; rely on the correlation id to trace requests.
+- [ ] Covered by at least one unit test and, for critical paths, an e2e test.
 
 ### Gated content access
 
