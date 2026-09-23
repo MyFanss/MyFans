@@ -1,115 +1,84 @@
-# Frontend local quickstart + Freighter setup
+# Local Quickstart
 
-Get the frontend running locally against the local API and connect
-Freighter to it. Written to be followed top-to-bottom in under 15 minutes.
+This guide gets the MyFans frontend running locally against a local contract
+and backend.
 
-## 1. Prerequisites (2 min)
+## Prerequisites
 
-- Node.js (see root `package.json`/`.nvmrc` if present) and `npm`.
-- The backend running locally on `:3001` — from repo root:
-  ```bash
-  cd backend && npm ci && npm run start:dev
-  # or from repo root: ./scripts/myfans dev:backend
-  ```
-- The [Freighter](https://freighter.app) browser extension installed, with
-  a wallet created/imported and unlocked.
+- Node.js 18+
+- A running local Soroban/Stellar network (see `contract/README.md`)
+- The backend API running locally (see `backend/README.md`)
 
-## 2. Configure the environment (2 min)
+## 1. Install dependencies
 
 ```bash
 cd frontend
+npm install
+```
+
+## 2. Configure environment
+
+Copy the example env file and fill in the values for your local stack:
+
+```bash
 cp .env.example .env.local
 ```
 
-Defaults in `.env.example` point at a local backend (`http://localhost:3001`)
-and Stellar **testnet**, which is what Freighter should also be set to (see
-step 4). If you have Soroban contract IDs from a local deployment
-(`cd contract && ...`, see `contract/README.md`), fill in the
-`NEXT_PUBLIC_*_CONTRACT_ID` values in `.env.local` — the app will otherwise
-show contract-config validation warnings, but the UI still loads.
+Key variables:
 
-## 3. Install and run (3 min)
+| Variable | Description |
+| --- | --- |
+| `NEXT_PUBLIC_API_URL` | Base URL of the backend API |
+| `NEXT_PUBLIC_CONTRACT_ID` | Deployed subscription contract ID |
+| `NEXT_PUBLIC_NETWORK` | `local` / `testnet` / `mainnet` |
+
+## 3. Run the dev server
 
 ```bash
-npm ci
 npm run dev
 ```
 
-Open `http://localhost:3000`. The app talks to the backend through Next's
-same-origin `/api/v1/*` proxy (configured in `next.config.ts`), so you
-should **not** need to touch CORS for normal API calls.
+Open http://localhost:3000.
 
-## 4. Connect Freighter (5 min)
+## Subscription pause (admin incident response)
 
-1. Open the Freighter extension and switch its network to match
-   `NEXT_PUBLIC_STELLAR_NETWORK` in `.env.local` (default: **Test Net**).
-   Settings → Preferences → Network in the extension.
-2. In the app, open the wallet connect flow (e.g. `/wallet-demo`, or the
-   "Connect wallet" button in the nav) and choose **Freighter**.
-3. Approve the connection request in the Freighter popup.
-4. You should land back in the app with a connected address shown. If
-   nothing happens, see Troubleshooting below before retrying.
+Subscriptions can be globally paused during incident response. When paused:
 
-## 5. Smoke test (3 min)
+- `subscribe`, `extend`, and `create_plan` revert on-chain.
+- The backend reports the paused state via its status/ready signal.
+- The subscribe UI shows a locked-state banner and disables the confirm CTA.
 
-- [ ] `npm run dev` starts without errors and `/` loads.
-- [ ] A page that hits the API (e.g. `/discover` or `/feed`) renders data
-      instead of an error state — confirms the API proxy/backend is reachable.
-- [ ] Freighter connects and shows an address (step 4).
-- [ ] No `Content-Security-Policy` violations appear in the browser
-      console when connecting the wallet (see `docs/CSP.md` if you do).
+### Pausing / unpausing locally
 
-If all four pass, your local setup is good to go.
+Pause and unpause are **admin-only** operations. The admin key is held by the
+incident responder and is never exposed to the frontend or committed to the
+repo. To exercise the flow locally:
+
+1. Ensure your local admin key is configured for the contract CLI (see
+   `contract/AUTH_MATRIX.md` for the authorization matrix).
+2. Call the contract's `pause` entrypoint from the admin account to block
+   `subscribe`, `extend`, and `create_plan`.
+3. Call `unpause` from the same admin account to restore normal operation.
+
+Do not paste admin addresses or keys into the UI, logs, or issue trackers.
+
+### Verifying the locked-state UX
+
+1. Pause the contract as above.
+2. Reload the subscribe page. The banner should read that subscriptions are
+   temporarily paused and the confirm button should be disabled.
+3. If the UI still shows the unlocked state, the cached status is stale —
+   refresh, or wait for the next status poll to pick up the paused signal.
+4. Unpause and confirm the CTA re-enables.
+
+### Runbook
+
+For the full incident runbook (key ceremony, escalation, and unpause
+procedure), see `SECURITY.md`.
 
 ## Troubleshooting
 
-### Freighter isn't detected / "install wallet" prompt shown
-
-- Make sure the extension is enabled for the current browser profile and
-  the tab was loaded (or reloaded) **after** installing it.
-- Freighter injects its API into `window` on page load — a hot-reloaded
-  page sometimes misses it; do a hard refresh.
-
-### Freighter connects but transactions fail with a network mismatch
-
-- The wallet's selected network (Test Net / Public Net / Futurenet) must
-  match `NEXT_PUBLIC_STELLAR_NETWORK`. Mismatches typically show up as a
-  signing error or an invalid-transaction response from Horizon/Soroban
-  RPC rather than an obvious "wrong network" message.
-
-### Wallet calls fail with a CSP / "Refused to connect" console error
-
-- This means the RPC/Horizon host Freighter (or the app) is calling isn't
-  in the CSP `connect-src` allowlist. If you've set a custom
-  `NEXT_PUBLIC_SOROBAN_RPC_URL` or `NEXT_PUBLIC_HORIZON_URL`, restart
-  `npm run dev` after editing `.env.local` — Next only reads env at server
-  start. See `docs/CSP.md` for exactly which hosts are allowed and how to
-  add one.
-
-### API calls fail with a CORS error in the console
-
-- Requests made through the app's own fetch calls should go through
-  `/api/v1/*`, which Next rewrites server-side (no CORS involved). A CORS
-  error usually means either:
-  - The backend isn't running / isn't on the port `NEXT_PUBLIC_API_URL`
-    points at (default `http://localhost:3001`) — check the backend
-    terminal for startup errors.
-  - Some code is calling the backend origin directly (bypassing the
-    `/api/v1` proxy) — check the backend's CORS allowlist
-    (`backend/src/common/services/cors.service.ts`) includes
-    `http://localhost:3000`.
-
-### `.env.local` changes don't seem to take effect
-
-- Restart `npm run dev`. Next.js only reads `NEXT_PUBLIC_*` env vars at
-  build/server start, not on hot reload.
-
-## Related docs
-
-- [`docs/CSP.md`](./CSP.md) — CSP `connect-src` host allowlist and how
-  wallet/RPC hosts get added to it.
-- [`src/components/wallet/README.md`](../src/components/wallet/README.md) —
-  wallet connection system internals (multi-wallet support, reconnection,
-  error handling).
-- Root [`README.md`](../../README.md) — full-stack setup (contract +
-  backend + frontend together).
+- **Confirm CTA stays disabled after unpause**: the frontend may be serving a
+  stale cached status. Hard-refresh the page.
+- **`subscribe` reverts unexpectedly**: the contract may be paused. Check the
+  backend status signal before retrying.
