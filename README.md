@@ -265,6 +265,9 @@ This README describes the MyFans project on Stellar. Implement each module (cont
 
 ## Handsoff notes
 
+<!-- handsoff-issue-1781 -->
+- #1781: SubscriptionsModule: checkout, index, spending-cap, swagger completeness
+
 <!-- handsoff-issue-1751 -->
 - #1751: creator-deposits: stake/deposit withdraw security—unauthorized withdraw leaves stake unchanged
 

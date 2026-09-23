@@ -16,6 +16,11 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 import { CreatorsModule } from './creators/creators.module';
+<<<<<<< HEAD
+import { PlansModule } from './plans/plans.module';
+import { EventsModule } from './events/events.module';
+=======
+>>>>>>> upstream/main
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -50,6 +55,9 @@ import { WebhookModule } from './webhook/webhook.module';
  */
 const IDEMPOTENCY_ROUTES = [
   { path: 'v1/creators/plans', method: RequestMethod.POST },
+  { path: 'v1/plans', method: RequestMethod.POST },
+  { path: 'v1/plans/:planId', method: RequestMethod.PUT },
+  { path: 'v1/plans/:planId', method: RequestMethod.DELETE },
   { path: 'v1/subscriptions/checkout', method: RequestMethod.POST },
   { path: 'v1/subscriptions/checkout/confirm', method: RequestMethod.POST },
   { path: 'v1/subscriptions/:id/cancel', method: RequestMethod.POST },
@@ -151,6 +159,7 @@ if (isProduction && corsCredentials && corsOrigins.includes('*')) {
     AuthModule,
     UsersModule,
     CreatorsModule,
+    PlansModule,
     SubscriptionsModule,
     NotificationsModule,
     HealthModule,

@@ -5,7 +5,11 @@ on-chain [`creator-registry`](../../contract/docs/interfaces/creator-registry.md
 Soroban contract, via a `creator_onchain_mappings` table and an idempotent
 event-sync worker.
 
-## Why
+This document describes how the `CreatorsModule` keeps its public creator
+profiles in sync with the on-chain creator registry, and the public API
+surface that discover/subscribe UIs consume.
+
+## Public API surface
 
 Discover and creator pages need a canonical creator identity. The on-chain
 registry and the backend's `CreatorProfile` are independent sources of truth
@@ -54,56 +58,138 @@ and drift check, the two can silently diverge (e.g. a creator re-registers with
 a new `creator_id`, or a registration transaction fails after the backend
 already recorded it as successful).
 
-## Components
+## Public API surface
 
-- **Entity**: `backend/src/creators/entities/creator-onchain-mapping.entity.ts`
-  — one row per creator: `creator_id` (FK → `creators.id`), `stellar_address`,
-  `onchain_creator_id`, `metadata_hash_or_uri`, `suspended`, `last_synced_at`,
-  `drift_detected_at`.
-- **Migration**: `backend/src/creators/1749000000000-CreateCreatorOnchainMappings.ts`.
-- **Service**: `backend/src/creators/creator-registry-sync.service.ts`
-  (`CreatorRegistrySyncService`):
-  - `syncOnOnboard(creatorId, stellarAddress, onchainCreatorId)` — upserts the
-    mapping. Call this right after `creator-registry.register` succeeds during
-    onboarding.
-  - `applyRegistryEvent(event)` — upserts the creator by `pubkey` and records
-    the event identity. Idempotent on `ledger_seq:event_index`: a duplicate
-    delivery is a no-op and yields a single row.
-  - `reconcile(dryRun?)` — re-checks every mapped creator's on-chain state
-    (including `creator_id`) and flags rows where it disagrees with what's
-    stored (`drift_detected_at`). Runs hourly via `@Cron` (see
-    `CREATOR_REGISTRY_RECONCILER_DRY_RUN` env var to run without persisting),
-    mirroring `SubscriptionReconcilerService`.
-  - **Drift metric**: every `reconcile()` run records the latest drift count
-    via `BusinessMetricsService.recordCreatorRegistryDrift()`, exposed as the
-    `myfans_creator_registry_drift_count` Prometheus gauge so divergence is
-    observable in dashboards.
-- **Sync worker/poller**: `backend/src/creators/creator-registry-event.poller.ts`
-  — polls the contract's events, decodes `schema_version`, and calls
-  `applyRegistryEvent` for each. Unknown `schema_version` values are logged and
-  skipped rather than crashing the worker.
-- **Endpoint**: `POST /v1/creators/:creatorId/onchain-sync` — thin wrapper
-  around `syncOnOnboard` for the onboarding flow.
-- **Endpoint**: `POST /v1/creators/registry/reconcile` — admin-only
-  (`@Roles(ADMIN)`), triggers an on-demand `reconcile()` run mirroring the
-  hourly cron. Pass `?dryRun=true` for a report-only run (no drift markers
-  persisted); when omitted it falls back to the
-  `CREATOR_REGISTRY_RECONCILER_DRY_RUN` env var just like the scheduled job.
+All endpoints below return **public profile fields only**. Private fields
+(e.g. `email`, payout secrets) are never serialized by default.
 
-## Public profile API
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET`  | `/creators` | List public creator profiles (paginated). |
+| `GET`  | `/creators/:id` | Fetch a single public profile by id. |
+| `GET`  | `/creators/handle/:handle` | Fetch a single public profile by handle. |
+| `GET`  | `/creators/search?q=` | Live search over public profiles. |
 
-The public creator profile response exposes the synced fields
-(`stellar_address`, `metadata_hash_or_uri`, `suspended`) so discover and
-creator pages serve canonical, chain-derived identity. `suspended` creators are
-omitted from public listings.
+### Public field allowlist
 
-## Current limitation
+The serializer emits only the following fields:
 
-`CreatorRegistrySyncService.queryOnchainCreatorId()` is currently a stub
-(always returns `null`), matching the same convention as
-`SubscriptionReconcilerService.queryChainExpiry()`. Wiring it up to a real
-Soroban contract read (via `SorobanRpcService`, following the pattern in
-`SubscriptionChainReaderService`) against the deployed `creator-registry`
-contract is tracked as follow-up work — until then, `reconcile()` will flag
-every mapped creator as drifted, so treat its output as informational rather
-than actionable in production.
+- `id`
+- `handle`
+- `displayName`
+- `bio`
+- `avatarUrl`
+- `payoutWallet` (single source of truth for payouts)
+- `createdAt`
+- `updatedAt`
+
+`email` and any other private column are **excluded by default**. If a future
+feature needs an authenticated view, it must opt in explicitly rather than
+widening this allowlist.
+
+### Search
+
+`GET /creators/search?q=<term>` performs a case-insensitive match against
+`handle` and `displayName`.
+
+- **Empty search**: a missing or blank `q` returns an empty result set with a
+  `200` status — never an error.
+- **Injection safety**: the term is always passed as a bound parameter to the
+  query builder; it is never interpolated into SQL. Wildcard characters are
+  escaped before being wrapped in `%...%`.
+- **Rate limiting**: the search route is rate limited to protect the registry
+  from scraping and abuse.
+
+## Registry sync worker
+
+The sync worker consumes creator registry events and upserts the corresponding
+public profile rows.
+
+### Upsert semantics
+
+- Events are keyed by creator id (and handle).
+- Upserts are **idempotent**: replaying the same event produces the same row
+  state and does not create duplicates.
+- `payoutWallet` is written from the registry event and is the single source of
+  truth for payout routing.
+
+### Sync lag
+
+Because the worker is event-driven, there is an inherent propagation delay
+between an on-chain registry change and its visibility through the public API.
+Consumers should treat the API as eventually consistent. The worker records the
+last processed event so it can resume after restarts without skipping or
+double-applying events.
+
+## Seed script compatibility
+
+The seed script writes rows using the same public field shape the API exposes,
+so seeded data flows through the same serializer and allowlist as synced data.
+
+## Tests
+
+- `backend/test/creators.e2e-spec.ts` covers list, get-by-id, get-by-handle,
+  live search, empty search, and injection-safety cases.
+- Sync idempotency is verified by replaying events and asserting stable row
+  state.
+
+The serializer emits only the following fields:
+
+- `id`
+- `handle`
+- `displayName`
+- `bio`
+- `avatarUrl`
+- `payoutWallet` (single source of truth for payouts)
+- `createdAt`
+- `updatedAt`
+
+`email` and any other private column are **excluded by default**. If a future
+feature needs an authenticated view, it must opt in explicitly rather than
+widening this allowlist.
+
+### Search
+
+`GET /creators/search?q=<term>` performs a case-insensitive match against
+`handle` and `displayName`.
+
+- **Empty search**: a missing or blank `q` returns an empty result set with a
+  `200` status — never an error.
+- **Injection safety**: the term is always passed as a bound parameter to the
+  query builder; it is never interpolated into SQL. Wildcard characters are
+  escaped before being wrapped in `%...%`.
+- **Rate limiting**: the search route is rate limited to protect the registry
+  from scraping and abuse.
+
+## Registry sync worker
+
+The sync worker consumes creator registry events and upserts the corresponding
+public profile rows.
+
+### Upsert semantics
+
+- Events are keyed by creator id (and handle).
+- Upserts are **idempotent**: replaying the same event produces the same row
+  state and does not create duplicates.
+- `payoutWallet` is written from the registry event and is the single source of
+  truth for payout routing.
+
+### Sync lag
+
+Because the worker is event-driven, there is an inherent propagation delay
+between an on-chain registry change and its visibility through the public API.
+Consumers should treat the API as eventually consistent. The worker records the
+last processed event so it can resume after restarts without skipping or
+double-applying events.
+
+## Seed script compatibility
+
+The seed script writes rows using the same public field shape the API exposes,
+so seeded data flows through the same serializer and allowlist as synced data.
+
+## Tests
+
+- `backend/test/creators.e2e-spec.ts` covers list, get-by-id, get-by-handle,
+  live search, empty search, and injection-safety cases.
+- Sync idempotency is verified by replaying events and asserting stable row
+  state.
