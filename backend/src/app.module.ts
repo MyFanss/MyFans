@@ -1,6 +1,7 @@
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 // Canonical auth/users stack. Historical duplicate stacks were removed.
@@ -54,14 +55,40 @@ const IDEMPOTENCY_ROUTES = [
   { path: 'v1/webhook', method: RequestMethod.POST },
 ];
 
+/**
+ * Route classes for rate limiting.
+ *
+ * - `auth`   — strict: authentication challenges (login, register, password
+ *              reset, token refresh). 5 requests/min per key.
+ * - `upload` — strict: uploads and other CPU/bandwidth-heavy writes.
+ * - `read`   — loose: general read traffic.
+ * - `short` / `medium` / `long` — legacy buckets kept for backwards
+ *              compatibility with existing @Throttle() decorators.
+ *
+ * When REDIS_URL is configured the throttler uses a shared Redis store so
+ * counters are consistent across instances (required for HA / horizontal
+ * scale). Without REDIS_URL it falls back to the in-memory store, which is
+ * only safe for single-instance deployments.
+ */
+const THROTTLER_TIERS = [
+  { name: 'auth', ttl: 60000, limit: 5 },
+  { name: 'upload', ttl: 60000, limit: 10 },
+  { name: 'read', ttl: 60000, limit: 300 },
+  { name: 'short', ttl: 60000, limit: 10 },
+  { name: 'medium', ttl: 60000, limit: 50 },
+  { name: 'long', ttl: 60000, limit: 100 },
+];
+
+const redisUrl = process.env.REDIS_URL;
+
 @Module({
   imports: [
-    ThrottlerModule.forRoot([
-      { name: 'auth', ttl: 60000, limit: 5 },
-      { name: 'short', ttl: 60000, limit: 10 },
-      { name: 'medium', ttl: 60000, limit: 50 },
-      { name: 'long', ttl: 60000, limit: 100 },
-    ]),
+    ThrottlerModule.forRoot({
+      throttlers: THROTTLER_TIERS,
+      ...(redisUrl
+        ? { storage: new ThrottlerStorageRedisService(redisUrl) }
+        : {}),
+    }),
     LoggingModule,
     MetricsModule,
     EventsModule,
