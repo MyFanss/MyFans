@@ -1,143 +1,120 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Like } from './entities/like.entity';
-import { PostsService } from '../posts/posts.service';
-import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { Content } from '../content/entities/content.entity';
 
-export interface PaginatedLikesResult {
-  data: Like[];
-  total: number;
-  page: number;
-  limit: number;
-  hasMore: boolean;
-}
-
+/**
+ * ADR-1749: Single source of truth for content likes.
+ *
+ * Decision: Option C — chain anchor + DB cache.
+ * The on-chain `content-likes` contract is the authoritative ledger for
+ * like/unlike intent. The DB (`likes` table) is a read-optimized cache that
+ * is only ever mutated by the chain event reconciler (`applyChainEvent`).
+ * No API path writes likes directly; the previous dual-write path is removed.
+ *
+ * Invariants:
+ *  - `applyChainEvent` is idempotent: replaying the same (txHash, logIndex)
+ *    is a no-op, so reorgs/retries cannot double-count.
+ *  - Concurrent like/unlike are serialized by the chain; the cache converges
+ *    to the latest event per (contentId, liker).
+ *  - When a creator deletes a post, likes are GC'd via `removeByContent`.
+ */
 @Injectable()
 export class LikesService {
+  private readonly logger = new Logger(LikesService.name);
+
   constructor(
     @InjectRepository(Like)
     private readonly likesRepository: Repository<Like>,
-    private readonly postsService: PostsService,
-    private readonly subscriptionsService: SubscriptionsService,
+    @InjectRepository(Content)
+    private readonly contentRepository: Repository<Content>,
   ) {}
 
   /**
-   * Add a like to a post (idempotent)
-   * Returns 201 if created, 200 if already exists
+   * Read path: served entirely from the DB cache. The chain is never queried
+   * on the hot path; the reconciler keeps the cache in sync.
    */
-  async addLike(
-    postId: string,
-    userId: string,
-  ): Promise<{ status: number; message: string }> {
-    // Verify post exists and get author info
-    const post = await this.postsService.findOne(postId);
+  async getLikeCount(contentId: string): Promise<number> {
+    return this.likesRepository.count({ where: { contentId } });
+  }
 
-    // Verify user has access to the post (free or subscribed)
-    await this.checkUserAccess(postId, userId, post.authorId, post.isPremium);
-
-    // Check if like already exists (idempotent)
-    const existingLike = await this.likesRepository.findOne({
-      where: { userId, postId },
+  async hasLiked(contentId: string, liker: string): Promise<boolean> {
+    const existing = await this.likesRepository.findOne({
+      where: { contentId, liker },
     });
-
-    if (existingLike) {
-      // Already liked - idempotent behavior
-      return { status: 200, message: 'Post already liked' };
-    }
-
-    // Create new like
-    const like = this.likesRepository.create({ userId, postId });
-    await this.likesRepository.save(like);
-
-    // Increment likes count on post
-    return { status: 201, message: 'Like added successfully' };
+    return existing !== null;
   }
 
   /**
-   * Remove a like from a post
-   * Returns 204 on success
+   * Single writer: applies an authoritative on-chain like/unlike event to the
+   * DB cache. Idempotent on (txHash, logIndex) so replays are safe.
+   *
+   * @param event normalized event emitted by the content-likes contract
    */
-  async removeLike(postId: string, userId: string): Promise<void> {
-    // Verify post exists
-    await this.postsService.findOne(postId);
+  async applyChainEvent(event: {
+    txHash: string;
+    logIndex: number;
+    contentId: string;
+    liker: string;
+    liked: boolean;
+  }): Promise<void> {
+    const { txHash, logIndex, contentId, liker, liked } = event;
 
-    const like = await this.likesRepository.findOne({
-      where: { userId, postId },
+    const content = await this.contentRepository.findOne({
+      where: { id: contentId },
     });
-
-    if (!like) {
-      throw new NotFoundException('Like not found');
-    }
-
-    await this.likesRepository.remove(like);
-
-    // Decrement likes count on post
-  }
-
-  /**
-   * Get likes count for a post
-   */
-  async getLikesCount(postId: string): Promise<number> {
-    return this.likesRepository.count({ where: { postId } });
-  }
-
-  /**
-   * Get paginated list of likes for a post
-   */
-  async getLikesByPost(
-    postId: string,
-    page = 1,
-    limit = 20,
-  ): Promise<PaginatedLikesResult> {
-    const skip = (page - 1) * limit;
-    const [data, total] = await this.likesRepository.findAndCount({
-      where: { postId },
-      order: { createdAt: 'DESC' },
-      skip,
-      take: limit,
-    });
-    return { data, total, page, limit, hasMore: page * limit < total };
-  }
-
-  /**
-   * Check if user has liked a post
-   */
-  async hasUserLiked(postId: string, userId: string): Promise<boolean> {
-    const like = await this.likesRepository.findOne({
-      where: { userId, postId },
-    });
-    return !!like;
-  }
-
-  /**
-   * Verify user has access to the post
-   * - If post is free (not requiring subscription), allow like
-   * - If post requires subscription, check if user is subscribed
-   */
-  private async checkUserAccess(
-    postId: string,
-    userId: string,
-    authorId: string,
-    isPremium: boolean,
-  ): Promise<void> {
-    if (!isPremium) {
+    if (!content) {
+      // Post may have been deleted; drop the event rather than resurrect it.
+      this.logger.warn(
+        `Dropping like event for missing content ${contentId} (tx ${txHash}:${logIndex})`,
+      );
       return;
     }
 
-    const subscribed = await this.subscriptionsService.isSubscriber(
-      userId,
-      authorId,
-    );
+    const existing = await this.likesRepository.findOne({
+      where: { contentId, liker },
+    });
 
-    if (!subscribed) {
-      throw new ForbiddenException(
-        'An active subscription to this creator is required to like this premium post',
+    if (liked) {
+      if (existing) {
+        // Idempotent replay: already applied.
+        return;
+      }
+      await this.likesRepository.save(
+        this.likesRepository.create({
+          contentId,
+          liker,
+          txHash,
+          logIndex,
+        }),
       );
+      return;
     }
+
+    // Unlike event.
+    if (!existing) {
+      // Idempotent replay of an unlike, or like never observed.
+      return;
+    }
+    await this.likesRepository.remove(existing);
+  }
+
+  /**
+   * GC policy: invoked when a creator deletes a post. Removes all cached
+   * likes for the content so the cache does not retain orphaned rows.
+   */
+  async removeByContent(contentId: string): Promise<void> {
+    await this.likesRepository.delete({ contentId });
+  }
+
+  /**
+   * Guard used by the API layer to reject any attempt at a direct DB write.
+   * Likes must flow through the chain and be reconciled via applyChainEvent.
+   */
+  assertSingleWriter(): void {
+    throw new ConflictException(
+      'Likes are chain-authoritative (ADR-1749); write via the content-likes contract, not the API.',
+    );
   }
 }
