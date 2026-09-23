@@ -23,6 +23,34 @@ export interface EarningsSummary {
   asset: string;
 }
 
+/**
+ * Distinguishes a first-time subscription from a renewal so analytics can
+ * report MRR correctly (only renewals contribute to recurring revenue).
+ */
+export enum SubscriptionEventType {
+  Created = 'subscription.created',
+  Renewed = 'subscription.renewed',
+}
+
+export interface SubscriptionAnalyticsEvent {
+  type: SubscriptionEventType;
+  subscriptionId: string;
+  creator: string;
+  fan: string;
+  asset: string;
+  amount: string;
+  occurredAt: string;
+}
+
+export interface MrrSummary {
+  creator: string;
+  asset: string;
+  mrr: string;
+  activeSubscriptions: number;
+  newSubscriptions: number;
+  renewals: number;
+}
+
 @Injectable()
 export class AnalyticsService {
   constructor(private readonly subscriptionsService: SubscriptionsService) {}
@@ -102,6 +130,77 @@ export class AnalyticsService {
 
     const all = Array.from(grouped.values()).sort((a, b) =>
       parseFloat(b.totalNet) - parseFloat(a.totalNet),
+    );
+
+    const total = all.length;
+    const data = all.slice((page - 1) * limit, page * limit);
+    return new PaginatedResponseDto(data, total, page, limit);
+  }
+
+  /**
+   * Emits a distinct analytics event for a subscription lifecycle change.
+   * First-time subscriptions and renewals are reported as separate event
+   * types so downstream consumers (dashboards, MRR) never conflate them.
+   */
+  emitSubscriptionEvent(event: SubscriptionAnalyticsEvent): SubscriptionAnalyticsEvent {
+    // Analytics payloads carry ids and amounts only — no PII beyond ids.
+    return {
+      type: event.type,
+      subscriptionId: event.subscriptionId,
+      creator: event.creator,
+      fan: event.fan,
+      asset: event.asset,
+      amount: event.amount,
+      occurredAt: event.occurredAt,
+    };
+  }
+
+  /**
+   * Computes MRR per creator/asset. Only renewals count toward recurring
+   * revenue; first-time subscriptions are tracked separately as new business.
+   */
+  getMrr(query: PaymentAnalyticsQueryDto): PaginatedResponseDto<MrrSummary> {
+    const { creator, from, to, page = 1, limit = 20 } = query;
+    const fromMs = from ? new Date(from).getTime() : 0;
+    const toMs = to ? new Date(to).getTime() : Infinity;
+
+    const payments = this.subscriptionsService
+      .getCompletedPayments()
+      .filter((c) => {
+        const t = new Date(c.updatedAt).getTime();
+        return (
+          (!creator || c.creatorAddress === creator) &&
+          t >= fromMs &&
+          t <= toMs
+        );
+      });
+
+    const grouped = new Map<string, MrrSummary>();
+    for (const c of payments) {
+      const key = `${c.creatorAddress}:${c.assetCode}`;
+      const existing = grouped.get(key) ?? {
+        creator: c.creatorAddress,
+        asset: c.assetCode,
+        mrr: '0',
+        activeSubscriptions: 0,
+        newSubscriptions: 0,
+        renewals: 0,
+      };
+      const isRenewal = c.renewal === true;
+      const mrr = isRenewal
+        ? parseFloat(existing.mrr) + parseFloat(c.amount)
+        : parseFloat(existing.mrr);
+      grouped.set(key, {
+        ...existing,
+        mrr: mrr.toFixed(7),
+        activeSubscriptions: existing.activeSubscriptions + 1,
+        newSubscriptions: existing.newSubscriptions + (isRenewal ? 0 : 1),
+        renewals: existing.renewals + (isRenewal ? 1 : 0),
+      });
+    }
+
+    const all = Array.from(grouped.values()).sort((a, b) =>
+      parseFloat(b.mrr) - parseFloat(a.mrr),
     );
 
     const total = all.length;
