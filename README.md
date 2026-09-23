@@ -273,3 +273,6 @@ This README describes the MyFans project on Stellar. Implement each module (cont
 
 <!-- handsoff-issue-1753 -->
 - #1753: myfans-lib: eliminate panics from library paths; stable error_codes for all callers
+
+<!-- handsoff-issue-1788 -->
+- #1788: FeedModule: subscription-gated teasers, cursor pagination, no full body leak
