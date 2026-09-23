@@ -1,10 +1,12 @@
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 // Canonical auth/users stack. Historical duplicate stacks were removed.
 import { AuthModule } from './auth-module/auth.module';
+import { UsersModule } from './users/users.module';
 import { OpenAPIController } from './common/openapi-publish.controller';
 import { ThrottlerGuard } from './common/guards/throttler.guard';
 import { JwtAuthGuard } from './auth-module/guards/jwt-auth.guard';
@@ -14,7 +16,11 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 import { CreatorsModule } from './creators/creators.module';
+<<<<<<< HEAD
+import { PlansModule } from './plans/plans.module';
 import { EventsModule } from './events/events.module';
+=======
+>>>>>>> upstream/main
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -38,12 +44,25 @@ import { ContentModule } from './content/content.module';
 import { NetworkConfigModule } from './config/network-config.module';
 import { PostsModule } from './posts/posts.module';
 import { WebhookModule } from './webhook/webhook.module';
-import { AdminAuditModule } from './admin-audit/admin-audit.module';
 
-/** Routes where idempotency protection is enforced. */
+/**
+ * Routes where idempotency protection is enforced.
+ *
+ * Money paths (checkout confirm, subscription mutations, payouts) require an
+ * `Idempotency-Key` header end-to-end: the middleware stores hash(body)+response
+ * keyed by the header value, replays the cached response for a repeated
+ * key+body, and returns 409 when the same key is reused with a different body.
+ */
 const IDEMPOTENCY_ROUTES = [
   { path: 'v1/creators/plans', method: RequestMethod.POST },
+  { path: 'v1/plans', method: RequestMethod.POST },
+  { path: 'v1/plans/:planId', method: RequestMethod.PUT },
+  { path: 'v1/plans/:planId', method: RequestMethod.DELETE },
   { path: 'v1/subscriptions/checkout', method: RequestMethod.POST },
+  { path: 'v1/subscriptions/checkout/confirm', method: RequestMethod.POST },
+  { path: 'v1/subscriptions/:id/cancel', method: RequestMethod.POST },
+  { path: 'v1/subscriptions/:id/resume', method: RequestMethod.POST },
+  { path: 'v1/earnings/payouts', method: RequestMethod.POST },
   { path: 'v1/posts', method: RequestMethod.POST },
   { path: 'v1/posts/:id', method: RequestMethod.PUT },
   { path: 'v1/comments', method: RequestMethod.POST },
@@ -52,21 +71,95 @@ const IDEMPOTENCY_ROUTES = [
   { path: 'v1/conversations/:id/messages', method: RequestMethod.POST },
   { path: 'v1/content', method: RequestMethod.POST },
   { path: 'v1/webhook', method: RequestMethod.POST },
+  // Earnings withdraw uses the prepare/confirm pattern; both legs must be
+  // idempotent so a retried confirm cannot double-pay a creator.
+  { path: 'v1/earnings/withdraw/prepare', method: RequestMethod.POST },
+  { path: 'v1/earnings/withdraw/confirm', method: RequestMethod.POST },
 ];
+
+/**
+ * State-mutating /v1 routes that must be protected by the CSRF
+ * double-submit cookie check. Critical routes (e.g. checkout) are
+ * intentionally included and must never be exempted.
+ */
+const CSRF_ROUTES = [
+  { path: 'v1/*', method: RequestMethod.POST },
+  { path: 'v1/*', method: RequestMethod.PUT },
+  { path: 'v1/*', method: RequestMethod.PATCH },
+  { path: 'v1/*', method: RequestMethod.DELETE },
+];
+
+/**
+ * Route classes for rate limiting.
+ *
+ * - `auth`   — strict: authentication challenges (login, register, password
+ *              reset, token refresh). 5 requests/min per key.
+ * - `upload` — strict: uploads and other CPU/bandwidth-heavy writes.
+ * - `read`   — loose: general read traffic.
+ * - `short` / `medium` / `long` — legacy buckets kept for backwards
+ *              compatibility with existing @Throttle() decorators.
+ *
+ * When REDIS_URL is configured the throttler uses a shared Redis store so
+ * counters are consistent across instances (required for HA / horizontal
+ * scale). Without REDIS_URL it falls back to the in-memory store, which is
+ * only safe for single-instance deployments.
+ */
+const THROTTLER_TIERS = [
+  { name: 'auth', ttl: 60000, limit: 5 },
+  { name: 'upload', ttl: 60000, limit: 10 },
+  { name: 'read', ttl: 60000, limit: 300 },
+  { name: 'short', ttl: 60000, limit: 10 },
+  { name: 'medium', ttl: 60000, limit: 50 },
+  { name: 'long', ttl: 60000, limit: 100 },
+];
+
+const redisUrl = process.env.REDIS_URL;
+
+/**
+ * Parse the CORS origin allowlist from the environment.
+ *
+ * `CORS_ORIGINS` is a comma-separated list of exact origins (scheme + host +
+ * optional port), e.g. `https://app.example.com,https://staging.example.com`.
+ * Preview deploys can append their own origin without code changes. A single
+ * `*` entry is preserved so the boot guard below can reject the unsafe
+ * wildcard-with-credentials combination in production.
+ */
+function parseCorsOrigins(): string[] {
+  return (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+}
+
+const corsOrigins = parseCorsOrigins();
+const corsCredentials =
+  (process.env.CORS_CREDENTIALS ?? 'true').toLowerCase() !== 'false';
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Fail fast: reflecting arbitrary origins while sending credentials lets any
+// site read authenticated responses. Never allow `*` + credentials in prod.
+if (isProduction && corsCredentials && corsOrigins.includes('*')) {
+  throw new Error(
+    'Invalid CORS configuration: CORS_ORIGINS="*" cannot be combined with ' +
+      'credentials in production. Set CORS_ORIGINS to an explicit allowlist ' +
+      'of trusted origins (see backend/docs/CORS_AND_SECURITY_HEADERS.md).',
+  );
+}
 
 @Module({
   imports: [
-    ThrottlerModule.forRoot([
-      { name: 'auth', ttl: 60000, limit: 5 },
-      { name: 'short', ttl: 60000, limit: 10 },
-      { name: 'medium', ttl: 60000, limit: 50 },
-      { name: 'long', ttl: 60000, limit: 100 },
-    ]),
+    ThrottlerModule.forRoot({
+      throttlers: THROTTLER_TIERS,
+      ...(redisUrl
+        ? { storage: new ThrottlerStorageRedisService(redisUrl) }
+        : {}),
+    }),
     LoggingModule,
     MetricsModule,
-    EventsModule,
     AuthModule,
+    UsersModule,
     CreatorsModule,
+    PlansModule,
     SubscriptionsModule,
     NotificationsModule,
     HealthModule,
@@ -85,7 +178,6 @@ const IDEMPOTENCY_ROUTES = [
     NetworkConfigModule,
     PostsModule,
     WebhookModule,
-    AdminAuditModule,
   ],
   controllers: [AppController, OpenAPIController],
   providers: [
@@ -104,20 +196,21 @@ const IDEMPOTENCY_ROUTES = [
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
+    // CorrelationIdMiddleware runs first so every downstream middleware,
+    // guard, controller, and the global exception filter can read the
+    // request-scoped correlation id (generated or accepted from
+    // X-Correlation-Id, with charset/length validation).
     consumer
       .apply(CorrelationIdMiddleware, LoggingMiddleware, MetricsMiddleware)
       .forRoutes({ path: '*', method: RequestMethod.ALL });
 
     consumer.apply(IdempotencyMiddleware).forRoutes(...IDEMPOTENCY_ROUTES);
 
-    // CSRF double-submit cookie protection on all state-mutating routes
-    consumer
-      .apply(CsrfMiddleware)
-      .forRoutes(
-        { path: '*', method: RequestMethod.POST },
-        { path: '*', method: RequestMethod.PUT },
-        { path: '*', method: RequestMethod.PATCH },
-        { path: '*', method: RequestMethod.DELETE },
-      );
+    // CSRF double-submit cookie protection on all state-mutating /v1 routes.
+    // The middleware enforces the header only for cookie-based auth, so
+    // Bearer-only native/mobile clients are unaffected (documented exception).
+    consumer.apply(CsrfMiddleware).forRoutes(...CSRF_ROUTES);
   }
 }
+
+export { corsOrigins, corsCredentials };

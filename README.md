@@ -79,13 +79,15 @@ You will keep only these three folders and this README; other files can be remov
 
 ### Suggested contract interface (conceptual)
 
-- `init(admin, protocol_fee_bps, fee_recipient)` – set fee (e.g. basis points) and recipient.
+- `init(admin, protocol_fee_bps, fee_recipient)` – set fee (in basis points) and recipient. **Admin-only**; the fee is capped at `MAX_FEE_BPS = 1_000` (10%) and can never be set to 100%. `fee_recipient` must be the deployed **treasury** contract.
+- `set_protocol_fee_bps(admin, bps)` – **admin-only** (`require_auth` on the stored admin; non-admin callers revert). Enforces `bps <= MAX_FEE_BPS` (`1_000` = 10%); `bps > 1_000` (e.g. `10_000` or `10_001`) reverts. `bps = 0` is explicitly allowed and disables the protocol fee. Emits a `FeeUpdated` event for indexers/analytics.
+- `set_fee_recipient(admin, recipient)` – **admin-only**. The recipient is restricted to the deployed **treasury** contract (allowlisted); setting it to any other address (e.g. a fan address) reverts. This keeps the treasury recipient invariant intact.
 - `create_plan(creator, asset, amount, interval_days)` – define a subscription plan.
-- `subscribe(fan, plan_id, duration)` – fan subscribes; payment transferred to creator minus fee.
+- `subscribe(fan, plan_id, duration)` – fan subscribes; payment is split: creator receives the amount minus the protocol fee, and the fee is routed into the treasury via its `deposit(from, amount)` entry point (pause honored, `deposit` event emitted).
 - `renew(subscription_id)` – renew if within allowed window.
 - `cancel(subscription_id)` – cancel; no refund of current period (or implement refund rules in contract).
 - `is_subscriber(fan, creator)` → bool (and optionally expiry).
-- Events for: subscription_created, payment_received, subscription_cancelled (for indexer/backend).
+- Events for: subscription_created, payment_received, subscription_cancelled, fee_updated (for indexer/backend).
 
 ### Tech
 
@@ -109,11 +111,11 @@ The current frontend wallet implementation does not treat all wallets equally:
 
 | Wallet | Current repo status | Practical difference in MyFans |
 |--------|----------------------|--------------------------------|
-| **Freighter** | Fully wired for connection and transaction signing | Best choice for creator and fan flows that need Soroban transaction approval today |
-| **Lobstr** | Wallet selection UI and install guidance exist, but the integration is still marked pending | Discoverability is documented, but users should not assume full signing parity with Freighter yet |
-| **WalletConnect** | Wallet selection UI exists, but protocol integration is still marked pending | Treat it as planned support rather than a production-ready path in this repo |
+| **Freighter** | Fully wired for connection and transaction signing | The reference wallet. **Guaranteed** for every flow; local onboarding (see [frontend/docs/LOCAL_QUICKSTART.md](frontend/docs/LOCAL_QUICKSTART.md)) is Freighter-only |
+| **Lobstr** | Connection and signing dispatch wired (`signTransaction` routes to Lobstr when it is the connected wallet) | Usable for connect + subscribe/cancel signing; still less battle-tested than Freighter |
+| **WalletConnect** | Sign Client wired behind the `walletConnect` feature flag (off by default); requires `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID` | Enable the flag + set a project ID for QR-based mobile wallet connect/sign. With the flag off the UI shows "Coming soon" |
 
-If you are documenting or testing wallet-based flows in this repository, assume **Freighter is the reference implementation** until Lobstr and WalletConnect move from interface-ready to fully integrated.
+Assume **Freighter is the reference implementation** and the only wallet with a guaranteed full-flow path. Lobstr and WalletConnect share the same `signTransaction` dispatch path but have had less real-world exercise. See **[frontend/docs/WALLET_SETUP.md](frontend/docs/WALLET_SETUP.md)** for the full support matrix, feature-flag config, and signing dispatch order.
 
 ### Tech
 
@@ -138,9 +140,7 @@ If you are documenting or testing wallet-based flows in this repository, assume 
 ### Tech
 
 - **Nest.js**, **TypeScript**.
-- DB: e.g. **PostgreSQL** (users, plans metadata, content, subscription cache).
-- **Stellar SDK** / Soroban RPC client to query contract state.
-- Optional: message queue (e.g. Bull/Redis) for event processing.
+- DB: e.g. **PostgreSQL** (users, plans metadata, content, subscription cache
 
 ---
 
@@ -262,3 +262,14 @@ MIT.
 - Email: realjaiboi70@gmail.com
 
 This README describes the MyFans project on Stellar. Implement each module (contract, backend, frontend) step by step as needed.
+
+## Handsoff notes
+
+<!-- handsoff-issue-1781 -->
+- #1781: SubscriptionsModule: checkout, index, spending-cap, swagger completeness
+
+<!-- handsoff-issue-1751 -->
+- #1751: creator-deposits: stake/deposit withdraw security—unauthorized withdraw leaves stake unchanged
+
+<!-- handsoff-issue-1753 -->
+- #1753: myfans-lib: eliminate panics from library paths; stable error_codes for all callers

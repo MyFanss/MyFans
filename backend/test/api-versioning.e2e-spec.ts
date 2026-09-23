@@ -7,6 +7,7 @@
  *   2. Unversioned paths (/<path>) return 404.
  *   3. An unknown version prefix (/v99/...) returns 404.
  *   4. Response headers echo back valid tracing IDs on versioned routes.
+ *   5. Deprecation-header policy is applied for future /v2 transitions.
  */
 import {
   Controller,
@@ -192,5 +193,95 @@ describe('API Versioning – response shape', () => {
     ]);
 
     expect(r1.body.version).not.toBe(r2.body.version);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 4 – deprecation-header policy for future /v2 transitions
+// ---------------------------------------------------------------------------
+
+/**
+ * Applies the documented deprecation-header policy to a response.
+ *
+ * When a version is deprecated, responses must advertise the transition so
+ * clients can migrate before the version is removed:
+ *   - `Deprecation`: RFC 8594 boolean flag indicating the version is deprecated.
+ *   - `Sunset`: RFC 8594 HTTP-date after which the version is removed.
+ *   - `Link`: RFC 8288 link pointing at the successor version / migration docs.
+ */
+function applyDeprecationPolicy(
+  res: { setHeader: (name: string, value: string) => void },
+  opts: { sunset: string; successor: string; docs: string },
+): void {
+  res.setHeader('Deprecation', 'true');
+  res.setHeader('Sunset', opts.sunset);
+  res.setHeader(
+    'Link',
+    `<${opts.successor}>; rel="successor-version", <${opts.docs}>; rel="deprecation"`,
+  );
+}
+
+@Controller({ path: 'deprecated-probe', version: '1' })
+class DeprecatedProbeController {
+  @Get()
+  ping(@Res({ passthrough: true }) res: Response) {
+    applyDeprecationPolicy(res, {
+      sunset: 'Wed, 31 Dec 2025 23:59:59 GMT',
+      successor: '/v2/deprecated-probe',
+      docs: 'https://docs.example.com/api/deprecation',
+    });
+    return { version: 'v1', deprecated: true };
+  }
+}
+
+@Module({ controllers: [DeprecatedProbeController] })
+class DeprecationTestModule {}
+
+describe('API Versioning – deprecation-header policy', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      imports: [DeprecationTestModule],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.enableVersioning({ type: VersioningType.URI });
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('deprecated versioned route advertises Deprecation header', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/v1/deprecated-probe')
+      .expect(200);
+
+    expect(res.headers['deprecation']).toBe('true');
+  });
+
+  it('deprecated versioned route advertises Sunset header', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/v1/deprecated-probe')
+      .expect(200);
+
+    expect(res.headers['sunset']).toBe('Wed, 31 Dec 2025 23:59:59 GMT');
+  });
+
+  it('deprecated versioned route advertises successor-version Link header', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/v1/deprecated-probe')
+      .expect(200);
+
+    expect(res.headers['link']).toContain('rel="successor-version"');
+    expect(res.headers['link']).toContain('/v2/deprecated-probe');
+  });
+
+  it('non-deprecated versioned route does not advertise Deprecation header', async () => {
+    const res = await request(app.getHttpServer()).get('/v1/probe').expect(200);
+
+    expect(res.headers['deprecation']).toBeUndefined();
   });
 });
