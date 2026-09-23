@@ -63,10 +63,60 @@ underlying issue.
 
 ---
 
+## Checkout & Money Paths
+
+Checkout confirm and other money-moving endpoints (`POST /v1/checkout/confirm`,
+`POST /v1/subscriptions`, `POST /v1/payments`) **require** an `Idempotency-Key`
+header. Requests missing the header are rejected with **400 Bad Request** before
+the handler runs, so a retried checkout can never double-charge or
+double-fulfill.
+
+### Body fingerprinting
+
+For money paths the stored record includes a hash of the request body
+(`body_hash = sha256(canonical_json(body))`). This tightens the replay rules:
+
+| Existing record | Incoming request | Action |
+|-----------------|------------------|--------|
+| Complete, same method + path, **same body hash** | identical retry | Replay cached response (200/201). |
+| Complete, same method + path, **different body hash** | key reused with new payload | **409 Conflict** — the key is bound to the original body. |
+| In-flight | any | **409 Conflict** — first request still processing. |
+
+A `409` body is `{ "statusCode": 409, "error": "Conflict", "message": "Idempotency-Key already used with a different request body" }`.
+
+### Storage backend
+
+Records are stored in **Redis** when `REDIS_URL` is configured, so replay works
+across multiple application instances. The Redis entry is written with
+`SET key value EX <ttl> NX`; the `NX` flag makes the first concurrent writer win
+and the loser observe the existing record (mapped to **409**). When Redis is not
+configured the middleware falls back to the PostgreSQL store described above.
+
+### Failure modes
+
+- **Key reuse after TTL** — the record has expired and been purged, so the key
+  is treated as new. Clients must not reuse a key beyond the TTL window.
+- **Concurrent first requests** — resolved by `SET ... NX` (Redis) or the unique
+  constraint (Postgres); exactly one proceeds, the rest get **409**.
+- **Huge bodies** — only the `sha256` digest of the body is persisted, never the
+  raw payload, so request size does not inflate stored records.
+- **5xx responses** — server errors are **not** cached; the in-flight record is
+  released so the client can safely retry with the same key.
+
+### Security
+
+Idempotency keys are **not** secrets and must not be treated as authorization.
+Every replayed request still passes through the normal auth guard, so a replayed
+response is only returned to a caller that is authorized for the original
+`(key, fingerprint)` scope.
+
+---
+
 ## Configuration
 
 ```
 IDEMPOTENCY_TTL_HOURS=24   # optional; defaults to 24
+REDIS_URL=redis://...      # optional; enables multi-instance Redis store
 ```
 
 ---
@@ -81,3 +131,7 @@ IDEMPOTENCY_TTL_HOURS=24   # optional; defaults to 24
    `201`, the other gets `409`.
 5. Wait for TTL expiry (or manually delete the record) → same key accepted
    again as new.
+6. Send `POST /v1/checkout/confirm` with `Idempotency-Key: checkout-1` and body
+   `A` → expect `201`; repeat with body `B` → expect `409`.
+7. Send `POST /v1/checkout/confirm` without an `Idempotency-Key` header →
+   expect `400`.

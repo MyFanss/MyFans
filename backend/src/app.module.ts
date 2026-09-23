@@ -40,10 +40,21 @@ import { PostsModule } from './posts/posts.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { AdminAuditModule } from './admin-audit/admin-audit.module';
 
-/** Routes where idempotency protection is enforced. */
+/**
+ * Routes where idempotency protection is enforced.
+ *
+ * Money paths (checkout confirm, subscription mutations, payouts) require an
+ * `Idempotency-Key` header end-to-end: the middleware stores hash(body)+response
+ * keyed by the header value, replays the cached response for a repeated
+ * key+body, and returns 409 when the same key is reused with a different body.
+ */
 const IDEMPOTENCY_ROUTES = [
   { path: 'v1/creators/plans', method: RequestMethod.POST },
   { path: 'v1/subscriptions/checkout', method: RequestMethod.POST },
+  { path: 'v1/subscriptions/checkout/confirm', method: RequestMethod.POST },
+  { path: 'v1/subscriptions/:id/cancel', method: RequestMethod.POST },
+  { path: 'v1/subscriptions/:id/resume', method: RequestMethod.POST },
+  { path: 'v1/earnings/payouts', method: RequestMethod.POST },
   { path: 'v1/posts', method: RequestMethod.POST },
   { path: 'v1/posts/:id', method: RequestMethod.PUT },
   { path: 'v1/comments', method: RequestMethod.POST },
