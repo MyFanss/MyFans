@@ -246,17 +246,12 @@ The poller maps `subscription_created` to `SubscriptionCreatedEvent` and `subscr
 
 ### Idempotency
 
-Every processed event is keyed by `ledgerSeq:eventIndex` (the ledger sequence number and the event's index within that ledger). Before dispatching a handler, the poller checks this key against the idempotency ledger; if the key already exists the event is dropped as a duplicate. This makes duplicate delivery (e.g. overlapping poll windows or a restart replaying the last cursor) safe: handlers for `created`, `renewed`, and `cancelled` are only ever invoked once per on-chain event.
+Every processed event is keyed by `ledgerSeq:eventIndex` (the idempotency ledger). Before emitting a domain event, the poller checks the ledger and skips events it has already processed, so duplicate delivery from the RPC or overlapping poll windows cannot double-publish. The ledger is only advanced after a domain event is successfully published; failures leave the key unset so the event is retried on the next poll.
 
-Gaps in ledger sequence numbers are tolerated — the poller resumes from the last committed cursor and does not assume contiguous ledgers. Horizon finality is assumed: events are only processed once they are included in a closed ledger, and the poller does not attempt to handle chain reorgs (Horizon does not expose reorged ledgers).
+### Single-writer rule
 
-### Feature flag
+The poller is a **proposer**, not a writer. It never mutates subscription status directly. Instead it publishes `subscription.created` / `subscription.renewed` / `subscription.cancelled` domain events, and the `SubscriptionReconcilerService` is the **sole writer** of subscription status. See `backend/docs/adr/0001-subscription-single-writer.md` for the full decision record.
 
-The poller is gated by the `FEATURE_FLAG_SUBSCRIPTION_EVENT_POLLER` flag. **Default: disabled (`false`).** It must be explicitly enabled per environment; production enables it only after the poller has been validated against replay fixtures. When disabled, no Soroban polling occurs and subscription state is driven solely by the existing service paths.
+### Cache invalidation
 
-### Metrics
-
-The poller exposes Prometheus metrics:
-
-- **`poller_lag`**: difference between the latest closed ledger and the last processed ledger. A growing value indicates the poller is falling behind.
-- **`poller_events_processed_total`**: counter of successfully processed events, labeled by domain event type (`subscription.created`, `subscription.renewed`, `subscription.cancelled`). The distinct labels let dashboards separate new subscriptions from renewals.
+Whenever the reconciler commits an authoritative status change it invalidates the affected `SubscriptionCache` entries (by subscription ID and by the `(fan, creator, planId)` tuple) so readers never observe a stale status. Proposers (poller, checkout) do not touch the cache; only the single writer does, which keeps cache coherence tied to the authoritative write.
