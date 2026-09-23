@@ -54,6 +54,18 @@ const IDEMPOTENCY_ROUTES = [
   { path: 'v1/webhook', method: RequestMethod.POST },
 ];
 
+/**
+ * State-mutating /v1 routes that must be protected by the CSRF
+ * double-submit cookie check. Critical routes (e.g. checkout) are
+ * intentionally included and must never be exempted.
+ */
+const CSRF_ROUTES = [
+  { path: 'v1/*', method: RequestMethod.POST },
+  { path: 'v1/*', method: RequestMethod.PUT },
+  { path: 'v1/*', method: RequestMethod.PATCH },
+  { path: 'v1/*', method: RequestMethod.DELETE },
+];
+
 @Module({
   imports: [
     ThrottlerModule.forRoot([
@@ -110,14 +122,9 @@ export class AppModule {
 
     consumer.apply(IdempotencyMiddleware).forRoutes(...IDEMPOTENCY_ROUTES);
 
-    // CSRF double-submit cookie protection on all state-mutating routes
-    consumer
-      .apply(CsrfMiddleware)
-      .forRoutes(
-        { path: '*', method: RequestMethod.POST },
-        { path: '*', method: RequestMethod.PUT },
-        { path: '*', method: RequestMethod.PATCH },
-        { path: '*', method: RequestMethod.DELETE },
-      );
+    // CSRF double-submit cookie protection on all state-mutating /v1 routes.
+    // The middleware enforces the header only for cookie-based auth, so
+    // Bearer-only native/mobile clients are unaffected (documented exception).
+    consumer.apply(CsrfMiddleware).forRoutes(...CSRF_ROUTES);
   }
 }
