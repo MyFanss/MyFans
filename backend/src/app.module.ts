@@ -6,6 +6,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 // Canonical auth/users stack. Historical duplicate stacks were removed.
 import { AuthModule } from './auth-module/auth.module';
+import { UsersModule } from './users/users.module';
 import { OpenAPIController } from './common/openapi-publish.controller';
 import { ThrottlerGuard } from './common/guards/throttler.guard';
 import { JwtAuthGuard } from './auth-module/guards/jwt-auth.guard';
@@ -148,6 +149,7 @@ if (isProduction && corsCredentials && corsOrigins.includes('*')) {
     LoggingModule,
     MetricsModule,
     AuthModule,
+    UsersModule,
     CreatorsModule,
     SubscriptionsModule,
     NotificationsModule,

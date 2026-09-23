@@ -36,6 +36,13 @@ jobs:
       - name: Unit tests
         run: npm test -- --passWithNoTests
 
+      # OpenAPI drift check: regenerate the spec from the AppModule controllers
+      # and fail if the committed baseline (backend/openapi.json) is stale or if
+      # any controller path is neither documented nor explicitly excluded.
+      - name: OpenAPI drift check
+        run: npm run openapi:check
+        working-directory: backend
+
   # ─────────────────────────────────────────────
   # Backend e2e tests (Issue #1646)
   # Runs security-hardening, csrf, rbac, rate-limit

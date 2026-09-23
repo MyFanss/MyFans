@@ -2,6 +2,8 @@
 
 A practical guide to getting the MyFans backend API running locally, making your first authenticated request, and understanding the conventions you'll encounter when contributing.
 
+> **OpenAPI is the source of truth.** The committed spec at [`backend/openapi.json`](../openapi.json) is generated from the running app and drift-tested in CI. Every controller path registered in `AppModule` must either appear in the spec or be explicitly marked internal/excluded. See [OpenAPI source of truth](#13-openapi-source-of-truth) below.
+
 ---
 
 ## Table of Contents
@@ -18,6 +20,7 @@ A practical guide to getting the MyFans backend API running locally, making your
 10. [Error format](#10-error-format)
 11. [Running backend tests](#11-running-backend-tests)
 12. [Adding a new endpoint — checklist](#12-adding-a-new-endpoint--checklist)
+13. [OpenAPI source of truth](#13-openapi-source-of-truth)
 
 ---
 
@@ -148,6 +151,13 @@ http://localhost:3001/api-docs
 ```
 
 Swagger UI lists every endpoint with request/response schemas, lets you try requests directly in the browser, and shows which routes require authentication.
+
+The same document is committed as [`backend/openapi.json`](../openapi.json) and is the canonical, machine-readable contract for the API. Regenerate it with:
+
+```bash
+cd backend
+npm run openapi:generate
+```
 
 ---
 
@@ -429,6 +439,9 @@ cd backend
 # Unit tests
 npm run test
 
+# Unit tests
+npm run test
+
 # Watch mode
 npm run test:watch
 
@@ -438,6 +451,9 @@ npm run test:cov
 # End-to-end tests (requires a running Postgres)
 npm run test:e2e
 
+# OpenAPI drift test — fails if a controller path is undocumented
+npm run test:openapi
+
 # Lint
 npm run lint
 ```
@@ -445,6 +461,62 @@ npm run lint
 ---
 
 ## 12. Adding a new endpoint — checklist
+
+1. Add the controller method with the appropriate decorators (`@Get`, `@Post`, etc.).
+2. Add `@ApiOperation` / `@ApiResponse` decorators so the route is documented.
+3. If the route is internal (health, metrics) or a webhook, mark it excluded from the public spec (see below).
+4. Regenerate the spec: `npm run openapi:generate`.
+5. Run the drift test: `npm run test:openapi`.
+6. Commit both the code change and the updated `backend/openapi.json`.
+
+---
+
+## 13. OpenAPI source of truth
+
+The committed [`backend/openapi.json`](../openapi.json) is generated from the running NestJS app by [`backend/scripts/generate-openapi.ts`](../scripts/generate-openapi.ts). It is the canonical contract for clients and is kept in sync by a CI drift test.
+
+### How drift is detected
+
+The drift test enumerates every controller path registered in `AppModule` and asserts that each one is either:
+
+- present in `openapi.json`, or
+- explicitly excluded via the internal/excluded allowlist (health checks, webhooks).
+
+If a controller path is neither documented nor excluded, CI fails. This prevents both **undocumented routes** (shipped but invisible to clients) and **ghost docs** (documented but no longer served).
+
+### Excluded paths
+
+The following are intentionally excluded from the public spec:
+
+| Path | Reason |
+|------|--------|
+| `/v1/health` | Internal liveness/readiness probe |
+| `/v1/health/*` | Internal subsystem health checks |
+| Webhook receivers | Third-party callbacks, not client-facing |
+
+### Security schemes
+
+Admin routes must declare a security scheme in the generated spec. A route under an admin path that is exposed without an `@ApiSecurity` / bearer scheme will fail the drift test — admin endpoints must never be publicly documented without authentication.
+
+### Servers
+
+The spec declares the versioned server base path:
+
+```json
+"servers": [{ "url": "/v1" }]
+```
+
+### Regenerating the baseline
+
+```bash
+cd backend
+npm run openapi:generate   # writes backend/openapi.json
+npm run test:openapi       # verifies no drift
+```
+
+Commit the regenerated `openapi.json` alongside any controller change so the baseline stays current.
+
+### Additional checklist items
 
 - [ ] Route lives under `/v1/` and is documented in Swagger.
 - [ ] Protected by default; add `@Public()` only when truly public.
