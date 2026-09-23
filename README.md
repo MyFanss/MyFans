@@ -262,3 +262,8 @@ MIT.
 - Email: realjaiboi70@gmail.com
 
 This README describes the MyFans project on Stellar. Implement each module (contract, backend, frontend) step by step as needed.
+
+## Handsoff notes
+
+<!-- handsoff-issue-1751 -->
+- #1751: creator-deposits: stake/deposit withdraw security—unauthorized withdraw leaves stake unchanged
