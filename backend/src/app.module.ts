@@ -16,11 +16,8 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 import { CreatorsModule } from './creators/creators.module';
-<<<<<<< HEAD
 import { PlansModule } from './plans/plans.module';
 import { EventsModule } from './events/events.module';
-=======
->>>>>>> upstream/main
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -160,6 +157,7 @@ if (isProduction && corsCredentials && corsOrigins.includes('*')) {
     UsersModule,
     CreatorsModule,
     PlansModule,
+    EventsModule,
     SubscriptionsModule,
     NotificationsModule,
     HealthModule,
@@ -182,35 +180,23 @@ if (isProduction && corsCredentials && corsOrigins.includes('*')) {
   controllers: [AppController, OpenAPIController],
   providers: [
     AppService,
+    RequestContextService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    // JwtAuthGuard authenticates every route unless it opts out with @Public();
-    // RolesGuard then enforces @Roles() on the routes that declare one.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
-    RequestContextService,
-    {
-      provide: APP_FILTER,
-      useClass: CorrelationExceptionFilter,
-    },
+    { provide: APP_FILTER, useClass: CorrelationExceptionFilter },
   ],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
-    // CorrelationIdMiddleware runs first so every downstream middleware,
-    // guard, controller, and the global exception filter can read the
-    // request-scoped correlation id (generated or accepted from
-    // X-Correlation-Id, with charset/length validation).
     consumer
       .apply(CorrelationIdMiddleware, LoggingMiddleware, MetricsMiddleware)
-      .forRoutes({ path: '*', method: RequestMethod.ALL });
+      .forRoutes('*');
 
-    consumer.apply(IdempotencyMiddleware).forRoutes(...IDEMPOTENCY_ROUTES);
+    consumer
+      .apply(IdempotencyMiddleware)
+      .forRoutes(...IDEMPOTENCY_ROUTES);
 
-    // CSRF double-submit cookie protection on all state-mutating /v1 routes.
-    // The middleware enforces the header only for cookie-based auth, so
-    // Bearer-only native/mobile clients are unaffected (documented exception).
     consumer.apply(CsrfMiddleware).forRoutes(...CSRF_ROUTES);
   }
 }
-
-export { corsOrigins, corsCredentials };
