@@ -1,80 +1,97 @@
-# Wallet setup
+# Wallet Setup
 
-MyFans connects fans and creators to Stellar/Soroban through browser and mobile
-wallets. This document covers configuration; the connection UI lives in
-`src/components/wallet/` and the low-level client in `src/lib/wallet.ts`.
+This guide covers connecting a Stellar wallet (e.g. Freighter) to the
+subscription frontend and the preflight checks the UI performs before a fan
+submits a `subscribe` / `renew` transaction.
 
-## Supported wallets
+> **Security note:** the checks below are **complementary UX only**. They are
+> *not* a security boundary. The subscription contract enforces asset
+> correctness, trustlines, allowances, and atomicity on-chain. A malicious or
+> outdated client cannot bypass those guarantees by skipping preflight.
 
-| Wallet | Connect | Sign | Notes |
-|--------|---------|------|-------|
-| Freighter | ✅ browser extension | ✅ | Reference implementation |
-| Lobstr | ✅ browser extension | ✅ | Same `signTransaction` dispatch path as Freighter |
-| WalletConnect | ✅ QR / deep link | ✅ | Behind the `walletConnect` feature flag, off by default |
+## Supported assets
 
-### How signing is dispatched
+Plans are priced in exactly one asset, identified by an `AssetId`:
 
-`signTransaction(xdr, options?)` in `src/lib/wallet.ts` picks a signer in this
-order:
+- **Native XLM** — the native sentinel (no contract address).
+- **SAC token** — a Stellar Asset Contract address (e.g. USDC).
 
-1. `options.walletType` if passed explicitly.
-2. The wallet recorded in the session store (`src/lib/client-session.ts`) at
-   connect time — `useWallet`, `WalletSelectionModal`, and the subscribe
-   `WalletGate` all persist this.
-3. Freighter, as a legacy fallback.
+The plan metadata returned by the backend includes the asset contract id (or
+native sentinel) and the amount. The frontend must transfer the **same asset**
+the plan was created with; renewing with a different asset reverts on-chain.
 
-Unknown wallet types throw a structured `UNSUPPORTED_WALLET` `AppError`.
+## Preflight checks (UX only)
 
-## WalletConnect
+Before submitting, the frontend should verify the fan can actually pay:
 
-WalletConnect uses [`@walletconnect/sign-client`](https://www.npmjs.com/package/@walletconnect/sign-client)
-and is **disabled by default**. The provider module (`src/lib/walletconnect.ts`)
-is loaded lazily, so the SDK is only pulled into the bundle when a fan actually
-connects with WalletConnect.
+### 1. Balance
 
-### Enable it
+- **XLM:** ensure the account has enough spendable XLM (leave room for the
+  base reserve and fees).
+- **SAC:** ensure the account holds enough of the token.
 
-```bash
-# .env.local
-NEXT_PUBLIC_FEATURE_WALLET_CONNECT=true
-NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID=<your WalletConnect Cloud project id>
-```
+If insufficient, surface `insufficient_balance` and block submission.
 
-- Get a project ID from <https://cloud.walletconnect.com>.
-- The project ID is **required** when the flag is on. Without it, connecting
-  throws `WALLET_CONNECT_CONFIG_MISSING` and the modal explains what to set.
-- With the flag **off**, the wallet list shows WalletConnect as "Coming soon"
-  and Freighter/Lobstr are unaffected.
+### 2. Trustline (SAC only)
 
-### Pairing UI
+SAC tokens require the fan to hold a trustline for the asset. If the trustline
+is missing, the transfer will fail on-chain with `trustline_missing`. Prompt
+the fan to add the trustline in their wallet before retrying.
 
-While a WalletConnect session is pending, `src/lib/walletconnect.ts` dispatches a
-`wallet:walletconnect:uri` event on `window` with `{ detail: { uri } }` (and
-`{ uri: null }` once it resolves/fails). `WalletSelectionModal` listens for this
-and renders a deep link. To show a scannable QR code, render the `uri` with a QR
-component in that listener — no other wiring is required.
+### 3. Allowance (SAC only)
 
-### Chain mapping
+Some SAC token flows require the fan to approve an allowance for the spender
+before the contract can pull funds. If the allowance is missing or too low, the
+transaction fails with `allowance_missing`. Prompt the fan to approve the
+required allowance in their wallet.
 
-| App network | WalletConnect chain |
-|-------------|---------------------|
-| `mainnet` / `public` | `stellar:pubnet` |
-| anything else | `stellar:testnet` |
+### 4. Supported asset
 
-Methods requested: `stellar_signXDR`, `stellar_signAndSubmitXDR`.
+If the plan's asset is not in the configured allowlist (when the feature is
+enabled) or the SAC client cannot be validated, the contract rejects the plan
+with `unsupported_asset`. The frontend should treat this as a hard failure and
+not attempt the transfer.
 
-## Network labels
+## Error codes
 
-The connected-wallet chip and settings badge derive their label from runtime
-config / the backend `/config/network` endpoint via `useBackendNetwork()` and
-`stellarNetworkLabel()` (`src/lib/network-label.ts`). The string "Public" only
-appears on a genuine public-network build; testnet builds always read
-"Stellar Testnet".
+The contract surfaces distinct typed errors so the UI can react precisely:
 
-## Testing
+| Code | Meaning | Suggested UX |
+| --- | --- | --- |
+| `insufficient_balance` | Fan lacks funds for the plan asset | Show balance, block submit |
+| `trustline_missing` | Fan has no trustline for the SAC token | Prompt to add trustline |
+| `allowance_missing` | Fan has not approved the required allowance | Prompt to approve allowance |
+| `unsupported_asset` | Plan asset not allowed / SAC invalid | Hard fail, do not submit |
 
-- `src/lib/__tests__/wallet.test.ts` — connect + signing dispatch per wallet type.
-- `src/lib/__tests__/walletconnect.test.ts` — mocked Sign Client: connect, sign,
-  disconnect, missing project ID.
-- `src/lib/__tests__/network-label.test.ts` / `src/hooks/__tests__/useBackendNetwork.test.ts`
-  — network label never says "Mainnet" off the public network.
+## Atomicity
+
+`subscribe` and `renew` are atomic: if the creator cannot receive the asset, or
+any step fails, the whole transaction reverts with no partial fee. The frontend
+does not need to (and must not) attempt to compensate for partial failures.
+
+## Renewals
+
+A renewal must use the **same asset** as the original plan. If the plan's asset
+changed or the fan attempts a different asset, the transaction reverts. Always
+re-read plan metadata before renewing.
+
+## Golden test vectors (builder regression guard)
+
+The frontend builders for `subscribe`, `cancel`, and `extend` are pinned to
+golden XDR vectors so a builder regression (empty or wrong invoke tx) fails CI
+instead of shipping. See `contract/test-vectors/TEST_VECTORS.md` for the full
+regen procedure and the vector schema.
+
+- Vectors live in `contract/test-vectors/` as JSON, one file per operation
+  (`subscribe.json`, `cancel.json`, `extend.json`).
+- Each vector records the **network passphrase**, the contract id, the
+  operation args, and the expected auth footprint.
+- A vitest suite compares the frontend builder output against these vectors and
+  fails on any mismatch (wrong contract id, network mismatch, or extend
+  overflow args).
+- Vectors contain **no private keys** — only public inputs and expected XDR.
+
+Run the comparison locally with the frontend test suite; CI runs the same
+suite so builder drift is caught before merge. To regenerate vectors after an
+intentional contract change, follow the procedure in
+`contract/test-vectors/TEST_VECTORS.md`.

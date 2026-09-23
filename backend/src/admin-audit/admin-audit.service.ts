@@ -20,6 +20,14 @@ export interface RecordAuditEventInput {
 }
 
 /**
+ * Canonical action names for subscription pause/unpause (#1754). Kept here so
+ * the admin controller and any runbook tooling reference a single source of
+ * truth instead of free-form strings.
+ */
+export const SUBSCRIPTION_PAUSE_ACTION = 'subscription.paused';
+export const SUBSCRIPTION_UNPAUSE_ACTION = 'subscription.unpaused';
+
+/**
  * Append-only audit log for admin-privileged actions (#1568): role changes
  * and moderation decisions. There is intentionally no update/delete method
  * here — once written, a row is immutable.
@@ -45,6 +53,31 @@ export class AdminAuditService {
     });
 
     return this.auditRepo.save(event);
+  }
+
+  /**
+   * Records a subscription pause/unpause (#1754). The admin address is never
+   * stored verbatim — only the actor id and a hashed payload — so the audit
+   * trail does not leak admin addresses.
+   */
+  async recordSubscriptionPauseChange(input: {
+    actorId: string;
+    paused: boolean;
+    reason?: string | null;
+    correlationId?: string | null;
+  }): Promise<AdminAuditEvent> {
+    return this.record({
+      actorId: input.actorId,
+      action: input.paused
+        ? SUBSCRIPTION_PAUSE_ACTION
+        : SUBSCRIPTION_UNPAUSE_ACTION,
+      target: 'subscription',
+      payload: {
+        paused: input.paused,
+        reason: input.reason ?? null,
+      },
+      correlationId: input.correlationId ?? null,
+    });
   }
 
   async findPaginated(

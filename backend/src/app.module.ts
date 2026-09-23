@@ -15,7 +15,6 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 import { CreatorsModule } from './creators/creators.module';
-import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -39,12 +38,22 @@ import { ContentModule } from './content/content.module';
 import { NetworkConfigModule } from './config/network-config.module';
 import { PostsModule } from './posts/posts.module';
 import { WebhookModule } from './webhook/webhook.module';
-import { AdminAuditModule } from './admin-audit/admin-audit.module';
 
-/** Routes where idempotency protection is enforced. */
+/**
+ * Routes where idempotency protection is enforced.
+ *
+ * Money paths (checkout confirm, subscription mutations, payouts) require an
+ * `Idempotency-Key` header end-to-end: the middleware stores hash(body)+response
+ * keyed by the header value, replays the cached response for a repeated
+ * key+body, and returns 409 when the same key is reused with a different body.
+ */
 const IDEMPOTENCY_ROUTES = [
   { path: 'v1/creators/plans', method: RequestMethod.POST },
   { path: 'v1/subscriptions/checkout', method: RequestMethod.POST },
+  { path: 'v1/subscriptions/checkout/confirm', method: RequestMethod.POST },
+  { path: 'v1/subscriptions/:id/cancel', method: RequestMethod.POST },
+  { path: 'v1/subscriptions/:id/resume', method: RequestMethod.POST },
+  { path: 'v1/earnings/payouts', method: RequestMethod.POST },
   { path: 'v1/posts', method: RequestMethod.POST },
   { path: 'v1/posts/:id', method: RequestMethod.PUT },
   { path: 'v1/comments', method: RequestMethod.POST },
@@ -53,6 +62,22 @@ const IDEMPOTENCY_ROUTES = [
   { path: 'v1/conversations/:id/messages', method: RequestMethod.POST },
   { path: 'v1/content', method: RequestMethod.POST },
   { path: 'v1/webhook', method: RequestMethod.POST },
+  // Earnings withdraw uses the prepare/confirm pattern; both legs must be
+  // idempotent so a retried confirm cannot double-pay a creator.
+  { path: 'v1/earnings/withdraw/prepare', method: RequestMethod.POST },
+  { path: 'v1/earnings/withdraw/confirm', method: RequestMethod.POST },
+];
+
+/**
+ * State-mutating /v1 routes that must be protected by the CSRF
+ * double-submit cookie check. Critical routes (e.g. checkout) are
+ * intentionally included and must never be exempted.
+ */
+const CSRF_ROUTES = [
+  { path: 'v1/*', method: RequestMethod.POST },
+  { path: 'v1/*', method: RequestMethod.PUT },
+  { path: 'v1/*', method: RequestMethod.PATCH },
+  { path: 'v1/*', method: RequestMethod.DELETE },
 ];
 
 /**
@@ -122,7 +147,6 @@ if (isProduction && corsCredentials && corsOrigins.includes('*')) {
     }),
     LoggingModule,
     MetricsModule,
-    EventsModule,
     AuthModule,
     CreatorsModule,
     SubscriptionsModule,
@@ -143,7 +167,6 @@ if (isProduction && corsCredentials && corsOrigins.includes('*')) {
     NetworkConfigModule,
     PostsModule,
     WebhookModule,
-    AdminAuditModule,
   ],
   controllers: [AppController, OpenAPIController],
   providers: [
@@ -172,20 +195,10 @@ export class AppModule {
 
     consumer.apply(IdempotencyMiddleware).forRoutes(...IDEMPOTENCY_ROUTES);
 
-    // CSRF double-submit cookie protection on all state-mutating routes.
-    // Webhook routes are excluded — they authenticate via HMAC signatures.
-    consumer
-      .apply(CsrfMiddleware)
-      .exclude(
-        { path: 'v1/webhook', method: RequestMethod.POST },
-        { path: 'v1/webhook/(.*)', method: RequestMethod.POST },
-      )
-      .forRoutes(
-        { path: '*', method: RequestMethod.POST },
-        { path: '*', method: RequestMethod.PUT },
-        { path: '*', method: RequestMethod.PATCH },
-        { path: '*', method: RequestMethod.DELETE },
-      );
+    // CSRF double-submit cookie protection on all state-mutating /v1 routes.
+    // The middleware enforces the header only for cookie-based auth, so
+    // Bearer-only native/mobile clients are unaffected (documented exception).
+    consumer.apply(CsrfMiddleware).forRoutes(...CSRF_ROUTES);
   }
 }
 

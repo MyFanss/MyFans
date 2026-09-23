@@ -23,18 +23,47 @@ A practical guide to getting the MyFans backend API running locally, making your
 
 ## 1. Start the backend locally
 
-The fastest path is Docker Compose (no local Postgres or Node install needed):
+The fastest path is Docker Compose (no local Postgres or Node install needed).
+All services — API, Postgres, Redis, email-outbox worker, and Soroban-event
+poller — are started in one command.
 
 ```bash
 # From repository root
-cp .env.dev.example .env.dev
-# Edit .env.dev — at minimum set JWT_SECRET to a random value:
-# node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+cp backend/.env.example backend/.env.dev
+# Edit backend/.env.dev — at minimum set:
+#   JWT_SECRET  (generate: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))")
+#   DB_PASSWORD (any strong password)
 
 docker compose -f docker-compose.dev.yml --profile dev up
 ```
 
 The backend starts on **http://localhost:3001** with hot reload.
+
+### Services started by compose
+
+| Service | Description | Port |
+|---------|-------------|------|
+| `postgres` | PostgreSQL 15 (persistent volume) | 5432 |
+| `redis` | Redis 7 cache / session store | 6379 |
+| `api` | NestJS backend (hot-reload) | 3001 |
+| `worker-poller` | Soroban event poller — indexes chain events so subscription state stays current | — |
+| `worker-outbox` | Transactional email outbox processor — delivers queued emails | — |
+| `frontend` | Next.js dev server | 3000 |
+
+All services must report **healthy** before dependent services start.
+The API readiness probe (`/v1/health/ready`) is used as the gate — it
+checks Postgres and Redis before the frontend is allowed to connect.
+
+### Verifying compose health
+
+```bash
+# All services should show "healthy"
+docker compose -f docker-compose.dev.yml ps
+
+# Tail logs for a specific service
+docker compose -f docker-compose.dev.yml logs -f worker-poller
+docker compose -f docker-compose.dev.yml logs -f worker-outbox
+```
 
 Verify it's up:
 
@@ -343,6 +372,8 @@ curl -s -X POST http://localhost:3001/v1/subscriptions \
   -d '{"creatorId":"...","planId":"..."}'
 ```
 
+If the same key is sent again, the server returns the original response instead of re-executing the operation. Keys are scoped per user and expire after 24 hours.
+
 ---
 
 ## 10. Error format
@@ -370,6 +401,18 @@ grep the backend logs for the same request.
 Validation errors additionally include a `details` array describing each field
 failure; the four fields above are always present.
 
+Common status codes:
+
+| Code | Meaning |
+|------|---------|
+| `400` | Validation error — check request body |
+| `401` | Missing or invalid JWT |
+| `403` | Authenticated but not authorized (e.g. no active subscription) |
+| `404` | Resource not found |
+| `409` | Conflict (duplicate resource) |
+| `429` | Rate limit exceeded |
+| `500` | Internal server error |
+
 ```bash
 # Trigger an error and inspect the envelope + header together
 curl -s http://localhost:3001/v1/posts/does-not-exist \
@@ -383,9 +426,20 @@ curl -s http://localhost:3001/v1/posts/does-not-exist \
 
 ```bash
 cd backend
-npm run test          # unit tests
-npm run test:e2e      # end-to-end tests
-npm run lint          # lint
+# Unit tests
+npm run test
+
+# Watch mode
+npm run test:watch
+
+# Coverage
+npm run test:cov
+
+# End-to-end tests (requires a running Postgres)
+npm run test:e2e
+
+# Lint
+npm run lint
 ```
 
 ---
@@ -399,3 +453,15 @@ npm run lint          # lint
 - [ ] Throws `HttpException` subclasses so the global filter emits the standard error envelope (including `correlationId`).
 - [ ] Never logs PII; rely on the correlation id to trace requests.
 - [ ] Covered by at least one unit test and, for critical paths, an e2e test.
+
+### Gated content access
+
+Content gated behind a subscription must be unlocked through the backend access API, never by handing the raw CID to the client. The backend verifies an **active** subscription for the requesting fan against the content's creator before returning any full-content reference:
+
+- **Expired** subscription → deny (`403`).
+- **Cancelled** subscription → deny (`403`).
+- **Wrong creator** (subscription is for a different creator) → deny (`403`).
+- **Paused** subscription contract → deny (`403`).
+- **RPC / contract error** while checking subscription state → fail closed (`403`/`503`), never fail open.
+
+Unauthorized callers receive only the teaser/preview metadata, never the full content reference. See [`contract/docs/interfaces/content-access.md`](../../contract/docs/interfaces/content-access.md) and [`frontend/docs/CONTENT_ACCESS.md`](../../frontend/docs/CONTENT_ACCESS.md) for the trust boundaries between frontend, backend, and the on-chain subscription contract.

@@ -54,6 +54,18 @@ cd contract && cargo test
 
 <!-- Closes #NNN -->
 
+## Contract changes (complete if `contract/` is touched)
+
+<!-- Skip this section entirely if the PR does not touch contract/ source or Cargo files. -->
+
+- [ ] **Storage key doc** — `contract/STORAGE_KEYS.md` is consistent with code (no new/changed/removed `DataKey` variant left undocumented).
+- [ ] **Interface doc** — `contract/docs/interfaces/` updated for every changed public `fn` signature.
+- [ ] **Test vectors** — `contract/test-vectors/contract-args.json` regenerated if arg types or order changed.
+- [ ] **AUTH_MATRIX.md** — updated if auth requirements changed.
+- [ ] **Upgrade notes** — `contract/docs/UPGRADE_NOTES.md` entry added if storage layout or key semantics changed.
+- [ ] **`cargo audit`** — passes locally; any new ignored advisory has a justification comment in `audit.toml`.
+- [ ] Full checklist: see [contract/REGRESSION_CHECKLIST.md](../contract/REGRESSION_CHECKLIST.md).
+
 ## Notes for reviewers
 
 <!-- Anything that needs extra attention, known limitations, or follow-up work. -->
