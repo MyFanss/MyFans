@@ -2,6 +2,7 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { Request, Response, NextFunction } from 'express';
+import { json, urlencoded } from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
@@ -12,6 +13,34 @@ import { validateRequiredSecrets } from './common/secrets-validation';
 import { CorsService } from './common/services/cors.service';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 
+/**
+ * Default maximum size (in bytes) for JSON and urlencoded request bodies.
+ * Overridable via the MAX_JSON_BODY_BYTES environment variable.
+ */
+const DEFAULT_MAX_JSON_BODY_BYTES = 1 * 1024 * 1024; // 1 MiB
+
+/**
+ * Default maximum size (in bytes) for multipart uploads on /content/upload.
+ * Overridable via the MAX_MULTIPART_BODY_BYTES environment variable.
+ */
+const DEFAULT_MAX_MULTIPART_BODY_BYTES = 25 * 1024 * 1024; // 25 MiB
+
+/**
+ * Route prefix that receives the larger multipart upload cap.
+ */
+const CONTENT_UPLOAD_PATH = '/content/upload';
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (value === undefined || value === '') {
+    return fallback;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return Math.floor(parsed);
+}
+
 async function bootstrap() {
   validateRequiredSecrets();
 
@@ -20,9 +49,38 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule, {
     cors: corsOptions,
+    // Disable Nest's built-in body parser so we can install size-limited
+    // parsers below, before any auth-heavy middleware runs.
+    bodyParser: false,
   });
 
   const isProduction = process.env.NODE_ENV === 'production';
+
+  const maxJsonBodyBytes = parsePositiveInt(
+    process.env.MAX_JSON_BODY_BYTES,
+    DEFAULT_MAX_JSON_BODY_BYTES,
+  );
+  const maxMultipartBodyBytes = parsePositiveInt(
+    process.env.MAX_MULTIPART_BODY_BYTES,
+    DEFAULT_MAX_MULTIPART_BODY_BYTES,
+  );
+
+  // Body size limits are installed first so oversized payloads are rejected
+  // with HTTP 413 before any auth-heavy parsers or middleware run.
+  // The /content/upload route gets a separate, larger multipart cap.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const isContentUpload = req.path.startsWith(CONTENT_UPLOAD_PATH);
+    const limit = isContentUpload ? maxMultipartBodyBytes : maxJsonBodyBytes;
+    const jsonParser = json({ limit });
+    const urlencodedParser = urlencoded({ limit, extended: true });
+    jsonParser(req, res, (jsonErr?: unknown) => {
+      if (jsonErr) {
+        next(jsonErr);
+        return;
+      }
+      urlencodedParser(req, res, next);
+    });
+  });
 
   // Helmet provides a baseline set of security headers (dnsPrefetchControl,
   // frameguard, hidePoweredBy, hsts, ieNoOpen, noSniff, originAgentCluster,
