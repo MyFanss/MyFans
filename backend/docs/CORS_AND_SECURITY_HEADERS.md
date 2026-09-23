@@ -38,6 +38,18 @@ The following potentially sensitive headers are removed:
 
 ## CORS Configuration
 
+### Origin Allowlist (`CORS_ORIGINS`)
+
+CORS is driven by an explicit, env-driven origin allowlist. The backend **never reflects an arbitrary `Origin`** — a request is only granted CORS access when its `Origin` exactly matches an entry in the allowlist.
+
+- **Variable**: `CORS_ORIGINS` (comma-separated list of origins)
+- **Legacy alias**: `CORS_ALLOWED_ORIGINS` is still read for backwards compatibility; if both are set, `CORS_ORIGINS` wins.
+- **Multiple origins**: list every origin you need, including staging and preview-deploy URLs, e.g.
+  ```bash
+  CORS_ORIGINS=https://myfans.example.com,https://www.myfans.example.com,https://staging.myfans.example.com,https://pr-123.preview.myfans.example.com
+  ```
+- **Preview deploys**: add each ephemeral preview URL to `CORS_ORIGINS` (or use a wildcard subdomain pattern supported by your deploy tooling). Origins are matched exactly, so a preview URL must be listed before it can call the API.
+
 ### Development Mode (`NODE_ENV=development`)
 
 In development, the backend is permissive to facilitate local development:
@@ -48,16 +60,27 @@ In development, the backend is permissive to facilitate local development:
   - `http://localhost:5173`
   - `http://localhost:8080`
   - `http://127.0.0.1:*` (same ports)
-- **Custom Origins**: Can be added via `CORS_ALLOWED_ORIGINS` environment variable
+- **Custom Origins**: Can be added via `CORS_ORIGINS` environment variable
 - **Host Filtering**: Relaxed for `localhost` and `127.0.0.1`
 
 ### Production Mode (`NODE_ENV=production`)
 
 In production, the backend is strict:
 
-- **Allowed Origins**: Only origins explicitly listed in `CORS_ALLOWED_ORIGINS`
+- **Allowed Origins**: Only origins explicitly listed in `CORS_ORIGINS`
 - **Allowed Hosts**: Only hosts explicitly listed in `CORS_ALLOWED_HOSTS`
 - **Default Behavior**: If no allowlist is configured, all CORS requests are blocked
+
+#### Boot Guard: wildcard + credentials is rejected
+
+Because `Access-Control-Allow-Credentials: true` is always set, a wildcard origin (`*`) would let **any** site make credentialed cross-origin requests — a serious vulnerability. To prevent this, the application **fails to boot in production** when CORS is configured as wildcard `*` while credentials are enabled:
+
+```
+Error: Refusing to start: CORS_ORIGINS='*' cannot be combined with credentials in production.
+Set an explicit origin allowlist instead.
+```
+
+If you genuinely need a wildcard (e.g. a public, unauthenticated API), you must disable credentials — but for the MyFans SPA the correct fix is always an explicit allowlist.
 
 ## Environment Variables
 
@@ -67,8 +90,8 @@ Add these to your `backend/.env` file:
 
 ```bash
 # CORS Configuration
-# Comma-separated list of allowed origins
-CORS_ALLOWED_ORIGINS=https://myfans.example.com,https://www.myfans.example.com
+# Comma-separated list of allowed origins (never '*' in production with credentials)
+CORS_ORIGINS=https://myfans.example.com,https://www.myfans.example.com
 
 # Comma-separated list of allowed hosts (for additional host-based filtering)
 CORS_ALLOWED_HOSTS=myfans.example.com,www.myfans.example.com
@@ -85,8 +108,12 @@ default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-
 
 **Production:**
 ```
-default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src [CORS_ALLOWED_ORIGINS]; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src [CORS_ORIGINS]; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests
 ```
+
+#### Aligning CSP `connect-src` with the frontend
+
+The production CSP `connect-src` is populated from the same `CORS_ORIGINS` allowlist. This keeps the backend CSP in sync with the hosts the Freighter SPA is allowed to call, as documented in `frontend/docs/SECURITY_HEADERS.md`. When you add a new frontend origin (staging, preview, custom domain), add it to `CORS_ORIGINS` so both CORS and CSP `connect-src` stay aligned.
 
 ## CORS Behavior
 
@@ -116,6 +143,7 @@ default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src
 ### Credentials
 - `Access-Control-Allow-Credentials: true` is always set
 - Cookies and authentication headers are allowed in cross-origin requests
+- Because credentials are enabled, wildcard `*` origins are rejected in production (see Boot Guard above)
 
 ## Testing
 
@@ -161,10 +189,12 @@ curl -I http://localhost:3000/
 Before deploying to production:
 
 - [ ] Set `NODE_ENV=production`
-- [ ] Configure `CORS_ALLOWED_ORIGINS` with your production domains
+- [ ] Configure `CORS_ORIGINS` with your production domains (never `*`)
 - [ ] Configure `CORS_ALLOWED_HOSTS` with your production hosts
+- [ ] Confirm the app boots (wildcard + credentials is rejected at startup)
 - [ ] Verify HSTS header is present
 - [ ] Verify CSP is restrictive (no `'unsafe-inline'` for scripts)
+- [ ] Verify CSP `connect-src` matches `CORS_ORIGINS` and the frontend `SECURITY_HEADERS.md`
 - [ ] Test CORS with production frontend URLs
 - [ ] Verify `X-Powered-By` header is removed
 - [ ] Run E2E tests in staging environment
@@ -176,10 +206,18 @@ Before deploying to production:
 **Error**: "No 'Access-Control-Allow-Origin' header is present"
 
 **Solutions**:
-1. Ensure the frontend origin is in `CORS_ALLOWED_ORIGINS`
+1. Ensure the frontend origin is in `CORS_ORIGINS`
 2. Check that `NODE_ENV` is set correctly
 3. Verify the backend is receiving the `Origin` header
 4. Check browser console for the exact error message
+
+### App Fails to Boot in Production
+
+**Error**: `Refusing to start: CORS_ORIGINS='*' cannot be combined with credentials in production.`
+
+**Solutions**:
+1. Replace `CORS_ORIGINS=*` with an explicit comma-separated allowlist
+2. If a wildcard is truly required, disable credentials (not recommended for the SPA)
 
 ### Security Headers Missing
 
@@ -197,8 +235,9 @@ Before deploying to production:
 **Solutions**:
 1. Review CSP violation reports in browser console
 2. Adjust CSP directives in `security-headers.middleware.ts`
-3. Consider using CSP reporting endpoint for monitoring
-4. Test changes in development before production
+3. Add the missing origin to `CORS_ORIGINS` so `connect-src` includes it
+4. Consider using CSP reporting endpoint for monitoring
+5. Test changes in development before production
 
 ## Architecture
 
@@ -210,7 +249,7 @@ Before deploying to production:
                             ▼
 ┌─────────────────────────────────────────────────────────┐
 │              CORS Middleware (NestJS built-in)           │
-│  - Origin validation                                     │
+│  - Origin allowlist validation (CORS_ORIGINS)            │
 │  - Preflight handling                                    │
 │  - CORS headers                                          │
 └─────────────────────────────────────────────────────────┘
@@ -232,17 +271,5 @@ Before deploying to production:
 ┌─────────────────────────────────────────────────────────┐
 │              Logging Middleware (Custom)                 │
 │  - Request/response logging                              │
-│  - Redaction of sensitive data                           │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                    Route Handlers                      │
 └─────────────────────────────────────────────────────────┘
 ```
-
-## References
-
-- [OWASP Secure Headers Project](https://owasp.org/www-project-secure-headers/)
-- [MDN CORS Guide](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS)
-- [Content Security Policy Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html)

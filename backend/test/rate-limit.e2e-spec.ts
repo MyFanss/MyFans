@@ -69,11 +69,22 @@ class StubCreatorsController {
   }
 }
 
+@Controller({ path: 'uploads', version: '1' })
+class StubUploadsController {
+  @Post()
+  @Throttle({ upload: { limit: 2, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  create() {
+    return { ok: true };
+  }
+}
+
 @Module({
   imports: [
     ThrottlerModule.forRoot([
       // Keep limits tiny so tests are fast; mirrors the real tier names
       { name: 'auth', ttl: 60_000, limit: 2 },
+      { name: 'upload', ttl: 60_000, limit: 2 },
       { name: 'short', ttl: 60_000, limit: 3 },
       { name: 'medium', ttl: 60_000, limit: 4 },
       { name: 'long', ttl: 60_000, limit: 5 },
@@ -83,6 +94,7 @@ class StubCreatorsController {
     StubAuthController,
     StubHealthController,
     StubCreatorsController,
+    StubUploadsController,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
@@ -157,6 +169,23 @@ describe('Rate Limiting (integration)', () => {
       const res = await request(app.getHttpServer())
         .post('/v1/auth/register')
         .send({ address: 'GABC' })
+        .expect(429);
+
+      expect(res.body.statusCode).toBe(429);
+    });
+  });
+
+  // ── Upload endpoint throttling (strict upload tier) ─────────────────────────
+
+  describe('POST /v1/uploads — upload tier (limit: 2)', () => {
+    it('allows requests within the limit', async () => {
+      await request(app.getHttpServer()).post('/v1/uploads').expect(200);
+      await request(app.getHttpServer()).post('/v1/uploads').expect(200);
+    });
+
+    it('returns 429 when the upload limit is exceeded', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/v1/uploads')
         .expect(429);
 
       expect(res.body.statusCode).toBe(429);
