@@ -51,9 +51,11 @@ Published when a user successfully authenticates.
 
 ### Subscription Events
 
+Subscription lifecycle is represented by **distinct** domain events: a first-time subscription emits `subscription.created`, while a subsequent renewal emits `subscription.renewed`. These are never collapsed into a single event — notifications and analytics depend on the distinction (renewals drive MRR; creations drive acquisition).
+
 #### `SubscriptionCreatedEvent` (`subscription.created`)
 
-Published when a fan creates a new subscription to a creator's plan.
+Published when a fan creates a **new** subscription to a creator's plan. This is the first subscription for the `(fan, creator, planId)` tuple; it is not emitted for renewals.
 
 ```typescript
 {
@@ -66,15 +68,15 @@ Published when a fan creates a new subscription to a creator's plan.
 }
 ```
 
-**Published by:** `SubscriptionsService.addSubscription()`
+**Published by:** `SubscriptionsService.addSubscription()`, `SubscriptionEventPollerService` (on `subscription_created`)
 
-**Subscribers:** Notifications (confirmation email), Analytics
+**Subscribers:** Notifications (welcome/confirmation email), Analytics (new-subscription / acquisition metric)
 
 ---
 
 #### `SubscriptionRenewedEvent` (`subscription.renewed`)
 
-Published when a subscription is renewed (either automatically or manually).
+Published when an **existing** subscription is renewed (either automatically or manually). Distinct from `subscription.created` so that renewal notifications and MRR analytics are not conflated with new subscriptions.
 
 ```typescript
 {
@@ -88,9 +90,9 @@ Published when a subscription is renewed (either automatically or manually).
 }
 ```
 
-**Published by:** `SubscriptionsService.renewSubscription()`
+**Published by:** `SubscriptionsService.renewSubscription()`, `SubscriptionEventPollerService` (on `subscription_renewed`)
 
-**Subscribers:** Notifications (renewal confirmation)
+**Subscribers:** Notifications (renewal confirmation), Analytics (renewal / MRR metric)
 
 ---
 
@@ -222,94 +224,34 @@ Published when a comment is deleted.
 
 ---
 
-## Metrics
+## Subscription Event Poller
 
-The `EventBus` tracks the following metrics:
+The `SubscriptionEventPollerService` polls Soroban contract events and translates them into the domain events above. It is the on-chain source of truth for subscription state and must be safe against duplicate delivery.
 
-- **`events_published_total`**: Total count of all published events (across all types)
-- **`events_by_type`**: Per-event-type published count as a map (`{ 'event.type': count, ... }`)
+### Target events
 
-Access metrics via:
+The poller only processes the following contract topics (`TARGET_EVENTS`):
 
-```typescript
-const bus = module.get<InProcessEventBus>(EventBus);
-const metrics = bus.getMetrics();
-console.log(metrics.events_published_total);      // e.g., 42
-console.log(metrics.events_by_type);              // e.g., { 'subscription.created': 10, ... }
-```
+| Contract topic | Domain event |
+| --- | --- |
+| `subscription_created` | `subscription.created` |
+| `subscription_renewed` | `subscription.renewed` |
+| `subscription_cancelled` | `subscription.cancelled` |
 
-## Error Handling
+Any other topic is ignored. Malformed payloads (missing/incorrectly typed fields) are logged at `WARN` and skipped without advancing the idempotency ledger for that event, so they can be retried after a fix.
 
-If a subscriber's handler throws an error:
-1. The error is logged at `ERROR` level with the handler context
-2. Publishing continues to the next handler for that event
-3. No exception is propagated to the publisher
+### Created vs renewed mapping
 
-This ensures one faulty handler doesn't block other subscribers or break the publishing flow.
+The poller maps `subscription_created` to `SubscriptionCreatedEvent` and `subscription_renewed` to `SubscriptionRenewedEvent` — the two are never collapsed. When a `subscription_created` event arrives for a `(fan, creator, planId)` tuple that already has a subscription, the poller treats it as a renewal and emits `SubscriptionRenewedEvent` instead, so downstream consumers always see the correct lifecycle event. Historical events that predate this distinction are backfilled as `subscription.created` only when no prior subscription exists for the tuple; otherwise they are backfilled as `subscription.renewed`.
 
-## Adding New Events
+### Idempotency
 
-When adding a new domain event:
+Every processed event is keyed by `ledgerSeq:eventIndex` (the idempotency ledger). Before emitting a domain event, the poller checks the ledger and skips events it has already processed, so duplicate delivery from the RPC or overlapping poll windows cannot double-publish. The ledger is only advanced after a domain event is successfully published; failures leave the key unset so the event is retried on the next poll.
 
-1. **Define the event class** in `backend/src/events/domain-events.ts`:
-   ```typescript
-   export class MyNewEvent {
-     readonly type = 'domain.my_new_event' as const;
-     constructor(
-       public readonly field1: string,
-       public readonly timestamp: number = Date.now(),
-     ) {}
-   }
-   ```
+### Single-writer rule
 
-2. **Add to the `DomainEvent` union type** in the same file:
-   ```typescript
-   export type DomainEvent =
-     | UserLoggedInEvent
-     | SubscriptionCreatedEvent
-     | MyNewEvent;  // Add here
-   ```
+The poller is a **proposer**, not a writer. It never mutates subscription status directly. Instead it publishes `subscription.created` / `subscription.renewed` / `subscription.cancelled` domain events, and the `SubscriptionReconcilerService` is the **sole writer** of subscription status. See `backend/docs/adr/0001-subscription-single-writer.md` for the full decision record.
 
-3. **Publish from the appropriate service**:
-   ```typescript
-   export class MyService {
-     constructor(private eventBus: EventBus) {}
+### Cache invalidation
 
-     async doSomething() {
-       this.eventBus.publish(new MyNewEvent('data'));
-     }
-   }
-   ```
-
-4. **Subscribe in the listening service**:
-   ```typescript
-   export class NotificationService {
-     constructor(private eventBus: EventBus) {
-       this.eventBus.subscribe('domain.my_new_event', (event: MyNewEvent) => {
-         // Handle the event
-       });
-     }
-   }
-   ```
-
-5. **Document the event** in this file (EVENTS.md) under the appropriate category.
-
-## Testing
-
-Unit tests can inject `EventBus` and mock its behavior:
-
-```typescript
-const module = await Test.createTestingModule({
-  providers: [MyService, { provide: EventBus, useClass: InProcessEventBus }],
-}).compile();
-
-const eventBus = module.get(EventBus);
-const handler = jest.fn();
-eventBus.subscribe('subscription.created', handler);
-
-// ... trigger publisher ...
-
-expect(handler).toHaveBeenCalledWith(expect.objectContaining({ fan: 'xyz' }));
-```
-
-See `backend/src/events/events.spec.ts` for examples.
+Whenever the reconciler commits an authoritative status change it invalidates the affected `SubscriptionCache` entries (by subscription ID and by the `(fan, creator, planId)` tuple) so readers never observe a stale status. Proposers (poller, checkout) do not touch the cache; only the single writer does, which keeps cache coherence tied to the authoritative write.
