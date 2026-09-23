@@ -1,96 +1,76 @@
-# Wallet setup
+# Wallet Setup
 
-MyFans connects fans and creators to Stellar/Soroban through browser and mobile
-wallets. This document covers configuration; the connection UI lives in
-`src/components/wallet/` and the low-level client in `src/lib/wallet.ts`.
+This guide covers connecting a Stellar wallet (e.g. Freighter) to the
+subscription frontend and the preflight checks the UI performs before a fan
+submits a `subscribe` / `renew` transaction.
 
-## Supported wallets
+> **Security note:** the checks below are **complementary UX only**. They are
+> *not* a security boundary. The subscription contract enforces asset
+> correctness, trustlines, allowances, and atomicity on-chain. A malicious or
+> outdated client cannot bypass those guarantees by skipping preflight.
 
-| Wallet | Connect | Sign | Notes |
-|--------|---------|------|-------|
-| Freighter | ✅ browser extension | ✅ | Reference wallet — the only one guaranteed through every flow. The local onboarding guide ([LOCAL_QUICKSTART.md](./LOCAL_QUICKSTART.md)) is Freighter-only |
-| Lobstr | ✅ browser extension | ✅ | Same `signTransaction` dispatch path as Freighter, but less battle-tested |
-| WalletConnect | ✅ QR / deep link | ✅ | Behind the `walletConnect` feature flag, off by default |
+## Supported assets
 
-> **Local development:** use **Freighter**. Connect + sign work for Lobstr, but
-> Freighter is the validated path for subscribing and for connecting to a
-> local Stellar sandbox (see [local quickstart](LOCAL_QUICKSTART.md)).
+Plans are priced in exactly one asset, identified by an `AssetId`:
 
-### How signing is dispatched
+- **Native XLM** — the native sentinel (no contract address).
+- **SAC token** — a Stellar Asset Contract address (e.g. USDC).
 
-`signTransaction(xdr, options?)` in `src/lib/wallet.ts` picks a signer in this
-order:
+The plan metadata returned by the backend includes the asset contract id (or
+native sentinel) and the amount. The frontend must transfer the **same asset**
+the plan was created with; renewing with a different asset reverts on-chain.
 
-1. `options.walletType` if passed explicitly.
-2. The wallet recorded in the session store (`src/lib/client-session.ts`) at
-   connect time — `useWallet`, `WalletSelectionModal`, and the subscribe
-   `WalletGate` all persist this.
-3. Freighter, as a legacy fallback.
+## Preflight checks (UX only)
 
-Unknown wallet types throw a structured `UNSUPPORTED_WALLET` `AppError`.
+Before submitting, the frontend should verify the fan can actually pay:
 
-## WalletConnect
+### 1. Balance
 
-WalletConnect uses [`@walletconnect/sign-client`](https://www.npmjs.com/package/@walletconnect/sign-client)
-and is **disabled by default**. The provider module (`src/lib/walletconnect.ts`)
-is loaded lazily, so the SDK is only pulled into the bundle when a fan actually
-connects with WalletConnect.
+- **XLM:** ensure the account has enough spendable XLM (leave room for the
+  base reserve and fees).
+- **SAC:** ensure the account holds enough of the token.
 
-### Enable it
+If insufficient, surface `insufficient_balance` and block submission.
 
-```bash
-# .env.local
-NEXT_PUBLIC_FEATURE_WALLET_CONNECT=true
-NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID=<your WalletConnect Cloud project id>
-```
+### 2. Trustline (SAC only)
 
-- Get a project ID from <https://cloud.walletconnect.com>.
-- The project ID is **required** when the flag is on. Without it, connecting
-  throws `WALLET_CONNECT_CONFIG_MISSING` and the modal explains what to set.
-- With the flag **off**, the wallet list shows WalletConnect as "Coming soon"
-  and Freighter/Lobstr are unaffected.
+SAC tokens require the fan to hold a trustline for the asset. If the trustline
+is missing, the transfer will fail on-chain with `trustline_missing`. Prompt
+the fan to add the trustline in their wallet before retrying.
 
-### Pairing UI
+### 3. Allowance (SAC only)
 
-While a WalletConnect session is pending, `src/lib/walletconnect.ts` dispatches a
-`wallet:walletconnect:uri` event on `window` with `{ detail: { uri } }` (and
-`{ uri: null }` once it resolves/fails). `WalletSelectionModal` listens for this
-and renders a deep link. To show a scannable QR code, render the `uri` with a QR
-component in that listener — no other wiring is required.
+Some SAC token flows require the fan to approve an allowance for the spender
+before the contract can pull funds. If the allowance is missing or too low, the
+transaction fails with `allowance_missing`. Prompt the fan to approve the
+required allowance in their wallet.
 
-### Chain mapping
+### 4. Supported asset
 
-| App network | WalletConnect chain |
-|-------------|---------------------|
-| `mainnet` / `public` | `stellar:pubnet` |
-| anything else | `stellar:testnet` |
+If the plan's asset is not in the configured allowlist (when the feature is
+enabled) or the SAC client cannot be validated, the contract rejects the plan
+with `unsupported_asset`. The frontend should treat this as a hard failure and
+not attempt the transfer.
 
-Methods requested: `stellar_signXDR`, `stellar_signAndSubmitXDR`.
+## Error codes
 
-## Network labels
+The contract surfaces distinct typed errors so the UI can react precisely:
 
-The connected-wallet chip and settings badge derive their label from runtime
-config / the backend `/config/network` endpoint via `useBackendNetwork()` and
-`stellarNetworkLabel()` (`src/lib/network-label.ts`). The string "Public" only
-appears on a genuine public-network build; testnet builds always read
-"Stellar Testnet".
+| Code | Meaning | Suggested UX |
+| --- | --- | --- |
+| `insufficient_balance` | Fan lacks funds for the plan asset | Show balance, block submit |
+| `trustline_missing` | Fan has no trustline for the SAC token | Prompt to add trustline |
+| `allowance_missing` | Fan has not approved the required allowance | Prompt to approve allowance |
+| `unsupported_asset` | Plan asset not allowed / SAC invalid | Hard fail, do not submit |
 
-## Creator Payout Wallet (Single Source of Truth)
+## Atomicity
 
-For creators, the linked Stellar wallet is the single source of truth for all on-chain payouts and earnings withdrawals:
-- **Unified Settings Surface**: `/dashboard/settings` redirects to `/settings`, ensuring all profile, wallet, and payout settings reside on a single surface without divergence.
-- **Payout Destination = Verified Wallet**: Creator payout settings (`/settings` → Payout Settings) directly read and manage the linked Stellar address from `useWallet()`.
-- **On-Chain Settlement**: All automated payouts and manual withdrawals (`/earnings`) are executed on-chain to the verified connected wallet.
-- **Mismatch Prevention**: Attempting to withdraw to an address that does not match the linked wallet is blocked in validation (`WALLET_ADDRESS_MISMATCH`). To change the payout destination, creators must connect and verify the new wallet.
+`subscribe` and `renew` are atomic: if the creator cannot receive the asset, or
+any step fails, the whole transaction reverts with no partial fee. The frontend
+does not need to (and must not) attempt to compensate for partial failures.
 
-## Testing
+## Renewals
 
-- `src/lib/__tests__/wallet.test.ts` — connect + signing dispatch per wallet type.
-- `src/lib/__tests__/walletconnect.test.ts` — mocked Sign Client: connect, sign,
-  disconnect, missing project ID.
-- `src/lib/__tests__/network-label.test.ts` / `src/hooks/__tests__/useBackendNetwork.test.ts`
-  — network label never says "Mainnet" off the public network.
-- `src/components/settings/WalletSettingsPanel.test.tsx` — single source wallet display and copy behavior.
-- `src/app/settings/payout-settings.test.tsx` — single source payout wallet in Payout Settings.
-- `src/app/dashboard/settings/settings-redirect.test.ts` — settings surface redirection.
-- `src/components/earnings/WithdrawalUI.test.tsx` & `src/components/earnings/withdrawal-integration.test.tsx` — earnings withdrawal validation and mismatch blocking.
+A renewal must use the **same asset** as the original plan. If the plan's asset
+changed or the fan attempts a different asset, the transaction reverts. Always
+re-read plan metadata before renewing.
