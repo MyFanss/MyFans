@@ -68,6 +68,14 @@ You will keep only these three folders and this README; other files can be remov
 
 ---
 
+## Documentation
+
+- [Contract Upgrade Governance](docs/CONTRACT_UPGRADE_GOVERNANCE.md) – required process, upgrade log, and rollback criteria for mainnet contract upgrades.
+- [Contract Changelog](contract/CHANGELOG.md) – version history for the Soroban contracts.
+- [Security Policy](SECURITY.md) – how to report vulnerabilities.
+
+---
+
 ## 1. Smart Contract (Soroban) – `contract/`
 
 ### Responsibilities
@@ -93,6 +101,12 @@ You will keep only these three folders and this README; other files can be remov
 
 - **Rust**, **soroban-sdk**.
 - Build & test: **stellar-cli** / **soroban-cli**; deploy to Stellar testnet/mainnet via CLI or CI.
+
+### Upgrading
+
+Contract upgrades on mainnet MUST follow
+[`docs/CONTRACT_UPGRADE_GOVERNANCE.md`](docs/CONTRACT_UPGRADE_GOVERNANCE.md),
+including the upgrade log and rollback criteria.
 
 ---
 
@@ -149,9 +163,7 @@ Assume **Freighter is the reference implementation** and the only wallet with a 
 1. **Creator** sets a plan on-chain (contract) and optionally registers plan metadata in backend.
 2. **Fan** chooses a plan in frontend; frontend builds Soroban `subscribe` tx; fan signs with Stellar wallet; contract executes payment and updates subscription state.
 3. **Backend** indexes contract events (or polls contract), updates DB; when fan requests gated content, backend checks DB or calls contract to confirm `is_subscriber`.
-4. **Frontend** shows “Subscribed until …” and unlocks content links or embeds based on backend response.
-
----
+4. **Frontend** shows “Subscribed until …” and 
 
 ## Tech Stack Summary
 

@@ -26,6 +26,12 @@ cd contract/contracts/myfans-token
 cargo test
 ```
 
+### Run the cross-contract auth consumer tests
+```bash
+cd contract
+cargo test -p test-consumer
+```
+
 ### Run a specific test
 ```bash
 cd contract
@@ -281,6 +287,131 @@ fn test_transfer_emits_event() {
 }
 ```
 
+## Cross-Contract Auth Testing (`test-consumer`)
+
+Unit tests that call `env.mock_all_auths()` bypass the authorization tree entirely, so they
+cannot catch cross-contract auth footguns (wrong contract id, paused callee, missing
+sub-invocations). The `test-consumer` crate is a Cargo member that acts as an **external
+consumer contract**: it invokes the subscription, treasury, and registry contracts the same
+way production callers do, so the recorded auth footprint matches the real invocation tree.
+
+### Why a separate consumer contract
+
+- The consumer is a real contract, so `require_auth` on the callee is exercised through an
+  actual cross-contract call rather than a mocked top-level auth.
+- Auth footprints are asserted against the production invocation tree instead of being
+  blanket-approved with `mock_all_auths()`.
+- Negative cases (wrong contract id, paused callee) are reproducible without touching the
+  production contracts.
+
+### Happy path: subscription → treasury → registry
+
+```rust
+#[test]
+fn consumer_subscribe_happy_path() {
+    let env = Env::default();
+    // Do NOT call env.mock_all_auths() here: we want the real auth tree.
+
+    let (consumer_id, consumer) = register_consumer(&env);
+    let (sub_id, sub) = register_subscription(&env);
+    let (treasury_id, treasury) = register_treasury(&env);
+    let (registry_id, registry) = register_registry(&env);
+
+    let fan = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    // The consumer invokes subscribe as an external contract; the fan authorizes
+    // the consumer, and the consumer authorizes the downstream calls.
+    env.mock_auths(&[MockAuth {
+        address: &fan,
+        invoke: &MockAuthInvoke {
+            contract: &consumer_id,
+            fn_name: "subscribe",
+            args: (fan.clone(), creator.clone(), 100i128).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    consumer.subscribe(&fan, &creator, &100);
+
+    // Assert the downstream contracts observed the expected state.
+    assert!(sub.get_subscription(&fan, &creator).is_some());
+    assert_eq!(treasury.balance(&creator), 100);
+    assert!(registry.is_registered(&creator));
+}
+```
+
+### Negative case: wrong contract id
+
+```rust
+#[test]
+fn consumer_rejects_wrong_contract_id() {
+    let env = Env::default();
+    let (consumer_id, consumer) = register_consumer(&env);
+    let (sub_id, _sub) = register_subscription(&env);
+
+    let fan = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    // Authorize a *different* contract id than the one being invoked.
+    let wrong_id = Address::generate(&env);
+    env.mock_auths(&[MockAuth {
+        address: &fan,
+        invoke: &MockAuthInvoke {
+            contract: &wrong_id,
+            fn_name: "subscribe",
+            args: (fan.clone(), creator.clone(), 100i128).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    // The auth footprint does not match the invocation tree, so the call must fail.
+    assert!(consumer.try_subscribe(&fan, &creator, &100).is_err());
+}
+```
+
+### Negative case: paused callee
+
+```rust
+#[test]
+fn consumer_fails_when_callee_paused() {
+    let env = Env::default();
+    let (consumer_id, consumer) = register_consumer(&env);
+    let (sub_id, sub) = register_subscription(&env);
+
+    let admin = Address::generate(&env);
+    sub.pause(&admin);
+
+    let fan = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    env.mock_auths(&[MockAuth {
+        address: &fan,
+        invoke: &MockAuthInvoke {
+            contract: &consumer_id,
+            fn_name: "subscribe",
+            args: (fan.clone(), creator.clone(), 100i128).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    // A paused callee must reject the cross-contract call.
+    assert!(consumer.try_subscribe(&fan, &creator, &100).is_err());
+}
+```
+
+### Adding a new consumer test
+
+1. Register the consumer plus every contract in the invocation tree with
+   `env.register_contract`.
+2. Build the auth tree with `env.mock_auths(&[...])` and `MockAuthInvoke::sub_invokes` so the
+   footprint mirrors the production call graph. Do **not** use `env.mock_all_auths()`.
+3. Invoke the consumer entry point (not the downstream contract directly) so the
+   cross-contract call is exercised.
+4. Assert both the downstream state and, for negative cases, that the call returns `Err`.
+5. Cover at least one happy path and the negative cases (wrong contract id, paused callee)
+   for every new cross-contract flow.
+
 ## Test Coverage Goals
 
 Aim for comprehensive coverage of:
@@ -310,100 +441,3 @@ Aim for comprehensive coverage of:
 The contract CI workflow (`contract-ci.yml`) automatically:
 
 1. Checks code formatting
-2. Runs linting (clippy)
-3. **Runs all tests** (`cargo test --all-features`)
-4. Builds optimized WASM artifacts
-5. Verifies WASM artifacts are produced
-
-**Required status check**: `contract`
-
-### Local Pre-commit Check
-
-Run this before pushing to ensure CI will pass:
-
-```bash
-cd contract && \
-  cargo fmt --all --check && \
-  cargo clippy --all-targets --all-features -- -D warnings && \
-  cargo test --all-features && \
-  cargo build --release --target wasm32-unknown-unknown
-```
-
-### Continuous Regression Testing
-
-- Every PR triggers the full test suite
-- No merges allowed until all tests pass
-- Tests are re-run before merge to catch any regressions
-
-## Common Issues
-
-### Test Times Out
-**Symptom**: `test result: err` with no output
-**Solution**: 
-```bash
-# Run with longer timeout and output
-cargo test -- --nocapture --test-threads=1
-```
-
-### Auth Not Mocked
-**Symptom**: `Error: InvokeHostFunction failed with ExecutionError`
-**Solution**: Ensure `env.mock_all_auths()` is called in test setup
-
-### Contract Registration Fails
-**Symptom**: Panic when registering contract
-**Solution**: Ensure the contract struct implements the right traits and derives
-
-### State Not Persisting
-**Symptom**: Assertions fail on state that was just set
-**Solution**: Use the client's accessor methods to read state; don't create new clients
-
-## Debugging Tests
-
-### Print Test Output
-```rust
-#[test]
-fn test_with_logging() {
-    let env = Env::default();
-    env.mock_all_auths();
-    
-    eprintln!("Starting test");
-    // ... test code ...
-}
-```
-
-Run with: `cargo test -- --nocapture`
-
-### Inspect Contract State
-```rust
-let balance = client.balance(&user);
-eprintln!("Balance: {}", balance);
-```
-
-### Use Test Utilities
-```rust
-use soroban_sdk::testutils::{Address as _, Events as _, Ledger};
-
-// Mock time
-env.ledger().set_timestamp(12345);
-
-// Check ledger state
-env.ledger().sequence();
-```
-
-## References
-
-- [Soroban SDK Testing Docs](https://developers.stellar.org/docs/build/guides/testing)
-- [soroban_sdk::testutils](https://docs.rs/soroban-sdk/latest/soroban_sdk/testutils/index.html)
-- [Rust Testing](https://doc.rust-lang.org/book/ch11-00-testing.html)
-
-## Contributing Tests
-
-When submitting a PR with contract changes:
-
-1. Add/update tests for any new functionality
-2. Run `cargo test` locally to verify all tests pass
-3. Ensure test coverage meets the goals above
-4. Use descriptive test names and comments
-5. Test both happy path and error conditions
-
-The contract CI will verify your tests pass before merge.

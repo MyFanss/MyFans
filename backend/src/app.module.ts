@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -200,3 +201,5 @@ export class AppModule {
     consumer.apply(CsrfMiddleware).forRoutes(...CSRF_ROUTES);
   }
 }
+=======
+>>>>>>> upstream/main

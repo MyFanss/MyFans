@@ -3,7 +3,9 @@
 This document describes how the backend indexes Soroban contract events for
 subscriptions. It covers the poller worker, the idempotency model, the
 subscription event handlers, the feature flag that gates the poller, and the
-Prometheus metrics that expose poller health.
+Prometheus metrics that expose poller health. It also describes how the shared
+event topic fixture keeps the contract CI and the backend `TARGET_EVENTS` in
+sync.
 
 ## Overview
 
@@ -20,6 +22,39 @@ The poller polls Soroban RPC for contract events (`subscribed`, `extended`,
 `cancelled`) and indexes them into the `subscription_index` table. This document
 describes the idempotency guarantees and the data structure that makes
 duplicate-free processing possible.
+
+## Shared event topic fixture
+
+The single source of truth for Soroban event topics and bodies is:
+
+```
+contract/fixtures/subscription-events.json
+```
+
+Both sides consume this fixture:
+
+- **Contract CI** — `contract/scripts/check-subscription-event-fixture.test.mjs`
+  emits the topics/bodies declared in the fixture and fails the build if the
+  contract no longer matches.
+- **Backend poller** — `TARGET_EVENTS` is imported/generated from the fixture
+  rather than hand-maintained, so poller topics cannot silently diverge from
+  the events the contract actually emits.
+
+If poller topics diverge from emitted events, subscriptions never confirm and
+checkout stays `Pending` forever. CI enforces fixture sync to prevent this.
+
+## Fixture versioning
+
+The fixture carries a `version` field. When a topic is renamed or a new event
+is added:
+
+1. Update `contract/fixtures/subscription-events.json` (bump `version`).
+2. Update the contract emit sites to match the fixture topics/bodies.
+3. Regenerate/import `TARGET_EVENTS` from the fixture.
+4. Run the fixture unit tests and the poller unit tests with fixture replay.
+
+CI fails on any mismatch between the fixture, the contract emit sites, and the
+backend `TARGET_EVENTS`.
 
 ## TARGET_EVENTS
 
@@ -180,9 +215,14 @@ Metrics:
 - **Gap in ledgers.** The poller tracks the last processed ledger and resumes
   from `lastProcessed + 1`. If a gap is detected, it re-fetches the missing
   range rather than skipping ahead.
+- **Topic rename.** Caught by the fixture sync check in CI.
+- **Extra event without handler.** The poller dead-letters events that have no
+  registered handler instead of panicking.
 - **Malformed payload.** Events that fail to decode are counted in
   `poller_errors_total{stage="decode"}` and skipped without advancing the
-  idempotency ledger, so they can be retried after a fix.
+  idempotency ledger, so they can be retried after a fix. Malformed events must
+  not panic the poller; unparseable or unknown events are routed to the
+  dead-letter path so a single bad event cannot halt indexing.
 - **Reorg.** Horizon/Soroban RPC finality is assumed once a ledger is closed and
   confirmed. The poller only processes ledgers at or below the RPC's latest
   confirmed ledger and does not attempt to unwind reorgs; operators should treat
@@ -195,6 +235,8 @@ Metrics:
 - The poller does not process unauthenticated admin callbacks. All state changes
   originate from on-chain events fetched by the poller itself; there is no
   inbound HTTP endpoint that can mutate subscription state.
+- Malformed events must not panic the poller. Unparseable or unknown events are
+  routed to the dead-letter path so a single bad event cannot halt indexing.
 
 ## Testing
 
@@ -218,5 +260,8 @@ Substreams-based indexing is out of scope for this poller.
 ## References
 
 - `backend/docs/EVENT_INDEXING.md` (this document)
-- `backend/docs/METRICS_GRAFANA.md`
 - `backend/docs/EVENTS.md`
+- `backend/docs/METRICS_GRAFANA.md`
+- `contract/fixtures/subscription-events.json`
+- `contract/scripts/check-subscription-event-fixture.test.mjs`
+
