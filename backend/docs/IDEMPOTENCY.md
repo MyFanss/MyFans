@@ -1,83 +1,73 @@
-# Idempotency Middleware — TTL & Collision Behavior
+# Idempotency
 
-## Overview
+This document describes how the backend guarantees that retried or duplicated
+requests do not produce duplicate side effects. It applies to every mutating
+endpoint that moves money or state, including creator earnings withdrawals.
 
-The `IdempotencyMiddleware` protects mutating routes (POST, PUT, PATCH) from
-duplicate execution. Clients supply an `Idempotency-Key` header; the platform
-stores the first response and replays it for any subsequent request carrying the
-same key.
+## General pattern: prepare / confirm
 
----
+Mutating flows that touch an external system (chain, payment provider, indexer)
+use a two-phase **prepare / confirm** pattern:
 
-## Key TTL
+1. **Prepare** — the client sends the intent plus a client-generated
+   `idempotencyKey`. The backend validates the request, reserves the operation
+   under that key, and returns a `prepareId` (or the previously stored result if
+   the key was already seen). No irreversible side effect happens yet.
+2. **Confirm** — the client sends the `prepareId` (and the signed payload where
+   applicable). The backend executes the operation exactly once and records the
+   terminal result against the key.
 
-| Setting | Value | Source |
-|---------|-------|--------|
-| Default TTL | **24 hours** | Hard-coded constant `DEFAULT_TTL_MS` |
-| Override | Set `IDEMPOTENCY_TTL_HOURS` env var | Read at service startup |
+Replaying either phase with the same `idempotencyKey` returns the stored result
+instead of re-executing. Replaying with a *different* key is treated as a new
+request and is subject to normal validation (balance, auth, pause state).
 
-**Rationale:** 24 hours matches the JWT access-token lifetime so a key cannot
-outlive the session that created it. After expiry the record is deleted by the
-hourly cleanup cron (`IdempotencyCleanupService`) and the key may be reused.
+## Key requirements
 
-**Cleanup:** `IdempotencyCleanupService` runs `@Cron(EVERY_HOUR)` and calls
-`IdempotencyService.purgeExpired()`, which issues a single `DELETE WHERE
-expires_at < NOW()`.
+- Keys are scoped per caller (creator/user id) and per operation type, so one
+  caller cannot collide with another.
+- A key is bound to the request fingerprint (amount, destination, operation).
+  Reusing a key with a different payload is rejected rather than silently
+  accepted.
+- Records are persisted before the external call and updated after it, so a
+  crash between phases leaves a recoverable `pending` record, never a silent
+  double-spend.
+- Terminal states (`confirmed`, `failed`) are immutable; only `pending` records
+  may transition.
 
----
+## EarningsModule withdraw
 
-## Collision / Replay Behavior
+The creator earnings withdraw flow follows this pattern:
 
-A "collision" occurs when a client sends a second request with the same
-`Idempotency-Key`. The middleware distinguishes four cases:
+- `prepareWithdraw(creatorId, amount, idempotencyKey)` validates the creator's
+  available balance and pause state, reserves the amount, and returns a
+  `prepareId`. It does **not** move funds.
+- `confirmWithdraw(creatorId, prepareId, idempotencyKey)` verifies the reserved
+  operation, requires the creator's authorization (the on-chain withdraw is
+  gated by `require_auth(creator)`), and settles exactly once.
 
-| State of existing record | Action |
-|--------------------------|--------|
-| **No record** | Insert in-flight record; proceed to handler. |
-| **In-flight** (`is_complete = false`, not expired) | Return **409 Conflict** — first request still processing. |
-| **Complete** (`is_complete = true`, not expired) — same method + path | Return **200/201** replay of cached response body. |
-| **Complete** — **different** method or path | Return **422 Unprocessable Entity** — key reuse across endpoints is forbidden. |
-| **Expired** (any state) | Delete stale record; treat as new key. |
+### Fee accounting
 
-### Key scoping
+Subscription payments are already split at payment time: the protocol fee is
+removed before the remainder is credited to the creator's earnings balance.
+The withdraw path therefore **must not** re-apply the protocol fee. Withdrawing
+`amount` debits exactly `amount` from the creator's balance and pays out exactly
+`amount`. Applying a fee again here would double-charge the creator.
 
-Keys are scoped to a `(key, fingerprint)` pair where `fingerprint` is:
+### Failure modes
 
-- `user:<userId>` — when the request is authenticated.
-- `ip:<clientIp>` — for unauthenticated requests.
+- **Withdraw more than balance** — rejected during prepare; no reservation is
+  created.
+- **Concurrent withdraws** — the balance reservation is atomic, so two
+  in-flight prepares cannot both reserve the same funds; the second fails
+  validation.
+- **Wrong signer** — confirm rejects when the authorization does not match the
+  creator that owns the reservation.
+- **Paused earnings** — prepare rejects while earnings are paused; existing
+  pending reservations are not settled until unpaused.
 
-This prevents one user from replaying another user's key.
+## Admin operations
 
-### Race condition
-
-Two concurrent requests with the same key arrive simultaneously. The first
-writer wins via a PostgreSQL unique constraint on `(key, fingerprint)`. The
-loser receives a `23505` unique-violation error which is mapped to **409
-Conflict**.
-
-### Error responses
-
-On non-2xx handler responses the in-flight record is **deleted** (via
-`release()`), allowing the client to retry with the same key after fixing the
-underlying issue.
-
----
-
-## Configuration
-
-```
-IDEMPOTENCY_TTL_HOURS=24   # optional; defaults to 24
-```
-
----
-
-## Manual Checklist (Replay Hardening)
-
-1. Send `POST /v1/posts` with `Idempotency-Key: test-1` → expect `201`.
-2. Repeat identical request → expect `201` with same body (replay).
-3. Send `PUT /v1/posts/1` with `Idempotency-Key: test-1` → expect `422`
-   (method/path mismatch).
-4. Send two concurrent requests with `Idempotency-Key: test-2` → one gets
-   `201`, the other gets `409`.
-5. Wait for TTL expiry (or manually delete the record) → same key accepted
-   again as new.
+Administrative drains or overrides are not part of the normal withdraw path and
+must be gated by the `AUTH_MATRIX` role checks. There is no silent admin drain:
+any privileged movement of creator funds requires an explicit, audited role and
+is recorded with the same idempotency guarantees.

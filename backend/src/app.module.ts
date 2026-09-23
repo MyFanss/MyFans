@@ -50,6 +50,10 @@ const IDEMPOTENCY_ROUTES = [
   { path: 'v1/conversations/:id/messages', method: RequestMethod.POST },
   { path: 'v1/content', method: RequestMethod.POST },
   { path: 'v1/webhook', method: RequestMethod.POST },
+  // Earnings withdraw uses the prepare/confirm pattern; both legs must be
+  // idempotent so a retried confirm cannot double-pay a creator.
+  { path: 'v1/earnings/withdraw/prepare', method: RequestMethod.POST },
+  { path: 'v1/earnings/withdraw/confirm', method: RequestMethod.POST },
 ];
 
 @Module({
