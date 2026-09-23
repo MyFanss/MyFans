@@ -276,3 +276,6 @@ This README describes the MyFans project on Stellar. Implement each module (cont
 
 <!-- handsoff-issue-1791 -->
 - #1791: FavoritesModule persistence APIs replacing local-only context as source of truth
+
+<!-- handsoff-issue-1794 -->
+- #1794: EarningsModule prepare/confirm withdraw orchestration with chain
