@@ -1,4 +1,4 @@
-# Three required checks: Backend, Frontend, Contract.
+# Required checks: Backend, Frontend, Contract, Contract Audit.
 name: CI
 
 on:
@@ -122,8 +122,11 @@ jobs:
         run: cargo fmt --all --check
         working-directory: contract
 
-      - name: Run tests
-        run: cargo test
+      # Regression gate: run the entire contract workspace test suite.
+      # `--workspace` ensures every crate (including non-production helpers) is
+      # exercised, so a broken wasm crate cannot merge to main.
+      - name: Run workspace tests
+        run: cargo test --workspace
         working-directory: contract
 
       # Verify wasm release build independently from cargo test, which uses the host target.
@@ -169,4 +172,28 @@ jobs:
             exit 1
           fi
           echo "::notice::All production WASM artifacts verified successfully"
+        working-directory: contract
+
+  contract-audit:
+    name: Contract Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract -> target
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      # Fails on any vulnerability advisory (including high/critical) unless it is
+      # explicitly ignored in contract/audit.toml or contract/.auditignore with a
+      # documented reason. Critical advisories must link a tracking issue.
+      - name: Run cargo audit
+        run: cargo audit --deny warnings
         working-directory: contract
