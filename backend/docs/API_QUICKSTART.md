@@ -2,6 +2,8 @@
 
 A practical guide to getting the MyFans backend API running locally, making your first authenticated request, and understanding the conventions you'll encounter when contributing.
 
+> **OpenAPI is the source of truth.** The committed spec at [`backend/openapi.json`](../openapi.json) is generated from the running app and drift-tested in CI. Every controller path registered in `AppModule` must either appear in the spec or be explicitly marked internal/excluded. See [OpenAPI source of truth](#13-openapi-source-of-truth) below.
+
 ---
 
 ## Table of Contents
@@ -18,6 +20,7 @@ A practical guide to getting the MyFans backend API running locally, making your
 10. [Error format](#10-error-format)
 11. [Running backend tests](#11-running-backend-tests)
 12. [Adding a new endpoint — checklist](#12-adding-a-new-endpoint--checklist)
+13. [OpenAPI source of truth](#13-openapi-source-of-truth)
 
 ---
 
@@ -77,6 +80,13 @@ http://localhost:3001/api-docs
 ```
 
 Swagger UI lists every endpoint with request/response schemas, lets you try requests directly in the browser, and shows which routes require authentication.
+
+The same document is committed as [`backend/openapi.json`](../openapi.json) and is the canonical, machine-readable contract for the API. Regenerate it with:
+
+```bash
+cd backend
+npm run openapi:generate
+```
 
 ---
 
@@ -282,41 +292,20 @@ curl -s -X POST http://localhost:3001/v1/subscriptions/checkout \
   -d '{"planId": "<PLAN_ID>"}'
 ```
 
-Endpoints that enforce idempotency:
-
-- `POST /v1/creators/plans`
-- `POST /v1/subscriptions/checkout`
-- `POST /v1/posts`
-- `PUT /v1/posts/:id`
-- `POST /v1/comments`
-- `PUT /v1/comments/:id`
-- `POST /v1/conversations`
-- `POST /v1/conversations/:id/messages`
-
-See [`docs/IDEMPOTENCY.md`](./IDEMPOTENCY.md) for the full spec.
+If the same key is sent twice, the second request returns the original response instead of creating a duplicate. Keys are scoped per user and expire after 24 hours.
 
 ---
 
 ## 10. Error format
 
-All errors follow a consistent JSON envelope:
+All errors follow a consistent envelope:
 
 ```json
 {
   "statusCode": 400,
   "message": "Validation failed",
   "error": "Bad Request",
-  "correlationId": "abc-123"
-}
-```
-
-Validation errors include a `message` array with per-field details:
-
-```json
-{
-  "statusCode": 400,
-  "message": ["address must be exactly 56 characters"],
-  "error": "Bad Request"
+  "correlationId": "..."
 }
 ```
 
@@ -324,14 +313,13 @@ Common status codes:
 
 | Code | Meaning |
 |------|---------|
-| 400 | Validation error or bad input |
-| 401 | Missing or invalid JWT |
-| 403 | Authenticated but not authorised (wrong role) |
-| 404 | Resource not found |
-| 409 | Conflict (e.g. duplicate resource) |
-| 422 | Business logic error |
-| 429 | Rate limit exceeded |
-| 500 | Internal server error |
+| `400` | Validation error — check the request body |
+| `401` | Missing or invalid JWT |
+| `403` | Authenticated but not authorized |
+| `404` | Resource not found |
+| `409` | Conflict (e.g. duplicate subscription) |
+| `429` | Rate limit exceeded |
+| `500` | Unexpected server error — include `correlationId` in bug reports |
 
 ---
 
@@ -340,69 +328,70 @@ Common status codes:
 ```bash
 cd backend
 
-# Run all unit tests
+# Unit tests
 npm test
 
-# Run tests in watch mode (during development)
-npm run test:watch
-
-# Run with coverage
-npm run test:cov
-
-# Run e2e tests (requires a running database)
+# End-to-end tests (requires a running Postgres)
 npm run test:e2e
-```
 
-Tests live alongside source files as `*.spec.ts`. Property-based tests use [fast-check](https://fast-check.dev/) and are named `*.properties.spec.ts`.
+# OpenAPI drift test — fails if a controller path is undocumented
+npm run test:openapi
+```
 
 ---
 
 ## 12. Adding a new endpoint — checklist
 
-When contributing a new endpoint, follow these steps to match existing patterns:
-
-- [ ] **Module**: add the controller and service to the relevant NestJS module (or create a new module following the existing structure).
-- [ ] **DTO**: define request/response DTOs with `class-validator` decorators and `@ApiProperty` for Swagger.
-- [ ] **Auth**: use `@Public()` only for genuinely public endpoints; all others are JWT-protected by default.
-- [ ] **Roles**: apply `@Roles(Role.Creator)` or similar if the endpoint is role-restricted.
-- [ ] **Rate limit**: apply `@Throttle({ medium: {} })` (or the appropriate tier) to the controller or method.
-- [ ] **CSRF**: state-mutating endpoints are automatically covered by `CsrfMiddleware` — no extra annotation needed.
-- [ ] **Idempotency**: if the endpoint creates or modifies a resource, add it to `IDEMPOTENCY_ROUTES` in `app.module.ts`.
-- [ ] **Swagger**: add `@ApiTags`, `@ApiOperation`, and `@ApiResponse` decorators.
-- [ ] **Tests**: add unit tests (`*.spec.ts`) and, for complex logic, property-based tests (`*.properties.spec.ts`).
-- [ ] **Lint**: run `npm run lint` and fix any issues before opening a PR.
-
-### Minimal controller example
-
-```typescript
-import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
-import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
-
-@ApiTags('example')
-@Controller({ path: 'example', version: '1' })
-export class ExampleController {
-  @Get()
-  @Throttle({ medium: {} })
-  @ApiOperation({ summary: 'List examples' })
-  @ApiResponse({ status: 200, description: 'List of examples' })
-  findAll() {
-    return [];
-  }
-}
-```
+1. Add the controller method with the appropriate decorators (`@Get`, `@Post`, etc.).
+2. Add `@ApiOperation` / `@ApiResponse` decorators so the route is documented.
+3. If the route is internal (health, metrics) or a webhook, mark it excluded from the public spec (see below).
+4. Regenerate the spec: `npm run openapi:generate`.
+5. Run the drift test: `npm run test:openapi`.
+6. Commit both the code change and the updated `backend/openapi.json`.
 
 ---
 
-## Further reading
+## 13. OpenAPI source of truth
 
-| Document | Location |
-|----------|----------|
-| Local dev guide | [`DEVELOPMENT.md`](../../DEVELOPMENT.md) |
-| CORS and security headers | [`docs/CORS_AND_SECURITY_HEADERS.md`](./CORS_AND_SECURITY_HEADERS.md) |
-| Rate limiting policy | [`docs/RATE_LIMITING.md`](./RATE_LIMITING.md) |
-| Idempotency spec | [`docs/IDEMPOTENCY.md`](./IDEMPOTENCY.md) |
-| Secret management | [`docs/SECRET_MANAGEMENT.md`](./SECRET_MANAGEMENT.md) |
-| Contract deploy runbook | [`contract/docs/CONTRACT_DEPLOY_RUNBOOK.md`](../../contract/docs/CONTRACT_DEPLOY_RUNBOOK.md) |
-| Swagger UI (live) | `http://localhost:3001/api-docs` |
+The committed [`backend/openapi.json`](../openapi.json) is generated from the running NestJS app by [`backend/scripts/generate-openapi.ts`](../scripts/generate-openapi.ts). It is the canonical contract for clients and is kept in sync by a CI drift test.
+
+### How drift is detected
+
+The drift test enumerates every controller path registered in `AppModule` and asserts that each one is either:
+
+- present in `openapi.json`, or
+- explicitly excluded via the internal/excluded allowlist (health checks, webhooks).
+
+If a controller path is neither documented nor excluded, CI fails. This prevents both **undocumented routes** (shipped but invisible to clients) and **ghost docs** (documented but no longer served).
+
+### Excluded paths
+
+The following are intentionally excluded from the public spec:
+
+| Path | Reason |
+|------|--------|
+| `/v1/health` | Internal liveness/readiness probe |
+| `/v1/health/*` | Internal subsystem health checks |
+| Webhook receivers | Third-party callbacks, not client-facing |
+
+### Security schemes
+
+Admin routes must declare a security scheme in the generated spec. A route under an admin path that is exposed without an `@ApiSecurity` / bearer scheme will fail the drift test — admin endpoints must never be publicly documented without authentication.
+
+### Servers
+
+The spec declares the versioned server base path:
+
+```json
+"servers": [{ "url": "/v1" }]
+```
+
+### Regenerating the baseline
+
+```bash
+cd backend
+npm run openapi:generate   # writes backend/openapi.json
+npm run test:openapi       # verifies no drift
+```
+
+Commit the regenerated `openapi.json` alongside any controller change so the baseline stays current.

@@ -65,6 +65,13 @@ jobs:
         run: npm run build
         working-directory: backend
 
+      # OpenAPI drift check: regenerate the spec from the AppModule controllers
+      # and fail if the committed baseline (backend/openapi.json) is stale or if
+      # any controller path is neither documented nor explicitly excluded.
+      - name: OpenAPI drift check
+        run: npm run openapi:check
+        working-directory: backend
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
