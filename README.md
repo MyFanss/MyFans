@@ -267,3 +267,6 @@ This README describes the MyFans project on Stellar. Implement each module (cont
 
 <!-- handsoff-issue-1751 -->
 - #1751: creator-deposits: stake/deposit withdraw security—unauthorized withdraw leaves stake unchanged
+
+<!-- handsoff-issue-1753 -->
+- #1753: myfans-lib: eliminate panics from library paths; stable error_codes for all callers
