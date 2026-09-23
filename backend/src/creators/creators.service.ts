@@ -1,330 +1,111 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PaginatedResponseDto, PaginationDto } from '../common/dto';
-import { EventBus } from '../events/event-bus';
-import { PlanCreatedEvent } from '../events/domain-events';
-import { User } from '../users/entities/user.entity';
-import { PlanDto } from './dto/plan.dto';
-import { PublicCreatorDto } from './dto/public-creator.dto';
-import { SearchCreatorsDto } from './dto/search-creators.dto';
-import { SubscriptionChainReaderService } from '../subscriptions/subscription-chain-reader.service';
+import { Creator } from './entities/creator.entity';
+import { CreatorRegistryEvent } from './entities/creator-registry-event.entity';
 
-export interface Plan {
-  id: number;
+/**
+ * Event schema version for forward compatibility.
+ * Bump when the on-chain registry event payload shape changes.
+ */
+export const CREATOR_REGISTRY_EVENT_SCHEMA_VERSION = 1;
+
+export type CreatorRegistryEventKind = 'CreatorRegistered' | 'CreatorUpdated';
+
+export interface CreatorRegistryEventPayload {
+  /** Event schema version for forward compat. */
+  schemaVersion: number;
+  /** On-chain event kind. */
+  kind: CreatorRegistryEventKind;
+  /** Creator public key (canonical identity). */
   creator: string;
-  asset: string;
-  amount: string;
-  intervalDays: number;
-  syncStatus?: 'synced' | 'stale' | 'missing' | 'unknown';
-  lastSyncedAt?: Date;
+  /** Metadata hash or CID only — never raw PII. */
+  metadataHashOrUri: string;
+  /** Optional admin force-suspend flag from the moderation bridge. */
+  forceSuspended?: boolean;
+  /** Ledger sequence number of the emitting transaction. */
+  ledgerSeq: number;
+  /** Index of the event within the ledger transaction. */
+  eventIndex: number;
 }
 
 @Injectable()
 export class CreatorsService {
   private readonly logger = new Logger(CreatorsService.name);
-  private plans: Map<number, Plan> = new Map();
-  private planCounter = 0;
 
   constructor(
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    @Optional()
-    private readonly eventBus?: EventBus,
-    @Optional()
-    private readonly chainReader?: SubscriptionChainReaderService,
+    @InjectRepository(Creator)
+    private readonly creatorsRepository: Repository<Creator>,
+    @InjectRepository(CreatorRegistryEvent)
+    private readonly registryEventsRepository: Repository<CreatorRegistryEvent>,
   ) {}
 
-  createPlan(
-    creator: string,
-    asset: string,
-    amount: string,
-    intervalDays: number,
-  ): Plan {
-    const plan = {
-      id: ++this.planCounter,
-      creator,
-      asset,
-      amount,
-      intervalDays,
-    };
-    this.plans.set(plan.id, plan);
-    if (!this.eventBus) {
-      this.logger.debug(
-        `Plan ${plan.id} created for ${creator}; EventBus not wired, skipping PlanCreatedEvent`,
-      );
-    } else {
-      try {
-        this.eventBus.publish(
-          new PlanCreatedEvent(plan.id, creator, asset, amount),
-        );
-      } catch (err) {
-        this.logger.warn(
-          `Plan ${plan.id} created but PlanCreatedEvent publish failed: ${(err as Error).message}`,
-        );
-      }
-    }
-    return plan;
-  }
-
-  getPlan(id: number): Plan | undefined {
-    return this.plans.get(id);
-  }
-
-  getCreatorPlans(creator: string): Plan[] {
-    return Array.from(this.plans.values()).filter((p) => p.creator === creator);
-  }
-
-  findAllPlans(pagination: PaginationDto): PaginatedResponseDto<PlanDto> {
-    const { cursor, limit = 20 } = pagination;
-    let allPlans = Array.from(this.plans.values()).sort((a, b) => a.id - b.id);
-
-    if (cursor) {
-      const cursorId = parseInt(cursor, 10);
-      if (!isNaN(cursorId)) {
-        allPlans = allPlans.filter((p) => p.id > cursorId);
-      } else {
-        this.logger.debug(
-          `Ignoring invalid plans pagination cursor "${cursor}"`,
-        );
-      }
-    }
-
-    const data = allPlans.slice(0, limit + 1);
-    const hasMore = data.length > limit;
-    if (hasMore) {
-      data.pop();
-    }
-
-    let nextCursor: string | null = null;
-    if (data.length > 0) {
-      nextCursor = String(data[data.length - 1].id);
-    }
-
-    return new PaginatedResponseDto(
-      data.map((plan) => Object.assign(new PlanDto(), plan)),
-      limit,
-      nextCursor,
-      hasMore,
-    );
-  }
-
-  findCreatorPlans(
-    creator: string,
-    pagination: PaginationDto,
-  ): PaginatedResponseDto<PlanDto> {
-    const { cursor, limit = 20 } = pagination;
-    let creatorPlans = this.getCreatorPlans(creator).sort(
-      (a, b) => a.id - b.id,
-    );
-
-    if (cursor) {
-      const cursorId = parseInt(cursor, 10);
-      if (!isNaN(cursorId)) {
-        creatorPlans = creatorPlans.filter((p) => p.id > cursorId);
-      } else {
-        this.logger.debug(
-          `Ignoring invalid creator plans pagination cursor "${cursor}" for ${creator}`,
-        );
-      }
-    }
-
-    const data = creatorPlans.slice(0, limit + 1);
-    const hasMore = data.length > limit;
-    if (hasMore) {
-      data.pop();
-    }
-
-    let nextCursor: string | null = null;
-    if (data.length > 0) {
-      nextCursor = String(data[data.length - 1].id);
-    }
-
-    return new PaginatedResponseDto(
-      data.map((plan) => Object.assign(new PlanDto(), plan)),
-      limit,
-      nextCursor,
-      hasMore,
-    );
-  }
-
   /**
-   * Lists all in-memory plans, optionally merging chain state for each plan.
-   * Chain reads are best-effort: stale/disconnected results fall back to
-   * syncStatus='unknown' so callers always receive a valid response.
+   * Idempotently sync a single on-chain registry event into the DB.
+   *
+   * Identity is `ledgerSeq:eventIndex`; duplicate delivery of the same event
+   * results in a single row (upsert by pubkey, dedupe by event identity).
    */
-  async listCreators(mergeChain = false): Promise<PlanDto[]> {
-    const allPlans = Array.from(this.plans.values()).sort(
-      (a, b) => a.id - b.id,
-    );
+  async syncRegistryEvent(payload: CreatorRegistryEventPayload): Promise<Creator> {
+    const eventId = `${payload.ledgerSeq}:${payload.eventIndex}`;
 
-    if (!mergeChain) {
-      return allPlans.map((p) => Object.assign(new PlanDto(), p));
+    const existingEvent = await this.registryEventsRepository.findOne({
+      where: { eventId },
+    });
+    if (existingEvent) {
+      this.logger.debug(`Duplicate registry event ${eventId} ignored`);
+      return this.creatorsRepository.findOneOrFail({
+        where: { pubkey: payload.creator },
+      });
     }
 
-    const contractId = this.chainReader?.getConfiguredContractId();
-    if (!contractId || !this.chainReader) {
-      this.logger.debug(
-        'listCreators: chain reader not configured, skipping merge',
-      );
-      return allPlans.map((p) =>
-        Object.assign(new PlanDto(), { ...p, syncStatus: 'unknown' }),
-      );
-    }
-
-    // Build planMap for O(1) lookup during merge
-    const planMap = new Map(allPlans.map((p) => [p.id, p]));
-
-    const merged = await Promise.all(
-      allPlans.map(async (plan) => {
-        const chainResult = await this.chainReader!.readPlan(
-          contractId,
-          plan.id,
-        );
-        if (!chainResult.ok) {
-          this.logger.warn(
-            `listCreators: chain read failed for plan ${plan.id}: ${chainResult.error}`,
-          );
-          const local = planMap.get(plan.id)!;
-          return Object.assign(new PlanDto(), {
-            ...local,
-            syncStatus: 'unknown' as const,
-          });
-        }
-
-        const local = planMap.get(plan.id)!;
-        const chainPlan = chainResult.plan;
-        const isSynced =
-          local.creator === chainPlan.creator &&
-          local.asset === chainPlan.asset &&
-          local.amount === chainPlan.amount &&
-          local.intervalDays === chainPlan.intervalDays;
-
-        return Object.assign(new PlanDto(), {
-          ...local,
-          syncStatus: isSynced ? ('synced' as const) : ('stale' as const),
-          lastSyncedAt: new Date(),
-        });
+    await this.registryEventsRepository.save(
+      this.registryEventsRepository.create({
+        eventId,
+        schemaVersion: payload.schemaVersion ?? CREATOR_REGISTRY_EVENT_SCHEMA_VERSION,
+        kind: payload.kind,
+        creator: payload.creator,
+        metadataHashOrUri: payload.metadataHashOrUri,
+        ledgerSeq: payload.ledgerSeq,
+        eventIndex: payload.eventIndex,
       }),
     );
 
-    return merged;
-  }
-
-  async searchCreators(
-    searchDto: SearchCreatorsDto,
-  ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
-    const { cursor, limit = 20, q, search } = searchDto;
-    const trimmed = (q ?? search)?.trim();
-
-    const qb = this.userRepository
-      .createQueryBuilder('user')
-      .leftJoin('user.creator', 'creator')
-      .addSelect('creator.bio', 'creator_bio')
-      .addSelect('creator.is_verified', 'creator_is_verified')
-      .addSelect('creator.followers_count', 'creator_followers_count')
-      .where('user.is_creator = :isCreator', { isCreator: true })
-      .orderBy('user.username', 'ASC')
-      .take(limit + 1);
-
-    if (trimmed) {
-      qb.andWhere(
-        '(LOWER(user.display_name) LIKE :search OR LOWER(user.username) LIKE :search)',
-        { search: `${trimmed.toLowerCase()}%` },
-      );
-    }
-
-    if (cursor) {
-      qb.andWhere('user.username > :cursorUsername', {
-        cursorUsername: cursor,
-      });
-    }
-
-    let entities: User[];
-    let raw: {
-      creator_bio?: string;
-      creator_is_verified?: boolean;
-      creator_followers_count?: number;
-    }[];
-    try {
-      const result = await qb.getRawAndEntities();
-      entities = result.entities;
-      raw = result.raw as typeof raw;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Creator search failed: ${message}`);
-      throw err;
-    }
-
-    const hasMore = entities.length > limit;
-    if (hasMore) {
-      entities.pop();
-      raw.pop();
-    }
-
-    const data = entities.map((user, index) => {
-      const dto = new PublicCreatorDto(user, user.creator);
-      dto.bio = raw[index]?.creator_bio ?? user.creator?.bio ?? null;
-      dto.is_verified =
-        raw[index]?.creator_is_verified ?? user.creator?.is_verified ?? false;
-      dto.followers_count =
-        raw[index]?.creator_followers_count ??
-        user.creator?.followers_count ??
-        0;
-      return dto;
+    let creator = await this.creatorsRepository.findOne({
+      where: { pubkey: payload.creator },
     });
 
-    let nextCursor: string | null = null;
-    if (data.length > 0) {
-      nextCursor = data[data.length - 1].username;
+    if (!creator) {
+      creator = this.creatorsRepository.create({
+        pubkey: payload.creator,
+        metadataHashOrUri: payload.metadataHashOrUri,
+        forceSuspended: payload.forceSuspended ?? false,
+      });
+    } else {
+      creator.metadataHashOrUri = payload.metadataHashOrUri;
+      if (payload.forceSuspended !== undefined) {
+        creator.forceSuspended = payload.forceSuspended;
+      }
     }
 
-    this.logger.debug(
-      `Creator search returned ${data.length} rows for query "${trimmed ?? ''}"` +
-        (cursor ? ` after cursor "${cursor}"` : ''),
-    );
-
-    return new PaginatedResponseDto(data, limit, nextCursor, hasMore);
+    return this.creatorsRepository.save(creator);
   }
 
   /**
-   * Look up a single public creator profile by exact username match.
-   * Used by the creator profile page to render real data (and 404 for
-   * unknown usernames) instead of the client-side prefix search used by
-   * discovery.
+   * Sync a batch of registry events. Safe to call with overlapping ranges;
+   * each event is deduped on `ledgerSeq:eventIndex`.
    */
-  async getCreatorByUsername(
-    username: string,
-  ): Promise<PublicCreatorDto | null> {
-    const qb = this.userRepository
-      .createQueryBuilder('user')
-      .leftJoin('user.creator', 'creator')
-      .addSelect('creator.bio', 'creator_bio')
-      .addSelect('creator.is_verified', 'creator_is_verified')
-      .addSelect('creator.followers_count', 'creator_followers_count')
-      .where('user.is_creator = :isCreator', { isCreator: true })
-      .andWhere('LOWER(user.username) = :username', {
-        username: username.trim().toLowerCase(),
-      });
+  async syncRegistryEvents(
+    payloads: CreatorRegistryEventPayload[],
+  ): Promise<Creator[]> {
+    const results: Creator[] = [];
+    for (const payload of payloads) {
+      results.push(await this.syncRegistryEvent(payload));
+    }
+    return results;
+  }
 
-    const result = await qb.getRawAndEntities();
-    const user = result.entities[0];
-    if (!user) return null;
-
-    const raw = result.raw[0] as
-      | {
-          creator_bio?: string;
-          creator_is_verified?: boolean;
-          creator_followers_count?: number;
-        }
-      | undefined;
-
-    const dto = new PublicCreatorDto(user, user.creator);
-    dto.bio = raw?.creator_bio ?? user.creator?.bio ?? null;
-    dto.is_verified =
-      raw?.creator_is_verified ?? user.creator?.is_verified ?? false;
-    dto.followers_count =
-      raw?.creator_followers_count ?? user.creator?.followers_count ?? 0;
-    return dto;
+  async findByPubkey(pubkey: string): Promise<Creator | null> {
+    return this.creatorsRepository.findOne({ where: { pubkey } });
   }
 }
