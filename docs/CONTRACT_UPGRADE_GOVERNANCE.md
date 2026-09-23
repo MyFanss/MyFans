@@ -1,106 +1,134 @@
 # Contract Upgrade Governance
 
-## Overview
+This document defines the process for upgrading MyFans Soroban (wasm) contracts
+safely. Upgrading wasm without a controlled process risks bricking storage or
+losing funds. Follow this process for every mainnet upgrade.
 
-This document outlines the governance process for upgrading smart contracts in the MyFans platform. Contract upgrades are critical operations that require careful planning, review, and execution to maintain platform security and user trust.
+Related documents:
 
-## Upgrade Authority
+- [`contract/docs/CONTRACT_DEPLOY_RUNBOOK.md`](../contract/docs/CONTRACT_DEPLOY_RUNBOOK.md) — deploy runbook
+- [`contract/CHANGELOG.md`](../contract/CHANGELOG.md) — contract changelog
+- [`SECURITY.md`](../SECURITY.md) — security policy and disclosure process
 
-### Admin Roles
-- **Contract Owner**: Primary authority for initiating upgrades
-- **Security Team**: Must review and approve all upgrade proposals
-- **Technical Lead**: Validates technical implementation and migration paths
+## Upgrade Phases
 
-## Upgrade Process
+Every upgrade moves through the following six phases in order. Do not skip a
+phase; each phase has an explicit exit condition.
 
-### 1. Proposal Phase
-- Document the reason for upgrade (bug fix, feature addition, optimization)
-- Create detailed specification of changes
-- Estimate impact on existing users and data
-- Submit proposal for review
+### 1. Propose
 
-### 2. Review Phase
-- Security audit of new contract code
-- Peer review by at least 2 senior developers
-- Impact analysis on frontend and backend integrations
-- Test coverage verification (minimum 80%)
+- Open an issue/PR describing the change, motivation, and affected contracts.
+- Record the current wasm hash of each contract being upgraded.
+- Identify storage key changes (see the compatibility checklist below).
+- Exit: proposal reviewed by at least one maintainer.
 
-### 3. Testing Phase
-- Deploy to testnet environment
-- Run full integration test suite
-- Perform manual QA testing
-- Execute migration dry-run with production-like data
+### 2. Review
 
-### 4. Approval Phase
-- Security team sign-off
-- Technical lead approval
-- Product owner confirmation
-- Document approval in upgrade log
+- Code review of the contract diff by a maintainer who did not author it.
+- Confirm the storage key compatibility checklist is complete.
+- Confirm the rollback plan is viable (previous wasm hash is known and stored).
+- Exit: review approved and checklist signed off.
 
-### 5. Deployment Phase
-- Schedule maintenance window
-- Notify users of upcoming upgrade
-- Execute upgrade on mainnet
-- Verify upgrade success
-- Monitor for 24 hours post-upgrade
+### 3. Audit
 
-## Upgrade Checklist
+- For changes touching funds, auth, or storage layout, obtain an independent
+  audit or a documented internal security review.
+- Record audit findings and their resolution.
+- Exit: no unresolved high/critical findings.
 
-### Pre-Upgrade
-- [ ] Upgrade proposal documented and approved
-- [ ] Security audit completed with no critical findings
-- [ ] All tests passing (unit, integration, e2e)
-- [ ] Testnet deployment successful
-- [ ] Migration scripts tested and verified
-- [ ] Rollback plan documented
-- [ ] User notification sent (48 hours advance)
-- [ ] Backup of current contract state created
+### 4. Timelock / Announce
 
-### During Upgrade
-- [ ] Maintenance mode enabled
-- [ ] Contract upgrade transaction executed
-- [ ] Upgrade transaction confirmed
-- [ ] Post-upgrade verification script run
-- [ ] Critical functionality smoke tested
+- Announce the upgrade (contract IDs, wasm hashes, planned execution window)
+  to users and integrators at least 48 hours before execution.
+- Respect any on-chain timelock configured for the admin.
+- Exit: announcement window elapsed with no blocking objections.
 
-### Post-Upgrade
-- [ ] All services operational
-- [ ] User transactions processing normally
-- [ ] No error spikes in monitoring
-- [ ] Documentation updated
-- [ ] Upgrade logged in changelog
-- [ ] Post-mortem scheduled (if issues occurred)
+### 5. Execute
 
-## Emergency Upgrades
+- Execute upgrades in dependency order (see multi-contract ordering below).
+- Use dual control for the admin key (see Security considerations).
+- Record the execution transaction hash for each contract.
+- Exit: all target contracts report the new wasm hash.
 
-For critical security vulnerabilities:
-1. Security team can fast-track approval
-2. Minimum 1 peer review required
-3. Testnet testing can be abbreviated but not skipped
-4. User notification can be reduced to 4 hours
-5. Post-upgrade monitoring extended to 72 hours
+### 6. Verify
 
-## Rollback Procedure
+- Run post-deploy verification from the deploy runbook.
+- Confirm storage reads/writes still succeed and funds are intact.
+- Complete the Upgrade Log entry below.
+- Exit: verification results recorded and no regressions observed.
 
-If critical issues are detected post-upgrade:
-1. Immediately enable maintenance mode
-2. Execute rollback to previous contract version
-3. Restore backed-up state if necessary
-4. Notify users of rollback
-5. Conduct incident post-mortem
-6. Document lessons learned
+## Upgrade Log
 
-## Governance Log
+Record one entry per upgrade. Keep this log in the PR that performs the upgrade
+and append it to the release notes.
 
-All upgrade decisions must be logged in `docs/upgrade-log.md` with:
-- Date and time
-- Contract name and version
-- Approvers
-- Reason for upgrade
-- Outcome
+| Field | Value |
+| --- | --- |
+| Date (UTC) | |
+| Contract(s) | |
+| Previous wasm hash | |
+| New wasm hash | |
+| Proposer | |
+| Reviewers / approvals | |
+| Audit reference | |
+| Timelock window | |
+| Execution tx hash | |
+| Verification results | |
+| Rollback performed? | yes / no |
 
-## Contact
+## Rollback Criteria
 
-For upgrade-related questions:
-- Security: security@myfans.platform
-- Technical: tech-lead@myfans.platform
+Roll back to the previous wasm hash if any of the following occur after
+upgrade:
+
+- Storage reads or writes fail, or stored data is unreadable/corrupted.
+- Funds are inaccessible, mis-accounted, or a transfer fails unexpectedly.
+- Auth or admin checks behave incorrectly (unauthorized access or lockout).
+- Post-deploy verification fails and cannot be resolved forward quickly.
+- A high/critical issue is discovered in the new wasm.
+
+### Rollback Procedure
+
+1. Freeze further upgrades and announce the rollback.
+2. Redeploy the previously recorded wasm hash for the affected contract(s).
+3. Re-run post-deploy verification and confirm storage and funds are intact.
+4. Record the rollback in the Upgrade Log (set `Rollback performed?` to yes).
+5. Open a follow-up issue to diagnose the root cause before retrying.
+
+## Storage Key Compatibility Checklist
+
+Complete before executing any upgrade:
+
+- [ ] No existing storage keys were renamed or removed.
+- [ ] No existing storage key changed its value type or encoding.
+- [ ] New keys are additive and namespaced to avoid collisions.
+- [ ] Enum/struct variants used in storage remain backward compatible.
+- [ ] Migration logic (if any) is idempotent and tested on a fork/testnet.
+- [ ] Old wasm can still read data written by the new wasm (and vice versa)
+      where a rollback may be needed.
+- [ ] TTL/expiration handling for persistent storage is preserved.
+
+## Edge Cases & Failure Modes
+
+### Partial upgrade / multi-contract ordering
+
+When multiple contracts must change together, upgrade in dependency order
+(dependencies first, dependents last). If an upgrade fails partway, stop,
+roll back the already-upgraded contracts to their previous hashes, and re-plan.
+Never leave the system in a mixed state across a breaking interface change.
+
+### Admin key loss
+
+If the admin key is lost, upgrades and admin operations are blocked. Mitigate by
+using dual control (below) and by storing recovery material in a secure,
+access-controlled location. Document the recovery path before mainnet.
+
+## Security Considerations
+
+- **Dual control:** require two independent approvers for admin operations and
+  upgrades; do not rely on a single key.
+- **Disclosure:** report vulnerabilities per [`SECURITY.md`](../SECURITY.md).
+
+## Out of Scope
+
+On-chain DAO governance is out of scope for this document.

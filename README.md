@@ -68,6 +68,14 @@ You will keep only these three folders and this README; other files can be remov
 
 ---
 
+## Documentation
+
+- [Contract Upgrade Governance](docs/CONTRACT_UPGRADE_GOVERNANCE.md) – required process, upgrade log, and rollback criteria for mainnet contract upgrades.
+- [Contract Changelog](contract/CHANGELOG.md) – version history for the Soroban contracts.
+- [Security Policy](SECURITY.md) – how to report vulnerabilities.
+
+---
+
 ## 1. Smart Contract (Soroban) – `contract/`
 
 ### Responsibilities
@@ -91,6 +99,12 @@ You will keep only these three folders and this README; other files can be remov
 
 - **Rust**, **soroban-sdk**.
 - Build & test: **stellar-cli** / **soroban-cli**; deploy to Stellar testnet/mainnet via CLI or CI.
+
+### Upgrading
+
+Contract upgrades on mainnet MUST follow
+[`docs/CONTRACT_UPGRADE_GOVERNANCE.md`](docs/CONTRACT_UPGRADE_GOVERNANCE.md),
+including the upgrade log and rollback criteria.
 
 ---
 
@@ -149,121 +163,6 @@ If you are documenting or testing wallet-based flows in this repository, assume 
 1. **Creator** sets a plan on-chain (contract) and optionally registers plan metadata in backend.
 2. **Fan** chooses a plan in frontend; frontend builds Soroban `subscribe` tx; fan signs with Stellar wallet; contract executes payment and updates subscription state.
 3. **Backend** indexes contract events (or polls contract), updates DB; when fan requests gated content, backend checks DB or calls contract to confirm `is_subscriber`.
-4. **Frontend** shows “Subscribed until …” and unlocks content links or embeds based on backend response.
+4. **Frontend** shows “Subscribed until …” and 
 
----
-
-## Tech Stack Summary
-
-| Layer | Technologies |
-|-------|----------------|
-| Chain & contracts | Stellar, Soroban, Rust, soroban-sdk, stellar-cli |
-| Frontend | Next.js, TypeScript, Stellar SDK, wallet integration |
-| Backend | Nest.js, TypeScript, PostgreSQL (or similar), Stellar/Soroban RPC, IPFS (metadata/refs) |
-| Storage | IPFS (content refs), DB (metadata, indexer cache) |
-
----
-
-## Development Milestones
-
-1. **Contract**
-   - Implement subscription lifecycle (create plan, subscribe, renew, cancel).
-   - Implement payment split (creator + protocol fee) for one asset, then multi-asset.
-   - Emit events; add access control (`is_subscriber`).
-   - Unit tests; deploy to testnet.
-
-2. **Backend**
-   - Nest.js project; auth (Stellar key ↔ user); CRUD for creators, plans metadata, content.
-   - Integrate Soroban RPC; event indexer or polling; “is subscriber?” API.
-   - IPFS for content refs; optional notifications.
-
-3. **Frontend**
-   - Next.js; wallet connect; creator dashboard (create plan, view earnings); fan flow (discover, subscribe, manage subscriptions).
-   - Use backend for metadata and access checks; use contract for tx signing and state.
-
-4. **Integration**
-   - End-to-end: create plan → subscribe → access gated content.
-   - Optional: fiat on-ramp (anchor) so fans can pay with card.
-
-5. **Launch**
-   - Testnet beta; security review; mainnet deployment; docs and community.
-
----
-
-## Getting Started (After Initialization)
-
-Install dependencies for all packages:
-
-```bash
-./scripts/myfans install
-# or: npm run install:all
-```
-
-Build everything:
-
-```bash
-./scripts/myfans build
-# or: npm run build
-```
-
-Run dev servers (separate terminals):
-
-```bash
-./scripts/myfans dev:backend   # NestJS API on :3001
-./scripts/myfans dev:frontend  # Next.js app on :3000
-```
-
-Full local verification (lint + test + build):
-
-```bash
-./scripts/myfans check
-```
-
-Per-package commands are also available via root `package.json` scripts (`build:backend`, `test:contract`, etc.) or by `cd`-ing into each folder:
-
-- **Contract**: `cd contract && cargo test`; `npm run build` for WASM artifacts (deploy with stellar-cli). See [Contract Testing Guide](./contract/TESTING.md).
-- **Backend**: `cd backend && npm ci && npm run start:dev`.
-- **Frontend**: `cd frontend && npm ci && npm run dev`.
-
----
-
-## Documentation
-
-### Contract Development
-- **[Contract Testing Guide](contract/TESTING.md)** - Comprehensive testing patterns and best practices for Soroban contracts
-- **[Regression Testing Guide](contract/REGRESSION_TESTING.md)** - How contract regression testing is enforced in CI
-- **[Regression Prevention Checklist](contract/REGRESSION_CHECKLIST.md)** - Developer checklist for PR submission
-- **[Contract Branch Protection](contract/docs/BRANCH_PROTECTION.md)** - CI status checks required before merge
-- **[Contract Interfaces](contract/docs/interfaces/)** - Method documentation for each contract
-
-### Platform Governance & Operations
-- **[Contract Upgrade Governance](docs/CONTRACT_UPGRADE_GOVERNANCE.md)** - Process for upgrading smart contracts safely
-- **[Security Policy](SECURITY.md)** - Security reporting, penetration testing tracker, and best practices
-- **[Secret Management](backend/docs/SECRET_MANAGEMENT.md)** - JWT and secret rotation runbooks
-- **[CORS & Security Headers](backend/docs/CORS_AND_SECURITY_HEADERS.md)** - Per-environment CORS allowlist and header configuration
-- **[Bug Bash Checklist](docs/BUG_BASH_CHECKLIST.md)** - Comprehensive QA checklist before major releases
-- **[Changelog Guide](docs/CHANGELOG_GUIDE.md)** - How to use conventional commits for automatic changelog generation
-- **[Postgres Backup / Restore](docs/POSTGRES_BACKUP_RESTORE.md)** - Backup runbook, restore decision tree, and CI drill
-
-### Development
-- **[Changelog](CHANGELOG.md)** - Automatically generated from conventional commits
-- **[Upgrade Log](docs/upgrade-log.md)** - Historical record of contract upgrades
-
----
-
-## License
-
-MIT.
-
----
-
-## Contact
-
-- Email: realjaiboi70@gmail.com
-
-This README describes the MyFans project on Stellar. Implement each module (contract, backend, frontend) step by step as needed.
-
-## Handsoff notes
-
-<!-- handsoff-issue-1759 -->
-- #1759: property tests: fee conservation, pause invariants, and subscription expiry monotonicity
+/* … truncated 4348 chars — edit only what you need near the top … */
