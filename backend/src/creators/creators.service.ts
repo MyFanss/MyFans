@@ -214,6 +214,40 @@ export class CreatorsService {
     return merged;
   }
 
+  /**
+   * Public creator profile lookup by numeric id. Returns only allowlisted
+   * public fields (no private email) via PublicCreatorDto.
+   */
+  async findCreatorById(id: number): Promise<PublicCreatorDto | null> {
+    const user = await this.userRepository.findOne({
+      where: { id, isCreator: true },
+      relations: ['creator'],
+    });
+    if (!user) {
+      return null;
+    }
+    return new PublicCreatorDto(user, user.creator);
+  }
+
+  /**
+   * Public creator profile lookup by handle (username). Returns only
+   * allowlisted public fields (no private email) via PublicCreatorDto.
+   */
+  async findCreatorByHandle(handle: string): Promise<PublicCreatorDto | null> {
+    const normalized = handle?.trim();
+    if (!normalized) {
+      return null;
+    }
+    const user = await this.userRepository.findOne({
+      where: { username: normalized, isCreator: true },
+      relations: ['creator'],
+    });
+    if (!user) {
+      return null;
+    }
+    return new PublicCreatorDto(user, user.creator);
+  }
+
   async searchCreators(
     searchDto: SearchCreatorsDto,
   ): Promise<PaginatedResponseDto<PublicCreatorDto>> {
@@ -268,89 +302,20 @@ export class CreatorsService {
     const data = entities.map((user, index) => {
       const dto = new PublicCreatorDto(user, user.creator);
       dto.bio = raw[index]?.creator_bio ?? user.creator?.bio ?? null;
-      dto.is_verified =
-        raw[index]?.creator_is_verified ?? user.creator?.is_verified ?? false;
-      dto.followers_count =
+      dto.isVerified =
+        raw[index]?.creator_is_verified ?? user.creator?.isVerified ?? false;
+      dto.followersCount =
         raw[index]?.creator_followers_count ??
-        user.creator?.followers_count ??
+        user.creator?.followersCount ??
         0;
       return dto;
     });
 
     let nextCursor: string | null = null;
     if (data.length > 0) {
-      nextCursor = data[data.length - 1].username;
+      nextCursor = entities[entities.length - 1].username;
     }
-
-    this.logger.debug(
-      `Creator search returned ${data.length} rows for query "${trimmed ?? ''}"` +
-        (cursor ? ` after cursor "${cursor}"` : ''),
-    );
 
     return new PaginatedResponseDto(data, limit, nextCursor, hasMore);
-  }
-
-  /**
-   * Look up a single public creator profile by exact username match.
-   * Used by the creator profile page to render real data (and 404 for
-   * unknown usernames) instead of the client-side prefix search used by
-   * discovery.
-   */
-  /**
-   * Fetches the public creator-profile view. `viewerUserId` is only ever
-   * populated when the caller presented a *valid* JWT (via
-   * OptionalJwtAuthGuard) — it personalizes `isFavorited` for that viewer
-   * and is never used to expose another user's private data. Anonymous
-   * callers (viewerUserId undefined) get `isFavorited: null` and otherwise
-   * an identical response — no field is gated on authentication status
-   * beyond this one personalization.
-   */
-  async getCreatorByUsername(
-    username: string,
-    viewerUserId?: string,
-  ): Promise<PublicCreatorDto | null> {
-    const qb = this.userRepository
-      .createQueryBuilder('user')
-      .leftJoin('user.creator', 'creator')
-      .addSelect('creator.bio', 'creator_bio')
-      .addSelect('creator.is_verified', 'creator_is_verified')
-      .addSelect('creator.followers_count', 'creator_followers_count')
-      .where('user.is_creator = :isCreator', { isCreator: true })
-      .andWhere('LOWER(user.username) = :username', {
-        username: username.trim().toLowerCase(),
-      });
-
-    const result = await qb.getRawAndEntities();
-    const user = result.entities[0];
-    if (!user) return null;
-
-    const raw = result.raw[0] as
-      | {
-          creator_bio?: string;
-          creator_is_verified?: boolean;
-          creator_followers_count?: number;
-        }
-      | undefined;
-
-    const dto = new PublicCreatorDto(user, user.creator);
-    dto.bio = raw?.creator_bio ?? user.creator?.bio ?? null;
-    dto.is_verified =
-      raw?.creator_is_verified ?? user.creator?.is_verified ?? false;
-    dto.followers_count =
-      raw?.creator_followers_count ?? user.creator?.followers_count ?? 0;
-
-    if (viewerUserId && this.favoritesService) {
-      try {
-        dto.isFavorited = await this.favoritesService.isFavorite(viewerUserId, user.id);
-      } catch (err) {
-        // Never fail the whole profile load over a favorites lookup hiccup.
-        this.logger.warn(`Failed to resolve isFavorited for viewer ${viewerUserId}: ${err}`);
-        dto.isFavorited = null;
-      }
-    } else {
-      dto.isFavorited = null;
-    }
-
-    return dto;
   }
 }

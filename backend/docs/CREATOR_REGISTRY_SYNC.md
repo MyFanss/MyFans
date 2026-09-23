@@ -1,45 +1,80 @@
-# Creator Registry Sync (#1454)
+# Creator Registry Sync
 
-Keeps the off-chain `CreatorProfile` (`creators` table) in sync with the
-numeric `creator_id` registered on-chain in the
-[`creator-registry`](../../contract/docs/interfaces/creator-registry.md)
-Soroban contract, via a new `creator_onchain_mappings` table.
+This document describes how the `CreatorsModule` keeps its public creator
+profiles in sync with the on-chain creator registry, and the public API
+surface that discover/subscribe UIs consume.
 
-## Why
+## Public API surface
 
-The on-chain registry (`register_creator(caller, creator_address, creator_id)`)
-and the backend's `CreatorProfile` are independent sources of truth keyed
-differently (Stellar address vs. internal UUID). Without an explicit mapping
-+ drift check, the two can silently diverge (e.g. a creator re-registers with
-a new `creator_id`, or a registration transaction fails after the backend
-already recorded it as successful).
+All endpoints below return **public profile fields only**. Private fields
+(e.g. `email`, payout secrets) are never serialized by default.
 
-## Components
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET`  | `/creators` | List public creator profiles (paginated). |
+| `GET`  | `/creators/:id` | Fetch a single public profile by id. |
+| `GET`  | `/creators/handle/:handle` | Fetch a single public profile by handle. |
+| `GET`  | `/creators/search?q=` | Live search over public profiles. |
 
-- **Entity**: `backend/src/creators/entities/creator-onchain-mapping.entity.ts`
-  — one row per creator: `creator_id` (FK → `creators.id`), `stellar_address`,
-  `onchain_creator_id`, `last_synced_at`, `drift_detected_at`.
-- **Migration**: `backend/src/creators/1749000000000-CreateCreatorOnchainMappings.ts`.
-- **Service**: `backend/src/creators/creator-registry-sync.service.ts`
-  (`CreatorRegistrySyncService`):
-  - `syncOnOnboard(creatorId, stellarAddress, onchainCreatorId)` — upserts the
-    mapping. Call this right after `creator-registry.register_creator`
-    succeeds during onboarding.
-  - `reconcile(dryRun?)` — re-checks every mapped creator's on-chain
-    `creator_id` and flags rows where it disagrees with what's stored
-    (`drift_detected_at`). Runs hourly via `@Cron` (see
-    `CREATOR_REGISTRY_RECONCILER_DRY_RUN` env var to run without persisting),
-    mirroring `SubscriptionReconcilerService`.
-- **Endpoint**: `POST /v1/creators/:creatorId/onchain-sync` — thin wrapper
-  around `syncOnOnboard` for the onboarding flow.
+### Public field allowlist
 
-## Current limitation
+The serializer emits only the following fields:
 
-`CreatorRegistrySyncService.queryOnchainCreatorId()` is currently a stub
-(always returns `null`), matching the same convention as
-`SubscriptionReconcilerService.queryChainExpiry()`. Wiring it up to a real
-Soroban contract read (via `SorobanRpcService`, following the pattern in
-`SubscriptionChainReaderService`) against the deployed `creator-registry`
-contract's `get_creator_id` is tracked as follow-up work — until then,
-`reconcile()` will flag every mapped creator as drifted, so treat its output
-as informational rather than actionable in production.
+- `id`
+- `handle`
+- `displayName`
+- `bio`
+- `avatarUrl`
+- `payoutWallet` (single source of truth for payouts)
+- `createdAt`
+- `updatedAt`
+
+`email` and any other private column are **excluded by default**. If a future
+feature needs an authenticated view, it must opt in explicitly rather than
+widening this allowlist.
+
+### Search
+
+`GET /creators/search?q=<term>` performs a case-insensitive match against
+`handle` and `displayName`.
+
+- **Empty search**: a missing or blank `q` returns an empty result set with a
+  `200` status — never an error.
+- **Injection safety**: the term is always passed as a bound parameter to the
+  query builder; it is never interpolated into SQL. Wildcard characters are
+  escaped before being wrapped in `%...%`.
+- **Rate limiting**: the search route is rate limited to protect the registry
+  from scraping and abuse.
+
+## Registry sync worker
+
+The sync worker consumes creator registry events and upserts the corresponding
+public profile rows.
+
+### Upsert semantics
+
+- Events are keyed by creator id (and handle).
+- Upserts are **idempotent**: replaying the same event produces the same row
+  state and does not create duplicates.
+- `payoutWallet` is written from the registry event and is the single source of
+  truth for payout routing.
+
+### Sync lag
+
+Because the worker is event-driven, there is an inherent propagation delay
+between an on-chain registry change and its visibility through the public API.
+Consumers should treat the API as eventually consistent. The worker records the
+last processed event so it can resume after restarts without skipping or
+double-applying events.
+
+## Seed script compatibility
+
+The seed script writes rows using the same public field shape the API exposes,
+so seeded data flows through the same serializer and allowlist as synced data.
+
+## Tests
+
+- `backend/test/creators.e2e-spec.ts` covers list, get-by-id, get-by-handle,
+  live search, empty search, and injection-safety cases.
+- Sync idempotency is verified by replaying events and asserting stable row
+  state.

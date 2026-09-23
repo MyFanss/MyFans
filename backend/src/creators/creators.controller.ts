@@ -38,10 +38,13 @@ export class CreatorsController {
 
   @Get()
   @Public()
+  @Throttle({ short: { limit: 30, ttl: 60000 } })
   @ApiOperation({
     summary: 'Search creators by display name or username',
     description:
-      'Cursor-paginated creator search. Pass `cursor` and `limit` query params; responses include `data`, `limit`, `nextCursor`, and `hasMore`.',
+      'Cursor-paginated creator search. Pass `cursor` and `limit` query params; responses include `data`, `limit`, `nextCursor`, and `hasMore`. ' +
+      'Only public profile fields are returned — private fields (email, wallet address, payout/balance) are never exposed. ' +
+      'An empty or missing `q` returns the default creator listing rather than an error.',
   })
   @ApiQuery({
     name: 'cursor',
@@ -75,6 +78,11 @@ export class CreatorsController {
     schema: {
       example: { statusCode: 400, message: 'Invalid query parameters' },
     },
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many search requests',
+    schema: { example: { statusCode: 429, message: 'ThrottlerException: Too Many Requests' } },
   })
   @ApiResponse({
     status: 500,
@@ -240,17 +248,19 @@ export class CreatorsController {
     summary: 'Sync a creator-registry on-chain creator_id with this CreatorProfile (#1454)',
     description:
       'Called after the creator-registry contract\'s register_creator succeeds during onboarding. ' +
-      'Writes/updates the creator_onchain_mappings row so reconcile() can later detect drift.',
+      'Writes/updates the creator_onchain_mapping so public profile lookups can resolve the ' +
+      'on-chain creator_id. Idempotent: re-syncing the same creator_id is a no-op.',
   })
-  @ApiResponse({ status: 201, description: 'Mapping written' })
-  syncOnchainRegistration(
+  @ApiResponse({ status: 201, description: 'Mapping upserted' })
+  @ApiResponse({
+    status: 404,
+    description: 'Creator not found',
+    schema: { example: { statusCode: 404, message: 'Creator not found' } },
+  })
+  syncOnchainCreator(
     @Param('creatorId') creatorId: string,
     @Body() dto: CreatorRegistrySyncDto,
   ) {
-    return this.registrySyncService.syncOnOnboard(
-      creatorId,
-      dto.stellarAddress,
-      dto.onchainCreatorId,
-    );
+    return this.registrySyncService.syncCreator(creatorId, dto);
   }
 }
