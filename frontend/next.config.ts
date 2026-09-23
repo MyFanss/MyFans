@@ -1,58 +1,36 @@
 import type { NextConfig } from "next";
 import withBundleAnalyzer from "@next/bundle-analyzer";
 import { getRemoteImagePatterns } from "./src/lib/image-remote-patterns";
+import { getApiBaseUrl } from "./src/lib/api/base-url";
+import { buildContentSecurityPolicy } from "./src/lib/csp";
 
 const isProd = process.env.NODE_ENV === 'production';
 
-// Helper to generate CSP
+/**
+ * Demo / component-story pages (`page.demo.tsx` files) are compiled as
+ * routes only when demos are enabled: any non-production build, or an
+ * explicit `NEXT_PUBLIC_FLAG_DEMOS=true` opt-in (e.g. a staging preview).
+ * In a plain production build the `demo.tsx` extension is dropped, so those
+ * files are not treated as pages and never reach the output. See
+ * `docs/DEMO_ROUTES.md`.
+ */
+const demoRoutesEnabled = !isProd || process.env.NEXT_PUBLIC_FLAG_DEMOS === 'true';
+const basePageExtensions = ['tsx', 'ts', 'jsx', 'js'];
+const pageExtensions = demoRoutesEnabled
+  ? ['demo.tsx', 'demo.ts', 'demo.jsx', 'demo.js', ...basePageExtensions]
+  : basePageExtensions;
+
+// Builds the CSP header value, including connect-src hosts derived from
+// NEXT_PUBLIC_SOROBAN_RPC_URL / NEXT_PUBLIC_HORIZON_URL. See src/lib/csp.ts
+// and docs/CSP.md for the full host list and how to update it.
 function getCSP() {
-  const apiHost = process.env.NEXT_PUBLIC_API_URL 
-    ? new URL(process.env.NEXT_PUBLIC_API_URL).host 
-    : 'localhost:3001';
-
-  const stellarHosts = [
-    '*.stellar.org',
-    'mainnet.sorobanrpc.com',
-    'rpc-futurenet.stellar.org'
-  ];
-
-  const connectSrc = [
-    "'self'",
-    apiHost,
-    ...stellarHosts,
-    // Add localhost for dev
-    !isProd && 'localhost:*',
-    !isProd && '127.0.0.1:*',
-  ].filter(Boolean).join(' ');
-
-  const scriptSrc = isProd 
-    ? "'self'" 
-    : "'self' 'unsafe-inline' 'unsafe-eval'";
-
-  const directives = {
-    'default-src': ["'self'"],
-    'script-src': [scriptSrc],
-    'style-src': ["'self'", "'unsafe-inline'"],
-    'img-src': ["'self'", "data:", "https:"],
-    'font-src': ["'self'", "data:"],
-    'connect-src': [connectSrc],
-    'frame-ancestors': ["'none'"],
-    'base-uri': ["'self'"],
-    'form-action': ["'self'"],
-    'upgrade-insecure-requests': isProd ? [] : null,
-  };
-
-  return Object.entries(directives)
-    .filter(([_, value]) => value !== null)
-    .map(([key, value]) => {
-      if (Array.isArray(value) && value.length === 0) return key;
-      return `${key} ${Array.isArray(value) ? value.join(' ') : value}`;
-    })
-    .join('; ');
+  const apiHost = new URL(getApiBaseUrl()).host;
+  return buildContentSecurityPolicy({ apiHost, isProd });
 }
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  pageExtensions,
   turbopack: {
     root: process.cwd(),
   },
@@ -63,6 +41,20 @@ const nextConfig: NextConfig = {
     optimizeCss: true,
   },
   generateEtags: true,
+  /**
+   * Proxy same-origin `/api/v1/*` to the Nest backend's `/v1/*`.
+   * Pages and clients that fetch `/api/v1/...` hit Nest in local/dev without CORS.
+   * Destination host comes from `NEXT_PUBLIC_API_URL` (default `http://localhost:3001`).
+   */
+  async rewrites() {
+    const apiOrigin = getApiBaseUrl();
+    return [
+      {
+        source: '/api/v1/:path*',
+        destination: `${apiOrigin}/v1/:path*`,
+      },
+    ];
+  },
   async headers() {
     return [
       {
@@ -97,16 +89,32 @@ const nextConfig: NextConfig = {
             value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
           },
           {
-            key: 'Cross-Origin-Embedder-Policy',
-            value: 'require-corp',
-          },
-          {
             key: 'Cross-Origin-Opener-Policy',
             value: 'same-origin',
           },
           {
             key: 'Cross-Origin-Resource-Policy',
-            value: 'same-origin',
+            value: 'cross-origin',
+          },
+        ],
+      },
+      // Scoped headers for checkout and wallet-heavy routes where extensions need relaxed COEP
+      {
+        source: '/(checkout|subscribe|wallet-demo)/:path*',
+        headers: [
+          {
+            key: 'Cross-Origin-Embedder-Policy',
+            value: 'credentialless',
+          },
+        ],
+      },
+      // Default COEP for other routes
+      {
+        source: '/((?!checkout|subscribe|wallet-demo).*)',
+        headers: [
+          {
+            key: 'Cross-Origin-Embedder-Policy',
+            value: 'require-corp',
           },
         ],
       },

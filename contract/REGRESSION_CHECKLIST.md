@@ -32,6 +32,7 @@ Use this checklist when modifying or adding contracts to ensure regressions are 
 ### Documentation
 - [ ] Contract interface documentation updated if needed
 - [ ] AUTH_MATRIX.md updated if auth rules changed
+- [ ] STORAGE_KEYS.md updated if any `Instance`/`Persistent` storage key changed (see below)
 - [ ] Test function names are descriptive
 - [ ] Complex test logic includes comments
 
@@ -41,6 +42,17 @@ Use this checklist when modifying or adding contracts to ensure regressions are 
 - [ ] Document authorization requirements for each method
 - [ ] Add integration test if another contract now calls this one
 - [ ] Verify all related contracts' tests still pass
+
+## When Storage Keys Change
+
+Storage layout is security-sensitive for upgrades: a key rename without a matching doc update breaks migrations. The documented keys in `contract/STORAGE_KEYS.md` must match the `Instance`/`Persistent` keys actually used across the contract crates.
+
+- [ ] Inventory the storage keys per crate (`Instance` and `Persistent` usage)
+- [ ] Reconcile them against `contract/STORAGE_KEYS.md` so documented keys match code
+- [ ] Add an upgrade note in `contract/STORAGE_KEYS.md` for any renamed key
+- [ ] Run the enforcement gate locally: `./contract/scripts/release-check.sh`
+- [ ] Confirm the gate fails on drift (documented key missing from code, or code key missing from docs)
+- [ ] Watch for accidental key reuse across contracts and TTL/persistent mixups
 
 ## PR Description
 
@@ -69,6 +81,7 @@ Include in your PR description:
 - [ ] Contract CI workflow starts automatically
 - [ ] Workflow reaches the test step
 - [ ] Tests pass in CI
+- [ ] Storage-key drift gate passes (documented keys match `Instance`/`Persistent` usage)
 - [ ] WASM artifacts build successfully
 - [ ] All 9 production WASM files verified:
   - myfans_token.wasm
@@ -95,6 +108,7 @@ If CI fails at other steps:
 1. [ ] Format: `cargo fmt --all && cargo test --all-features`
 2. [ ] Linting: `cargo clippy --all-targets --all-features -- -D warnings`
 3. [ ] WASM build: `cargo build --release --target wasm32-unknown-unknown`
+4. [ ] Storage-key drift: reconcile `contract/STORAGE_KEYS.md` with the `Instance`/`Persistent` keys in code
 
 ## Testing New Cross-Contract Interactions
 
@@ -204,6 +218,9 @@ cd contract && cargo test test_transfer -- --nocapture
 # Watch mode (requires cargo-watch)
 cd contract && cargo watch -x test
 
+# Storage-key drift gate (fails on doc/code mismatch)
+./contract/scripts/release-check.sh
+
 # Pre-commit hook (run before git commit)
 ./contract && cargo fmt --all --check && \
   cargo clippy --all-targets --all-features -- -D warnings && \
@@ -215,6 +232,7 @@ cd contract && cargo watch -x test
 - **Auth Matrix**: [contract/AUTH_MATRIX.md](./AUTH_MATRIX.md)
 - **Testing Guide**: [contract/TESTING.md](./TESTING.md)
 - **Regression Testing**: [contract/REGRESSION_TESTING.md](./REGRESSION_TESTING.md)
+- **Storage Keys**: [contract/STORAGE_KEYS.md](./STORAGE_KEYS.md)
 - **Branch Protection**: [contract/docs/BRANCH_PROTECTION.md](./docs/BRANCH_PROTECTION.md)
 - **CI Workflow**: [.github/workflows/contract-ci.yml](.github/workflows/contract-ci.yml)
 - **Soroban Docs**: https://developers.stellar.org/docs/build/guides/testing

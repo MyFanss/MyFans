@@ -21,36 +21,28 @@ describe('Games Module (e2e)', () => {
   });
 
   describe('POST /v1/games/:id/join (primary endpoint)', () => {
-    it('should return 404 when game does not exist', async () => {
-      const response = await request(app.getHttpServer())
-        .post('/v1/games/550e8400-e29b-41d4-a716-446655440000/join')
-        .send({ userId: '660e8400-e29b-41d4-a716-446655440001' })
-        .expect(404);
-
-      expect(response.body).toBeDefined();
-      expect(response.body.message).toBe('Game not found');
-    });
-
-    it('should return 400 when userId is missing', async () => {
+    it('should return 401 when no JWT is supplied', async () => {
       await request(app.getHttpServer())
         .post('/v1/games/550e8400-e29b-41d4-a716-446655440000/join')
         .send({})
-        .expect(400);
+        .expect(401);
     });
 
-    it('should return 400 when userId is not a valid UUID', async () => {
+    it('should return 401 for a malformed bearer token', async () => {
       await request(app.getHttpServer())
         .post('/v1/games/550e8400-e29b-41d4-a716-446655440000/join')
-        .send({ userId: 'invalid-uuid' })
-        .expect(400);
+        .set('Authorization', 'Bearer not-a-real-token')
+        .send({})
+        .expect(401);
     });
 
-    it('should accept valid request body shape', async () => {
-      const response = await request(app.getHttpServer())
+    it('should ignore a spoofed userId in the body and still require auth', async () => {
+      // Even with a body claiming another identity, an unauthenticated
+      // caller is rejected before that body is ever consulted.
+      await request(app.getHttpServer())
         .post('/v1/games/550e8400-e29b-41d4-a716-446655440000/join')
-        .send({ userId: '660e8400-e29b-41d4-a716-446655440001' });
-
-      expect([201, 404]).toContain(response.status);
+        .send({ userId: '660e8400-e29b-41d4-a716-446655440001' })
+        .expect(401);
     });
   });
 
@@ -60,9 +52,10 @@ describe('Games Module (e2e)', () => {
         .get('/v1/games')
         .expect(200);
 
+      const body = response.body as { data: unknown[] };
       expect(response.body).toBeDefined();
       expect(response.body).toHaveProperty('data');
-      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(Array.isArray(body.data)).toBe(true);
       expect(response.body).toHaveProperty('limit');
       expect(response.body).toHaveProperty('hasMore');
     });
@@ -73,7 +66,7 @@ describe('Games Module (e2e)', () => {
         .query({ limit: 5 })
         .expect(200);
 
-      expect(response.body.limit).toBe(5);
+      expect((response.body as { limit: number }).limit).toBe(5);
     });
 
     it('should support page query parameter', async () => {
@@ -83,7 +76,7 @@ describe('Games Module (e2e)', () => {
         .expect(200);
 
       expect(response.body).toHaveProperty('data');
-      expect(response.body.page).toBe(1);
+      expect((response.body as { page: number }).page).toBe(1);
     });
 
     it('should reject limit greater than 100', async () => {
@@ -112,7 +105,7 @@ describe('Games Module (e2e)', () => {
         .get('/v1/games')
         .expect(200);
 
-      expect(response.body.limit).toBe(20);
+      expect((response.body as { limit: number }).limit).toBe(20);
     });
 
     it('should support status filter', async () => {
@@ -121,8 +114,9 @@ describe('Games Module (e2e)', () => {
         .query({ status: 'PENDING' })
         .expect(200);
 
+      const body = response.body as { data: unknown[] };
       expect(response.body).toHaveProperty('data');
-      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(Array.isArray(body.data)).toBe(true);
     });
   });
 });

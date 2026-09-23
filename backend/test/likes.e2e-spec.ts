@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access */
 import {
   ExecutionContext,
   INestApplication,
@@ -13,6 +13,7 @@ import { LikesService } from '../src/likes/likes.service';
 import { Like } from '../src/likes/entities/like.entity';
 import { JwtAuthGuard } from '../src/auth-module/guards/jwt-auth.guard';
 import { PostsService } from '../src/posts/posts.service';
+import { SubscriptionsService } from '../src/subscriptions/subscriptions.service';
 
 const TEST_USER_ID = 'e2e-user-id';
 const TEST_POST_ID = 'e2e-post-id';
@@ -47,27 +48,32 @@ describe('LikesController (e2e) – primary endpoints', () => {
   let storedLikes: Like[];
 
   const mockLikeRepo = {
-    findOne: jest.fn(async ({ where }: { where: Partial<Like> }) =>
-      storedLikes.find(
-        (l) =>
-          (!where.userId || l.userId === where.userId) &&
-          (!where.postId || l.postId === where.postId),
-      ) ?? null,
+    findOne: jest.fn(({ where }: { where: Partial<Like> }) =>
+      Promise.resolve(
+        storedLikes.find(
+          (l) =>
+            (!where.userId || l.userId === where.userId) &&
+            (!where.postId || l.postId === where.postId),
+        ) ?? null,
+      ),
     ),
     create: jest.fn((data: Partial<Like>) => makeLike(data)),
-    save: jest.fn(async (like: Like) => {
+    save: jest.fn((like: Like) => {
       storedLikes.push(like);
-      return like;
+      return Promise.resolve(like);
     }),
-    remove: jest.fn(async (like: Like) => {
+    remove: jest.fn((like: Like) => {
       storedLikes = storedLikes.filter((l) => l.id !== like.id);
+      return Promise.resolve();
     }),
-    count: jest.fn(async ({ where }: { where: Partial<Like> }) =>
-      storedLikes.filter((l) => !where?.postId || l.postId === where.postId)
-        .length,
+    count: jest.fn(({ where }: { where: Partial<Like> }) =>
+      Promise.resolve(
+        storedLikes.filter((l) => !where?.postId || l.postId === where.postId)
+          .length,
+      ),
     ),
     findAndCount: jest.fn(
-      async ({
+      ({
         where,
         skip = 0,
         take = 20,
@@ -79,13 +85,20 @@ describe('LikesController (e2e) – primary endpoints', () => {
         const filtered = storedLikes.filter(
           (l) => !where?.postId || l.postId === where.postId,
         );
-        return [filtered.slice(skip, skip + take), filtered.length];
+        return Promise.resolve([
+          filtered.slice(skip, skip + take),
+          filtered.length,
+        ]);
       },
     ),
   };
 
   const mockPostsService = {
-    findOne: jest.fn(async () => mockPost),
+    findOne: jest.fn(() => Promise.resolve(mockPost)),
+  };
+
+  const mockSubscriptionsService = {
+    isSubscriber: jest.fn(() => Promise.resolve(true)),
   };
 
   const mockJwtAuthGuard = {
@@ -108,6 +121,7 @@ describe('LikesController (e2e) – primary endpoints', () => {
         LikesService,
         { provide: getRepositoryToken(Like), useValue: mockLikeRepo },
         { provide: PostsService, useValue: mockPostsService },
+        { provide: SubscriptionsService, useValue: mockSubscriptionsService },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -116,7 +130,9 @@ describe('LikesController (e2e) – primary endpoints', () => {
 
     app = moduleRef.createNestApplication();
     app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
   });
 
@@ -165,7 +181,9 @@ describe('LikesController (e2e) – primary endpoints', () => {
 
   describe('DELETE /v1/posts/:id/like', () => {
     it('returns 204 after successfully removing a like', async () => {
-      storedLikes.push(makeLike({ userId: TEST_USER_ID, postId: TEST_POST_ID }));
+      storedLikes.push(
+        makeLike({ userId: TEST_USER_ID, postId: TEST_POST_ID }),
+      );
 
       await request(app.getHttpServer())
         .delete(`/v1/posts/${TEST_POST_ID}/like`)
@@ -278,7 +296,9 @@ describe('LikesController (e2e) – primary endpoints', () => {
     });
 
     it('returns liked=true when user has liked the post', async () => {
-      storedLikes.push(makeLike({ userId: TEST_USER_ID, postId: TEST_POST_ID }));
+      storedLikes.push(
+        makeLike({ userId: TEST_USER_ID, postId: TEST_POST_ID }),
+      );
 
       const res = await request(app.getHttpServer())
         .get(`/v1/posts/${TEST_POST_ID}/like/status`)

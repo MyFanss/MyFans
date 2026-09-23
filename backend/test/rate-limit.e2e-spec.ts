@@ -26,7 +26,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerModule, Throttle } from '@nestjs/throttler';
 import request from 'supertest';
-import { ThrottlerGuard } from '../src/auth/throttler.guard';
+import { ThrottlerGuard } from '../src/common/guards/throttler.guard';
 
 // ── Minimal stub controllers ──────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ class StubAuthController {
   @Post('register')
   @Throttle({ auth: { limit: 2, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
-  register(@Body() body: { address?: string }) {
+  register() {
     return { ok: true };
   }
 }
@@ -69,11 +69,22 @@ class StubCreatorsController {
   }
 }
 
+@Controller({ path: 'uploads', version: '1' })
+class StubUploadsController {
+  @Post()
+  @Throttle({ upload: { limit: 2, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  create() {
+    return { ok: true };
+  }
+}
+
 @Module({
   imports: [
     ThrottlerModule.forRoot([
       // Keep limits tiny so tests are fast; mirrors the real tier names
       { name: 'auth', ttl: 60_000, limit: 2 },
+      { name: 'upload', ttl: 60_000, limit: 2 },
       { name: 'short', ttl: 60_000, limit: 3 },
       { name: 'medium', ttl: 60_000, limit: 4 },
       { name: 'long', ttl: 60_000, limit: 5 },
@@ -83,6 +94,7 @@ class StubCreatorsController {
     StubAuthController,
     StubHealthController,
     StubCreatorsController,
+    StubUploadsController,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
@@ -163,9 +175,26 @@ describe('Rate Limiting (integration)', () => {
     });
   });
 
+  // ── Upload endpoint throttling (strict upload tier) ─────────────────────────
+
+  describe('POST /v1/uploads — upload tier (limit: 2)', () => {
+    it('allows requests within the limit', async () => {
+      await request(app.getHttpServer()).post('/v1/uploads').expect(200);
+      await request(app.getHttpServer()).post('/v1/uploads').expect(200);
+    });
+
+    it('returns 429 when the upload limit is exceeded', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/v1/uploads')
+        .expect(429);
+
+      expect(res.body.statusCode).toBe(429);
+    });
+  });
+
   // ── Health check exemption ──────────────────────────────────────────────────
 
-  describe('Health endpoints — exempt from throttling', () => {
+  describe('Health endpoint throttling', () => {
     it('GET /v1/health is never throttled regardless of request count', async () => {
       // Fire well above any limit; all must succeed
       for (let i = 0; i < 10; i++) {
@@ -173,10 +202,11 @@ describe('Rate Limiting (integration)', () => {
       }
     });
 
-    it('GET /v1/health/db is never throttled', async () => {
-      for (let i = 0; i < 10; i++) {
-        await request(app.getHttpServer()).get('/v1/health/db').expect(200);
+    it('GET /v1/health/db remains throttled', async () => {
+      for (let i = 0; i < 5; i++) {
+        await request(app.getHttpServer()).get('/v1/health/db');
       }
+      await request(app.getHttpServer()).get('/v1/health/db').expect(429);
     });
   });
 
