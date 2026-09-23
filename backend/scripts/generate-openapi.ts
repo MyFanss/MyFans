@@ -6,6 +6,10 @@
  * Also acts as the drift check for issue #1776: every controller path registered
  * in AppModule must either appear in the generated spec or be explicitly listed
  * as internal/excluded below. Run with `--check` to fail (exit 1) on drift.
+ *
+ * Issue #1777: the public API is served under the global `/v1` prefix. The
+ * generated spec advertises `/v1` as its server base, and the drift check
+ * normalizes registered routes against that prefix so versioned paths line up.
  */
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -22,6 +26,12 @@ process.env.DB_NAME = process.env.DB_NAME ?? 'myfans';
 process.env.SOROBAN_RPC_URL = process.env.SOROBAN_RPC_URL ?? 'https://soroban-testnet.stellar.org';
 process.env.STELLAR_NETWORK = process.env.STELLAR_NETWORK ?? 'testnet';
 process.env.WEBHOOK_SECRET = process.env.WEBHOOK_SECRET ?? 'generate-openapi-stub';
+
+/**
+ * Global API version prefix. Must match the prefix applied in main.ts so the
+ * generated spec and the drift check agree with the running server.
+ */
+const API_VERSION_PREFIX = '/v1';
 
 /**
  * Paths that are intentionally not part of the public OpenAPI contract.
@@ -66,12 +76,25 @@ function toOpenApiPath(routePath: string): string {
   return routePath.replace(/:([A-Za-z0-9_]+)/g, '{$1}');
 }
 
+/**
+ * Strip the global `/v1` prefix from a registered route so it can be compared
+ * against the version-agnostic paths emitted by SwaggerModule. Routes that are
+ * not under the prefix (internal probes, webhooks) are returned unchanged.
+ */
+function stripVersionPrefix(routePath: string): string {
+  if (routePath === API_VERSION_PREFIX) return '/';
+  if (routePath.startsWith(`${API_VERSION_PREFIX}/`)) {
+    return routePath.slice(API_VERSION_PREFIX.length);
+  }
+  return routePath;
+}
+
 function checkDrift(document: { paths?: Record<string, unknown> }, registered: string[]): string[] {
   const documented = new Set(Object.keys(document.paths ?? {}));
   const missing: string[] = [];
   for (const routePath of registered) {
     if (isInternalPath(routePath)) continue;
-    const openApiPath = toOpenApiPath(routePath);
+    const openApiPath = toOpenApiPath(stripVersionPrefix(routePath));
     if (!documented.has(openApiPath)) {
       missing.push(openApiPath);
     }
@@ -108,11 +131,15 @@ async function generate() {
 
   const app = await NestFactory.create(AppModule, { logger: false });
 
+  // Mirror the global prefix applied in main.ts so the generated spec and the
+  // drift check reflect the versioned public surface.
+  app.setGlobalPrefix('v1');
+
   const config = new DocumentBuilder()
     .setTitle('MyFans API')
     .setDescription('MyFans backend REST API')
     .setVersion('1.0')
-    .addServer('/v1')
+    .addServer(API_VERSION_PREFIX)
     .addBearerAuth()
     .build();
 

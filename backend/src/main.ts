@@ -30,6 +30,24 @@ const DEFAULT_MAX_MULTIPART_BODY_BYTES = 25 * 1024 * 1024; // 25 MiB
  */
 const CONTENT_UPLOAD_PATH = '/content/upload';
 
+/**
+ * Global API version prefix. All public HTTP routes are served under /v1.
+ * See backend/docs/API_VERSIONING.md for the deprecation and breaking-change
+ * policy that governs future /v2 transitions.
+ */
+const API_GLOBAL_PREFIX = 'v1';
+
+/**
+ * Current API version advertised via the Deprecation/Sunset policy headers.
+ */
+const CURRENT_API_VERSION = '1';
+
+/**
+ * HTTP methods that mutate server state. These must never be reachable
+ * without the /v1 version prefix.
+ */
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (value === undefined || value === '') {
     return fallback;
@@ -39,6 +57,14 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
     return fallback;
   }
   return Math.floor(parsed);
+}
+
+/**
+ * Returns true when the request targets a versioned public route (i.e. the
+ * path is served under the /v1 global prefix).
+ */
+function isVersionedPath(path: string): boolean {
+  return path === `/${API_GLOBAL_PREFIX}` || path.startsWith(`/${API_GLOBAL_PREFIX}/`);
 }
 
 async function bootstrap() {
@@ -110,9 +136,35 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
+  // Enforce the versioning contract: every public mutating route must be
+  // served under the /v1 prefix. Unversioned mutating requests are rejected
+  // with HTTP 404 so no unversioned mutating public route can exist.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (MUTATING_METHODS.has(req.method) && !isVersionedPath(req.path)) {
+      res.status(404).json({
+        statusCode: 404,
+        error: 'Not Found',
+        message: `API version prefix required. Use /${API_GLOBAL_PREFIX}${req.path}`,
+      });
+      return;
+    }
+    next();
+  });
+
+  // Advertise the current API version and the deprecation policy so clients
+  // and forks can react before a future /v2 breaking change lands.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('X-API-Version', CURRENT_API_VERSION);
+    res.setHeader('X-API-Deprecation-Policy', 'https://docs.myfans.app/api-versioning');
+    next();
+  });
+
+  // All public HTTP routes are served under the /v1 global prefix.
+  app.setGlobalPrefix(API_GLOBAL_PREFIX);
+
   app.enableVersioning({
     type: VersioningType.URI,
-    defaultVersion: '1',
+    defaultVersion: CURRENT_API_VERSION,
   });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
@@ -123,6 +175,7 @@ async function bootstrap() {
     .setTitle('MyFans API')
     .setDescription('MyFans backend REST API')
     .setVersion('1.0')
+    .addServer(`/${API_GLOBAL_PREFIX}`, 'Versioned API (v1)')
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, config);
