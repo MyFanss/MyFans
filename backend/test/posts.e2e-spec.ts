@@ -63,6 +63,18 @@ describe('Posts Module (e2e)', () => {
 
       expect(Array.isArray(res.body.data)).toBe(true);
     });
+
+    it('returns teaser metadata without exposing full CID to unauthorized readers', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/v1/posts')
+        .expect(200);
+
+      for (const post of res.body.data) {
+        if (post.metadata) {
+          expect(post.metadata).not.toHaveProperty('cid');
+        }
+      }
+    });
   });
 
   // ── POST /v1/posts ────────────────────────────────────────────────────────────
