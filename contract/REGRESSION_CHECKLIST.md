@@ -9,6 +9,9 @@ Use this checklist when modifying or adding contracts to ensure regressions are 
 - [ ] New public methods have corresponding tests
 - [ ] Modified methods have test coverage for changes
 - [ ] Authorization requirements are tested
+- [ ] Every mutating entrypoint is listed in `contract/AUTH_MATRIX.md` with signer, valid example, invalid example, and storage effect on deny
+- [ ] Every view/read-only entrypoint is listed in `contract/AUTH_MATRIX.md` as a no-auth row
+- [ ] Each AUTH_MATRIX.md row has a matching automated test in the crate's `tests/auth_matrix.rs`
 
 ### Testing
 - [ ] Run local tests: `cd contract && cargo test --all-features`
@@ -143,6 +146,8 @@ fn test_cross_contract_success() {
 - [ ] Test that admin-only methods reject non-admins
 - [ ] Test that user methods work with proper permissions
 - [ ] Test that cross-contract calls respect authorization
+- [ ] Test that creator-only methods reject fans and non-creators
+- [ ] Test that fan-scoped methods reject other fans and admins acting as fans
 
 ### Balance/Amount Validation
 - [ ] Test zero amount rejection (if applicable)
@@ -207,6 +212,7 @@ cd contract && cargo watch -x test
 
 ## References
 
+- **Auth Matrix**: [contract/AUTH_MATRIX.md](./AUTH_MATRIX.md)
 - **Testing Guide**: [contract/TESTING.md](./TESTING.md)
 - **Regression Testing**: [contract/REGRESSION_TESTING.md](./REGRESSION_TESTING.md)
 - **Branch Protection**: [contract/docs/BRANCH_PROTECTION.md](./docs/BRANCH_PROTECTION.md)
