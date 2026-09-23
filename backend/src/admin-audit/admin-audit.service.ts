@@ -47,6 +47,31 @@ export class AdminAuditService {
     return this.auditRepo.save(event);
   }
 
+  /**
+   * Convenience wrapper for user-account deletions (#1778). Records an
+   * append-only audit entry keyed by the actor's Stellar pubkey so that
+   * off-chain deletion is traceable even though the on-chain identity is
+   * immutable. The payload is hashed by `record`, never stored verbatim.
+   */
+  async recordUserDeletion(input: {
+    /** Stellar pubkey of the user whose account was deleted. */
+    pubkey: string;
+    /** Stellar pubkey of the actor performing the deletion. */
+    actorId: string;
+    /** Correlation ID of the triggering request, if available. */
+    correlationId?: string | null;
+    /** Extra non-sensitive context (e.g. had_active_subscription). */
+    metadata?: Record<string, unknown>;
+  }): Promise<AdminAuditEvent> {
+    return this.record({
+      actorId: input.actorId,
+      action: 'user.account_deleted',
+      target: input.pubkey,
+      payload: { pubkey: input.pubkey, ...(input.metadata ?? {}) },
+      correlationId: input.correlationId ?? null,
+    });
+  }
+
   async findPaginated(
     query: QueryAuditLogDto,
   ): Promise<PaginatedResponseDto<AdminAuditEvent>> {
