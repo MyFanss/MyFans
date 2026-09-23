@@ -25,6 +25,9 @@ async function main() {
       console.log('[migrations] revert complete');
     } else {
       console.log('[migrations] running pending migrations…');
+      // `transaction: 'each'` wraps every migration in its own transaction so a
+      // partial apply cannot leave the schema half-migrated, and concurrent
+      // runners serialize on the migrations table lock.
       const ran = await migrationDataSource.runMigrations({ transaction: 'each' });
       if (ran.length === 0) {
         console.log('[migrations] no pending migrations');
