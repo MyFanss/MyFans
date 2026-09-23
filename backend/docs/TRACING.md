@@ -5,6 +5,34 @@ Correlation IDs are propagated per-request today (see `RequestContextService`
 correlation ID can't be used to pull up a distributed trace for auth,
 checkout, or webhook calls.
 
+## Correlation ID propagation
+
+Every request carries an `X-Correlation-Id` header. The middleware accepts a
+client-supplied id when it is well-formed and otherwise generates a fresh one:
+
+- Charset: `[A-Za-z0-9._-]` only (no PII, no free-form text).
+- Length: 8–128 characters; missing, invalid, or overlong ids are replaced
+  with a generated UUID.
+- The resolved id is echoed back on the response `X-Correlation-Id` header and
+  stored on the request context so logs and error envelopes can reference it.
+
+The global exception filter includes the id in every error envelope, keeping
+the shape stable for clients:
+
+```json
+{
+  "statusCode": 500,
+  "message": "Internal server error",
+  "code": "INTERNAL_ERROR",
+  "correlationId": "3f9c1e2a-..."
+}
+```
+
+The nest-winston log format attaches the same `correlationId` to each log
+entry (existing redaction of sensitive fields is unchanged). The frontend
+api-client surfaces `correlationId` on error types and displays it on fatal
+errors so a checkout failure can be traced across UI, API, and poller.
+
 ## Goal
 
 Add optional OTel trace export, gated entirely behind an env var so it has
