@@ -270,110 +270,112 @@ curl -s http://localhost:3001/v1/health \
   -i | grep -i x-correlation
 ```
 
+#### Validation rules
+
+Client-supplied correlation ids are accepted only when they are safe to log and
+propagate. The middleware applies the following rules and **regenerates** a fresh
+id whenever a supplied value is rejected:
+
+| Rule | Accepted | Rejected (regenerated) |
+|------|----------|------------------------|
+| Charset | `A–Z`, `a–z`, `0–9`, `-`, `_`, `.` | anything else (spaces, `/`, `\`, control chars, unicode) |
+| Length | 1–128 characters | empty, or longer than 128 characters |
+| Missing header | — | server generates a UUID v4 |
+
+```bash
+# Accepted — echoed back verbatim
+curl -s http://localhost:3001/v1/health -H "X-Correlation-ID: checkout-abc123" -i | grep -i x-correlation
+
+# Rejected (illegal charset) — server substitutes a generated id
+curl -s http://localhost:3001/v1/health -H "X-Correlation-ID: bad id!" -i | grep -i x-correlation
+```
+
+> **Security:** never put PII (emails, wallet addresses, tokens) in a
+> correlation id. Ids are written to logs and returned to clients, so treat them
+> as public, non-sensitive tracing tokens.
+
 ### Content type
 
-All request bodies must be `application/json`. Responses are always `application/json`.
+All request bodies must be `application/json` unless the endpoint documents a
+multipart upload. Responses are `application/json`.
 
 ---
 
 ## 7. Rate limiting
 
-The API uses tiered rate limits enforced by `@nestjs/throttler`:
+Rate limits are enforced per IP (and per user where authenticated). Exceeding a
+limit returns `429 Too Many Requests` with a `Retry-After` header.
 
-| Tier | TTL | Limit | Applied to |
-|------|-----|-------|------------|
-| `auth` | 60 s | 5 req | Auth endpoints |
-| `short` | 60 s | 10 req | Sensitive write endpoints |
-| `medium` | 60 s | 50 req | Standard endpoints |
-| `long` | 60 s | 100 req | Read-heavy endpoints |
-
-When a limit is exceeded the API returns `429 Too Many Requests`. See [`docs/RATE_LIMITING.md`](./RATE_LIMITING.md) for the full policy.
+| Scope | Limit |
+|-------|-------|
+| Auth endpoints (`/v1/auth/*`) | 5 requests / minute / IP |
+| General API | 100 requests / minute / IP |
 
 ---
 
 ## 8. CSRF protection
 
-State-mutating requests (`POST`, `PUT`, `PATCH`, `DELETE`) require a valid CSRF token in the `X-CSRF-Token` header. Fetch a token first:
+State-mutating requests from browsers must include a CSRF token. Fetch one from
+`GET /v1/csrf/token` and send it back in the `X-CSRF-Token` header.
 
 ```bash
-# 1. Fetch CSRF token (public endpoint — no auth needed)
-CSRF_TOKEN=$(curl -s http://localhost:3001/v1/csrf/token | jq -r '.token')
-
-# 2. Use it in state-mutating requests
-curl -s -X POST http://localhost:3001/v1/posts \
+CSRF=$(curl -s http://localhost:3001/v1/csrf/token | jq -r .token)
+curl -s -X PATCH http://localhost:3001/v1/users/me \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-CSRF-Token: $CSRF_TOKEN" \
+  -H "X-CSRF-Token: $CSRF" \
   -H "Content-Type: application/json" \
-  -d '{"title": "Hello", "body": "World"}'
+  -d '{"displayName":"Ada"}'
 ```
-
-CSRF tokens are double-submit cookies — the server sets a cookie and expects the same value in the header. See [`docs/CORS_AND_SECURITY_HEADERS.md`](./CORS_AND_SECURITY_HEADERS.md) for details.
 
 ---
 
 ## 9. Idempotency
 
-Certain write endpoints support idempotency keys to prevent duplicate operations on retry. Send an `Idempotency-Key` header with a unique UUID:
+Endpoints that create resources accept an `Idempotency-Key` header. Replaying a
+request with the same key returns the original response instead of creating a
+duplicate.
 
 ```bash
-curl -s -X POST http://localhost:3001/v1/subscriptions/checkout \
+curl -s -X POST http://localhost:3001/v1/subscriptions \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-CSRF-Token: $CSRF_TOKEN" \
-  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Idempotency-Key: sub-2026-05-30-001" \
   -H "Content-Type: application/json" \
-  -d '{"planId": "<PLAN_ID>"}'
+  -d '{"creatorId":"...","planId":"..."}'
 ```
-
-Endpoints that enforce idempotency:
-
-- `POST /v1/creators/plans`
-- `POST /v1/subscriptions/checkout`
-- `POST /v1/posts`
-- `PUT /v1/posts/:id`
-- `POST /v1/comments`
-- `PUT /v1/comments/:id`
-- `POST /v1/conversations`
-- `POST /v1/conversations/:id/messages`
-
-See [`docs/IDEMPOTENCY.md`](./IDEMPOTENCY.md) for the full spec.
 
 ---
 
 ## 10. Error format
 
-All errors follow a consistent JSON envelope:
+All errors share a single, stable envelope. Every error response includes the
+`correlationId` so a client can quote it in a bug report and a maintainer can
+grep the backend logs for the same request.
 
 ```json
 {
-  "statusCode": 400,
-  "message": "Validation failed",
-  "error": "Bad Request",
-  "correlationId": "abc-123"
+  "statusCode": 404,
+  "message": "Post not found",
+  "code": "POST_NOT_FOUND",
+  "correlationId": "9f1c2b7e-4a3d-4f0e-9c1a-2b3c4d5e6f70"
 }
 ```
 
-Validation errors include a `message` array with per-field details:
+| Field | Type | Description |
+|-------|------|-------------|
+| `statusCode` | number | HTTP status code |
+| `message` | string | Human-readable, safe to display |
+| `code` | string | Stable machine-readable error code |
+| `correlationId` | string | Matches the `X-Correlation-ID` response header and the `correlationId` field on every log line for the request |
 
-```json
-{
-  "statusCode": 400,
-  "message": ["address must be exactly 56 characters"],
-  "error": "Bad Request"
-}
+Validation errors additionally include a `details` array describing each field
+failure; the four fields above are always present.
+
+```bash
+# Trigger an error and inspect the envelope + header together
+curl -s http://localhost:3001/v1/posts/does-not-exist \
+  -H "Authorization: Bearer $TOKEN" \
+  -i | grep -iE 'x-correlation|statusCode|correlationId'
 ```
-
-Common status codes:
-
-| Code | Meaning |
-|------|---------|
-| 400 | Validation error or bad input |
-| 401 | Missing or invalid JWT |
-| 403 | Authenticated but not authorised (wrong role) |
-| 404 | Resource not found |
-| 409 | Conflict (e.g. duplicate resource) |
-| 422 | Business logic error |
-| 429 | Rate limit exceeded |
-| 500 | Internal server error |
 
 ---
 
@@ -381,70 +383,19 @@ Common status codes:
 
 ```bash
 cd backend
-
-# Run all unit tests
-npm test
-
-# Run tests in watch mode (during development)
-npm run test:watch
-
-# Run with coverage
-npm run test:cov
-
-# Run e2e tests (requires a running database)
-npm run test:e2e
+npm run test          # unit tests
+npm run test:e2e      # end-to-end tests
+npm run lint          # lint
 ```
-
-Tests live alongside source files as `*.spec.ts`. Property-based tests use [fast-check](https://fast-check.dev/) and are named `*.properties.spec.ts`.
 
 ---
 
 ## 12. Adding a new endpoint — checklist
 
-When contributing a new endpoint, follow these steps to match existing patterns:
-
-- [ ] **Module**: add the controller and service to the relevant NestJS module (or create a new module following the existing structure).
-- [ ] **DTO**: define request/response DTOs with `class-validator` decorators and `@ApiProperty` for Swagger.
-- [ ] **Auth**: use `@Public()` only for genuinely public endpoints; all others are JWT-protected by default.
-- [ ] **Roles**: apply `@Roles(Role.Creator)` or similar if the endpoint is role-restricted.
-- [ ] **Rate limit**: apply `@Throttle({ medium: {} })` (or the appropriate tier) to the controller or method.
-- [ ] **CSRF**: state-mutating endpoints are automatically covered by `CsrfMiddleware` — no extra annotation needed.
-- [ ] **Idempotency**: if the endpoint creates or modifies a resource, add it to `IDEMPOTENCY_ROUTES` in `app.module.ts`.
-- [ ] **Swagger**: add `@ApiTags`, `@ApiOperation`, and `@ApiResponse` decorators.
-- [ ] **Tests**: add unit tests (`*.spec.ts`) and, for complex logic, property-based tests (`*.properties.spec.ts`).
-- [ ] **Lint**: run `npm run lint` and fix any issues before opening a PR.
-
-### Minimal controller example
-
-```typescript
-import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
-import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
-
-@ApiTags('example')
-@Controller({ path: 'example', version: '1' })
-export class ExampleController {
-  @Get()
-  @Throttle({ medium: {} })
-  @ApiOperation({ summary: 'List examples' })
-  @ApiResponse({ status: 200, description: 'List of examples' })
-  findAll() {
-    return [];
-  }
-}
-```
-
----
-
-## Further reading
-
-| Document | Location |
-|----------|----------|
-| Local dev guide | [`DEVELOPMENT.md`](../../DEVELOPMENT.md) |
-| CORS and security headers | [`docs/CORS_AND_SECURITY_HEADERS.md`](./CORS_AND_SECURITY_HEADERS.md) |
-| Rate limiting policy | [`docs/RATE_LIMITING.md`](./RATE_LIMITING.md) |
-| Idempotency spec | [`docs/IDEMPOTENCY.md`](./IDEMPOTENCY.md) |
-| Secret management | [`docs/SECRET_MANAGEMENT.md`](./SECRET_MANAGEMENT.md) |
-| Contract deploy runbook | [`contract/docs/CONTRACT_DEPLOY_RUNBOOK.md`](../../contract/docs/CONTRACT_DEPLOY_RUNBOOK.md) |
-| Swagger UI (live) | `http://localhost:3001/api-docs` |
+- [ ] Route lives under `/v1/` and is documented in Swagger.
+- [ ] Protected by default; add `@Public()` only when truly public.
+- [ ] Validates input with a DTO (`class-validator`).
+- [ ] Returns the standard pagination envelope for list endpoints.
+- [ ] Throws `HttpException` subclasses so the global filter emits the standard error envelope (including `correlationId`).
+- [ ] Never logs PII; rely on the correlation id to trace requests.
+- [ ] Covered by at least one unit test and, for critical paths, an e2e test.

@@ -104,6 +104,10 @@ const IDEMPOTENCY_ROUTES = [
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
+    // CorrelationIdMiddleware runs first so every downstream middleware,
+    // guard, controller, and the global exception filter can read the
+    // request-scoped correlation id (generated or accepted from
+    // X-Correlation-Id, with charset/length validation).
     consumer
       .apply(CorrelationIdMiddleware, LoggingMiddleware, MetricsMiddleware)
       .forRoutes({ path: '*', method: RequestMethod.ALL });
