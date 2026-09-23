@@ -96,25 +96,22 @@ Contracts covered here (deployed by `contract/scripts/deploy.sh`):
 | --- | --- | --- | --- |
 | `initialize(env, admin, token_address)` | `admin` | `admin` signs to initialize with token config. | Caller invokes without `admin` signature; `require_auth` fails. |
 | `deposit(env, from, amount)` | `from` | `from` signs and transfers tokens into treasury (used by the subscription contract to collect protocol fees). | Third party calls deposit for `from` without `from` auth. |
-| `withdraw(env, to, amount)` | `admin` | Current admin signs and withdraws to `to`. | Non-admin (including `to`) withdraws without `admin` auth. |
-| `set_paused(env, paused)` | `admin` | Current admin signs and pauses/unpauses contract. | Non-admin caller sets paused state. |
-| `set_min_balance(env, amount)` | `admin` | Current admin signs and sets minimum balance floor. | Non-admin caller changes min balance. |
+| `withdraw(env, to, amount)` | `admin` | Current admin signs and withdraws to `to`. | Non-admin caller withdraws; `require_auth` fails and balances are unchanged. |
+| `pause(env)` | `admin` | Current admin signs and pauses the treasury. | Non-admin caller pauses the treasury. |
+| `unpause(env)` | `admin` | Current admin signs and unpauses the treasury. | Non-admin caller unpauses the treasury. |
+| `is_paused(env)` | `none` | Any caller reads paused state. | Expecting signer/auth to be required for read. |
+| `balance(env)` | `none` | Any caller reads the treasury token balance. | Expecting signer/auth to be required for read. |
+
+> **Pause semantics:** while the treasury is paused, `deposit` reverts (subscription fee
+> collection fails closed) and `withdraw` remains available to `admin` so funds are never
+> locked. `deposit` emits a `Deposit` event carrying only `from` and `amount` (no off-chain
+> PII) for indexers.
 
 ## creator-deposits
 
 | Method | Required signer(s) | Valid invocation example | Invalid invocation example |
 | --- | --- | --- | --- |
-| `init(env, admin, platform_fee_bps, platform_treasury)` | `admin` | `admin` signs to initialize with fee config. | Caller invokes without `admin` signature; `require_auth` fails. |
-| `deposit(env, creator, token, amount)` | `creator` | `creator` signs and deposits earnings (fee deducted to treasury). | Third party calls deposit for `creator` without `creator` auth. |
-| `withdraw(env, creator, token, amount)` | `creator` | `creator` signs and withdraws own earned balance. | Third party withdraws for `creator` without `creator` auth. |
-| `set_platform_fee(env, bps)` | `admin` | Current admin signs and updates platform fee bps. | Non-admin caller changes platform fee. |
-| `get_balance(env, creator)` | `none` | Any caller reads creator's earned balance. | Expecting signer/auth to be required for read. |
-| `get_platform_fee(env)` | `none` | Any caller reads current platform fee bps. | Expecting signer/auth to be required for read. |
-
-## Maintenance Rule (Required)
-
-When a contract interface or authorization rule changes:
-
-1. Update this matrix in the same PR.
-2. Ensure every new/changed public method has signer requirements plus valid/invalid examples.
-3. Keep method signatures aligned with `src/lib.rs` definitions.
+| `initialize(env, admin, token_address)` | `admin` | `admin` signs and initializes the contract once. | Non-admin caller initializes without `admin` signature. |
+| `deposit(env, from, amount)` | `from` | `from` signs and deposits tokens into the contract. | Third party deposits on behalf of `from` without `from` auth. |
+| `withdraw(env, to, amount)` | `admin` | Current admin signs and withdraws to `to`. | Non-admin caller withdraws; `require_auth` fails. |
+| `balance(env)` | `none` | Any caller reads the contract token balance. | Expecting signer/auth to be required for read. |
