@@ -1,52 +1,91 @@
-# Idempotency Middleware — TTL & Collision Behavior
+# Idempotency
 
-## Overview
+This document describes how the backend guarantees that retried or duplicated
+requests do not produce duplicate side effects. It applies to every mutating
+endpoint that moves money or state, including creator earnings withdrawals.
 
-The `IdempotencyMiddleware` protects mutating routes (POST, PUT, PATCH) from
-duplicate execution. Clients supply an `Idempotency-Key` header; the platform
-stores the first response and replays it for any subsequent request carrying the
-same key.
+## General pattern: prepare / confirm
 
----
+Mutating flows that touch an external system (chain, payment provider, indexer)
+use a two-phase **prepare / confirm** pattern:
 
-## Key TTL
+1. **Prepare** — the client sends the intent plus a client-generated
+   `idempotencyKey`. The backend validates the request, reserves the operation
+   under that key, and returns a `prepareId` (or the previously stored result if
+   the key was already seen). No irreversible side effect happens yet.
+2. **Confirm** — the client sends the `prepareId` (and the signed payload where
+   applicable). The backend executes the operation exactly once and records the
+   terminal result against the key.
 
-| Setting | Value | Source |
-|---------|-------|--------|
-| Default TTL | **24 hours** | Hard-coded constant `DEFAULT_TTL_MS` |
-| Override | Set `IDEMPOTENCY_TTL_HOURS` env var | Read at service startup |
+Replaying either phase with the same `idempotencyKey` returns the stored result
+instead of re-executing. Replaying with a *different* key is treated as a new
+request and is subject to normal validation (balance, auth, pause state).
 
-**Rationale:** 24 hours matches the JWT access-token lifetime so a key cannot
-outlive the session that created it. After expiry the record is deleted by the
-hourly cleanup cron (`IdempotencyCleanupService`) and the key may be reused.
+## Key requirements
 
-**Cleanup:** `IdempotencyCleanupService` runs `@Cron(EVERY_HOUR)` and calls
-`IdempotencyService.purgeExpired()`, which issues a single `DELETE WHERE
-expires_at < NOW()`.
+- Keys are scoped per caller (creator/user id) and per operation type, so one
+  caller cannot collide with another.
+- A key is bound to the request fingerprint (amount, destination, operation).
+  Reusing a key with a different payload is rejected rather than silently
+  accepted.
+- Records are persisted before the external call and updated after it, so a
+  crash between phases leaves a recoverable `pending` record, never a silent
+  double-spend.
+- Terminal states (`confirmed`, `failed`) are immutable; only `pending` records
+  may transition.
 
----
+**Cleanup:** `IdempotencyCleanupService` runs on a configurable schedule
+(default: every hour) and calls `IdempotencyService.purgeExpired()`, which
+deletes expired records in batches to avoid long-running transactions.
 
-## Collision / Replay Behavior
+## EarningsModule withdraw
 
-A "collision" occurs when a client sends a second request with the same
-`Idempotency-Key`. The middleware distinguishes four cases:
+The creator earnings withdraw flow follows this pattern:
 
-| State of existing record | Action |
-|--------------------------|--------|
-| **No record** | Insert in-flight record; proceed to handler. |
-| **In-flight** (`is_complete = false`, not expired) | Return **409 Conflict** — first request still processing. |
-| **Complete** (`is_complete = true`, not expired) — same method + path | Return **200/201** replay of cached response body. |
-| **Complete** — **different** method or path | Return **422 Unprocessable Entity** — key reuse across endpoints is forbidden. |
-| **Expired** (any state) | Delete stale record; treat as new key. |
+- `prepareWithdraw(creatorId, amount, idempotencyKey)` validates the creator's
+  available balance and pause state, reserves the amount, and returns a
+  `prepareId`. It does **not** move funds.
+- `confirmWithdraw(creatorId, prepareId, idempotencyKey)` verifies the reserved
+  operation, requires the creator's authorization (the on-chain withdraw is
+  gated by `require_auth(creator)`), and settles exactly once.
 
-### Key scoping
+### Fee accounting
 
-Keys are scoped to a `(key, fingerprint)` pair where `fingerprint` is:
+Subscription payments are already split at payment time: the protocol fee is
+removed before the remainder is credited to the creator's earnings balance.
+The withdraw path therefore **must not** re-apply the protocol fee. Withdrawing
+`amount` debits exactly `amount` from the creator's balance and pays out exactly
+`amount`. Applying a fee again here would double-charge the creator.
 
-- `user:<userId>` — when the request is authenticated.
-- `ip:<clientIp>` — for unauthenticated requests.
+### Failure modes
 
-This prevents one user from replaying another user's key.
+- **Withdraw more than balance** — rejected during prepare; no reservation is
+  created.
+- **Concurrent withdraws** — the balance reservation is atomic, so two
+  in-flight prepares cannot both reserve the same funds; the second fails
+  validation.
+- **Wrong signer** — confirm rejects when the authorization does not match the
+  creator that owns the reservation.
+- **Paused earnings** — prepare rejects while earnings are paused; existing
+  pending reservations are not settled until unpaused.
+
+## Admin operations
+
+Administrative drains or overrides are not part of the normal withdraw path and
+must be gated by the `AUTH_MATRIX` role checks. There is no silent admin drain:
+any privileged movement of creator funds requires an explicit, audited role and
+is recorded with the same idempotency guarantees.
+
+Keys are scoped to a `(key, fingerprint)` pair where `fingerprint` encodes:
+
+- **Caller identity:** `user:<userId>` (authenticated) or `ip:<clientIp>` (anonymous).
+- **Body hash:** SHA-256 of the JSON-serialised request body.
+
+The combined fingerprint format is `<identity>|<bodyHash>`. This ensures:
+
+1. One user cannot replay another user's key.
+2. The same key used with a **different request body** is rejected with
+   **409 Conflict** (body mismatch detection).
 
 ### Race condition
 
@@ -115,9 +154,18 @@ response is only returned to a caller that is authorized for the original
 ## Configuration
 
 ```
-IDEMPOTENCY_TTL_HOURS=24   # optional; defaults to 24
-REDIS_URL=redis://...      # optional; enables multi-instance Redis store
+IDEMPOTENCY_TTL_HOURS=24              # optional; defaults to 24
+IDEMPOTENCY_CLEANUP_CRON="0 * * * *"  # optional; defaults to every hour
+IDEMPOTENCY_CLEANUP_BATCH_SIZE=1000   # optional; defaults to 1000
+REDIS_URL=redis://...                 # optional; enables multi-instance Redis store
 ```
+
+## Multi-Instance Safety
+
+The idempotency store is backed by PostgreSQL with a unique constraint on
+`(key, fingerprint)`. This makes it safe for horizontally-scaled deployments —
+all instances share the same database and contention is handled via the unique
+constraint (loser gets 409). No in-memory state is used.
 
 ---
 
@@ -129,7 +177,9 @@ REDIS_URL=redis://...      # optional; enables multi-instance Redis store
    (method/path mismatch).
 4. Send two concurrent requests with `Idempotency-Key: test-2` → one gets
    `201`, the other gets `409`.
-5. Wait for TTL expiry (or manually delete the record) → same key accepted
+5. Send `POST /v1/posts` with `Idempotency-Key: test-1` but a **different
+   body** → expect `409` (body mismatch).
+6. Wait for TTL expiry (or manually delete the record) → same key accepted
    again as new.
 6. Send `POST /v1/checkout/confirm` with `Idempotency-Key: checkout-1` and body
    `A` → expect `201`; repeat with body `B` → expect `409`.

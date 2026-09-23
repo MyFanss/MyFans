@@ -14,7 +14,6 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 import { CreatorsModule } from './creators/creators.module';
-import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -38,7 +37,6 @@ import { ContentModule } from './content/content.module';
 import { NetworkConfigModule } from './config/network-config.module';
 import { PostsModule } from './posts/posts.module';
 import { WebhookModule } from './webhook/webhook.module';
-import { AdminAuditModule } from './admin-audit/admin-audit.module';
 
 /**
  * Routes where idempotency protection is enforced.
@@ -63,6 +61,10 @@ const IDEMPOTENCY_ROUTES = [
   { path: 'v1/conversations/:id/messages', method: RequestMethod.POST },
   { path: 'v1/content', method: RequestMethod.POST },
   { path: 'v1/webhook', method: RequestMethod.POST },
+  // Earnings withdraw uses the prepare/confirm pattern; both legs must be
+  // idempotent so a retried confirm cannot double-pay a creator.
+  { path: 'v1/earnings/withdraw/prepare', method: RequestMethod.POST },
+  { path: 'v1/earnings/withdraw/confirm', method: RequestMethod.POST },
 ];
 
 /**
@@ -87,7 +89,6 @@ const CSRF_ROUTES = [
     ]),
     LoggingModule,
     MetricsModule,
-    EventsModule,
     AuthModule,
     CreatorsModule,
     SubscriptionsModule,
@@ -108,7 +109,6 @@ const CSRF_ROUTES = [
     NetworkConfigModule,
     PostsModule,
     WebhookModule,
-    AdminAuditModule,
   ],
   controllers: [AppController, OpenAPIController],
   providers: [
