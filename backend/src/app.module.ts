@@ -81,6 +81,37 @@ const THROTTLER_TIERS = [
 
 const redisUrl = process.env.REDIS_URL;
 
+/**
+ * Parse the CORS origin allowlist from the environment.
+ *
+ * `CORS_ORIGINS` is a comma-separated list of exact origins (scheme + host +
+ * optional port), e.g. `https://app.example.com,https://staging.example.com`.
+ * Preview deploys can append their own origin without code changes. A single
+ * `*` entry is preserved so the boot guard below can reject the unsafe
+ * wildcard-with-credentials combination in production.
+ */
+function parseCorsOrigins(): string[] {
+  return (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+}
+
+const corsOrigins = parseCorsOrigins();
+const corsCredentials =
+  (process.env.CORS_CREDENTIALS ?? 'true').toLowerCase() !== 'false';
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Fail fast: reflecting arbitrary origins while sending credentials lets any
+// site read authenticated responses. Never allow `*` + credentials in prod.
+if (isProduction && corsCredentials && corsOrigins.includes('*')) {
+  throw new Error(
+    'Invalid CORS configuration: CORS_ORIGINS="*" cannot be combined with ' +
+      'credentials in production. Set CORS_ORIGINS to an explicit allowlist ' +
+      'of trusted origins (see backend/docs/CORS_AND_SECURITY_HEADERS.md).',
+  );
+}
+
 @Module({
   imports: [
     ThrottlerModule.forRoot({
@@ -157,3 +188,5 @@ export class AppModule {
       );
   }
 }
+
+export { corsOrigins, corsCredentials };
