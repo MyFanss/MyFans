@@ -74,3 +74,24 @@ does not need to (and must not) attempt to compensate for partial failures.
 A renewal must use the **same asset** as the original plan. If the plan's asset
 changed or the fan attempts a different asset, the transaction reverts. Always
 re-read plan metadata before renewing.
+
+## Golden test vectors (builder regression guard)
+
+The frontend builders for `subscribe`, `cancel`, and `extend` are pinned to
+golden XDR vectors so a builder regression (empty or wrong invoke tx) fails CI
+instead of shipping. See `contract/test-vectors/TEST_VECTORS.md` for the full
+regen procedure and the vector schema.
+
+- Vectors live in `contract/test-vectors/` as JSON, one file per operation
+  (`subscribe.json`, `cancel.json`, `extend.json`).
+- Each vector records the **network passphrase**, the contract id, the
+  operation args, and the expected auth footprint.
+- A vitest suite compares the frontend builder output against these vectors and
+  fails on any mismatch (wrong contract id, network mismatch, or extend
+  overflow args).
+- Vectors contain **no private keys** — only public inputs and expected XDR.
+
+Run the comparison locally with the frontend test suite; CI runs the same
+suite so builder drift is caught before merge. To regenerate vectors after an
+intentional contract change, follow the procedure in
+`contract/test-vectors/TEST_VECTORS.md`.
