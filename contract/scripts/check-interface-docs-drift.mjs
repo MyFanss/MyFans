@@ -68,6 +68,52 @@ function parseDocumentedMethods(markdown) {
   return methods;
 }
 
+function parseDocumentedErrors(markdown) {
+  const lines = markdown.split(/\r?\n/);
+  const errors = new Set();
+  let inErrorsTable = false;
+
+  for (const line of lines) {
+    if (/^\s*\|\s*(Error|Variant)\s*\|/i.test(line)) {
+      inErrorsTable = true;
+      continue;
+    }
+
+    if (!inErrorsTable) {
+      continue;
+    }
+
+    if (!line.trim().startsWith('|')) {
+      break;
+    }
+
+    if (/^\s*\|\s*-+\s*\|/.test(line)) {
+      continue;
+    }
+
+    const columns = line.split('|');
+    if (columns.length < 3) {
+      continue;
+    }
+
+    const rawErrorCell = columns[1].trim();
+    if (!rawErrorCell) {
+      continue;
+    }
+
+    const unquoted = rawErrorCell.replace(/`/g, '');
+    const grouped = unquoted.split('/').map((part) => part.trim());
+    for (const errorName of grouped) {
+      if (!errorName || /\s/.test(errorName)) {
+        continue;
+      }
+      errors.add(errorName);
+    }
+  }
+
+  return errors;
+}
+
 function parseContractMethods(rustSource) {
   const blocks = extractContractImplBlocks(rustSource);
   const methods = new Set();
@@ -84,6 +130,21 @@ function parseContractMethods(rustSource) {
     methods.add(match[1]);
   }
   return methods;
+}
+
+function parseContractErrors(rustSource) {
+  const errors = new Set();
+  const enumRegex = /#\[contracterror\][\s\S]*?enum\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\{([\s\S]*?)\}/g;
+  let enumMatch;
+  while ((enumMatch = enumRegex.exec(rustSource)) !== null) {
+    const body = enumMatch[1];
+    const variantRegex = /^\s*([A-Z][a-zA-Z0-9_]*)\s*(?:=|,|\()/gm;
+    let variantMatch;
+    while ((variantMatch = variantRegex.exec(body)) !== null) {
+      errors.add(variantMatch[1]);
+    }
+  }
+  return errors;
 }
 
 function extractContractImplBlocks(rustSource) {
@@ -188,16 +249,29 @@ function validateDocFile(rootDir, docPath) {
     };
   }
 
-  const contractMethods = parseContractMethods(readText(sourcePath));
+  const rustSource = readText(sourcePath);
+  const contractMethods = parseContractMethods(rustSource);
   const undocumented = setDiff(contractMethods, documentedMethods);
   const staleDocs = setDiff(documentedMethods, contractMethods);
 
+  // Error variants must also be documented so new errors cannot silently ship.
+  const documentedErrors = parseDocumentedErrors(markdown);
+  const contractErrors = parseContractErrors(rustSource);
+  const undocumentedErrors = setDiff(contractErrors, documentedErrors);
+  const staleErrorDocs = setDiff(documentedErrors, contractErrors);
+
   return {
-    ok: undocumented.size === 0 && staleDocs.size === 0,
+    ok:
+      undocumented.size === 0 &&
+      staleDocs.size === 0 &&
+      undocumentedErrors.size === 0 &&
+      staleErrorDocs.size === 0,
     docPath,
     sourcePath,
     undocumented: toSortedArray(undocumented),
     staleDocs: toSortedArray(staleDocs),
+    undocumentedErrors: toSortedArray(undocumentedErrors),
+    staleErrorDocs: toSortedArray(staleErrorDocs),
   };
 }
 
@@ -234,6 +308,16 @@ function printFailures(summary, rootDir) {
     if (result.staleDocs?.length) {
       console.error(`  stale docs methods: ${result.staleDocs.join(', ')}`);
     }
+    if (result.undocumentedErrors?.length) {
+      console.error(
+        `  undocumented errors: ${result.undocumentedErrors.join(', ')}`,
+      );
+    }
+    if (result.staleErrorDocs?.length) {
+      console.error(
+        `  stale docs errors: ${result.staleErrorDocs.join(', ')}`,
+      );
+    }
   }
 }
 
@@ -268,7 +352,9 @@ if (invokedDirectly) {
 export {
   parseSourcePathFromHeading,
   parseDocumentedMethods,
+  parseDocumentedErrors,
   parseContractMethods,
+  parseContractErrors,
   extractContractImplBlocks,
   collectInterfaceMarkdownFiles,
   validateDocFile,

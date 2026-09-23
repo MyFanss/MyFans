@@ -4,9 +4,12 @@
 #   - If ALL required contract IDs and secrets are present → invoke getter methods
 #     on every core contract and report results.
 #   - If ANY required contract ID or secret is missing:
-#       • On the main branch  → fail the job (red CI) so the gap is not silently ignored.
+#       • On release branches (main, release/*) → fail the job (red CI) so the gap
+#         is not silently ignored and broken releases are caught before shipping.
 #       • On other branches   → skip with an explicit warning so feature branches are not
 #         blocked by deployment secrets they don't own.
+#       • Fork PRs may skip the smoke check only when the PR body contains the
+#         explicit marker `[skip-futurenet-smoke]`.
 #
 # Required GitHub Actions secrets:
 #   FUTURENET_RPC_URL              - Soroban RPC endpoint for Futurenet
@@ -28,6 +31,12 @@ on:
   push:
     branches:
       - main
+      - 'release/**'
+  # Run on PRs so release branches fail closed before merge
+  pull_request:
+    branches:
+      - main
+      - 'release/**'
   # Allow manual triggers with optional reason
   workflow_dispatch:
     inputs:
@@ -46,6 +55,8 @@ jobs:
     outputs:
       ready: ${{ steps.guard.outputs.ready }}
       missing: ${{ steps.guard.outputs.missing }}
+      is_release: ${{ steps.guard.outputs.is_release }}
+      fork_skip: ${{ steps.guard.outputs.fork_skip }}
     steps:
       - name: Evaluate required inputs
         id: guard
@@ -56,6 +67,11 @@ jobs:
           ID_REGISTRY:      ${{ secrets.CONTRACT_ID_CREATOR_REGISTRY }}
           ID_CONTENT:       ${{ secrets.CONTRACT_ID_CONTENT_ACCESS }}
           ID_EARNINGS:      ${{ secrets.CONTRACT_ID_EARNINGS }}
+          REF_NAME:         ${{ github.ref_name }}
+          EVENT_NAME:       ${{ github.event_name }}
+          PR_BODY:          ${{ github.event.pull_request.body }}
+          PR_HEAD_REPO:     ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO:        ${{ github.repository }}
         run: |
           missing=""
           [ -z "$RPC_URL" ]         && missing="$missing FUTURENET_RPC_URL"
@@ -64,6 +80,22 @@ jobs:
           [ -z "$ID_REGISTRY" ]     && missing="$missing CONTRACT_ID_CREATOR_REGISTRY"
           [ -z "$ID_CONTENT" ]      && missing="$missing CONTRACT_ID_CONTENT_ACCESS"
           [ -z "$ID_EARNINGS" ]     && missing="$missing CONTRACT_ID_EARNINGS"
+
+          # Release branches must fail closed when IDs are empty/missing.
+          is_release=false
+          case "$REF_NAME" in
+            main|release/*) is_release=true ;;
+          esac
+          echo "is_release=$is_release" >> "$GITHUB_OUTPUT"
+
+          # Fork PRs may skip only with an explicit marker in the PR body.
+          fork_skip=false
+          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$PR_HEAD_REPO" ] && [ "$PR_HEAD_REPO" != "$BASE_REPO" ]; then
+            case "$PR_BODY" in
+              *"[skip-futurenet-smoke]"*) fork_skip=true ;;
+            esac
+          fi
+          echo "fork_skip=$fork_skip" >> "$GITHUB_OUTPUT"
 
           if [ -n "$missing" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
@@ -75,30 +107,30 @@ jobs:
           fi
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Fail loudly on main when IDs are missing.
+  # Fail loudly on release branches when IDs are missing.
   # ─────────────────────────────────────────────────────────────────────────
-  fail-on-missing-main:
-    name: "FAIL – contract IDs missing on main"
+  fail-on-missing-release:
+    name: "FAIL – contract IDs missing on release branch"
     needs: check-prerequisites
-    if: needs.check-prerequisites.outputs.ready == 'false' && github.ref == 'refs/heads/main'
+    if: needs.check-prerequisites.outputs.ready == 'false' && needs.check-prerequisites.outputs.is_release == 'true' && needs.check-prerequisites.outputs.fork_skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Report missing secrets and fail
         run: |
-          echo "::error::Futurenet smoke cannot run on main: missing secrets/IDs:"
+          echo "::error::Futurenet smoke cannot run on release branch: missing secrets/IDs:"
           echo "::error::  ${{ needs.check-prerequisites.outputs.missing }}"
           echo ""
           echo "Add the missing secrets under Settings → Secrets and variables → Actions."
-          echo "See .github/workflows/futurenet-smoke.yml for the full list."
+          echo "See contract/docs/CONTRACT_DEPLOY_RUNBOOK.md for the deploy + ID-write steps."
           exit 1
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Skip gracefully on non-main branches when IDs are missing.
+  # Skip gracefully on non-release branches when IDs are missing.
   # ─────────────────────────────────────────────────────────────────────────
   skip-on-missing-branch:
-    name: "SKIP – contract IDs not configured (non-main)"
+    name: "SKIP – contract IDs not configured (non-release)"
     needs: check-prerequisites
-    if: needs.check-prerequisites.outputs.ready == 'false' && github.ref != 'refs/heads/main'
+    if: needs.check-prerequisites.outputs.ready == 'false' && needs.check-prerequisites.outputs.is_release != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Warn and skip
@@ -106,8 +138,22 @@ jobs:
           echo "::warning::Futurenet smoke skipped – the following secrets/IDs are not set:"
           echo "::warning::  ${{ needs.check-prerequisites.outputs.missing }}"
           echo ""
-          echo "This is acceptable on feature branches.  The smoke WILL fail on main"
-          echo "until all required secrets are configured."
+          echo "This is acceptable on feature branches.  The smoke WILL fail on release"
+          echo "branches (main, release/*) until all required secrets are configured."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Explicit skip for fork PRs that opt out with the marker.
+  # ─────────────────────────────────────────────────────────────────────────
+  skip-fork-pr:
+    name: "SKIP – fork PR opted out with [skip-futurenet-smoke]"
+    needs: check-prerequisites
+    if: needs.check-prerequisites.outputs.ready == 'false' && needs.check-prerequisites.outputs.fork_skip == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Acknowledge explicit fork skip
+        run: |
+          echo "::warning::Futurenet smoke skipped for fork PR via explicit [skip-futurenet-smoke] marker."
+          echo "Release branches still fail closed when IDs are empty."
 
   # ─────────────────────────────────────────────────────────────────────────
   # Actual smoke test – runs only when all IDs are present.
@@ -204,24 +250,15 @@ jobs:
             -- 2>&1 | tee /tmp/smoke-earnings.log
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
-      # ── Upload logs as artifact ────────────────────────────────────────
-      - name: Upload smoke logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: futurenet-smoke-logs-${{ github.run_id }}
-          path: /tmp/smoke-*.log
-          retention-days: 14
-
-      # ── Summary ───────────────────────────────────────────────────────
-      - name: Smoke summary
+      # ── Aggregate results ──────────────────────────────────────────────
+      - name: Summarise smoke results
         if: always()
         run: |
-          echo "## Futurenet Smoke Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Futurenet smoke results" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           for f in /tmp/smoke-*.log; do
-            label=$(basename "$f" .log | sed 's/smoke-//')
-            echo "### $label" >> "$GITHUB_STEP_SUMMARY"
+            [ -f "$f" ] || continue
+            echo "### $f" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             cat "$f" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"

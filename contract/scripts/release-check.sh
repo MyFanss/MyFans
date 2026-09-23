@@ -85,6 +85,16 @@ run_step "cargo test" \
 run_step "interface docs drift check" \
   node "$SCRIPT_DIR/check-interface-docs-drift.mjs"
 
+# ── Step 4b: Storage keys drift check ─────────────────────────────────────────
+#
+# Enforces issue #1756: every storage key documented in contract/STORAGE_KEYS.md
+# must match the Instance/Persistent keys actually used across the contract
+# crates, and vice versa. Fails closed on drift so key renames cannot ship
+# without a matching doc + upgrade-notes update.
+
+run_step "storage keys drift check" \
+  node "$SCRIPT_DIR/check-storage-keys-drift.mjs"
+
 # ── Step 5: WASM release build ────────────────────────────────────────────────
 
 run_step "cargo build --release (wasm32)" \

@@ -79,3 +79,22 @@ Current deployed variants are already short and clear in context:
 ## Review Notes For Non-Deployed Contracts
 
 Non-deployed or local-only contracts can be renamed more freely, but they should still follow the same conventions so future deployments do not introduce avoidable aliases.
+
+## Upgrade Notes For Renames
+
+When a `DataKey` variant must change, treat it as a storage migration, not a cosmetic edit:
+
+- Never rename a deployed variant in place. Add the new variant and keep the legacy variant readable until a migration has copied and verified all existing entries.
+- Record every rename here with the contract, the old variant, the new variant, and the release that introduced it, so upgrades and rollbacks can be audited.
+- Keep `Instance` and `Persistent` storage usage explicit: document which variants live in instance storage versus persistent storage, and flag any variant that moves between the two as a breaking change.
+- Avoid reusing a retired variant name for a different meaning; reuse silently corrupts reads for state written under the old contract.
+
+### Rename Log
+
+| Contract | Old variant | New variant | Release | Notes |
+| --- | --- | --- | --- | --- |
+| _none yet_ | | | | Add a row for every future rename. |
+
+## Enforcement
+
+`contract/scripts/release-check.sh` parses this document and the `DataKey` enums in each contract crate, then fails the release check when the documented keys and the `Instance`/`Persistent` usage drift apart. Update this document in the same change whenever a storage key is added, removed, or renamed.

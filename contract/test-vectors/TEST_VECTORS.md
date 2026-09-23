@@ -36,6 +36,7 @@ that is tested by both the TypeScript vitest suite and (optionally) the Rust
 | `create_plan` | `create_plan_basic` (USDC), `create_plan_xlm` (XLM) |
 | `subscribe` | `subscribe_basic` (plan_id=1), `subscribe_plan_zero` (edge case) |
 | `cancel` | `cancel_basic` (reason=0), `cancel_reason_too_expensive` (reason=1) |
+| `extend` | `extend_basic` (plan_id=1, extra_cycles=1), `extend_overflow` (extra_cycles=u32::MAX, overflow edge case) |
 
 ---
 
