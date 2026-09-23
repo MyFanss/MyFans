@@ -8,6 +8,18 @@
 
 -
 
+## Auth Matrix
+
+<!-- Required for any PR that adds or changes a mutating contract entrypoint. -->
+
+- [ ] Every new/changed mutating entrypoint has a row in `contract/AUTH_MATRIX.md`
+- [ ] Each row documents signer requirement, valid example, invalid example, and storage effect on deny
+- [ ] Read-only/view methods are listed as explicit no-auth rows
+- [ ] Admin vs creator vs fan authorization expectations are distinguished per entrypoint
+- [ ] Each matrix row has a corresponding automated test in `contract/**/tests/auth_matrix.rs`
+- [ ] `contract/REGRESSION_CHECKLIST.md` updated if a new auth-sensitive path was introduced
+- [ ] Not applicable — no mutating contract entrypoints touched
+
 ## Test Plan
 
 ### Automated tests added or updated
@@ -19,6 +31,7 @@
 - [ ] **Frontend component tests** (`frontend/src/**/*.test.{ts,tsx}`) — React component behaviour
 - [ ] **Frontend e2e tests** (`frontend/e2e/**/*.spec.ts`) — Playwright browser flows
 - [ ] **Contract tests** (`contract/`) — Soroban/Rust unit tests via `cargo test`
+- [ ] **Auth matrix tests** (`contract/**/tests/auth_matrix.rs`) — one test per `AUTH_MATRIX.md` row
 - [ ] No new tests required — explain why: ___
 
 ### How to run the tests locally
@@ -53,6 +66,18 @@ cd contract && cargo test
 ## Related issues
 
 <!-- Closes #NNN -->
+
+## Contract changes (complete if `contract/` is touched)
+
+<!-- Skip this section entirely if the PR does not touch contract/ source or Cargo files. -->
+
+- [ ] **Storage key doc** — `contract/STORAGE_KEYS.md` is consistent with code (no new/changed/removed `DataKey` variant left undocumented).
+- [ ] **Interface doc** — `contract/docs/interfaces/` updated for every changed public `fn` signature.
+- [ ] **Test vectors** — `contract/test-vectors/contract-args.json` regenerated if arg types or order changed.
+- [ ] **AUTH_MATRIX.md** — updated if auth requirements changed.
+- [ ] **Upgrade notes** — `contract/docs/UPGRADE_NOTES.md` entry added if storage layout or key semantics changed.
+- [ ] **`cargo audit`** — passes locally; any new ignored advisory has a justification comment in `audit.toml`.
+- [ ] Full checklist: see [contract/REGRESSION_CHECKLIST.md](../contract/REGRESSION_CHECKLIST.md).
 
 ## Notes for reviewers
 

@@ -1,228 +1,180 @@
 #![no_std]
-use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String,
-};
 
-/// Storage keys for the token contract
-#[contracttype]
-#[derive(Clone)]
-pub enum DataKey {
-    Admin,
-    Name,
-    Symbol,
-    Decimals,
-    TotalSupply,
-    Balance(Address),
-    Allowance(AllowanceValueKey),
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, String};
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum TokenError {
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    Unauthorized = 3,
+    Overflow = 4,
+    Underflow = 5,
+    InsufficientBalance = 6,
+    InvalidAmount = 7,
 }
 
-/// Key for allowance storage (from, spender)
 #[contracttype]
 #[derive(Clone)]
-pub struct AllowanceValueKey {
-    pub from: Address,
-    pub spender: Address,
-}
-
-/// Stored allowance data
-#[contracttype]
-#[derive(Clone)]
-pub struct AllowanceData {
+pub struct AllowanceValue {
     pub amount: i128,
     pub expiration_ledger: u32,
 }
 
-/// Token contract errors (codes 1–7 match test expectations)
-/// Per-contract error codes for the **myfans-token** contract.
-///
-/// These discriminants are stable and form part of the public client API.
-/// Do **not** renumber existing variants; add new ones at the end.
-///
-/// | Code | Variant |
-/// |------|---------|
-/// | 1 | `InsufficientBalance` |
-/// | 2 | `InsufficientAllowance` |
-/// | 3 | `AllowanceExpired` |
-/// | 4 | `InvalidAmount` |
-/// | 5 | `InvalidExpiration` |
-/// | 6 | `NoAllowance` |
-/// | 7 | `Unauthorized` |
-#[contracterror]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Error {
-    /// Code 1 – transfer: not enough balance.
-    InsufficientBalance = 1,
-    /// Code 2 – transfer_from: allowance too low.
-    InsufficientAllowance = 2,
-    /// Code 3 – transfer_from: allowance expired.
-    AllowanceExpired = 3,
-    /// Code 4 – amount must be strictly positive.
-    InvalidAmount = 4,
-    /// Code 5 – expiration ledger is in the past.
-    InvalidExpiration = 5,
-    /// Code 6 – no allowance record found for (from, spender).
-    NoAllowance = 6,
-    /// Code 7 – mint: caller is not admin.
-    Unauthorized = 7,
+#[contracttype]
+#[derive(Clone)]
+pub struct TokenMetadata {
+    pub name: String,
+    pub symbol: String,
+    pub decimals: u32,
 }
+
+#[contracttype]
+#[derive(Clone)]
+pub struct TokenState {
+    pub admin: Address,
+    pub total_supply: i128,
+    pub metadata: TokenMetadata,
+}
+
+const STATE_KEY: &str = "STATE";
+const BALANCE_KEY: &str = "BALANCE";
+const ALLOWANCE_KEY: &str = "ALLOWANCE";
 
 #[contract]
 pub struct MyFansToken;
 
 #[contractimpl]
 impl MyFansToken {
-    /// Temporary allowance entries must stay readable until at least one ledger
-    /// after `expiration_ledger`, so `transfer_from` can return [`Error::AllowanceExpired`]
-    /// instead of [`Error::NoAllowance`] when the logical allowance has expired.
-    fn bump_allowance_temp_ttl(env: &Env, key: &DataKey, expiration_ledger: u32) {
-        let seq = env.ledger().sequence();
-        // Default temp TTL after `set` is typically 16; threshold must be > that
-        // so extend runs, and host requires threshold <= extend_to.
-        let extend_to = expiration_ledger
-            .saturating_sub(seq)
-            .saturating_add(2)
-            .max(17)
-            .min(env.storage().max_ttl());
-        env.storage()
-            .temporary()
-            .extend_ttl(key, extend_to, extend_to);
-    }
-
-    /// Initialize the token contract with admin and initial supply
-    ///
-    /// # Arguments
-    /// * `admin` - Admin address who can manage the token
-    /// * `name` - Token name (e.g., "MyFans Token")
-    /// * `symbol` - Token symbol (e.g., "MFAN")
-    /// * `decimals` - Token decimals (typically 7 for Soroban)
-    /// * `initial_supply` - Initial supply (deferred minting to Issue 3)
     pub fn initialize(
         env: Env,
         admin: Address,
         name: String,
         symbol: String,
         decimals: u32,
-        initial_supply: i128,
-    ) {
-        // Prevent accidental re-initialization which could overwrite admin
-        // and metadata. Initialization is a one-time operation.
-        if env.storage().instance().has(&DataKey::Admin) {
-            panic!("contract already initialized");
+    ) -> Result<(), TokenError> {
+        if env.storage().instance().has(&STATE_KEY) {
+            return Err(TokenError::AlreadyInitialized);
         }
-
-        // Validate inputs
-        if initial_supply < 0 {
-            panic!("initial_supply must be non-negative");
-        }
-
-        // Store admin in persistent storage
-        env.storage().instance().set(&DataKey::Admin, &admin);
-
-        // Store token metadata
-        env.storage().instance().set(&DataKey::Name, &name);
-        env.storage().instance().set(&DataKey::Symbol, &symbol);
-        env.storage().instance().set(&DataKey::Decimals, &decimals);
-        env.storage()
-            .instance()
-            .set(&DataKey::TotalSupply, &initial_supply);
-
-        // Note: Actual minting is deferred to Issue 3
-
-        // Emit an initialization event so indexers can detect contract setup.
-        env.events().publish(
-            (symbol_short!("init"),),
-            (
-                admin.clone(),
-                name.clone(),
-                symbol.clone(),
+        let state = TokenState {
+            admin,
+            total_supply: 0,
+            metadata: TokenMetadata {
+                name,
+                symbol,
                 decimals,
-                initial_supply,
-            ),
-        );
+            },
+        };
+        env.storage().instance().set(&STATE_KEY, &state);
+        Ok(())
     }
 
-    /// Get the admin address (view function)
-    pub fn admin(env: Env) -> Address {
+    pub fn admin(env: Env) -> Result<Address, TokenError> {
+        Ok(Self::state(&env)?.admin)
+    }
+
+    pub fn total_supply(env: Env) -> Result<i128, TokenError> {
+        Ok(Self::state(&env)?.total_supply)
+    }
+
+    pub fn balance(env: Env, id: Address) -> i128 {
         env.storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("admin not initialized")
-    }
-
-    /// Set a new admin address (admin only)
-    ///
-    /// Requires the caller to be the current admin via auth
-    pub fn set_admin(env: Env, new_admin: Address) {
-        // Get current admin from storage
-        let current_admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("admin not initialized");
-
-        // Require authorization from the current admin
-        current_admin.require_auth();
-
-        // Update admin in storage
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
-        // Emit admin update event for indexers and monitoring.
-        env.events().publish(
-            (symbol_short!("admin_upd"),),
-            (current_admin.clone(), new_admin.clone()),
-        );
-    }
-
-    /// Update token name and symbol. Only admin can call this.
-    /// Decimals remain immutable.
-    ///
-    /// # Arguments
-    /// * `new_name` - New token name
-    /// * `new_symbol` - New token symbol
-    pub fn set_metadata(env: Env, new_name: String, new_symbol: String) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("admin not initialized");
-        admin.require_auth();
-
-        env.storage().instance().set(&DataKey::Name, &new_name);
-        env.storage().instance().set(&DataKey::Symbol, &new_symbol);
-
-        env.events()
-            .publish((symbol_short!("meta_upd"),), (new_name, new_symbol));
-    }
-
-    /// Get the token name (view function)
-    pub fn name(env: Env) -> String {
-        env.storage()
-            .instance()
-            .get(&DataKey::Name)
-            .expect("token not initialized")
-    }
-
-    /// Get the token symbol (view function)
-    pub fn symbol(env: Env) -> String {
-        env.storage()
-            .instance()
-            .get(&DataKey::Symbol)
-            .expect("token not initialized")
-    }
-
-    /// Get the token decimals (view function)
-    pub fn decimals(env: Env) -> u32 {
-        env.storage()
-            .instance()
-            .get(&DataKey::Decimals)
-            .expect("token not initialized")
-    }
-
-    /// Get the total supply (view function)
-    pub fn total_supply(env: Env) -> i128 {
-        env.storage()
-            .instance()
-            .get(&DataKey::TotalSupply)
+            .persistent()
+            .get(&(BALANCE_KEY, id))
             .unwrap_or(0)
+    }
+
+    pub fn allowance(env: Env, from: Address, spender: Address) -> i128 {
+        let key = (ALLOWANCE_KEY, from, spender);
+        let value: Option<AllowanceValue> = env.storage().persistent().get(&key);
+        match value {
+            Some(allowance) if allowance.expiration_ledger >= env.ledger().sequence() => {
+                allowance.amount
+            }
+            _ => 0,
+        }
+    }
+
+    pub fn mint(env: Env, to: Address, amount: i128) -> Result<(), TokenError> {
+        if amount <= 0 {
+            return Err(TokenError::InvalidAmount);
+        }
+        let mut state = Self::state(&env)?;
+        state.admin.require_auth();
+
+        let new_supply = state
+            .total_supply
+            .checked_add(amount)
+            .ok_or(TokenError::Overflow)?;
+
+        let balance = Self::balance(env.clone(), to.clone());
+        let new_balance = balance
+            .checked_add(amount)
+            .ok_or(TokenError::Overflow)?;
+
+        env.storage()
+            .persistent()
+            .set(&(BALANCE_KEY, to), &new_balance);
+        state.total_supply = new_supply;
+        env.storage().instance().set(&STATE_KEY, &state);
+        Ok(())
+    }
+
+    pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), TokenError> {
+        if amount <= 0 {
+            return Err(TokenError::InvalidAmount);
+        }
+        from.require_auth();
+
+        let mut state = Self::state(&env)?;
+        let balance = Self::balance(env.clone(), from.clone());
+        if balance < amount {
+            return Err(TokenError::InsufficientBalance);
+        }
+
+        let new_balance = balance
+            .checked_sub(amount)
+            .ok_or(TokenError::Underflow)?;
+        let new_supply = state
+            .total_supply
+            .checked_sub(amount)
+            .ok_or(TokenError::Underflow)?;
+
+        env.storage()
+            .persistent()
+            .set(&(BALANCE_KEY, from), &new_balance);
+        state.total_supply = new_supply;
+        env.storage().instance().set(&STATE_KEY, &state);
+        Ok(())
+    }
+
+    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), TokenError> {
+        if amount <= 0 {
+            return Err(TokenError::InvalidAmount);
+        }
+        from.require_auth();
+
+        let from_balance = Self::balance(env.clone(), from.clone());
+        if from_balance < amount {
+            return Err(TokenError::InsufficientBalance);
+        }
+        let new_from_balance = from_balance
+            .checked_sub(amount)
+            .ok_or(TokenError::Underflow)?;
+
+        let to_balance = Self::balance(env.clone(), to.clone());
+        let new_to_balance = to_balance
+            .checked_add(amount)
+            .ok_or(TokenError::Overflow)?;
+
+        env.storage()
+            .persistent()
+            .set(&(BALANCE_KEY, from), &new_from_balance);
+        env.storage()
+            .persistent()
+            .set(&(BALANCE_KEY, to), &new_to_balance);
+        Ok(())
     }
 
     pub fn approve(
@@ -231,30 +183,17 @@ impl MyFansToken {
         spender: Address,
         amount: i128,
         expiration_ledger: u32,
-    ) -> Result<(), Error> {
-        from.require_auth();
+    ) -> Result<(), TokenError> {
         if amount < 0 {
-            return Err(Error::InvalidAmount);
+            return Err(TokenError::InvalidAmount);
         }
-        if expiration_ledger < env.ledger().sequence() {
-            return Err(Error::InvalidExpiration);
-        }
-
-        let key = DataKey::Allowance(AllowanceValueKey {
-            from: from.clone(),
-            spender: spender.clone(),
-        });
-        let data = AllowanceData {
+        from.require_auth();
+        let key = (ALLOWANCE_KEY, from, spender);
+        let value = AllowanceValue {
             amount,
             expiration_ledger,
         };
-
-        // Store and extend TTL for temporary storage (see bump_allowance_temp_ttl).
-        env.storage().temporary().set(&key, &data);
-        Self::bump_allowance_temp_ttl(&env, &key, expiration_ledger);
-
-        env.events()
-            .publish((symbol_short!("approve"), from, spender), amount);
+        env.storage().persistent().set(&key, &value);
         Ok(())
     }
 
@@ -264,198 +203,191 @@ impl MyFansToken {
         from: Address,
         to: Address,
         amount: i128,
-    ) -> Result<(), Error> {
-        spender.require_auth();
+    ) -> Result<(), TokenError> {
         if amount <= 0 {
-            return Err(Error::InvalidAmount);
+            return Err(TokenError::InvalidAmount);
+        }
+        spender.require_auth();
+
+        let allowance = Self::allowance(env.clone(), from.clone(), spender.clone());
+        if allowance < amount {
+            return Err(TokenError::InsufficientBalance);
         }
 
-        let key = DataKey::Allowance(AllowanceValueKey {
-            from: from.clone(),
-            spender: spender.clone(),
-        });
-
-        let allowance_data: Option<AllowanceData> = env.storage().temporary().get(&key);
-
-        match allowance_data {
-            Some(data) => {
-                if data.expiration_ledger < env.ledger().sequence() {
-                    return Err(Error::AllowanceExpired);
-                }
-                if data.amount < amount {
-                    return Err(Error::InsufficientAllowance);
-                }
-
-                // Update allowance
-                let new_allowance = AllowanceData {
-                    amount: data.amount - amount,
-                    expiration_ledger: data.expiration_ledger,
-                };
-                env.storage().temporary().set(&key, &new_allowance);
-                Self::bump_allowance_temp_ttl(&env, &key, data.expiration_ledger);
-            }
-            None => return Err(Error::NoAllowance),
+        let from_balance = Self::balance(env.clone(), from.clone());
+        if from_balance < amount {
+            return Err(TokenError::InsufficientBalance);
         }
+        let new_from_balance = from_balance
+            .checked_sub(amount)
+            .ok_or(TokenError::Underflow)?;
 
-        let balance_from = read_balance(&env, from.clone());
-        if balance_from < amount {
-            return Err(Error::InsufficientBalance);
-        }
+        let to_balance = Self::balance(env.clone(), to.clone());
+        let new_to_balance = to_balance
+            .checked_add(amount)
+            .ok_or(TokenError::Overflow)?;
 
-        write_balance(&env, from.clone(), balance_from - amount);
-        let balance_to = read_balance(&env, to.clone());
-        write_balance(&env, to.clone(), balance_to + amount);
-
-        // Emit transfer_from event so indexers can identify spender-triggered transfers.
-        // Regular `transfer` events use topics (transfer, from, to); this uses
-        // (transfer_from, spender, from, to) to distinguish the two paths.
-        env.events()
-            .publish((symbol_short!("xfer_from"), spender, from, to), amount);
-        Ok(())
-    }
-
-    /// Zero out the allowance for (from, spender). `from` must authorize.
-    pub fn clear_allowance(env: Env, from: Address, spender: Address) {
-        from.require_auth();
-        let key = DataKey::Allowance(AllowanceValueKey {
-            from: from.clone(),
-            spender: spender.clone(),
-        });
-        let data = AllowanceData {
-            amount: 0,
+        let new_allowance = allowance
+            .checked_sub(amount)
+            .ok_or(TokenError::Underflow)?;
+        let key = (ALLOWANCE_KEY, from.clone(), spender);
+        let value = AllowanceValue {
+            amount: new_allowance,
             expiration_ledger: env.ledger().sequence(),
         };
-        env.storage().temporary().set(&key, &data);
-        Self::bump_allowance_temp_ttl(&env, &key, data.expiration_ledger);
-        env.events()
-            .publish((symbol_short!("approve"), from, spender), 0i128);
+        env.storage().persistent().set(&key, &value);
+
+        env.storage()
+            .persistent()
+            .set(&(BALANCE_KEY, from), &new_from_balance);
+        env.storage()
+            .persistent()
+            .set(&(BALANCE_KEY, to), &new_to_balance);
+        Ok(())
     }
 
-    pub fn allowance(env: Env, from: Address, spender: Address) -> i128 {
-        let key = DataKey::Allowance(AllowanceValueKey { from, spender });
-        let data: Option<AllowanceData> = env.storage().temporary().get(&key);
-        match data {
-            Some(d) if d.expiration_ledger >= env.ledger().sequence() => d.amount,
-            _ => 0,
-        }
-    }
-
-    /// Mint new tokens to `to`. Only the contract admin may call this.
-    ///
-    /// # Errors
-    /// * [`Error::Unauthorized`] – caller is not the stored admin.
-    /// * [`Error::InvalidAmount`] – `amount` is zero or negative.
-    pub fn mint(env: Env, to: Address, amount: i128) -> Result<(), Error> {
-        if amount <= 0 {
-            return Err(Error::InvalidAmount);
-        }
-
-        // Read admin from storage and require their authorisation.
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("admin not initialized");
-        admin.require_auth();
-
-        let balance = read_balance(&env, to.clone());
-        write_balance(&env, to.clone(), balance + amount);
-
-        let total: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::TotalSupply)
-            .unwrap_or(0);
+    fn state(env: &Env) -> Result<TokenState, TokenError> {
         env.storage()
             .instance()
-            .set(&DataKey::TotalSupply, &(total + amount));
-
-        env.events().publish((symbol_short!("mint"), to), amount);
-        Ok(())
-    }
-
-    pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), Error> {
-        from.require_auth();
-        if amount <= 0 {
-            return Err(Error::InvalidAmount);
-        }
-        let balance = read_balance(&env, from.clone());
-        if balance < amount {
-            return Err(Error::InsufficientBalance);
-        }
-
-        write_balance(&env, from.clone(), balance - amount);
-
-        let total: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::TotalSupply)
-            .unwrap_or(0);
-        env.storage()
-            .instance()
-            .set(&DataKey::TotalSupply, &(total - amount));
-
-        env.events().publish((symbol_short!("burn"), from), amount);
-        Ok(())
-    }
-
-    /// Get balance for an address (view function)
-    pub fn balance(env: Env, id: Address) -> i128 {
-        read_balance(&env, id)
-    }
-
-    /// Transfer tokens from caller to another address. Caller must authorize.
-    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), Error> {
-        from.require_auth();
-        if amount <= 0 {
-            return Err(Error::InvalidAmount);
-        }
-        let balance_from = read_balance(&env, from.clone());
-        if balance_from < amount {
-            return Err(Error::InsufficientBalance);
-        }
-        // Hot-path optimisation: write both balances before emitting the event
-        // so the host can batch the storage operations in a single round-trip.
-        write_balance(&env, from.clone(), balance_from - amount);
-        // Read `to` balance only after the guard passes to avoid a wasted read
-        // on the error path.
-        let balance_to = read_balance(&env, to.clone());
-        write_balance(&env, to.clone(), balance_to + amount);
-        env.events()
-            .publish((symbol_short!("transfer"), from, to), amount);
-        Ok(())
+            .get(&STATE_KEY)
+            .ok_or(TokenError::NotInitialized)
     }
 }
 
-fn read_balance(env: &Env, id: Address) -> i128 {
-    let key = DataKey::Balance(id);
-    env.storage().persistent().get(&key).unwrap_or(0)
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::{testutils::Address as _, Env, String};
+
+    fn setup(env: &Env) -> (MyFansTokenClient, Address) {
+        let contract_id = env.register_contract(None, MyFansToken);
+        let client = MyFansTokenClient::new(env, &contract_id);
+        let admin = Address::generate(env);
+        client.initialize(
+            &admin,
+            &String::from_str(env, "MyFans"),
+            &String::from_str(env, "MFAN"),
+            &7,
+        );
+        (client, admin)
+    }
+
+    #[test]
+    fn mint_happy_path_updates_supply_and_balance() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, admin) = setup(&env);
+        let user = Address::generate(&env);
+
+        client.mint(&user, &1_000);
+        assert_eq!(client.balance(&user), 1_000);
+        assert_eq!(client.total_supply(), 1_000);
+        assert_eq!(client.admin(), admin);
+    }
+
+    #[test]
+    fn non_admin_mint_reverts() {
+        let env = Env::default();
+        let (client, _admin) = setup(&env);
+        let attacker = Address::generate(&env);
+        let user = Address::generate(&env);
+
+        // Only the attacker authorizes; admin auth is missing.
+        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &attacker,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "mint",
+                args: (user.clone(), 1_000_i128).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+
+        let result = client.try_mint(&user, &1_000);
+        assert!(result.is_err());
+        assert_eq!(client.total_supply(), 0);
+        assert_eq!(client.balance(&user), 0);
+    }
+
+    #[test]
+    fn mint_overflow_reverts() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin) = setup(&env);
+        let user = Address::generate(&env);
+
+        client.mint(&user, &i128::MAX);
+        let result = client.try_mint(&user, &1);
+        assert_eq!(result, Err(Ok(TokenError::Overflow)));
+        assert_eq!(client.total_supply(), i128::MAX);
+    }
+
+    #[test]
+    fn burn_more_than_balance_reverts() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin) = setup(&env);
+        let user = Address::generate(&env);
+
+        client.mint(&user, &100);
+        let result = client.try_burn(&user, &101);
+        assert_eq!(result, Err(Ok(TokenError::InsufficientBalance)));
+        assert_eq!(client.balance(&user), 100);
+        assert_eq!(client.total_supply(), 100);
+    }
+
+    #[test]
+    fn burn_happy_path_decreases_supply() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin) = setup(&env);
+        let user = Address::generate(&env);
+
+        client.mint(&user, &500);
+        client.burn(&user, &200);
+        assert_eq!(client.balance(&user), 300);
+        assert_eq!(client.total_supply(), 300);
+    }
+
+    #[test]
+    fn transfer_happy_path_preserves_supply() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin) = setup(&env);
+        let from = Address::generate(&env);
+        let to = Address::generate(&env);
+
+        client.mint(&from, &1_000);
+        client.transfer(&from, &to, &400);
+        assert_eq!(client.balance(&from), 600);
+        assert_eq!(client.balance(&to), 400);
+        assert_eq!(client.total_supply(), 1_000);
+    }
+
+    #[test]
+    fn transfer_more_than_balance_reverts() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin) = setup(&env);
+        let from = Address::generate(&env);
+        let to = Address::generate(&env);
+
+        client.mint(&from, &100);
+        let result = client.try_transfer(&from, &to, &101);
+        assert_eq!(result, Err(Ok(TokenError::InsufficientBalance)));
+        assert_eq!(client.balance(&from), 100);
+        assert_eq!(client.balance(&to), 0);
+    }
+
+    #[test]
+    fn mint_zero_or_negative_reverts() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin) = setup(&env);
+        let user = Address::generate(&env);
+
+        assert_eq!(client.try_mint(&user, &0), Err(Ok(TokenError::InvalidAmount)));
+        assert_eq!(client.try_mint(&user, &-1), Err(Ok(TokenError::InvalidAmount)));
+        assert_eq!(client.total_supply(), 0);
+    }
 }
-
-/// Write a balance and extend its persistent TTL.
-///
-/// Hot-path optimisation: the TTL threshold is set to 50 so that the host
-/// skips the extend operation when the entry already has ≥ 50 ledgers of
-/// remaining TTL, avoiding a redundant storage round-trip on every transfer.
-fn write_balance(env: &Env, id: Address, amount: i128) {
-    let key = DataKey::Balance(id);
-    env.storage().persistent().set(&key, &amount);
-    env.storage().persistent().extend_ttl(&key, 50, 100);
-}
-
-#[cfg(test)]
-mod test;
-
-#[cfg(test)]
-mod allowance_expiry_tests;
-
-#[cfg(test)]
-mod property_tests;
-
-// Issue #885 – error code and panic message validation
-#[cfg(test)]
-mod error_code_tests;
-
-// Issue #886 – gas usage hot-path correctness
-#[cfg(test)]
-mod gas_tests;

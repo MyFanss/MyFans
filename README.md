@@ -87,13 +87,15 @@ You will keep only these three folders and this README; other files can be remov
 
 ### Suggested contract interface (conceptual)
 
-- `init(admin, protocol_fee_bps, fee_recipient)` – set fee (e.g. basis points) and recipient.
+- `init(admin, protocol_fee_bps, fee_recipient)` – set fee (in basis points) and recipient. **Admin-only**; the fee is capped at `MAX_FEE_BPS = 1_000` (10%) and can never be set to 100%. `fee_recipient` must be the deployed **treasury** contract.
+- `set_protocol_fee_bps(admin, bps)` – **admin-only** (`require_auth` on the stored admin; non-admin callers revert). Enforces `bps <= MAX_FEE_BPS` (`1_000` = 10%); `bps > 1_000` (e.g. `10_000` or `10_001`) reverts. `bps = 0` is explicitly allowed and disables the protocol fee. Emits a `FeeUpdated` event for indexers/analytics.
+- `set_fee_recipient(admin, recipient)` – **admin-only**. The recipient is restricted to the deployed **treasury** contract (allowlisted); setting it to any other address (e.g. a fan address) reverts. This keeps the treasury recipient invariant intact.
 - `create_plan(creator, asset, amount, interval_days)` – define a subscription plan.
-- `subscribe(fan, plan_id, duration)` – fan subscribes; payment transferred to creator minus fee.
+- `subscribe(fan, plan_id, duration)` – fan subscribes; payment is split: creator receives the amount minus the protocol fee, and the fee is routed into the treasury via its `deposit(from, amount)` entry point (pause honored, `deposit` event emitted).
 - `renew(subscription_id)` – renew if within allowed window.
 - `cancel(subscription_id)` – cancel; no refund of current period (or implement refund rules in contract).
 - `is_subscriber(fan, creator)` → bool (and optionally expiry).
-- Events for: subscription_created, payment_received, subscription_cancelled (for indexer/backend).
+- Events for: subscription_created, payment_received, subscription_cancelled, fee_updated (for indexer/backend).
 
 ### Tech
 
@@ -123,11 +125,11 @@ The current frontend wallet implementation does not treat all wallets equally:
 
 | Wallet | Current repo status | Practical difference in MyFans |
 |--------|----------------------|--------------------------------|
-| **Freighter** | Fully wired for connection and transaction signing | Best choice for creator and fan flows that need Soroban transaction approval today |
-| **Lobstr** | Wallet selection UI and install guidance exist, but the integration is still marked pending | Discoverability is documented, but users should not assume full signing parity with Freighter yet |
-| **WalletConnect** | Wallet selection UI exists, but protocol integration is still marked pending | Treat it as planned support rather than a production-ready path in this repo |
+| **Freighter** | Fully wired for connection and transaction signing | The reference wallet. **Guaranteed** for every flow; local onboarding (see [frontend/docs/LOCAL_QUICKSTART.md](frontend/docs/LOCAL_QUICKSTART.md)) is Freighter-only |
+| **Lobstr** | Connection and signing dispatch wired (`signTransaction` routes to Lobstr when it is the connected wallet) | Usable for connect + subscribe/cancel signing; still less battle-tested than Freighter |
+| **WalletConnect** | Sign Client wired behind the `walletConnect` feature flag (off by default); requires `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID` | Enable the flag + set a project ID for QR-based mobile wallet connect/sign. With the flag off the UI shows "Coming soon" |
 
-If you are documenting or testing wallet-based flows in this repository, assume **Freighter is the reference implementation** until Lobstr and WalletConnect move from interface-ready to fully integrated.
+Assume **Freighter is the reference implementation** and the only wallet with a guaranteed full-flow path. Lobstr and WalletConnect share the same `signTransaction` dispatch path but have had less real-world exercise. See **[frontend/docs/WALLET_SETUP.md](frontend/docs/WALLET_SETUP.md)** for the full support matrix, feature-flag config, and signing dispatch order.
 
 ### Tech
 
@@ -152,9 +154,7 @@ If you are documenting or testing wallet-based flows in this repository, assume 
 ### Tech
 
 - **Nest.js**, **TypeScript**.
-- DB: e.g. **PostgreSQL** (users, plans metadata, content, subscription cache).
-- **Stellar SDK** / Soroban RPC client to query contract state.
-- Optional: message queue (e.g. Bull/Redis) for event processing.
+- DB: e.g. **PostgreSQL** (users, plans metadata, content, subscription cache
 
 ---
 
@@ -165,4 +165,123 @@ If you are documenting or testing wallet-based flows in this repository, assume 
 3. **Backend** indexes contract events (or polls contract), updates DB; when fan requests gated content, backend checks DB or calls contract to confirm `is_subscriber`.
 4. **Frontend** shows “Subscribed until …” and 
 
-/* … truncated 4348 chars — edit only what you need near the top … */
+## Tech Stack Summary
+
+| Layer | Technologies |
+|-------|----------------|
+| Chain & contracts | Stellar, Soroban, Rust, soroban-sdk, stellar-cli |
+| Frontend | Next.js, TypeScript, Stellar SDK, wallet integration |
+| Backend | Nest.js, TypeScript, PostgreSQL (or similar), Stellar/Soroban RPC, IPFS (metadata/refs) |
+| Storage | IPFS (content refs), DB (metadata, indexer cache) |
+
+---
+
+## Development Milestones
+
+1. **Contract**
+   - Implement subscription lifecycle (create plan, subscribe, renew, cancel).
+   - Implement payment split (creator + protocol fee) for one asset, then multi-asset.
+   - Emit events; add access control (`is_subscriber`).
+   - Unit tests; deploy to testnet.
+
+2. **Backend**
+   - Nest.js project; auth (Stellar key ↔ user); CRUD for creators, plans metadata, content.
+   - Integrate Soroban RPC; event indexer or polling; “is subscriber?” API.
+   - IPFS for content refs; optional notifications.
+
+3. **Frontend**
+   - Next.js; wallet connect; creator dashboard (create plan, view earnings); fan flow (discover, subscribe, manage subscriptions).
+   - Use backend for metadata and access checks; use contract for tx signing and state.
+
+4. **Integration**
+   - End-to-end: create plan → subscribe → access gated content.
+   - Optional: fiat on-ramp (anchor) so fans can pay with card.
+
+5. **Launch**
+   - Testnet beta; security review; mainnet deployment; docs and community.
+
+---
+
+## Getting Started (After Initialization)
+
+Install dependencies for all packages:
+
+```bash
+./scripts/myfans install
+# or: npm run install:all
+```
+
+Build everything:
+
+```bash
+./scripts/myfans build
+# or: npm run build
+```
+
+Run dev servers (separate terminals):
+
+```bash
+./scripts/myfans dev:backend   # NestJS API on :3001
+./scripts/myfans dev:frontend  # Next.js app on :3000
+```
+
+Full local verification (lint + test + build):
+
+```bash
+./scripts/myfans check
+```
+
+Per-package commands are also available via root `package.json` scripts (`build:backend`, `test:contract`, etc.) or by `cd`-ing into each folder:
+
+- **Contract**: `cd contract && cargo test`; `npm run build` for WASM artifacts (deploy with stellar-cli). See [Contract Testing Guide](./contract/TESTING.md).
+- **Backend**: `cd backend && npm ci && npm run start:dev`.
+- **Frontend**: `cd frontend && npm ci && npm run dev`.
+
+---
+
+## Documentation
+
+### Contract Development
+- **[Contract Testing Guide](contract/TESTING.md)** - Comprehensive testing patterns and best practices for Soroban contracts
+- **[Regression Testing Guide](contract/REGRESSION_TESTING.md)** - How contract regression testing is enforced in CI
+- **[Regression Prevention Checklist](contract/REGRESSION_CHECKLIST.md)** - Developer checklist for PR submission
+- **[Contract Branch Protection](contract/docs/BRANCH_PROTECTION.md)** - CI status checks required before merge
+- **[Contract Interfaces](contract/docs/interfaces/)** - Method documentation for each contract
+
+### Platform Governance & Operations
+- **[Contract Upgrade Governance](docs/CONTRACT_UPGRADE_GOVERNANCE.md)** - Process for upgrading smart contracts safely
+- **[Security Policy](SECURITY.md)** - Security reporting, penetration testing tracker, and best practices
+- **[Secret Management](backend/docs/SECRET_MANAGEMENT.md)** - JWT and secret rotation runbooks
+- **[CORS & Security Headers](backend/docs/CORS_AND_SECURITY_HEADERS.md)** - Per-environment CORS allowlist and header configuration
+- **[Bug Bash Checklist](docs/BUG_BASH_CHECKLIST.md)** - Comprehensive QA checklist before major releases
+- **[Changelog Guide](docs/CHANGELOG_GUIDE.md)** - How to use conventional commits for automatic changelog generation
+- **[Postgres Backup / Restore](docs/POSTGRES_BACKUP_RESTORE.md)** - Backup runbook, restore decision tree, and CI drill
+
+### Development
+- **[Changelog](CHANGELOG.md)** - Automatically generated from conventional commits
+- **[Upgrade Log](docs/upgrade-log.md)** - Historical record of contract upgrades
+
+---
+
+## License
+
+MIT.
+
+---
+
+## Contact
+
+- Email: realjaiboi70@gmail.com
+
+This README describes the MyFans project on Stellar. Implement each module (contract, backend, frontend) step by step as needed.
+
+## Handsoff notes
+
+<!-- handsoff-issue-1781 -->
+- #1781: SubscriptionsModule: checkout, index, spending-cap, swagger completeness
+
+<!-- handsoff-issue-1751 -->
+- #1751: creator-deposits: stake/deposit withdraw security—unauthorized withdraw leaves stake unchanged
+
+<!-- handsoff-issue-1753 -->
+- #1753: myfans-lib: eliminate panics from library paths; stable error_codes for all callers

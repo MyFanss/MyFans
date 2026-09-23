@@ -2,6 +2,8 @@
 
 A practical guide to getting the MyFans backend API running locally, making your first authenticated request, and understanding the conventions you'll encounter when contributing.
 
+> **OpenAPI is the source of truth.** The committed spec at [`backend/openapi.json`](../openapi.json) is generated from the running app and drift-tested in CI. Every controller path registered in `AppModule` must either appear in the spec or be explicitly marked internal/excluded. See [OpenAPI source of truth](#13-openapi-source-of-truth) below.
+
 ---
 
 ## Table of Contents
@@ -18,30 +20,102 @@ A practical guide to getting the MyFans backend API running locally, making your
 10. [Error format](#10-error-format)
 11. [Running backend tests](#11-running-backend-tests)
 12. [Adding a new endpoint — checklist](#12-adding-a-new-endpoint--checklist)
+13. [OpenAPI source of truth](#13-openapi-source-of-truth)
 
 ---
 
 ## 1. Start the backend locally
 
-The fastest path is Docker Compose (no local Postgres or Node install needed):
+The fastest path is Docker Compose (no local Postgres or Node install needed).
+All services — API, Postgres, Redis, email-outbox worker, and Soroban-event
+poller — are started in one command.
 
 ```bash
 # From repository root
-cp .env.dev.example .env.dev
-# Edit .env.dev — at minimum set JWT_SECRET to a random value:
-# node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+cp backend/.env.example backend/.env.dev
+# Edit backend/.env.dev — at minimum set:
+#   JWT_SECRET  (generate: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))")
+#   DB_PASSWORD (any strong password)
 
 docker compose -f docker-compose.dev.yml --profile dev up
 ```
 
 The backend starts on **http://localhost:3001** with hot reload.
 
+### Services started by compose
+
+| Service | Description | Port |
+|---------|-------------|------|
+| `postgres` | PostgreSQL 15 (persistent volume) | 5432 |
+| `redis` | Redis 7 cache / session store | 6379 |
+| `api` | NestJS backend (hot-reload) | 3001 |
+| `worker-poller` | Soroban event poller — indexes chain events so subscription state stays current | — |
+| `worker-outbox` | Transactional email outbox processor — delivers queued emails | — |
+| `frontend` | Next.js dev server | 3000 |
+
+All services must report **healthy** before dependent services start.
+The API readiness probe (`/v1/health/ready`) is used as the gate — it
+checks Postgres and Redis before the frontend is allowed to connect.
+
+### Verifying compose health
+
+```bash
+# All services should show "healthy"
+docker compose -f docker-compose.dev.yml ps
+
+# Tail logs for a specific service
+docker compose -f docker-compose.dev.yml logs -f worker-poller
+docker compose -f docker-compose.dev.yml logs -f worker-outbox
+```
+
 Verify it's up:
 
 ```bash
 curl http://localhost:3001/v1/health
-# {"status":"ok","timestamp":"..."}
+# {"status":"up","timestamp":"2026-08-28T00:00:00.000Z"}
 ```
+
+### Health and readiness probes
+
+The backend exposes two distinct probe endpoints (both public, no token needed):
+
+| Endpoint | Purpose | Example response / status |
+|----------|---------|---------------------------|
+| `GET /v1/health` | **Liveness** — the process is up and able to handle requests. It is deliberately cheap and never probes dependencies, so a DB/Redis/RPC outage does not trigger an orchestrator restart. | `200` with `{"status":"up","timestamp":"..."}` |
+| `GET /v1/health/ready` | **Readiness** — the instance is fit to receive traffic. Probes the database (mandatory) and Redis when configured (mandatory); Soroban RPC is probed but optional. | `200` when ready, `503` when the database or a configured Redis is down |
+
+```bash
+# Liveness (process up only)
+curl -s http://localhost:3001/v1/health
+
+# Readiness (probes DB, Redis-if-configured, and optional RPC)
+curl -s http://localhost:3001/v1/health/ready
+# 200 {"status":"up","checks":{"database":{"status":"up",...},...}}
+```
+
+Kubernetes probe example — point the liveness probe at `/v1/health` and the
+readiness probe at `/v1/health/ready` so traffic is only routed to instances
+whose dependencies are actually reachable:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /v1/health
+    port: 3001
+  initialDelaySeconds: 10
+  periodSeconds: 10
+readinessProbe:
+  httpGet:
+    path: /v1/health/ready
+    port: 3001
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  failureThreshold: 3
+```
+
+The same split applies to Docker Compose / load-balancer healthchecks: use
+`/v1/health` for "is the container alive" and `/v1/health/ready` for "is it
+safe to route traffic here".
 
 ### Manual setup (without Docker)
 
@@ -77,6 +151,13 @@ http://localhost:3001/api-docs
 ```
 
 Swagger UI lists every endpoint with request/response schemas, lets you try requests directly in the browser, and shows which routes require authentication.
+
+The same document is committed as [`backend/openapi.json`](../openapi.json) and is the canonical, machine-readable contract for the API. Regenerate it with:
+
+```bash
+cd backend
+npm run openapi:generate
+```
 
 ---
 
@@ -228,110 +309,126 @@ curl -s http://localhost:3001/v1/health \
   -i | grep -i x-correlation
 ```
 
+#### Validation rules
+
+Client-supplied correlation ids are accepted only when they are safe to log and
+propagate. The middleware applies the following rules and **regenerates** a fresh
+id whenever a supplied value is rejected:
+
+| Rule | Accepted | Rejected (regenerated) |
+|------|----------|------------------------|
+| Charset | `A–Z`, `a–z`, `0–9`, `-`, `_`, `.` | anything else (spaces, `/`, `\`, control chars, unicode) |
+| Length | 1–128 characters | empty, or longer than 128 characters |
+| Missing header | — | server generates a UUID v4 |
+
+```bash
+# Accepted — echoed back verbatim
+curl -s http://localhost:3001/v1/health -H "X-Correlation-ID: checkout-abc123" -i | grep -i x-correlation
+
+# Rejected (illegal charset) — server substitutes a generated id
+curl -s http://localhost:3001/v1/health -H "X-Correlation-ID: bad id!" -i | grep -i x-correlation
+```
+
+> **Security:** never put PII (emails, wallet addresses, tokens) in a
+> correlation id. Ids are written to logs and returned to clients, so treat them
+> as public, non-sensitive tracing tokens.
+
 ### Content type
 
-All request bodies must be `application/json`. Responses are always `application/json`.
+All request bodies must be `application/json` unless the endpoint documents a
+multipart upload. Responses are `application/json`.
 
 ---
 
 ## 7. Rate limiting
 
-The API uses tiered rate limits enforced by `@nestjs/throttler`:
+Rate limits are enforced per IP (and per user where authenticated). Exceeding a
+limit returns `429 Too Many Requests` with a `Retry-After` header.
 
-| Tier | TTL | Limit | Applied to |
-|------|-----|-------|------------|
-| `auth` | 60 s | 5 req | Auth endpoints |
-| `short` | 60 s | 10 req | Sensitive write endpoints |
-| `medium` | 60 s | 50 req | Standard endpoints |
-| `long` | 60 s | 100 req | Read-heavy endpoints |
-
-When a limit is exceeded the API returns `429 Too Many Requests`. See [`docs/RATE_LIMITING.md`](./RATE_LIMITING.md) for the full policy.
+| Scope | Limit |
+|-------|-------|
+| Auth endpoints (`/v1/auth/*`) | 5 requests / minute / IP |
+| General API | 100 requests / minute / IP |
 
 ---
 
 ## 8. CSRF protection
 
-State-mutating requests (`POST`, `PUT`, `PATCH`, `DELETE`) require a valid CSRF token in the `X-CSRF-Token` header. Fetch a token first:
+State-mutating requests from browsers must include a CSRF token. Fetch one from
+`GET /v1/csrf/token` and send it back in the `X-CSRF-Token` header.
 
 ```bash
-# 1. Fetch CSRF token (public endpoint — no auth needed)
-CSRF_TOKEN=$(curl -s http://localhost:3001/v1/csrf/token | jq -r '.token')
-
-# 2. Use it in state-mutating requests
-curl -s -X POST http://localhost:3001/v1/posts \
+CSRF=$(curl -s http://localhost:3001/v1/csrf/token | jq -r .token)
+curl -s -X PATCH http://localhost:3001/v1/users/me \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-CSRF-Token: $CSRF_TOKEN" \
+  -H "X-CSRF-Token: $CSRF" \
   -H "Content-Type: application/json" \
-  -d '{"title": "Hello", "body": "World"}'
+  -d '{"displayName":"Ada"}'
 ```
-
-CSRF tokens are double-submit cookies — the server sets a cookie and expects the same value in the header. See [`docs/CORS_AND_SECURITY_HEADERS.md`](./CORS_AND_SECURITY_HEADERS.md) for details.
 
 ---
 
 ## 9. Idempotency
 
-Certain write endpoints support idempotency keys to prevent duplicate operations on retry. Send an `Idempotency-Key` header with a unique UUID:
+Endpoints that create resources accept an `Idempotency-Key` header. Replaying a
+request with the same key returns the original response instead of creating a
+duplicate.
 
 ```bash
-curl -s -X POST http://localhost:3001/v1/subscriptions/checkout \
+curl -s -X POST http://localhost:3001/v1/subscriptions \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-CSRF-Token: $CSRF_TOKEN" \
-  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Idempotency-Key: sub-2026-05-30-001" \
   -H "Content-Type: application/json" \
-  -d '{"planId": "<PLAN_ID>"}'
+  -d '{"creatorId":"...","planId":"..."}'
 ```
 
-Endpoints that enforce idempotency:
-
-- `POST /v1/creators/plans`
-- `POST /v1/subscriptions/checkout`
-- `POST /v1/posts`
-- `PUT /v1/posts/:id`
-- `POST /v1/comments`
-- `PUT /v1/comments/:id`
-- `POST /v1/conversations`
-- `POST /v1/conversations/:id/messages`
-
-See [`docs/IDEMPOTENCY.md`](./IDEMPOTENCY.md) for the full spec.
+If the same key is sent again, the server returns the original response instead of re-executing the operation. Keys are scoped per user and expire after 24 hours.
 
 ---
 
 ## 10. Error format
 
-All errors follow a consistent JSON envelope:
+All errors share a single, stable envelope. Every error response includes the
+`correlationId` so a client can quote it in a bug report and a maintainer can
+grep the backend logs for the same request.
 
 ```json
 {
-  "statusCode": 400,
-  "message": "Validation failed",
-  "error": "Bad Request",
-  "correlationId": "abc-123"
+  "statusCode": 404,
+  "message": "Post not found",
+  "code": "POST_NOT_FOUND",
+  "correlationId": "9f1c2b7e-4a3d-4f0e-9c1a-2b3c4d5e6f70"
 }
 ```
 
-Validation errors include a `message` array with per-field details:
+| Field | Type | Description |
+|-------|------|-------------|
+| `statusCode` | number | HTTP status code |
+| `message` | string | Human-readable, safe to display |
+| `code` | string | Stable machine-readable error code |
+| `correlationId` | string | Matches the `X-Correlation-ID` response header and the `correlationId` field on every log line for the request |
 
-```json
-{
-  "statusCode": 400,
-  "message": ["address must be exactly 56 characters"],
-  "error": "Bad Request"
-}
-```
+Validation errors additionally include a `details` array describing each field
+failure; the four fields above are always present.
 
 Common status codes:
 
 | Code | Meaning |
 |------|---------|
-| 400 | Validation error or bad input |
-| 401 | Missing or invalid JWT |
-| 403 | Authenticated but not authorised (wrong role) |
-| 404 | Resource not found |
-| 409 | Conflict (e.g. duplicate resource) |
-| 422 | Business logic error |
-| 429 | Rate limit exceeded |
-| 500 | Internal server error |
+| `400` | Validation error — check request body |
+| `401` | Missing or invalid JWT |
+| `403` | Authenticated but not authorized (e.g. no active subscription) |
+| `404` | Resource not found |
+| `409` | Conflict (duplicate resource) |
+| `429` | Rate limit exceeded |
+| `500` | Internal server error |
+
+```bash
+# Trigger an error and inspect the envelope + header together
+curl -s http://localhost:3001/v1/posts/does-not-exist \
+  -H "Authorization: Bearer $TOKEN" \
+  -i | grep -iE 'x-correlation|statusCode|correlationId'
+```
 
 ---
 
@@ -339,70 +436,104 @@ Common status codes:
 
 ```bash
 cd backend
+# Unit tests
+npm run test
 
-# Run all unit tests
-npm test
+# Unit tests
+npm run test
 
-# Run tests in watch mode (during development)
+# Watch mode
 npm run test:watch
 
-# Run with coverage
+# Coverage
 npm run test:cov
 
-# Run e2e tests (requires a running database)
+# End-to-end tests (requires a running Postgres)
 npm run test:e2e
-```
 
-Tests live alongside source files as `*.spec.ts`. Property-based tests use [fast-check](https://fast-check.dev/) and are named `*.properties.spec.ts`.
+# OpenAPI drift test — fails if a controller path is undocumented
+npm run test:openapi
+
+# Lint
+npm run lint
+```
 
 ---
 
 ## 12. Adding a new endpoint — checklist
 
-When contributing a new endpoint, follow these steps to match existing patterns:
-
-- [ ] **Module**: add the controller and service to the relevant NestJS module (or create a new module following the existing structure).
-- [ ] **DTO**: define request/response DTOs with `class-validator` decorators and `@ApiProperty` for Swagger.
-- [ ] **Auth**: use `@Public()` only for genuinely public endpoints; all others are JWT-protected by default.
-- [ ] **Roles**: apply `@Roles(Role.Creator)` or similar if the endpoint is role-restricted.
-- [ ] **Rate limit**: apply `@Throttle({ medium: {} })` (or the appropriate tier) to the controller or method.
-- [ ] **CSRF**: state-mutating endpoints are automatically covered by `CsrfMiddleware` — no extra annotation needed.
-- [ ] **Idempotency**: if the endpoint creates or modifies a resource, add it to `IDEMPOTENCY_ROUTES` in `app.module.ts`.
-- [ ] **Swagger**: add `@ApiTags`, `@ApiOperation`, and `@ApiResponse` decorators.
-- [ ] **Tests**: add unit tests (`*.spec.ts`) and, for complex logic, property-based tests (`*.properties.spec.ts`).
-- [ ] **Lint**: run `npm run lint` and fix any issues before opening a PR.
-
-### Minimal controller example
-
-```typescript
-import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
-import { JwtAuthGuard } from '../auth-module/guards/jwt-auth.guard';
-
-@ApiTags('example')
-@Controller({ path: 'example', version: '1' })
-export class ExampleController {
-  @Get()
-  @Throttle({ medium: {} })
-  @ApiOperation({ summary: 'List examples' })
-  @ApiResponse({ status: 200, description: 'List of examples' })
-  findAll() {
-    return [];
-  }
-}
-```
+1. Add the controller method with the appropriate decorators (`@Get`, `@Post`, etc.).
+2. Add `@ApiOperation` / `@ApiResponse` decorators so the route is documented.
+3. If the route is internal (health, metrics) or a webhook, mark it excluded from the public spec (see below).
+4. Regenerate the spec: `npm run openapi:generate`.
+5. Run the drift test: `npm run test:openapi`.
+6. Commit both the code change and the updated `backend/openapi.json`.
 
 ---
 
-## Further reading
+## 13. OpenAPI source of truth
 
-| Document | Location |
-|----------|----------|
-| Local dev guide | [`DEVELOPMENT.md`](../../DEVELOPMENT.md) |
-| CORS and security headers | [`docs/CORS_AND_SECURITY_HEADERS.md`](./CORS_AND_SECURITY_HEADERS.md) |
-| Rate limiting policy | [`docs/RATE_LIMITING.md`](./RATE_LIMITING.md) |
-| Idempotency spec | [`docs/IDEMPOTENCY.md`](./IDEMPOTENCY.md) |
-| Secret management | [`docs/SECRET_MANAGEMENT.md`](./SECRET_MANAGEMENT.md) |
-| Contract deploy runbook | [`contract/docs/CONTRACT_DEPLOY_RUNBOOK.md`](../../contract/docs/CONTRACT_DEPLOY_RUNBOOK.md) |
-| Swagger UI (live) | `http://localhost:3001/api-docs` |
+The committed [`backend/openapi.json`](../openapi.json) is generated from the running NestJS app by [`backend/scripts/generate-openapi.ts`](../scripts/generate-openapi.ts). It is the canonical contract for clients and is kept in sync by a CI drift test.
+
+### How drift is detected
+
+The drift test enumerates every controller path registered in `AppModule` and asserts that each one is either:
+
+- present in `openapi.json`, or
+- explicitly excluded via the internal/excluded allowlist (health checks, webhooks).
+
+If a controller path is neither documented nor excluded, CI fails. This prevents both **undocumented routes** (shipped but invisible to clients) and **ghost docs** (documented but no longer served).
+
+### Excluded paths
+
+The following are intentionally excluded from the public spec:
+
+| Path | Reason |
+|------|--------|
+| `/v1/health` | Internal liveness/readiness probe |
+| `/v1/health/*` | Internal subsystem health checks |
+| Webhook receivers | Third-party callbacks, not client-facing |
+
+### Security schemes
+
+Admin routes must declare a security scheme in the generated spec. A route under an admin path that is exposed without an `@ApiSecurity` / bearer scheme will fail the drift test — admin endpoints must never be publicly documented without authentication.
+
+### Servers
+
+The spec declares the versioned server base path:
+
+```json
+"servers": [{ "url": "/v1" }]
+```
+
+### Regenerating the baseline
+
+```bash
+cd backend
+npm run openapi:generate   # writes backend/openapi.json
+npm run test:openapi       # verifies no drift
+```
+
+Commit the regenerated `openapi.json` alongside any controller change so the baseline stays current.
+
+### Additional checklist items
+
+- [ ] Route lives under `/v1/` and is documented in Swagger.
+- [ ] Protected by default; add `@Public()` only when truly public.
+- [ ] Validates input with a DTO (`class-validator`).
+- [ ] Returns the standard pagination envelope for list endpoints.
+- [ ] Throws `HttpException` subclasses so the global filter emits the standard error envelope (including `correlationId`).
+- [ ] Never logs PII; rely on the correlation id to trace requests.
+- [ ] Covered by at least one unit test and, for critical paths, an e2e test.
+
+### Gated content access
+
+Content gated behind a subscription must be unlocked through the backend access API, never by handing the raw CID to the client. The backend verifies an **active** subscription for the requesting fan against the content's creator before returning any full-content reference:
+
+- **Expired** subscription → deny (`403`).
+- **Cancelled** subscription → deny (`403`).
+- **Wrong creator** (subscription is for a different creator) → deny (`403`).
+- **Paused** subscription contract → deny (`403`).
+- **RPC / contract error** while checking subscription state → fail closed (`403`/`503`), never fail open.
+
+Unauthorized callers receive only the teaser/preview metadata, never the full content reference. See [`contract/docs/interfaces/content-access.md`](../../contract/docs/interfaces/content-access.md) and [`frontend/docs/CONTENT_ACCESS.md`](../../frontend/docs/CONTENT_ACCESS.md) for the trust boundaries between frontend, backend, and the on-chain subscription contract.

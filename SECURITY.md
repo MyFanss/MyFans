@@ -1,146 +1,75 @@
-# Security Policy
+# Security findings
 
-## Reporting Security Vulnerabilities
+## Dependency audit policy
 
-If you discover a security vulnerability in MyFans, please report it responsibly:
+High and critical vulnerabilities in npm packages (backend + frontend) and
+Rust crates (contract) **block PRs**. The audit runs on every pull request,
+every push to `main`, and weekly (Monday 08:00 UTC) via
+`.github/workflows/security-audit.yml`.
 
-1. **DO NOT** open a public GitHub issue
-2. Email security@myfans.platform with details
-3. Include steps to reproduce, impact assessment, and suggested fixes if available
-4. Allow 48 hours for initial response
+- **npm audit** (`--audit-level=high --omit=dev`): low/moderate advisories are
+  reported but do not fail CI.
+- **cargo audit**: severity threshold and approved exceptions are declared in
+  `contract/audit.toml`. Add a new entry there (with a justification comment)
+  to document a known-safe advisory.
 
-## Security Response Process
+See [`docs/testing.md`](docs/testing.md) for full CI details.
 
-1. **Acknowledgment**: Within 48 hours
-2. **Assessment**: Within 5 business days
-3. **Fix Development**: Timeline communicated after assessment
-4. **Disclosure**: Coordinated disclosure after fix is deployed
+## Finding #7 — no audit trail for admin role changes / moderation actions (#1568)
 
-## Penetration Testing Findings Tracker
+**Resolved.** A compromised admin token could previously promote accounts
+or approve/reject moderation flags with no durable record. `backend/src/admin-audit`
+now provides an append-only `admin_audit_events` table (actor, action, target,
+a SHA-256 payload hash, correlation id, timestamp). A row is written on every
+role change (`UsersController#updateUserRole`, admin-only) and every
+moderation decision (`ModerationService#reviewFlag`). The log is readable via
+`GET /v1/admin/audit-log` (admin-only, 403 otherwise, paginated); there is no
+update or delete endpoint for audit rows.
 
-### Current Security Status
+## Finding #6 — duplicate authentication stacks
 
-| Component | Last Tested | Status | Critical Issues | High Issues | Medium Issues |
-|-----------|-------------|--------|-----------------|-------------|---------------|
-| Frontend  | -           | Pending | 0              | 0           | 0             |
-| Backend   | -           | Pending | 0              | 0           | 0             |
-| Contracts | -           | Pending | 0              | 0           | 0             |
+**Resolved.** The canonical runtime stack is `backend/src/auth-module` with
+`backend/src/users`. The deprecated `src/auth`, `src/users-module`, and
+`src/refresh-module` trees were removed. The global throttler lives under
+`src/common/guards`, and historical schema migrations live under
+`src/database/migrations`, so deleting deprecated code no longer removes
+production controls or migration history.
 
-### Findings Log
+## Finding #1 — static health endpoint did not probe dependencies (#1620)
 
-#### Template
-```
-### Finding #[ID] - [Severity] - [Date Found]
-**Component**: [Frontend/Backend/Contract]
-**Category**: [e.g., XSS, SQL Injection, Access Control]
-**Description**: [Brief description]
-**Impact**: [Potential impact]
-**Status**: [Open/In Progress/Resolved/Accepted Risk]
-**Assigned To**: [Team member]
-**Resolution**: [How it was fixed or why accepted]
-**Resolved Date**: [Date]
-```
+**Resolved.** `GET /v1/health` previously reported a static `up` without
+probing any subsystem, so an orchestrator (k8s liveness/readiness probe, load
+balancer health check) could keep routing traffic to an instance whose
+database connection was completely down. Liveness (`GET /v1/health`) now stays
+a cheap process-up check by design — a dependency outage must not restart an
+otherwise-healthy process — and readiness moved to `GET /v1/health/ready`,
+which probes the database (mandatory, 503 on failure) and Redis when
+configured (mandatory, 503 on failure), while Soroban RPC is probed and
+reported for visibility only and never fails readiness on its own.
 
----
+## Finding #8 — subscription pause/unpause authorization and key ceremony (#1754)
 
-### Active Findings
+**Resolved.** Incident response can now pause subscriptions end-to-end. The
+on-chain `pause`/`unpause` entrypoints are gated by the contract admin key and
+block `subscribe`, `extend`, and `create_plan` while paused (global pause only;
+per-plan pause is out of scope). The backend surfaces the paused state as a
+status field on the subscription status endpoint, detected via simulation or
+contract event, so clients can react without trusting a stale cache. The
+frontend renders locked-state copy and disables the confirm CTA while paused.
 
-*No active findings at this time*
+**Authorization.** `pause`/`unpause` are admin-only: the contract rejects any
+caller that is not the configured admin, and the backend admin endpoints
+require the admin role (403 otherwise). Pause/unpause actions are recorded in
+the append-only `admin_audit_events` log (Finding #7) with actor, action, and
+correlation id.
 
----
+**Key ceremony.** The admin key is held in the deployment secret store and is
+never committed, logged, or echoed in API responses. Pause/unpause is performed
+by an operator with the admin key via the admin endpoint or the contract CLI;
+the key is rotated per the standard rotation runbook after any suspected
+compromise. Admin addresses are not rendered in the UI — the frontend only
+shows the paused/locked state, never the admin identity.
 
-### Resolved Findings
-
-*No resolved findings yet*
-
----
-
-### Accepted Risks
-
-*No accepted risks at this time*
-
----
-
-## Security Best Practices
-
-### For Developers
-
-#### Frontend
-- Sanitize all user inputs
-- Use Content Security Policy (CSP)
-- Implement proper CORS policies
-- Avoid storing sensitive data in localStorage
-- Use HTTPS only
-- Implement rate limiting on API calls
-
-#### Backend
-- Validate and sanitize all inputs
-- Use parameterized queries (prevent SQL injection)
-- Implement proper authentication and authorization
-- Use environment variables for secrets
-- Enable CORS selectively
-- Implement rate limiting
-- Log security events
-- Keep dependencies updated
-
-#### Smart Contracts
-- Follow Soroban security best practices
-- Implement access controls
-- Validate all inputs
-- Use safe math operations
-- Test edge cases thoroughly
-- Conduct security audits before mainnet deployment
-- Implement upgrade governance (see CONTRACT_UPGRADE_GOVERNANCE.md)
-
-## Security Checklist for PRs
-
-- [ ] No hardcoded secrets or credentials
-- [ ] Input validation implemented
-- [ ] Authentication/authorization checks in place
-- [ ] Error messages don't leak sensitive information
-- [ ] Dependencies are up to date and have no known vulnerabilities
-- [ ] Security-sensitive changes reviewed by security team
-
-## Dependency Security
-
-Run security audits regularly:
-
-```bash
-# Frontend
-cd frontend && npm audit
-
-# Backend
-cd backend && npm audit
-
-# Contracts
-cd contract && cargo audit
-```
-
-## Incident Response
-
-In case of a security incident:
-
-1. **Contain**: Immediately isolate affected systems
-2. **Assess**: Determine scope and impact
-3. **Notify**: Alert security team and stakeholders
-4. **Remediate**: Deploy fixes
-5. **Document**: Record incident details and response
-6. **Review**: Conduct post-mortem and update procedures
-
-## Security Contacts
-
-- **Security Team**: security@myfans.platform
-- **Emergency Contact**: emergency@myfans.platform (24/7)
-
-## Compliance
-
-MyFans adheres to:
-- OWASP Top 10 security guidelines
-- Soroban smart contract security best practices
-- Industry-standard encryption protocols (TLS 1.3+)
-
-## Security Updates
-
-This document is reviewed and updated quarterly or after significant security events.
-
-**Last Updated**: 2026-04-22
+**Runbook.** The pause/unpause incident runbook is linked from
+`frontend/docs/LOCAL_QUICKSTART.md` and covers pausing mid-checkout races,
+unpause restoration, and stale UI cache after pause.

@@ -13,30 +13,43 @@ Rate limiting is enforced globally using `@nestjs/throttler` to protect against 
 | `short` | 10 requests | 60 seconds | Default short window |
 | `medium` | 50 requests | 60 seconds | Authenticated user operations |
 | `long` | 100 requests | 60 seconds | General API endpoints (default) |
-| Auth throttle | 5 requests | 60 seconds | Login/register (strict) |
-| Exempt | Unlimited | N/A | Health check endpoints |
+| `auth` | 5 requests | 60 seconds | Login/register (strict) |
+| Exempt | Unlimited | N/A | Basic liveness endpoint only |
+
+## Route Classes
+
+Routes are grouped into three classes so that limits match the cost and risk of
+each operation:
+
+| Class | Tier | Limit | Applies to |
+|-------|------|-------|------------|
+| Auth (strict) | `auth` | 5 req/min | `POST /v1/auth/login`, `POST /v1/auth/register`, and other auth challenge endpoints |
+| Read (loose) | `long` | 100 req/min | Public read endpoints such as creator and plan listings |
+| Upload (strict) | `short` | 10 req/min | Upload and other write-heavy endpoints |
 
 ## Endpoint Categories
 
 ### Health Check Endpoints (Exempt)
-These endpoints are exempt from rate limiting and can be accessed without restrictions:
+Only the inexpensive liveness endpoint is exempt from rate limiting:
 - `GET /v1/health` - Basic health check
-- `GET /v1/health/db` - Database health
-- `GET /v1/health/redis` - Redis health
-- `GET /v1/health/soroban` - Soroban RPC health
-- `GET /v1/health/soroban-contract` - Soroban contract health
-- `GET /v1/health/queue-metrics` - Queue metrics
+
+Dependency and diagnostic health endpoints remain rate limited because they
+perform external or comparatively expensive work.
 
 ### Authentication Endpoints (Strict)
 Rate limited to prevent brute-force attacks:
 - `POST /v1/auth/login` - 5 requests per minute
 - `POST /v1/auth/register` - 5 requests per minute
 
-### Public Endpoints
+### Public Endpoints (Read, Loose)
 Rate limited to prevent abuse while allowing public access:
 - `GET /v1/creators` - Search creators: 100 requests per minute
 - `GET /v1/creators/plans` - List all plans: 100 requests per minute
 - `GET /v1/creators/:address/plans` - List creator plans: 100 requests per minute
+
+### Upload Endpoints (Strict)
+Rate limited to protect write-heavy operations:
+- Upload endpoints - 10 requests per minute
 
 ### All Other Endpoints
 Default rate limit of 100 requests per minute applies.
@@ -71,6 +84,7 @@ Rate limiting is configured in `backend/src/app.module.ts`:
 
 ```typescript
 ThrottlerModule.forRoot([
+  { name: 'auth', ttl: 60000, limit: 5 },
   { name: 'short', ttl: 60000, limit: 10 },
   { name: 'medium', ttl: 60000, limit: 50 },
   { name: 'long', ttl: 60000, limit: 100 },
@@ -79,7 +93,7 @@ ThrottlerModule.forRoot([
 
 ### Custom Throttler Guard
 
-A custom `ThrottlerGuard` (`backend/src/auth/throttler.guard.ts`) extends the NestJS throttler to:
+A custom `ThrottlerGuard` (`backend/src/common/guards/throttler.guard.ts`) extends the NestJS throttler to:
 - Exempt health check endpoints from rate limiting
 - Apply appropriate rate limits based on route
 
@@ -91,7 +105,7 @@ Individual routes can be configured using the `@Throttle()` decorator:
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
   @Post('login')
-  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  @Throttle({ auth: { limit: 5, ttl: 60000 } })
   async login(@Body() body: { address?: string }) {
     // ...
   }
@@ -115,39 +129,56 @@ To adjust rate limits:
 
 1. **Global limits**: Edit `ThrottlerModule.forRoot()` in `backend/src/app.module.ts`
 2. **Per-route limits**: Add or modify `@Throttle()` decorators on controller methods
-3. **New exempt routes**: Update `ThrottlerGuard.isHealthCheckRoute()` in `backend/src/auth/throttler.guard.ts`
+3. **New exempt routes**: Update `ThrottlerGuard` in `backend/src/common/guards/throttler.guard.ts`
 
 ## Distributed Rate Limiting (Production)
 
-The current implementation uses in-memory rate limiting which works for single-instance deployments.
+The default implementation uses in-memory rate limiting, which only works for
+single-instance deployments. Each instance keeps its own counters, so a client
+can multiply its effective quota by the number of running instances.
 
-For multi-instance production deployments, consider using Redis-backed throttling:
+**Redis is required before scaling horizontally.** Any multi-instance or
+HA deployment MUST configure `REDIS_URL` so all instances share a single
+throttler store. When `REDIS_URL` is set, the throttler uses a Redis-backed
+store; when it is unset, it falls back to the in-memory store (single-instance
+only).
 
 ```typescript
-// Install: npm install @throttler/redis ioredis
-import { RedisStore } from '@throttler/redis';
+// Install: npm install @nestjs/throttler ioredis
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 
-ThrottlerModule.forRoot([
-  {
-    name: 'long',
-    ttl: 60000,
-    limit: 100,
-    storage: new RedisStore({
-      host: process.env.REDIS_HOST,
-      port: process.env.REDIS_PORT,
-    }),
-  },
-]),
+const storage = process.env.REDIS_URL
+  ? new ThrottlerStorageRedisService(process.env.REDIS_URL)
+  : undefined; // in-memory fallback for single-instance deployments
+
+ThrottlerModule.forRoot({
+  throttlers: [
+    { name: 'auth', ttl: 60000, limit: 5 },
+    { name: 'short', ttl: 60000, limit: 10 },
+    { name: 'medium', ttl: 60000, limit: 50 },
+    { name: 'long', ttl: 60000, limit: 100 },
+  ],
+  storage,
+}),
 ```
+
+### Deployment Checklist for HA
+
+- [ ] Set `REDIS_URL` on every API instance
+- [ ] Verify all instances point at the same Redis database
+- [ ] Confirm counters are shared (a burst across instances is throttled once)
+- [ ] Never disable throttling in production via a query parameter
 
 ## Testing
 
-Rate limiting is tested in `backend/src/auth/throttler.guard.spec.ts`.
+Rate limiting is tested in `backend/src/common/guards/throttler.guard.spec.ts`
+and end-to-end in `backend/test/rate-limit.e2e-spec.ts`.
 
 Run tests:
 ```bash
 cd backend
 npm test -- throttler.guard.spec.ts
+npm run test:e2e -- rate-limit.e2e-spec.ts
 ```
 
 ## Security Checklist
@@ -158,7 +189,7 @@ npm test -- throttler.guard.spec.ts
 - [x] Configure request quotas per endpoint type
 - [x] Handle rate limit errors gracefully (429 response)
 - [x] Return proper rate limit headers
-- [ ] Use Redis for distributed rate limiting (recommended for production)
+- [ ] Use Redis for distributed rate limiting (required for HA / multi-instance)
 
 ### Security Headers
 - [x] X-Content-Type-Options: nosniff

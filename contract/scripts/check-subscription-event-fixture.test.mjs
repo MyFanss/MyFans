@@ -76,3 +76,50 @@ test('contract tests emit topics matching the fixture', () => {
     }
   }
 });
+
+// Additional coverage from the incoming branch: canonical poller names,
+// alias mapping, and rejection of unknown event names.
+const backendFixturePath = resolve(
+  repoRoot,
+  'backend',
+  'src',
+  'subscriptions',
+  'fixtures',
+  'subscription-event-fixture.json',
+);
+
+function loadBackendFixture() {
+  return JSON.parse(readFileSync(backendFixturePath, 'utf8'));
+}
+
+test('subscription event fixture lists the canonical poller names', () => {
+  const backendFixture = loadBackendFixture();
+  const canonical = backendFixture.targetEvents;
+  assert.deepEqual(canonical, ['subscribed', 'extended', 'cancelled']);
+  assert.ok(canonical.every((event) => backendFixture.eventSchemas[event]));
+});
+
+test('fixture aliases remain mappable to the canonical target events', () => {
+  const backendFixture = loadBackendFixture();
+  const canonical = backendFixture.targetEvents;
+  const aliasEntries = Object.entries(backendFixture.aliases ?? {});
+  const mapped = aliasEntries.map(([alias, target]) => ({ alias, target }));
+  assert.deepEqual(
+    mapped.sort((a, b) => a.alias.localeCompare(b.alias)),
+    [
+      { alias: 'subscription_cancelled', target: 'cancelled' },
+      { alias: 'subscription_created', target: 'subscribed' },
+      { alias: 'subscription_extended', target: 'extended' },
+    ],
+  );
+
+  for (const [, target] of aliasEntries) {
+    assert.ok(canonical.includes(target), `alias target ${target} must be in canonical list`);
+  }
+});
+
+test('unknown event names are not treated as supported subscription events', () => {
+  const backendFixture = loadBackendFixture();
+  assert.equal(backendFixture.targetEvents.includes('weird_event'), false);
+  assert.equal(backendFixture.aliases.weird_event, undefined);
+});

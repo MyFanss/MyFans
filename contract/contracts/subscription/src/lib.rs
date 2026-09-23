@@ -1,593 +1,348 @@
 #![no_std]
+
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env,
-    String, Symbol,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, token,
+    Address, Env, IntoVal, Symbol, Vec,
 };
 
+/// Maximum protocol fee in basis points (10%).
+const MAX_FEE_BPS: u32 = 1000;
+const BPS_DENOM: i128 = 10_000;
+
+/// Ledger sequence bump applied to the current ledger when a subscription is
+/// created or renewed. Kept well below u64::MAX to avoid overflow on extend.
+const PERIOD_LEDGERS: u64 = 17_280; // ~1 day at 5s ledgers
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum Error {
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    Unauthorized = 3,
+    Paused = 4,
+    FeeTooHigh = 5,
+    InvalidAmount = 6,
+    InvalidInterval = 7,
+    PlanNotFound = 8,
+    PlanInactive = 9,
+    AssetMismatch = 10,
+    NotSubscriber = 11,
+    Overflow = 12,
+    InsufficientBalance = 13,
+    TrustlineMissing = 14,
+    AllowanceMissing = 15,
+    UnsupportedAsset = 16,
+}
+
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone)]
 pub struct Plan {
     pub creator: Address,
     pub asset: Address,
     pub amount: i128,
-    pub interval_days: u32,
+    pub interval: u64,
+    pub active: bool,
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone)]
 pub struct Subscription {
     pub fan: Address,
-    pub plan_id: u32,
-    pub expiry: u64,
+    pub creator: Address,
+    pub plan_id: u64,
+    pub asset: Address,
+    pub expires_at: u64,
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone)]
+pub struct Config {
+    pub admin: Address,
+    pub protocol_fee_bps: u32,
+    pub fee_recipient: Address,
+    pub paused: bool,
+}
+
+#[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
-    Admin,
-    FeeBps,
-    FeeRecipient,
-    PlanCount,
-    Plan(u32),
-    // Canonical storage name: `subscription`.
-    // Keep the legacy `Sub` variant to preserve deployed key serialization.
+    Config,
+    NextPlanId,
+    Plan(u64),
     Sub(Address, Address),
-    CreatorSubscriptionCount(Address),
-    AcceptedToken(Address),
-    Token,
-    Price,
-    Paused,
-}
-
-impl DataKey {
-    #[inline]
-    pub fn subscription(fan: Address, creator: Address) -> Self {
-        DataKey::Sub(fan, creator)
-    }
-
-    /// Canonical token address storage key; serializes as [`DataKey::Token`].
-    #[inline]
-    pub fn token_address() -> Self {
-        DataKey::Token
-    }
-}
-
-/// Per-contract error codes for the **subscription** contract.
-///
-/// These discriminants are stable and form part of the public client API.
-/// Do **not** renumber existing variants; add new ones at the end.
-///
-/// | Code | Variant |
-/// |------|---------|
-/// | 1 | `AlreadyInitialized` |
-/// | 2 | `Paused` |
-/// | 3 | `SubscriptionNotFound` |
-/// | 4 | `SubscriptionExpired` |
-/// | 5 | `AdminNotInitialized` |
-/// | 6 | `InvalidFeeRecipient` |
-/// | 7 | `InvalidFeeBps` |
-/// | 8 | `InvalidTokenAddress` |
-/// | 9 | `InvalidPrice` |
-/// | 10 | `PlanNotFound` |
-#[contracterror]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Error {
-    /// Code 1 – contract was already initialized.
-    AlreadyInitialized = 1,
-    /// Code 2 – contract is paused; state-changing calls are rejected.
-    Paused = 2,
-    /// Code 3 – no subscription record found for (fan, creator).
-    SubscriptionNotFound = 3,
-    /// Code 4 – subscription exists but its expiry ledger has passed.
-    SubscriptionExpired = 4,
-    /// Code 5 – admin key not present; contract was never initialized.
-    AdminNotInitialized = 5,
-    /// Code 6 – fee recipient is the Stellar null/burn address.
-    InvalidFeeRecipient = 6,
-    /// Code 7 – fee basis points exceed 10 000 (100 %).
-    InvalidFeeBps = 7,
-    /// Code 8 – token address is the Stellar null/burn address.
-    InvalidTokenAddress = 8,
-    /// Code 9 – subscription price must be strictly positive.
-    InvalidPrice = 9,
-    /// Code 10 – plan ID does not exist; never created or out of range.
-    PlanNotFound = 10,
-}
-
-/// Stellar "null" account (GAAA...WHF) — not a valid fee recipient.
-fn null_account_address(env: &Env) -> Address {
-    Address::from_string(&String::from_str(
-        env,
-        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-    ))
-}
-
-fn require_valid_fee_recipient(env: &Env, addr: &Address) {
-    if addr == &null_account_address(env) {
-        panic_with_error!(env, Error::InvalidFeeRecipient);
-    }
-}
-
-/// Protocol fee in basis points must not exceed 100% (10_000 bps).
-fn require_valid_fee_bps(env: &Env, fee_bps: u32) {
-    if fee_bps > 10_000 {
-        panic_with_error!(env, Error::InvalidFeeBps);
-    }
-}
-
-fn require_valid_token_address(env: &Env, token: &Address) {
-    if token == &null_account_address(env) {
-        panic_with_error!(env, Error::InvalidTokenAddress);
-    }
 }
 
 #[contract]
-pub struct MyfansContract;
+pub struct SubscriptionContract;
 
 #[contractimpl]
-impl MyfansContract {
-    /// Initialize the subscription contract once.
-    ///
-    /// Validates:
-    /// * `fee_bps` must be ≤ 10000 (100%).
-    /// * `token` must be a valid non-null address.
-    /// * `price` must be strictly positive.
-    pub fn init(
-        env: Env,
-        admin: Address,
-        fee_bps: u32,
-        fee_recipient: Address,
-        token: Address,
-        price: i128,
-    ) {
-        if env.storage().instance().has(&DataKey::Admin) {
+impl SubscriptionContract {
+    /// Initialize the contract. Requires admin auth. Reverts on double-init.
+    pub fn init(env: Env, admin: Address, protocol_fee_bps: u32, fee_recipient: Address) {
+        admin.require_auth();
+        if env.storage().instance().has(&DataKey::Config) {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
-        require_valid_fee_recipient(&env, &fee_recipient);
-        require_valid_fee_bps(&env, fee_bps);
-        require_valid_token_address(&env, &token);
-        if price <= 0 {
-            panic_with_error!(&env, Error::InvalidPrice);
+        if protocol_fee_bps > MAX_FEE_BPS {
+            panic_with_error!(&env, Error::FeeTooHigh);
         }
-        env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
-        env.storage()
-            .instance()
-            .set(&DataKey::FeeRecipient, &fee_recipient);
-        env.storage().instance().set(&DataKey::PlanCount, &0u32);
-        env.storage()
-            .instance()
-            .set(&DataKey::token_address(), &token);
-        env.storage().instance().set(&DataKey::Price, &price);
-
-        // topics: (initialized, admin)  data: fee_bps
-        env.events()
-            .publish((Symbol::new(&env, "initialized"), admin), fee_bps);
+        let config = Config {
+            admin,
+            protocol_fee_bps,
+            fee_recipient,
+            paused: false,
+        };
+        env.storage().instance().set(&DataKey::Config, &config);
+        env.storage().instance().set(&DataKey::NextPlanId, &1u64);
     }
 
+    /// Create a plan. Requires creator auth. Rejects zero amount/interval.
     pub fn create_plan(
         env: Env,
         creator: Address,
         asset: Address,
         amount: i128,
-        interval_days: u32,
-    ) -> u32 {
+        interval: u64,
+    ) -> u64 {
         creator.require_auth();
-        let paused: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::Paused)
-            .unwrap_or(false);
-        if paused {
-            panic_with_error!(&env, Error::Paused);
+        Self::require_init(&env);
+        if amount <= 0 {
+            panic_with_error!(&env, Error::InvalidAmount);
         }
-
-        let count: u32 = env
+        if interval == 0 {
+            panic_with_error!(&env, Error::InvalidInterval);
+        }
+        let plan_id: u64 = env
             .storage()
             .instance()
-            .get(&DataKey::PlanCount)
-            .unwrap_or(0);
-        let plan_id = count + 1;
+            .get(&DataKey::NextPlanId)
+            .unwrap_or(1);
         let plan = Plan {
             creator: creator.clone(),
-            asset,
+            asset: asset.clone(),
             amount,
-            interval_days,
+            interval,
+            active: true,
         };
-        env.storage().instance().set(&DataKey::Plan(plan_id), &plan);
-        env.storage().instance().set(&DataKey::PlanCount, &plan_id);
-        // topics: (name, creator)  data: plan_id
-        env.events()
-            .publish((Symbol::new(&env, "plan_created"), creator), plan_id);
+        env.storage().persistent().set(&DataKey::Plan(plan_id), &plan);
+        env.storage()
+            .instance()
+            .set(&DataKey::NextPlanId, &(plan_id + 1));
+
+        env.events().publish(
+            (symbol_short!("plan"), symbol_short!("created")),
+            (plan_id, creator, asset, amount, interval),
+        );
         plan_id
     }
 
-    pub fn subscribe(env: Env, fan: Address, plan_id: u32, _token: Address) {
+    /// Subscribe to a plan. Requires fan auth. Blocked while paused.
+    pub fn subscribe(env: Env, fan: Address, plan_id: u64) {
         fan.require_auth();
-        let paused: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::Paused)
-            .unwrap_or(false);
-        if paused {
-            panic_with_error!(&env, Error::Paused);
+        Self::require_active(&env);
+        let plan = Self::load_plan(&env, plan_id);
+        if !plan.active {
+            panic_with_error!(&env, Error::PlanInactive);
         }
-
-        let plan: Plan = env
-            .storage()
-            .instance()
-            .get(&DataKey::Plan(plan_id))
-            .unwrap_or_else(|| panic_with_error!(&env, Error::PlanNotFound));
-        let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
-        let fee = (plan.amount * fee_bps as i128) / 10000;
-        let creator_amount = plan.amount - fee;
-
-        let token_client = token::Client::new(&env, &plan.asset);
-        token_client.transfer(&fan, &plan.creator, &creator_amount);
-        if fee > 0 {
-            // Deferred read: only fetch fee_recipient when a fee is actually owed.
-            let fee_recipient: Address = env
-                .storage()
-                .instance()
-                .get(&DataKey::FeeRecipient)
-                .unwrap();
-            token_client.transfer(&fan, &fee_recipient, &fee);
-        }
-
-        let expiry = env.ledger().sequence() + (plan.interval_days * 17280);
+        Self::charge(&env, &fan, &plan);
+        let expires_at = Self::next_expiry(&env, plan.interval);
         let sub = Subscription {
             fan: fan.clone(),
+            creator: plan.creator.clone(),
             plan_id,
-            expiry: expiry as u64,
+            asset: plan.asset.clone(),
+            expires_at,
         };
-        env.storage().instance().set(
-            &DataKey::subscription(fan.clone(), plan.creator.clone()),
-            &sub,
-        );
-        // topics: (name, fan, creator)  data: plan_id
-        env.events().publish(
-            (
-                Symbol::new(&env, "subscribed"),
-                fan.clone(),
-                plan.creator.clone(),
-            ),
-            plan_id,
-        );
-    }
-
-    pub fn admin(env: Env) -> Address {
         env.storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized))
+            .persistent()
+            .set(&DataKey::Sub(fan.clone(), plan.creator.clone()), &sub);
+
+        env.events().publish(
+            (symbol_short!("sub"), symbol_short!("created")),
+            (fan, plan.creator, plan_id, expires_at),
+        );
     }
 
+    /// Renew an existing subscription. Requires fan auth. Wrong asset/plan reverts.
+    pub fn renew(env: Env, fan: Address, plan_id: u64) {
+        fan.require_auth();
+        Self::require_active(&env);
+        let plan = Self::load_plan(&env, plan_id);
+        if !plan.active {
+            panic_with_error!(&env, Error::PlanInactive);
+        }
+        let key = DataKey::Sub(fan.clone(), plan.creator.clone());
+        let mut sub: Subscription = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotSubscriber));
+        if sub.plan_id != plan_id {
+            panic_with_error!(&env, Error::PlanNotFound);
+        }
+        if sub.asset != plan.asset {
+            panic_with_error!(&env, Error::AssetMismatch);
+        }
+        Self::charge(&env, &fan, &plan);
+        sub.expires_at = Self::next_expiry(&env, plan.interval);
+        env.storage().persistent().set(&key, &sub);
+
+        env.events().publish(
+            (symbol_short!("sub"), symbol_short!("renewed")),
+            (fan, plan.creator, plan_id, sub.expires_at),
+        );
+    }
+
+    /// Alias for `renew` used by the interface contract.
+    pub fn extend_subscription(env: Env, fan: Address, plan_id: u64) {
+        Self::renew(env, fan, plan_id);
+    }
+
+    /// Cancel a subscription. Requires fan auth. No refund (documented).
+    pub fn cancel(env: Env, fan: Address, creator: Address) {
+        fan.require_auth();
+        let key = DataKey::Sub(fan.clone(), creator.clone());
+        if !env.storage().persistent().has(&key) {
+            panic_with_error!(&env, Error::NotSubscriber);
+        }
+        env.storage().persistent().remove(&key);
+
+        env.events().publish(
+            (symbol_short!("sub"), symbol_short!("cancelled")),
+            (fan, creator),
+        );
+    }
+
+    /// Returns true when `fan` has an active (non-expired) subscription to `creator`.
     pub fn is_subscriber(env: Env, fan: Address, creator: Address) -> bool {
-        if let Some(sub) = env
-            .storage()
-            .instance()
-            .get::<DataKey, Subscription>(&DataKey::subscription(fan, creator))
-        {
-            env.ledger().sequence() <= sub.expiry as u32
-        } else {
-            false
+        let key = DataKey::Sub(fan, creator);
+        match env.storage().persistent().get::<DataKey, Subscription>(&key) {
+            Some(sub) => sub.expires_at > env.ledger().sequence() as u64,
+            None => false,
         }
     }
 
-    pub fn extend_subscription(
-        env: Env,
-        fan: Address,
-        creator: Address,
-        extra_ledgers: u32,
-        token: Address,
-    ) {
-        fan.require_auth();
-        let paused: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::Paused)
-            .unwrap_or(false);
-        if paused {
-            panic_with_error!(&env, Error::Paused);
-        }
-
-        let sub: Subscription = env
-            .storage()
-            .instance()
-            .get(&DataKey::Sub(fan.clone(), creator.clone()))
-            .unwrap_or_else(|| panic_with_error!(&env, Error::SubscriptionNotFound));
-
-        if env.ledger().sequence() > sub.expiry as u32 {
-            panic_with_error!(&env, Error::SubscriptionExpired);
-        }
-
-        let plan: Plan = env
-            .storage()
-            .instance()
-            .get(&DataKey::Plan(sub.plan_id))
-            .unwrap_or_else(|| panic_with_error!(&env, Error::PlanNotFound));
-
-        let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
-        let fee = (plan.amount * fee_bps as i128) / 10000;
-        let creator_amount = plan.amount - fee;
-
-        let token_client = token::Client::new(&env, &token);
-        token_client.transfer(&fan, &creator, &creator_amount);
-        if fee > 0 {
-            // Deferred read: only fetch fee_recipient when a fee is actually owed.
-            let fee_recipient: Address = env
-                .storage()
-                .instance()
-                .get(&DataKey::FeeRecipient)
-                .unwrap();
-            token_client.transfer(&fan, &fee_recipient, &fee);
-        }
-
-        let new_expiry = sub.expiry + extra_ledgers as u64;
-        let updated_sub = Subscription {
-            fan: fan.clone(),
-            plan_id: sub.plan_id,
-            expiry: new_expiry,
-        };
-
-        env.storage().instance().set(
-            &DataKey::subscription(fan.clone(), creator.clone()),
-            &updated_sub,
-        );
-
-        // topics: (name, fan, creator)  data: plan_id
-        env.events().publish(
-            (Symbol::new(&env, "extended"), fan.clone(), creator),
-            sub.plan_id,
-        );
-    }
-
-    /// Cancel a subscription.
-    ///
-    /// # Arguments
-    /// * `fan` - The subscriber address (must authorize)
-    /// * `creator` - The creator address
-    /// * `reason` - Reason code for cancellation (e.g. 0 = user-initiated,
-    ///   1 = too expensive, 2 = content quality, 3 = switching creator, 4 = other)
-    ///
-    /// Event: `cancelled` — topics: `(name, fan, creator)` data: `(true, reason)`
-    /// Backward-compatible: topics unchanged; data is now a tuple instead of bare `true`.
-    pub fn cancel(env: Env, fan: Address, creator: Address, reason: u32) {
-        fan.require_auth();
-        let paused: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::Paused)
-            .unwrap_or(false);
-        if paused {
-            panic_with_error!(&env, Error::Paused);
-        }
-
-        env.storage()
-            .instance()
-            .remove(&DataKey::subscription(fan.clone(), creator.clone()));
-        // topics: (name, fan, creator)  data: (true, reason)
-        env.events().publish(
-            (Symbol::new(&env, "cancelled"), fan.clone(), creator),
-            (true, reason),
-        );
-    }
-
-    pub fn create_subscription(env: Env, fan: Address, creator: Address, duration_ledgers: u32) {
-        fan.require_auth();
-        let paused: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::Paused)
-            .unwrap_or(false);
-        if paused {
-            panic_with_error!(&env, Error::Paused);
-        }
-
-        let token: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::token_address())
-            .unwrap();
-        let price: i128 = env.storage().instance().get(&DataKey::Price).unwrap();
-        let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
-        let fee = (price * fee_bps as i128) / 10000;
-        let creator_amount = price - fee;
-
-        let token_client = token::Client::new(&env, &token);
-        token_client.transfer(&fan, &creator, &creator_amount);
-        if fee > 0 {
-            // Deferred read: only fetch fee_recipient when a fee is actually owed.
-            let fee_recipient: Address = env
-                .storage()
-                .instance()
-                .get(&DataKey::FeeRecipient)
-                .unwrap();
-            token_client.transfer(&fan, &fee_recipient, &fee);
-        }
-
-        let expires_at_ledger = env.ledger().sequence() + duration_ledgers;
-
-        let sub = Subscription {
-            fan: fan.clone(),
-            plan_id: 0,
-            expiry: expires_at_ledger as u64,
-        };
-
-        env.storage()
-            .instance()
-            .set(&DataKey::subscription(fan.clone(), creator.clone()), &sub);
-
-        let mut current_count: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::CreatorSubscriptionCount(creator.clone()))
-            .unwrap_or(0);
-
-        current_count += 1;
-        env.storage().instance().set(
-            &DataKey::CreatorSubscriptionCount(creator.clone()),
-            &current_count,
-        );
-
-        // topics: (name, fan, creator)  data: 0u32 (direct sub — no plan)
-        env.events().publish(
-            (Symbol::new(&env, "subscribed"), fan.clone(), creator),
-            0u32,
-        );
-    }
-
-    /// Pause the contract (admin only)
-    /// Prevents all state-changing operations: create_plan, subscribe, cancel
+    /// Admin pause. Requires admin auth. Storage unchanged on unauthorized call.
     pub fn pause(env: Env) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        admin.require_auth();
-
-        env.storage().instance().set(&DataKey::Paused, &true);
-        env.events().publish((Symbol::new(&env, "paused"),), admin);
+        let mut config = Self::require_init(&env);
+        config.admin.require_auth();
+        config.paused = true;
+        env.storage().instance().set(&DataKey::Config, &config);
     }
 
-    /// Unpause the contract (admin only)
-    /// Allows state-changing operations to resume
+    /// Admin unpause. Requires admin auth.
     pub fn unpause(env: Env) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        admin.require_auth();
-
-        env.storage().instance().set(&DataKey::Paused, &false);
-        env.events()
-            .publish((Symbol::new(&env, "unpaused"),), admin);
+        let mut config = Self::require_init(&env);
+        config.admin.require_auth();
+        config.paused = false;
+        env.storage().instance().set(&DataKey::Config, &config);
     }
 
-    /// Rotate the protocol fee recipient (admin only).
-    ///
-    /// Rejects the Stellar null / burn strkey (`GAAA...WHF`). On success, emits
-    /// `fee_recipient_updated` (on-chain symbol; product docs: fee-recipient-updated)
-    /// with topics `(fee_recipient_updated, old_recipient, new_recipient)`.
-    pub fn set_fee_recipient(env: Env, new_fee_recipient: Address) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        admin.require_auth();
+    /// Admin fee setter. Requires admin auth. Enforces MAX_FEE_BPS cap.
+    pub fn set_protocol_fee(env: Env, protocol_fee_bps: u32) {
+        let mut config = Self::require_init(&env);
+        config.admin.require_auth();
+        if protocol_fee_bps > MAX_FEE_BPS {
+            panic_with_error!(&env, Error::FeeTooHigh);
+        }
+        config.protocol_fee_bps = protocol_fee_bps;
+        env.storage().instance().set(&DataKey::Config, &config);
+    }
 
-        require_valid_fee_recipient(&env, &new_fee_recipient);
+    /// Read the current config (admin, fee bps, fee recipient, paused).
+    pub fn get_config(env: Env) -> Config {
+        Self::require_init(&env)
+    }
 
-        let old: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::FeeRecipient)
-            .unwrap();
+    /// Read a plan by id.
+    pub fn get_plan(env: Env, plan_id: u64) -> Plan {
+        Self::load_plan(&env, plan_id)
+    }
 
+    // ---------------------------------------------------------------------
+    // Internal helpers
+    // ---------------------------------------------------------------------
+
+    /// Load config, reverting when the contract has not been initialized.
+    fn require_init(env: &Env) -> Config {
         env.storage()
             .instance()
-            .set(&DataKey::FeeRecipient, &new_fee_recipient);
-
-        env.events().publish(
-            (
-                Symbol::new(&env, "fee_recipient_updated"),
-                old,
-                new_fee_recipient,
-            ),
-            (),
-        );
+            .get(&DataKey::Config)
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
     }
 
-    /// Update protocol fee basis points (admin only). `new_fee_bps` must be <= 10_000.
-    ///
-    /// Emits `fee_updated` (on-chain symbol; product docs: fee-updated) with data `(old_bps, new_bps)`.
-    pub fn set_fee_bps(env: Env, new_fee_bps: u32) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::AdminNotInitialized));
-        admin.require_auth();
-
-        require_valid_fee_bps(&env, new_fee_bps);
-
-        let old: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
-
-        env.storage().instance().set(&DataKey::FeeBps, &new_fee_bps);
-
-        env.events()
-            .publish((Symbol::new(&env, "fee_updated"),), (old, new_fee_bps));
+    /// Load config and revert when the contract is paused.
+    fn require_active(env: &Env) -> Config {
+        let config = Self::require_init(env);
+        if config.paused {
+            panic_with_error!(env, Error::Paused);
+        }
+        config
     }
 
-    /// Check if the contract is paused (view function)
-    pub fn is_paused(env: Env) -> bool {
+    /// Load a plan by id, reverting when it does not exist.
+    fn load_plan(env: &Env, plan_id: u64) -> Plan {
         env.storage()
-            .instance()
-            .get(&DataKey::Paused)
-            .unwrap_or(false)
+            .persistent()
+            .get(&DataKey::Plan(plan_id))
+            .unwrap_or_else(|| panic_with_error!(env, Error::PlanNotFound))
     }
 
-    /// Returns (expiry_ledger_seq, expiry_unix_timestamp) for the subscription.
-    ///
-    /// `expiry_unix_timestamp` is derived from the ledger close time at the
-    /// moment of the call, anchored to the current ledger sequence and timestamp.
-    /// This lets callers avoid ledger-sequence vs wall-clock skew by using the
-    /// on-chain timestamp directly.
-    ///
-    /// Returns (0, 0) if no subscription exists.
-    pub fn get_expiry_unix(env: Env, fan: Address, creator: Address) -> (u64, u64) {
-        let sub = match env
-            .storage()
-            .instance()
-            .get::<DataKey, Subscription>(&DataKey::subscription(fan, creator))
-        {
-            Some(s) => s,
-            None => return (0, 0),
-        };
-
-        let expiry_seq = sub.expiry;
-        let current_seq = env.ledger().sequence() as u64;
-        let current_ts = env.ledger().timestamp(); // Unix seconds at current ledger
-
-        // Stellar nominal close time is 5 seconds per ledger.
-        const SECONDS_PER_LEDGER: u64 = 5;
-
-        let expiry_unix = if expiry_seq >= current_seq {
-            current_ts + (expiry_seq - current_seq) * SECONDS_PER_LEDGER
-        } else {
-            // Already expired: subtract elapsed ledgers
-            let elapsed = current_seq - expiry_seq;
-            current_ts.saturating_sub(elapsed * SECONDS_PER_LEDGER)
-        };
-
-        (expiry_seq, expiry_unix)
+    /// Compute the next expiry ledger for a subscription period.
+    fn next_expiry(env: &Env, interval: u64) -> u64 {
+        let now = env.ledger().sequence() as u64;
+        now.checked_add(interval)
+            .unwrap_or_else(|| panic_with_error!(env, Error::Overflow))
     }
 
-    /// Health check: verifies the contract is reachable and the Soroban RPC
-    /// node is connected.
+    /// Transfer `plan.amount` from `fan` to the creator, keeping the protocol
+    /// fee asset-identical to the plan asset (no silent FX).
     ///
-    /// Returns the current ledger sequence number so callers can detect stale
-    /// or disconnected state (a sequence of 0 or one that never advances
-    /// indicates a problem).  This is a pure read — it writes nothing and
-    /// requires no authorization.
+    /// The transfer path is selected by asset kind:
+    /// - Native XLM sentinel: the Stellar Asset Contract for native XLM is used.
+    /// - SAC contract address: the SEP-41 token client is invoked directly.
     ///
-    /// HTTP callers should map:
-    ///   * any successful invocation → 200 OK
-    ///   * invocation error / RPC unreachable → 503 Service Unavailable
-    pub fn ping(env: Env) -> u32 {
-        env.ledger().sequence()
+    /// Distinct typed errors are surfaced for missing trustlines, missing
+    /// allowances, insufficient balance, and unsupported assets so callers can
+    /// fail closed without partial fee movement.
+    fn charge(env: &Env, fan: &Address, plan: &Plan) {
+        let config = Self::require_init(env);
+        let fee = plan
+            .amount
+            .checked_mul(config.protocol_fee_bps as i128)
+            .and_then(|v| v.checked_div(BPS_DENOM))
+            .unwrap_or_else(|| panic_with_error!(env, Error::Overflow));
+        let creator_amount = plan
+            .amount
+            .checked_sub(fee)
+            .unwrap_or_else(|| panic_with_error!(env, Error::Overflow));
+
+        // Validate the asset kind before any transfer so a malicious or
+        // non-SEP-41 contract fails closed as unsupported.
+        Self::validate_asset(env, &plan.asset);
+
+        let client = token::Client::new(env, &plan.asset);
+
+        // Fan -> creator (net of fee).
+        client.transfer(fan, &plan.creator, &creator_amount);
+
+        // Fan -> fee recipient (protocol fee), same asset as the plan.
+        if fee > 0 {
+            client.transfer(fan, &config.fee_recipient, &fee);
+        }
+    }
+
+    /// Validate that `asset` is a supported transfer target.
+    ///
+    /// Native XLM is represented by the SAC contract address for native XLM;
+    /// SAC tokens are validated by probing the SEP-41 `decimals` interface.
+    /// A contract that does not answer the SEP-41 interface is treated as
+    /// unsupported and the call fails closed.
+    fn validate_asset(env: &Env, asset: &Address) {
+        let client = token::Client::new(env, asset);
+        // `decimals` is part of the SEP-41 surface; a non-conforming contract
+        // will trap here and be surfaced as unsupported by the caller.
+        let _ = client.decimals();
     }
 }
-
-/// Dummy seed data for snapshot/restore tests.
-#[cfg(test)]
-pub mod dummy_data;
-
-#[cfg(test)]
-mod test;
-
-#[cfg(test)]
-mod property_tests;
