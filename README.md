@@ -262,3 +262,8 @@ MIT.
 - Email: realjaiboi70@gmail.com
 
 This README describes the MyFans project on Stellar. Implement each module (contract, backend, frontend) step by step as needed.
+
+## Handsoff notes
+
+<!-- handsoff-issue-1781 -->
+- #1781: SubscriptionsModule: checkout, index, spending-cap, swagger completeness
