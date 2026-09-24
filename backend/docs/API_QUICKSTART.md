@@ -21,6 +21,7 @@ A practical guide to getting the MyFans backend API running locally, making your
 11. [Running backend tests](#11-running-backend-tests)
 12. [Adding a new endpoint — checklist](#12-adding-a-new-endpoint--checklist)
 13. [OpenAPI source of truth](#13-openapi-source-of-truth)
+14. [Ledger clock and skew budget](#14-ledger-clock-and-skew-budget)
 
 ---
 
@@ -260,174 +261,59 @@ curl -s -X POST http://localhost:3001/v1/auth/logout \
 
 ## 5. Key API areas
 
-All routes are versioned under `/v1/`.
-
-| Area | Base path | Description |
-|------|-----------|-------------|
-| Auth | `/v1/auth` | Wallet challenge/verify, token refresh, logout |
-| Users | `/v1/users` | User profiles (`GET /me`, `PATCH /me`) |
-| Creators | `/v1/creators` | Creator profiles and subscription plans |
-| Subscriptions | `/v1/subscriptions` | Subscribe, list, check subscription state |
-| Posts | `/v1/posts` | Create, list, update, delete posts |
-| Comments | `/v1/comments` | Comment CRUD on posts |
-| Conversations | `/v1/conversations` | Messaging between users |
-| Notifications | `/v1/notifications` | List, mark-read, delete notifications |
-| Content | `/v1/content` | Content upload and IPFS pinning |
-| Analytics | `/v1/analytics` | Creator analytics data |
-| Health | `/v1/health` | Service and subsystem health checks |
-| Feature flags | `/v1/feature-flags` | Runtime feature flag state |
-| CSRF | `/v1/csrf/token` | Fetch CSRF token for state-mutating requests |
+| Area | Base path | Notes |
+|------|-----------|-------|
+| Auth | `/v1/auth` | Challenge/verify, refresh, logout |
+| Users | `/v1/users` | Profiles, settings |
+| Subscriptions | `/v1/subscriptions` | Creator subscription tiers and status |
+| Content | `/v1/content` | Gated posts and media — access is time-gated by the ledger clock (see [§14](#14-ledger-clock-and-skew-budget)) |
+| Payments | `/v1/payments` | Stellar payment intents |
+| Health | `/v1/health` | Liveness and readiness probes |
 
 ---
 
 ## 6. Request and response conventions
 
-### Versioning
-
-All routes use URI versioning: `/v1/...`. The default version is `1`.
-
-### Pagination
-
-List endpoints accept `page` and `limit` query parameters and return a paginated envelope:
-
-```json
-{
-  "data": [...],
-  "total": 42,
-  "page": 1,
-  "limit": 20
-}
-```
-
-### Correlation IDs
-
-Every request and response carries an `X-Correlation-ID` header. If you send one in the request it is echoed back; otherwise the server generates one. Include it in bug reports to trace a specific request through logs.
-
-```bash
-curl -s http://localhost:3001/v1/health \
-  -H "X-Correlation-ID: my-debug-request-001" \
-  -i | grep -i x-correlation
-```
-
-#### Validation rules
-
-Client-supplied correlation ids are accepted only when they are safe to log and
-propagate. The middleware applies the following rules and **regenerates** a fresh
-id whenever a supplied value is rejected:
-
-| Rule | Accepted | Rejected (regenerated) |
-|------|----------|------------------------|
-| Charset | `A–Z`, `a–z`, `0–9`, `-`, `_`, `.` | anything else (spaces, `/`, `\`, control chars, unicode) |
-| Length | 1–128 characters | empty, or longer than 128 characters |
-| Missing header | — | server generates a UUID v4 |
-
-```bash
-# Accepted — echoed back verbatim
-curl -s http://localhost:3001/v1/health -H "X-Correlation-ID: checkout-abc123" -i | grep -i x-correlation
-
-# Rejected (illegal charset) — server substitutes a generated id
-curl -s http://localhost:3001/v1/health -H "X-Correlation-ID: bad id!" -i | grep -i x-correlation
-```
-
-> **Security:** never put PII (emails, wallet addresses, tokens) in a
-> correlation id. Ids are written to logs and returned to clients, so treat them
-> as public, non-sensitive tracing tokens.
-
-### Content type
-
-All request bodies must be `application/json` unless the endpoint documents a
-multipart upload. Responses are `application/json`.
+- All request and response bodies are JSON (`Content-Type: application/json`).
+- Timestamps are ISO-8601 UTC strings.
+- IDs are UUIDs unless otherwise noted.
+- Monetary amounts are strings to avoid floating-point precision loss.
 
 ---
 
 ## 7. Rate limiting
 
-Rate limits are enforced per IP (and per user where authenticated). Exceeding a
-limit returns `429 Too Many Requests` with a `Retry-After` header.
-
-| Scope | Limit |
-|-------|-------|
-| Auth endpoints (`/v1/auth/*`) | 5 requests / minute / IP |
-| General API | 100 requests / minute / IP |
+Rate limits are enforced per IP (and per user where authenticated). Auth
+endpoints are limited to **5 requests per minute per IP**. Exceeding a limit
+returns `429 Too Many Requests` with a `Retry-After` header.
 
 ---
 
 ## 8. CSRF protection
 
-State-mutating requests from browsers must include a CSRF token. Fetch one from
-`GET /v1/csrf/token` and send it back in the `X-CSRF-Token` header.
-
-```bash
-CSRF=$(curl -s http://localhost:3001/v1/csrf/token | jq -r .token)
-curl -s -X PATCH http://localhost:3001/v1/users/me \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "X-CSRF-Token: $CSRF" \
-  -H "Content-Type: application/json" \
-  -d '{"displayName":"Ada"}'
-```
+State-changing requests from browsers must include a valid CSRF token. See
+[`CSRF.md`](./CSRF.md) for the full flow and header names.
 
 ---
 
 ## 9. Idempotency
 
-Endpoints that create resources accept an `Idempotency-Key` header. Replaying a
-request with the same key returns the original response instead of creating a
-duplicate.
-
-```bash
-curl -s -X POST http://localhost:3001/v1/subscriptions \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Idempotency-Key: sub-2026-05-30-001" \
-  -H "Content-Type: application/json" \
-  -d '{"creatorId":"...","planId":"..."}'
-```
-
-If the same key is sent again, the server returns the original response instead of re-executing the operation. Keys are scoped per user and expire after 24 hours.
+Mutating endpoints accept an `Idempotency-Key` header. Replaying the same key
+with the same body returns the original response instead of re-executing the
+operation.
 
 ---
 
 ## 10. Error format
 
-All errors share a single, stable envelope. Every error response includes the
-`correlationId` so a client can quote it in a bug report and a maintainer can
-grep the backend logs for the same request.
+Errors use a consistent envelope:
 
 ```json
 {
-  "statusCode": 404,
-  "message": "Post not found",
-  "code": "POST_NOT_FOUND",
-  "correlationId": "9f1c2b7e-4a3d-4f0e-9c1a-2b3c4d5e6f70"
+  "statusCode": 403,
+  "message": "Access denied",
+  "error": "Forbidden"
 }
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `statusCode` | number | HTTP status code |
-| `message` | string | Human-readable, safe to display |
-| `code` | string | Stable machine-readable error code |
-| `correlationId` | string | Matches the `X-Correlation-ID` response header and the `correlationId` field on every log line for the request |
-
-Validation errors additionally include a `details` array describing each field
-failure; the four fields above are always present.
-
-Common status codes:
-
-| Code | Meaning |
-|------|---------|
-| `400` | Validation error — check request body |
-| `401` | Missing or invalid JWT |
-| `403` | Authenticated but not authorized (e.g. no active subscription) |
-| `404` | Resource not found |
-| `409` | Conflict (duplicate resource) |
-| `429` | Rate limit exceeded |
-| `500` | Internal server error |
-
-```bash
-# Trigger an error and inspect the envelope + header together
-curl -s http://localhost:3001/v1/posts/does-not-exist \
-  -H "Authorization: Bearer $TOKEN" \
-  -i | grep -iE 'x-correlation|statusCode|correlationId'
 ```
 
 ---
@@ -436,104 +322,68 @@ curl -s http://localhost:3001/v1/posts/does-not-exist \
 
 ```bash
 cd backend
-# Unit tests
-npm run test
-
-# Unit tests
-npm run test
-
-# Watch mode
-npm run test:watch
-
-# Coverage
-npm run test:cov
-
-# End-to-end tests (requires a running Postgres)
-npm run test:e2e
-
-# OpenAPI drift test — fails if a controller path is undocumented
-npm run test:openapi
-
-# Lint
-npm run lint
+npm test            # unit tests
+npm run test:e2e    # end-to-end tests
 ```
 
 ---
 
 ## 12. Adding a new endpoint — checklist
 
-1. Add the controller method with the appropriate decorators (`@Get`, `@Post`, etc.).
-2. Add `@ApiOperation` / `@ApiResponse` decorators so the route is documented.
-3. If the route is internal (health, metrics) or a webhook, mark it excluded from the public spec (see below).
-4. Regenerate the spec: `npm run openapi:generate`.
-5. Run the drift test: `npm run test:openapi`.
-6. Commit both the code change and the updated `backend/openapi.json`.
+1. Add the controller route and DTOs.
+2. Mark it `@Public()` only if it truly needs no auth.
+3. Add it to the OpenAPI spec (`npm run openapi:generate`).
+4. Add unit and e2e coverage.
+5. Document it here if it is part of a public workflow.
 
 ---
 
 ## 13. OpenAPI source of truth
 
-The committed [`backend/openapi.json`](../openapi.json) is generated from the running NestJS app by [`backend/scripts/generate-openapi.ts`](../scripts/generate-openapi.ts). It is the canonical contract for clients and is kept in sync by a CI drift test.
+The committed [`backend/openapi.json`](../openapi.json) is generated from the
+running app and drift-tested in CI. If you add or change a route, regenerate
+the spec and commit it alongside your change.
 
-### How drift is detected
+---
 
-The drift test enumerates every controller path registered in `AppModule` and asserts that each one is either:
+## 14. Ledger clock and skew budget
 
-- present in `openapi.json`, or
-- explicitly excluded via the internal/excluded allowlist (health checks, webhooks).
+Content access gating is time-based, and the authoritative time is the
+**ledger clock** — the close time reported by Soroban RPC — not the host wall
+clock. A host whose wall clock drifts ahead of the ledger could otherwise
+unlock content before its on-chain unlock time, so the backend compares the two
+and enforces a **skew budget**.
 
-If a controller path is neither documented nor excluded, CI fails. This prevents both **undocumented routes** (shipped but invisible to clients) and **ghost docs** (documented but no longer served).
+### How it works
 
-### Excluded paths
+- `LedgerClockService` reads the latest ledger close time from Soroban RPC.
+- The absolute difference between the wall clock and the ledger clock is the
+  current **skew**.
+- If `skew <= LEDGER_CLOCK_SKEW_BUDGET_MS`, the ledger clock is trusted and
+  used for gating decisions.
+- If `skew > LEDGER_CLOCK_SKEW_BUDGET_MS`, the clock is considered unreliable
+  (e.g. a host clock jump) and gated access is **denied**.
+- If the ledger clock is **unreadable** (RPC returns null or errors), gated
+  access is **denied** — the service fails closed.
 
-The following are intentionally excluded from the public spec:
+### Configuration
 
-| Path | Reason |
-|------|--------|
-| `/v1/health` | Internal liveness/readiness probe |
-| `/v1/health/*` | Internal subsystem health checks |
-| Webhook receivers | Third-party callbacks, not client-facing |
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `LEDGER_CLOCK_SKEW_BUDGET_MS` | `30000` | Maximum tolerated wall-clock vs ledger-clock skew, in milliseconds. |
+| `LEDGER_CLOCK_CACHE_TTL_MS` | `5000` | How long a successfully read ledger time is cached before re-reading RPC. |
 
-### Security schemes
+### Failure modes
 
-Admin routes must declare a security scheme in the generated spec. A route under an admin path that is exposed without an `@ApiSecurity` / bearer scheme will fail the drift test — admin endpoints must never be publicly documented without authentication.
+| Condition | Behaviour |
+|-----------|-----------|
+| RPC returns null / errors | Gated access denied (fail closed) |
+| Skew within budget | Ledger time trusted; gating proceeds |
+| Skew exceeds budget (clock jump) | Gated access denied |
 
-### Servers
+> **Security note:** the service never falls back to the wall clock for gated
+decisions. An unreadable or untrusted ledger clock always denies access rather
+than risk unlocking expired or not-yet-unlocked content.
 
-The spec declares the versioned server base path:
-
-```json
-"servers": [{ "url": "/v1" }]
-```
-
-### Regenerating the baseline
-
-```bash
-cd backend
-npm run openapi:generate   # writes backend/openapi.json
-npm run test:openapi       # verifies no drift
-```
-
-Commit the regenerated `openapi.json` alongside any controller change so the baseline stays current.
-
-### Additional checklist items
-
-- [ ] Route lives under `/v1/` and is documented in Swagger.
-- [ ] Protected by default; add `@Public()` only when truly public.
-- [ ] Validates input with a DTO (`class-validator`).
-- [ ] Returns the standard pagination envelope for list endpoints.
-- [ ] Throws `HttpException` subclasses so the global filter emits the standard error envelope (including `correlationId`).
-- [ ] Never logs PII; rely on the correlation id to trace requests.
-- [ ] Covered by at least one unit test and, for critical paths, an e2e test.
-
-### Gated content access
-
-Content gated behind a subscription must be unlocked through the backend access API, never by handing the raw CID to the client. The backend verifies an **active** subscription for the requesting fan against the content's creator before returning any full-content reference:
-
-- **Expired** subscription → deny (`403`).
-- **Cancelled** subscription → deny (`403`).
-- **Wrong creator** (subscription is for a different creator) → deny (`403`).
-- **Paused** subscription contract → deny (`403`).
-- **RPC / contract error** while checking subscription state → fail closed (`403`/`503`), never fail open.
-
-Unauthorized callers receive only the teaser/preview metadata, never the full content reference. See [`contract/docs/interfaces/content-access.md`](../../contract/docs/interfaces/content-access.md) and [`frontend/docs/CONTENT_ACCESS.md`](../../frontend/docs/CONTENT_ACCESS.md) for the trust boundaries between frontend, backend, and the on-chain subscription contract.
+See [`frontend/docs/CONTENT_ACCESS.md`](../../frontend/docs/CONTENT_ACCESS.md)
+for the user-facing access rules.
