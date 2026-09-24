@@ -140,6 +140,24 @@ sum(rate(backend_http_requests_total[5m])) by (method, route)
 > 0.01
 ```
 
+## Grafana dashboard
+
+A sample dashboard is committed at
+[`backend/docs/grafana/myfans-red-dashboard.json`](./grafana/myfans-red-dashboard.json).
+It covers the RED signals for checkout, poller lag, and webhook failures.
+Import it via **Dashboards → New → Import** and select the Prometheus data
+source used for the scrape job above.
+
+### Panels
+
+| Panel | Query |
+| --- | --- |
+| Checkout rate | `sum(rate(myfans_checkout_duration_seconds_count[5m]))` |
+| Checkout errors | `sum(rate(myfans_checkout_errors_total[5m])) by (reason)` |
+| Checkout p95 duration | `histogram_quantile(0.95, sum(rate(myfans_checkout_duration_seconds_bucket[5m])) by (le))` |
+| Poller lag | `myfans_poller_lag_seconds` |
+| Webhook HMAC failures | `sum(rate(myfans_webhook_hmac_failures_total[5m]))` |
+
 ## Horizon finality assumptions
 
 Soroban events are read from Horizon. Horizon only serves ledgers that are
@@ -157,4 +175,6 @@ All metric labels are restricted to:
 - Error reason (`timeout`, `insufficient_balance`, etc.)
 
 No user IDs, email addresses, IP addresses, or other PII appear in metrics.
-
+Labels are drawn from a fixed, bounded set of enum values; raw pubkeys, user
+IDs, and other unbounded identifiers are never used as label values, keeping
+cardinality safe.
