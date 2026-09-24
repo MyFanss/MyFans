@@ -132,6 +132,23 @@ export class Subscription {
   @Column({ type: 'timestamptz', nullable: true })
   submitExpiresAt: Date | null;
 
+  /**
+   * Referral code that was applied at checkout, if any. Captured on the
+   * first subscription only; the ReferralModule uses this to attribute
+   * rewards exactly once per referred user (see REFERRAL_REWARDS.md).
+   */
+  @Index()
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  referralCode: string | null;
+
+  /**
+   * Set when a referral reward has been attributed for this subscription.
+   * Acts as the single-winner guard: attribution is idempotent and only
+   * the first subscription of a referred user can ever set this.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  referralAttributedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

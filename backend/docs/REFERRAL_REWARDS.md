@@ -9,7 +9,7 @@ reward accounting here is off-chain bookkeeping.
 
 | Step | What happens | Table |
 | --- | --- | --- |
-| **Generate** | A user creates a code (`POST /v1/referral/codes`). Optional `maxUses`. | `referral_codes` |
+| **Generate** | A user creates a code (`POST /v1/referral/codes`). Optional `maxUses`. Rate-limited per user (see Fraud controls). | `referral_codes` |
 | **Claim** | A fan applies a code at checkout (`POST /v1/referral/redeem`). Records a **pending** redemption with the fan's Stellar address. No reward yet, `use_count` unchanged. | `referral_redemptions` (`attributed_at IS NULL`) |
 | **Attribute** | The first `SubscriptionCreatedEvent` for that Stellar address is consumed by `ReferralAttributionConsumer` → `ReferralService.attributeForSubscriber`. Sets `attributed_at`, increments the code's `use_count`, and grants the owner reward. | `referral_rewards` |
 
@@ -40,6 +40,14 @@ consuming `referral_rewards`, and is out of scope for this module.
 
 `GET /v1/referral/rewards` lists the rewards a user has earned as a code owner.
 
+## Feature flag
+
+The share panel and all referral UI are gated behind
+`NEXT_PUBLIC_FLAG_REFERRAL_CODES`, which **defaults to off**. When the flag is
+unset or `false`, the share panel is not rendered and no referral endpoints are
+called from the client. The backend module may be deployed ahead of the flag
+flip; the flag is the single switch that exposes the feature to users.
+
 ## Fraud controls
 
 - **Self-referral rejected.** `owner_id === redeemer_id` is refused at claim time
@@ -49,9 +57,26 @@ consuming `referral_rewards`, and is out of scope for this module.
   `UQ_referral_redemptions_code_redeemer`; a repeat claim returns `409`.
 - **Capacity.** A code past `max_uses` cannot be claimed or attributed.
 - **Deactivation.** An inactive code cannot be claimed or attributed.
+- **Rate-limited code creation.** `POST /v1/referral/codes` is rate-limited per
+  user so a single account cannot mint codes in bulk to farm redemptions.
+- **Circular chains rejected.** Attribution walks the referral graph and refuses
+  any chain that would loop back to an ancestor (A→B→A), so mutually-referring
+  accounts cannot pay each other.
+- **Late attribution rejected.** A redemption can only be attributed on the
+  referred user's **first** subscription. If the subscriber already had a
+  subscription before the claim, attribution is refused — a code cannot be
+  applied retroactively to an existing subscriber.
+- **Single-winner attribution.** Attribution is idempotent and guarded so that
+  only one redemption can ever be attributed per subscriber; a second concurrent
+  or subsequent attempt is a no-op. Double attribution is impossible.
+
+## Privacy
+
+Share URLs carry only the referral code — no PII (no email, user id, or Stellar
+address) is embedded in or derivable from the shared link.
 
 ## Out of scope
 
 - On-chain referral contract / on-chain reward settlement.
-- Multi-level / chained referrals.
+- Multi-level / chained referrals (MLM).
 - Referee-side incentives (only the code owner is rewarded).
