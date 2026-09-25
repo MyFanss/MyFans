@@ -81,8 +81,59 @@ webhook controller's receive handler. Each span should carry the existing
 correlation ID as an attribute (`span.setAttribute('correlationId', id)`) so
 traces and logs can be cross-referenced.
 
+## Checkout confirm and poller iteration spans
+
+Two multi-hop paths are instrumented so latency can be attributed per hop
+instead of only per request:
+
+- `checkout.confirm` — wraps the checkout confirm handler body. The span
+  covers the confirm call through to the service response, so a slow confirm
+  is distinguishable from a slow upstream create.
+- `poller.iteration` — wraps each poller loop iteration. One span is emitted
+  per iteration, so a backlog or a stalled iteration shows up as a long or
+  missing span rather than an opaque gap between log lines.
+
+Both spans attach the resolved correlation ID as a `correlationId` attribute
+(`span.setAttribute('correlationId', id)`), matching the attribute used by the
+other critical routes. This lets a trace be pulled up directly from a
+correlation ID surfaced in an error envelope or log line.
+
+### Correlation attributes
+
+- Attribute name: `correlationId`.
+- Value: the same id propagated via `X-Correlation-Id` (charset
+  `[A-Za-z0-9._-]`, 8–128 chars).
+- No PII is placed on spans: only the correlation ID and the span name are
+  set. Request bodies, headers, and user identifiers are never attached.
+
+### Enabling
+
+These spans are emitted only when tracing is enabled via the env var:
+
+```
+OTEL_ENABLED=true
+```
+
+When `OTEL_ENABLED` is unset or not `true`, `withSpan` is a pass-through and
+no spans are created, so there is no behavior change and no runtime cost in
+environments without a collector.
+
+### Overhead notes
+
+- With tracing disabled, `withSpan` adds a single function call and no
+  allocation beyond the wrapped promise.
+- With tracing enabled, each confirm and each poller iteration emits one span.
+  Poller iteration spans are bounded by the poll interval, so span volume
+  scales with iterations, not with request rate.
+- High cardinality: the only attribute is `correlationId`, which is
+  per-request. Collectors should sample or aggregate on span name rather than
+  on `correlationId` to avoid unbounded cardinality in metrics derived from
+  spans.
+
 ## Status
 
-This is scaffolding only — `initTracing`/`withSpan` are not yet called from
-`main.ts` or the controllers. Wiring them in is a follow-up once the OTel
-collector endpoint is available in each environment.
+`initTracing`/`withSpan` are wired into the checkout confirm handler and the
+poller iteration loop. The remaining critical routes (`auth.*`,
+`checkout.create`, `webhook.receive`) still need the same `withSpan` wrapping
+as a follow-up once the OTel collector endpoint is available in each
+environment.
