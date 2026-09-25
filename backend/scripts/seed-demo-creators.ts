@@ -2,8 +2,8 @@
 /**
  * scripts/seed-demo-creators.ts
  *
- * Seeds the database with demo creator accounts and subscription plans for
- * local development and staging environments.
+ * Seeds the database with demo creator accounts, subscription plans and
+ * content for local development and staging environments.
  *
  * Usage:
  *   npx ts-node -r tsconfig-paths/register scripts/seed-demo-creators.ts
@@ -16,6 +16,8 @@
  * (same as .env.example / .env.dev)
  *
  * Safety: refuses to run when NODE_ENV=production unless ALLOW_SEED=true is set.
+ * Demo rows are tagged with the `demo_seed` marker column so `--clean` only
+ * ever removes demo data and never touches real rows.
  */
 import 'reflect-metadata';
 import * as bcrypt from 'bcrypt';
@@ -34,6 +36,10 @@ if (
 
 const clean = process.argv.includes('--clean');
 
+// Marker value written to the `demo_seed` column of every demo row. `--clean`
+// deletes only rows carrying this marker, so real data is never wiped.
+const DEMO_MARKER = 'demo-expanded-v1';
+
 // ── DataSource (no entity classes needed — raw SQL for portability) ───────────
 const ds = new DataSource({
   type: 'postgres',
@@ -48,6 +54,18 @@ const ds = new DataSource({
 
 // ── Demo data ─────────────────────────────────────────────────────────────────
 
+interface DemoPlan {
+  asset: string;
+  amount: string;
+  interval_days: number;
+}
+
+interface DemoContent {
+  title: string;
+  body: string;
+  visibility: 'public' | 'subscribers';
+}
+
 interface DemoCreator {
   username: string;
   email: string;
@@ -57,11 +75,8 @@ interface DemoCreator {
   subscription_price: string;
   currency: string;
   is_verified: boolean;
-  plans: Array<{
-    asset: string;
-    amount: string;
-    interval_days: number;
-  }>;
+  plans: DemoPlan[];
+  content: DemoContent[];
 }
 
 const DEMO_CREATORS: DemoCreator[] = [
@@ -78,6 +93,18 @@ const DEMO_CREATORS: DemoCreator[] = [
       { asset: 'XLM', amount: '10', interval_days: 30 },
       { asset: 'USDC:GA7Z6G7T3LSSKDAWJH25C4JPLD4PQV4CEMM5S5E6LQD3VDF5W6G6F3K', amount: '5', interval_days: 30 },
     ],
+    content: [
+      {
+        title: 'Welcome to Alice\'s studio',
+        body: 'A short intro to the photography and travel content you can expect.',
+        visibility: 'public',
+      },
+      {
+        title: 'Behind the scenes: Iceland',
+        body: 'Subscriber-only breakdown of the gear and settings used on location.',
+        visibility: 'subscribers',
+      },
+    ],
   },
   {
     username: 'demo_bob',
@@ -92,6 +119,18 @@ const DEMO_CREATORS: DemoCreator[] = [
       { asset: 'XLM', amount: '25', interval_days: 7 },
       { asset: 'XLM', amount: '80', interval_days: 30 },
     ],
+    content: [
+      {
+        title: 'TypeScript tips for 2024',
+        body: 'Five small patterns that make large codebases easier to maintain.',
+        visibility: 'public',
+      },
+      {
+        title: 'Live coding: building a payments flow',
+        body: 'Full walkthrough of the demo payments flow, subscriber-only.',
+        visibility: 'subscribers',
+      },
+    ],
   },
   {
     username: 'demo_carol',
@@ -105,6 +144,18 @@ const DEMO_CREATORS: DemoCreator[] = [
     plans: [
       { asset: 'XLM', amount: '15', interval_days: 30 },
       { asset: 'XLM', amount: '150', interval_days: 365 },
+    ],
+    content: [
+      {
+        title: 'Start here: 4-week beginner plan',
+        body: 'A gentle introduction to the training and nutrition programme.',
+        visibility: 'public',
+      },
+      {
+        title: 'Meal prep for busy weeks',
+        body: 'Subscriber-only recipes and prep schedule.',
+        visibility: 'subscribers',
+      },
     ],
   },
 ];
@@ -132,6 +183,7 @@ async function upsertUser(
       email_new_like, email_new_message, email_payout,
       push_new_subscriber, push_subscription_renewal, push_new_comment,
       push_new_like, push_new_message, push_payout,
+      demo_seed,
       created_at, updated_at
     )
     VALUES (
@@ -142,6 +194,7 @@ async function upsertUser(
       false, true, true,
       true, true, true,
       true, true, false,
+      $6,
       NOW(), NOW()
     )
     ON CONFLICT (username) DO UPDATE SET
@@ -149,6 +202,7 @@ async function upsertUser(
       display_name   = EXCLUDED.display_name,
       avatar_url     = EXCLUDED.avatar_url,
       is_creator     = true,
+      demo_seed      = EXCLUDED.demo_seed,
       updated_at     = NOW()
     RETURNING id
     `,
@@ -158,6 +212,7 @@ async function upsertUser(
       passwordHash,
       creator.display_name,
       creator.avatar_url,
+      DEMO_MARKER,
     ],
   );
   return result[0].id;
@@ -167,23 +222,25 @@ async function upsertCreatorProfile(
   ds: DataSource,
   userId: string,
   creator: DemoCreator,
-): Promise<void> {
-  await ds.query(
+): Promise<string> {
+  const result = await ds.query<{ id: string }[]>(
     `
     INSERT INTO creators (
       id, user_id, bio, subscription_price, currency, is_verified,
-      followers_count, created_at, updated_at
+      followers_count, demo_seed, created_at, updated_at
     )
     VALUES (
       gen_random_uuid(), $1, $2, $3, $4, $5,
-      0, NOW(), NOW()
+      0, $6, NOW(), NOW()
     )
     ON CONFLICT (user_id) DO UPDATE SET
       bio                = EXCLUDED.bio,
       subscription_price = EXCLUDED.subscription_price,
       currency           = EXCLUDED.currency,
       is_verified        = EXCLUDED.is_verified,
+      demo_seed          = EXCLUDED.demo_seed,
       updated_at         = NOW()
+    RETURNING id
     `,
     [
       userId,
@@ -191,28 +248,87 @@ async function upsertCreatorProfile(
       creator.subscription_price,
       creator.currency,
       creator.is_verified,
+      DEMO_MARKER,
     ],
   );
+  return result[0].id;
+}
+
+async function upsertPlans(
+  ds: DataSource,
+  creatorId: string,
+  creator: DemoCreator,
+): Promise<void> {
+  for (const plan of creator.plans) {
+    await ds.query(
+      `
+      INSERT INTO subscription_plans (
+        id, creator_id, asset, amount, interval_days, demo_seed,
+        created_at, updated_at
+      )
+      VALUES (
+        gen_random_uuid(), $1, $2, $3, $4, $5,
+        NOW(), NOW()
+      )
+      ON CONFLICT (creator_id, asset, interval_days) DO UPDATE SET
+        amount     = EXCLUDED.amount,
+        demo_seed  = EXCLUDED.demo_seed,
+        updated_at = NOW()
+      `,
+      [creatorId, plan.asset, plan.amount, plan.interval_days, DEMO_MARKER],
+    );
+  }
+}
+
+async function upsertContent(
+  ds: DataSource,
+  creatorId: string,
+  creator: DemoCreator,
+): Promise<void> {
+  for (const post of creator.content) {
+    await ds.query(
+      `
+      INSERT INTO posts (
+        id, creator_id, title, body, visibility, demo_seed,
+        created_at, updated_at
+      )
+      VALUES (
+        gen_random_uuid(), $1, $2, $3, $4, $5,
+        NOW(), NOW()
+      )
+      ON CONFLICT (creator_id, title) DO UPDATE SET
+        body       = EXCLUDED.body,
+        visibility = EXCLUDED.visibility,
+        demo_seed  = EXCLUDED.demo_seed,
+        updated_at = NOW()
+      `,
+      [creatorId, post.title, post.body, post.visibility, DEMO_MARKER],
+    );
+  }
 }
 
 async function cleanDemoRows(ds: DataSource): Promise<void> {
-  const usernames = DEMO_CREATORS.map((c) => c.username);
   console.log('[seed] --clean: removing existing demo rows…');
 
-  // Fetch user IDs first so we can cascade-clean creators
-  const rows = await ds.query<{ id: string }[]>(
-    `SELECT id FROM users WHERE username = ANY($1)`,
-    [usernames],
+  // Only rows tagged with the demo marker are removed — real data is untouched.
+  const posts = await ds.query(`DELETE FROM posts WHERE demo_seed = $1`, [
+    DEMO_MARKER,
+  ]);
+  const plans = await ds.query(
+    `DELETE FROM subscription_plans WHERE demo_seed = $1`,
+    [DEMO_MARKER],
   );
-  const ids = rows.map((r) => r.id);
+  const creators = await ds.query(
+    `DELETE FROM creators WHERE demo_seed = $1`,
+    [DEMO_MARKER],
+  );
+  const users = await ds.query(`DELETE FROM users WHERE demo_seed = $1`, [
+    DEMO_MARKER,
+  ]);
 
-  if (ids.length > 0) {
-    await ds.query(`DELETE FROM creators WHERE user_id = ANY($1)`, [ids]);
-    await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [ids]);
-    console.log(`[seed] removed ${ids.length} demo user(s) and their creator profiles`);
-  } else {
-    console.log('[seed] no existing demo rows found');
-  }
+  console.log(
+    `[seed] removed demo rows — users=${users.length}, creators=${creators.length}, plans=${plans.length}, posts=${posts.length}`,
+  );
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -230,9 +346,11 @@ async function main(): Promise<void> {
 
     for (const creator of DEMO_CREATORS) {
       const userId = await upsertUser(ds, creator, passwordHash);
-      await upsertCreatorProfile(ds, userId, creator);
+      const creatorId = await upsertCreatorProfile(ds, userId, creator);
+      await upsertPlans(ds, creatorId, creator);
+      await upsertContent(ds, creatorId, creator);
       console.log(
-        `[seed] upserted creator: ${creator.username} (userId=${userId}, plans=${creator.plans.length})`,
+        `[seed] upserted creator: ${creator.username} (userId=${userId}, creatorId=${creatorId}, plans=${creator.plans.length}, posts=${creator.content.length})`,
       );
     }
 
