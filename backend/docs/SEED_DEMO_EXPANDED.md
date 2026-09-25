@@ -33,6 +33,38 @@ It adds:
 - A conversation + opening message between each creator and their linked
   demo fan.
 
+## QUICKSTART
+
+Run the full demo seed locally (never against production):
+
+```
+# 1. Base creators (demo_alice, demo_bob, demo_carol)
+npx ts-node -r tsconfig-paths/register scripts/seed-demo-creators.ts
+
+# 2. Expanded demo data (fans, posts, subscriptions, conversations)
+npx ts-node -r tsconfig-paths/register scripts/seed-demo-expanded.ts
+
+# 3. Remove only the expanded demo rows (safe: base creators untouched)
+npx ts-node -r tsconfig-paths/register scripts/seed-demo-expanded.ts --clean
+```
+
+Seeding is guarded so it only runs in non-production / explicit demo mode;
+the demo flag is never enabled in production deploys. `--clean` deletes
+only rows carrying the demo marker, so real data is never wiped.
+
+### Demo ids
+
+Deterministic ids/values are stable across runs so the UI can link to them:
+
+| Entity | Id / value |
+| --- | --- |
+| Creator | `demo_alice`, `demo_bob`, `demo_carol` |
+| Fan | `demo_fan_dave`, `demo_fan_erin` |
+| Password (all demo users) | `Demo1234!` |
+| Posts | 2 per creator (one free/published, one premium) |
+| Subscription | one `subscription_index` row per creator↔fan link |
+| Conversation | one per creator↔fan link, with an opening message |
+
 ## npm script
 
 Not added to `package.json` (kept out-of-scope to avoid touching existing

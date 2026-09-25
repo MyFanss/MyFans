@@ -65,6 +65,11 @@ const DEMO_FANS = [
 
 const DEMO_PASSWORD_PLAIN = 'Demo1234!';
 
+// Marker used to identify rows created by this script so --clean never
+// touches real data. Stored in the users.metadata JSONB column (and mirrored
+// on posts/subscriptions where a marker column is available).
+const DEMO_MARKER = 'seed-demo-expanded';
+
 // Fake Stellar-shaped G-address for demo/index rows only — not a real account.
 function fakeGAddress(seed: string): string {
   const base = seed.toUpperCase().replace(/[^A-Z0-9]/g, '').padEnd(55, 'X');
@@ -85,7 +90,7 @@ async function upsertFan(ds: DataSource, fan: (typeof DEMO_FANS)[number], passwo
       email_new_like, email_new_message, email_payout,
       push_new_subscriber, push_subscription_renewal, push_new_comment,
       push_new_like, push_new_message, push_payout,
-      created_at, updated_at
+      metadata, created_at, updated_at
     )
     VALUES (
       gen_random_uuid(), $1, $2, $3, $4, false, 'user',
@@ -94,15 +99,16 @@ async function upsertFan(ds: DataSource, fan: (typeof DEMO_FANS)[number], passwo
       false, true, true,
       true, true, true,
       true, true, false,
-      NOW(), NOW()
+      jsonb_build_object('demoMarker', $5), NOW(), NOW()
     )
     ON CONFLICT (username) DO UPDATE SET
       email = EXCLUDED.email,
       display_name = EXCLUDED.display_name,
+      metadata = EXCLUDED.metadata,
       updated_at = NOW()
     RETURNING id
     `,
-    [fan.email, fan.username, passwordHash, fan.display_name],
+    [fan.email, fan.username, passwordHash, fan.display_name, DEMO_MARKER],
   );
   return result[0].id;
 }
@@ -174,7 +180,11 @@ async function seedConversation(ds: DataSource, fanId: string, creatorId: string
 async function cleanExpandedRows(ds: DataSource): Promise<void> {
   console.log('[seed-expanded] --clean: removing previously expanded demo rows…');
   const fanUsernames = DEMO_FANS.map((f) => f.username);
-  const rows = await ds.query<{ id: string }[]>(`SELECT id FROM users WHERE username = ANY($1)`, [fanUsernames]);
+  // Only remove rows explicitly marked as demo rows so real data is never wiped.
+  const rows = await ds.query<{ id: string }[]>(
+    `SELECT id FROM users WHERE username = ANY($1) AND metadata->>'demoMarker' = $2`,
+    [fanUsernames, DEMO_MARKER],
+  );
   const fanIds = rows.map((r) => r.id);
 
   if (fanIds.length > 0) {
@@ -222,19 +232,18 @@ async function main(): Promise<void> {
       const creatorId = creatorIds[username];
       const fanId = fanIds[i % fanIds.length];
       if (!creatorId || !fanId) continue;
-
       await seedSubscription(ds, DEMO_FANS[i % DEMO_FANS.length].username, username);
       await seedConversation(ds, fanId, creatorId, username);
-      console.log(`[seed-expanded] linked fan -> ${username} (subscription + conversation)`);
+      console.log(`[seed-expanded] linked fan ${DEMO_FANS[i % DEMO_FANS.length].username} -> creator ${username}`);
     }
 
-    console.log('[seed-expanded] done — posts, subscriptions and conversations seeded.');
+    console.log('[seed-expanded] done.');
   } finally {
     await ds.destroy();
   }
 }
 
 main().catch((err) => {
-  console.error('[seed-expanded] FAILED:', err);
+  console.error('[seed-expanded] failed:', err);
   process.exit(1);
 });

@@ -6,6 +6,18 @@ Please report suspected security vulnerabilities privately to the maintainers
 (e.g. via GitHub Security Advisories or the contact listed in the repository
 profile). Do not open a public issue for undisclosed vulnerabilities.
 
+## Secret Management
+
+Secrets (JWT signing keys, webhook secrets, and other credentials) are managed
+and rotated according to the secret management runbook:
+
+- [`backend/docs/SECRET_MANAGEMENT.md`](backend/docs/SECRET_MANAGEMENT.md)
+
+The runbook covers dual-key JWT acceptance during rotation, the zero-downtime
+rotation procedure, the incident response checklist for secret compromise, and
+ownership of secrets and rotation responsibilities. Never commit secrets to the
+repository; use short-lived tokens where possible.
+
 ## Trust & Safety / Moderation
 
 The moderation subsystem (issue #1795) provides a report queue, evidence
