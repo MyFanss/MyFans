@@ -1,97 +1,67 @@
 # Wallet Setup
 
-This guide covers connecting a Stellar wallet (e.g. Freighter) to the
-subscription frontend and the preflight checks the UI performs before a fan
-submits a `subscribe` / `renew` transaction.
+This guide covers the reference wallet path used by the frontend: **Freighter**
+(the only guaranteed wallet for monetization demos), with **Lobstr** supported
+where available.
 
-> **Security note:** the checks below are **complementary UX only**. They are
-> *not* a security boundary. The subscription contract enforces asset
-> correctness, trustlines, allowances, and atomicity on-chain. A malicious or
-> outdated client cannot bypass those guarantees by skipping preflight.
+## Supported wallets
 
-## Supported assets
+| Wallet   | Connect | Network detect | signTransaction | Notes |
+| -------- | ------- | -------------- | --------------- | ----- |
+| Freighter | Yes     | Yes            | Yes             | Reference path; required for demos |
+| Lobstr    | Yes     | Yes            | Yes             | Optional |
 
-Plans are priced in exactly one asset, identified by an `AssetId`:
+Hardware wallets (e.g. Ledger) are **out of scope** for this path.
 
-- **Native XLM** — the native sentinel (no contract address).
-- **SAC token** — a Stellar Asset Contract address (e.g. USDC).
+## Prerequisites
 
-The plan metadata returned by the backend includes the asset contract id (or
-native sentinel) and the amount. The frontend must transfer the **same asset**
-the plan was created with; renewing with a different asset reverts on-chain.
+1. Install the Freighter browser extension.
+2. Create or import an account in Freighter.
+3. Switch Freighter to the **same network** the app is configured for
+   (testnet for local development).
 
-## Preflight checks (UX only)
+> Never enter a secret key into the app. The app only ever asks Freighter to
+> sign a transaction; it never requests or stores secret keys.
 
-Before submitting, the frontend should verify the fan can actually pay:
+## Connect
 
-### 1. Balance
+The wallet module detects Freighter availability and connects via
+`requestAccess`. If the extension is missing, the user sees a clear message
+pointing them at the install page instead of a silent failure.
 
-- **XLM:** ensure the account has enough spendable XLM (leave room for the
-  base reserve and fees).
-- **SAC:** ensure the account holds enough of the token.
+## Network guard
 
-If insufficient, surface `insufficient_balance` and block submission.
+Before any transaction is built, the wallet's active network is compared
+against the app's configured network passphrase. On a mismatch the flow is
+**blocked** and the user is told which network to switch to. This prevents
+signing a testnet transaction with a mainnet account (or vice versa).
 
-### 2. Trustline (SAC only)
+See `frontend/docs/NETWORK_GUARD.md` for the guard details.
 
-SAC tokens require the fan to hold a trustline for the asset. If the trustline
-is missing, the transfer will fail on-chain with `trustline_missing`. Prompt
-the fan to add the trustline in their wallet before retrying.
+## Signing subscribe / cancel
 
-### 3. Allowance (SAC only)
+Subscribe and cancel transactions are built by the app and routed through
+Freighter's `signTransaction`. The signed envelope is then submitted by the
+app. The app never signs on the user's behalf.
 
-Some SAC token flows require the fan to approve an allowance for the spender
-before the contract can pull funds. If the allowance is missing or too low, the
-transaction fails with `allowance_missing`. Prompt the fan to approve the
-required allowance in their wallet.
+## Error mapping
 
-### 4. Supported asset
+Wallet errors are translated into user-readable messages:
 
-If the plan's asset is not in the configured allowlist (when the feature is
-enabled) or the SAC client cannot be validated, the contract rejects the plan
-with `unsupported_asset`. The frontend should treat this as a hard failure and
-not attempt the transfer.
+| Condition            | Message shown to the user |
+| -------------------- | ------------------------- |
+| Freighter missing    | Install the Freighter extension to continue. |
+| Wrong network        | Switch Freighter to <network> and try again. |
+| User rejected sign   | You cancelled the signature request. |
+| Popup blocked        | Allow popups for this site, then retry. |
 
-## Error codes
+## Testing
 
-The contract surfaces distinct typed errors so the UI can react precisely:
+- Unit tests cover wallet dispatch (connect / network detect / sign).
+- `frontend/e2e/network-status.spec.ts` covers the network guard.
+- The subscribe flow is exercised with a mocked wallet.
 
-| Code | Meaning | Suggested UX |
-| --- | --- | --- |
-| `insufficient_balance` | Fan lacks funds for the plan asset | Show balance, block submit |
-| `trustline_missing` | Fan has no trustline for the SAC token | Prompt to add trustline |
-| `allowance_missing` | Fan has not approved the required allowance | Prompt to approve allowance |
-| `unsupported_asset` | Plan asset not allowed / SAC invalid | Hard fail, do not submit |
+## Honesty note
 
-## Atomicity
-
-`subscribe` and `renew` are atomic: if the creator cannot receive the asset, or
-any step fails, the whole transaction reverts with no partial fee. The frontend
-does not need to (and must not) attempt to compensate for partial failures.
-
-## Renewals
-
-A renewal must use the **same asset** as the original plan. If the plan's asset
-changed or the fan attempts a different asset, the transaction reverts. Always
-re-read plan metadata before renewing.
-
-## Golden test vectors (builder regression guard)
-
-The frontend builders for `subscribe`, `cancel`, and `extend` are pinned to
-golden XDR vectors so a builder regression (empty or wrong invoke tx) fails CI
-instead of shipping. See `contract/test-vectors/TEST_VECTORS.md` for the full
-regen procedure and the vector schema.
-
-- Vectors live in `contract/test-vectors/` as JSON, one file per operation
-  (`subscribe.json`, `cancel.json`, `extend.json`).
-- Each vector records the **network passphrase**, the contract id, the
-  operation args, and the expected auth footprint.
-- A vitest suite compares the frontend builder output against these vectors and
-  fails on any mismatch (wrong contract id, network mismatch, or extend
-  overflow args).
-- Vectors contain **no private keys** — only public inputs and expected XDR.
-
-Run the comparison locally with the frontend test suite; CI runs the same
-suite so builder drift is caught before merge. To regenerate vectors after an
-intentional contract change, follow the procedure in
-`contract/test-vectors/TEST_VECTORS.md`.
+This document reflects the current reference path. Freighter is the only
+wallet guaranteed to work end-to-end; other wallets are best-effort.
