@@ -33,9 +33,40 @@ The required check names below are the **exact `name:` values** from
         - `Backend (Node.js 22)`
         - `Backend DB Migrations (Postgres)`
         - `Postgres Backup / Restore Drill`
+        - `Security Hardening + CSRF E2E (Postgres)`
 
 > `Frontend` and `Contract` checks are also required on `main`/`develop`.
 > See the full list in [`docs/BRANCH_PROTECTION.md`](../../docs/BRANCH_PROTECTION.md).
+
+### Security Hardening + CSRF E2E (Postgres)
+
+The `Security Hardening + CSRF E2E (Postgres)` check runs on every `pull_request`
+(including forks) and executes the hardening suites against a real Postgres
+service container:
+
+- `backend/test/security-hardening.e2e-spec.ts`
+- `backend/test/csrf.e2e-spec.ts`
+
+It must be marked **required** so hardening regressions cannot merge.  Do not
+skip this job on fork PRs without an explicit, documented maintainer decision —
+if it is skipped, the required check stays pending and the PR cannot merge.
+
+#### Flake triage
+
+- Suites are order-dependent: run them in the order listed above and keep the
+  Postgres service healthy (readiness probe) before starting the suite.
+- On a suspected flake, re-run the job once and capture the failing spec name in
+  the PR before retrying; repeated failures are treated as real regressions.
+
+#### Local parity
+
+Run the same suites locally against a Postgres instance to reproduce CI:
+
+```bash
+cd backend
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/myfans_test \
+  npm run test:e2e -- security-hardening.e2e-spec.ts csrf.e2e-spec.ts
+```
 
 ## 4. History & Commit Requirements
 - [x] **Require linear history**: Use **Squash and merge** or **Rebase and merge**.
@@ -66,6 +97,7 @@ gh api -X PUT /repos/MyFanss/MyFans/branches/main/protection \
       "Backend (Node.js 22)",
       "Backend DB Migrations (Postgres)",
       "Postgres Backup / Restore Drill",
+      "Security Hardening + CSRF E2E (Postgres)",
       "Frontend",
       "Contract"
     ]
