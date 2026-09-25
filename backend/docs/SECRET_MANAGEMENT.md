@@ -126,6 +126,57 @@ ts-node scripts/rotate-webhook-secret.ts sign <secret> <payload>
 
 ---
 
+## Inbound webhook verification
+
+All inbound webhook requests are authenticated with an HMAC-SHA256 signature before any handler runs. Requests that fail verification are rejected with `401 Unauthorized` and are never processed.
+
+### Required headers
+
+| Header | Description |
+|---|---|
+| `X-Webhook-Signature` | Hex-encoded HMAC-SHA256 of the raw request body, keyed by the webhook secret |
+| `X-Webhook-Timestamp` | Unix timestamp (seconds) at which the request was signed |
+
+### Verification rules
+
+1. **Signature** — the middleware recomputes `HMAC-SHA256(secret, rawBody)` and compares it to `X-Webhook-Signature` using a **constant-time** comparison (`crypto.timingSafeEqual`). A mismatch returns `401`.
+2. **Dual-secret accept window** — during rotation both the current secret and the previous secret (while still inside its grace period) are accepted. A request is valid if it matches *either* secret. Once the grace period expires, only the current secret is accepted.
+3. **Replay protection** — `X-Webhook-Timestamp` must be within the allowed skew window (default ±300 s). Stale or future timestamps are rejected with `401`. Timestamps already seen within the window are rejected as duplicates.
+4. **Body integrity** — the signature is computed over the **raw** request body, so any tampering with the payload invalidates the signature.
+
+### Failure responses
+
+| Condition | Status |
+|---|---|
+| Missing/invalid signature | `401 Unauthorized` |
+| Missing/stale/duplicate timestamp | `401 Unauthorized` |
+| Signature matches neither current nor previous secret | `401 Unauthorized` |
+
+### Rotation drill
+
+To confirm the dual-secret window works end to end:
+
+1. Rotate the secret with a short grace period:
+   ```bash
+   API_BASE_URL=https://api.myfans.example.com \
+     ts-node scripts/rotate-webhook-secret.ts rotate <new-secret> 3600000
+   ```
+2. Send a webhook signed with the **previous** secret — expect `200` (still inside the grace window).
+3. Send a webhook signed with the **new** secret — expect `200`.
+4. Send a webhook with a tampered body or an invalid signature — expect `401`.
+5. Send a webhook with a stale timestamp (older than the skew window) — expect `401`.
+6. Expire the previous secret and repeat step 2 — expect `401`:
+   ```bash
+   API_BASE_URL=https://api.myfans.example.com \
+     ts-node scripts/rotate-webhook-secret.ts expire-previous
+   ```
+
+### Logging
+
+Verification failures are logged with the reason (missing header, bad signature, stale timestamp, duplicate timestamp) but **never** log the secret, the expected signature, or the raw body. See the log redaction guidance in `docs/`.
+
+---
+
 ## Startup validation
 
 `src/common/secrets-validation.ts` checks that all required secrets are non-empty before the NestJS application finishes bootstrapping. If any are missing the process exits with a clear error listing every missing variable:
