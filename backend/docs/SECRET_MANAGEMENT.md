@@ -7,6 +7,7 @@ This document describes how secrets are stored, validated, and rotated in the My
 | Variable | Purpose | Required | Rotation frequency |
 |---|---|---|---|
 | `JWT_SECRET` | Signs and verifies JWT access tokens | Yes | On compromise; recommended every 90 days |
+| `JWT_SECRET_PREVIOUS` | Previous JWT signing key, accepted during rotation | No | Cleared after rotation completes |
 | `JWT_ACCESS_EXPIRES_IN` | Access token TTL in seconds (default 900) | No | When session policy changes |
 | `DB_PASSWORD` | PostgreSQL authentication | Yes | On compromise; recommended every 90 days |
 | `WEBHOOK_SECRET` | HMAC-SHA256 signing of outbound webhooks | Yes | On compromise; recommended every 30 days |
@@ -22,11 +23,33 @@ All required variables are validated at startup via `src/common/secrets-validati
 - In production, inject secrets via your platform's secret manager (e.g. AWS Secrets Manager, HashiCorp Vault, GitHub Actions secrets) as environment variables.
 - Restrict read access to `.env` files: `chmod 600 .env`.
 
+## Ownership
+
+| Secret | Owner | Rotation approver |
+|---|---|---|
+| `JWT_SECRET` / `JWT_SECRET_PREVIOUS` | Backend lead | Backend lead |
+| `DB_PASSWORD` | Platform / DBA | Platform lead |
+| `WEBHOOK_SECRET` | Integrations owner | Backend lead |
+| CI/CD secrets (GitHub Actions) | Repo admin | Repo admin |
+
+- The **owner** is responsible for scheduling rotations and executing the runbook.
+- The **approver** must sign off before a production rotation begins.
+- Rotations are recorded in the incident/change log with timestamp, operator, and reason.
+
 ## Rotation runbooks
 
 ### JWT_SECRET
 
 Rotating `JWT_SECRET` immediately invalidates all existing sessions. Plan for a brief re-login window.
+
+#### Dual-key acceptance
+
+The backend accepts **two** JWT signing keys during a rotation window:
+
+- `JWT_SECRET` — the current key, used to **sign** all newly issued tokens.
+- `JWT_SECRET_PREVIOUS` — the previous key, used only to **verify** tokens that were issued before rotation.
+
+Verification tries the current key first, then falls back to `JWT_SECRET_PREVIOUS` if set. Signing always uses `JWT_SECRET`. This lets old and new keys validate simultaneously so no in-flight token is rejected mid-rotation. When `JWT_SECRET_PREVIOUS` is unset, only the current key is accepted.
 
 #### Standard rotation (accepts brief re-login)
 
@@ -38,14 +61,21 @@ Rotating `JWT_SECRET` immediately invalidates all existing sessions. Plan for a 
 3. Redeploy the backend. All existing JWTs are immediately invalid.
 4. Notify users that they will need to log in again.
 
-#### Zero-downtime rotation
+#### Zero-downtime rotation (dual-key)
 
-Run two backend instances briefly in parallel — old instance keeps the old secret, new instance uses the new secret — then drain the old instance once access tokens expire (`JWT_ACCESS_EXPIRES_IN`, default 900 s).
+Use the dual-key window so no user is logged out and no instance rejects a valid token.
 
-1. Deploy new instance with the new `JWT_SECRET`.
-2. Keep old instance running until in-flight tokens expire (≤ 15 min with default TTL).
-3. Decommission old instance.
-4. Refresh tokens issued before rotation will fail on the new instance; users will be prompted to re-authenticate.
+1. Generate a new secret:
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+   ```
+2. Set `JWT_SECRET_PREVIOUS` to the **current** `JWT_SECRET` value, and set `JWT_SECRET` to the **new** value, in your secret manager.
+3. Roll out the change to **all** instances (rolling deploy). During this window every instance accepts both keys; new tokens are signed with the new key.
+4. Wait at least one full access-token TTL (`JWT_ACCESS_EXPIRES_IN`, default 900 s) so all tokens signed with the old key have expired.
+5. Unset `JWT_SECRET_PREVIOUS` and roll out again. Only the new key is now accepted.
+6. Confirm no instance still references the old key (see verification below).
+
+> **Partial rollout (multi-instance):** if only some instances have the new `JWT_SECRET` while others still run the old one, tokens signed by one group will be rejected by the other. Always set `JWT_SECRET_PREVIOUS` to the old value **before** switching `JWT_SECRET`, and roll out to every instance before removing the previous key.
 
 #### CI/CD (GitHub Actions)
 
@@ -54,12 +84,14 @@ Store `JWT_SECRET` as a GitHub Actions secret and reference it in your workflow:
 ```yaml
 env:
   JWT_SECRET: ${{ secrets.JWT_SECRET }}
+  JWT_SECRET_PREVIOUS: ${{ secrets.JWT_SECRET_PREVIOUS }}
 ```
 
 To rotate in CI:
 1. Go to **Settings → Secrets and variables → Actions**.
-2. Update `JWT_SECRET` with the new value.
+2. Set `JWT_SECRET_PREVIOUS` to the old value and update `JWT_SECRET` with the new value.
 3. Re-run or trigger a new deployment workflow.
+4. After one TTL, delete `JWT_SECRET_PREVIOUS` and redeploy.
 
 #### Verification after rotation
 
@@ -70,6 +102,9 @@ curl -sf http://localhost:3000/v1/health | jq .status
 curl -s -X POST http://localhost:3000/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"publicKey":"<G-address>","signature":"<sig>"}' | jq .accessToken
+# Confirm a token signed with the previous key still validates during the window
+curl -s http://localhost:3000/v1/auth/me \
+  -H 'Authorization: Bearer <token-signed-with-previous-key>' | jq .id
 ```
 
 ---
@@ -123,6 +158,35 @@ API_BASE_URL=https://api.myfans.example.com \
 ```bash
 ts-node scripts/rotate-webhook-secret.ts sign <secret> <payload>
 ```
+
+---
+
+## Incident response checklist
+
+Use this checklist when a secret is suspected compromised or a rotation fails. Work top to bottom; do not skip the verification steps.
+
+- [ ] **Declare** the incident and assign an incident lead (see Ownership).
+- [ ] **Identify** which secret is affected (`JWT_SECRET`, `DB_PASSWORD`, `WEBHOOK_SECRET`, CI/CD).
+- [ ] **Contain** — if a secret may have leaked, rotate it immediately rather than waiting for the scheduled window.
+- [ ] **Rotate** using the matching runbook above:
+  - JWT: set `JWT_SECRET_PREVIOUS` to the old value, set `JWT_SECRET` to the new value, roll out to all instances, then clear `JWT_SECRET_PREVIOUS` after one TTL.
+  - DB: `ALTER USER` with the new password, update the secret manager, redeploy.
+  - Webhook: rotate with a short grace period, notify consumers, then `expire-previous`.
+- [ ] **Verify** — run the verification commands for the rotated secret; confirm health probe, login, and (for JWT) that a previous-key token still validates during the window.
+- [ ] **Invalidate** — for a compromised JWT key, do **not** keep the old key in `JWT_SECRET_PREVIOUS`; clear it immediately so leaked tokens cannot be replayed.
+- [ ] **Audit** — review access logs for use of the compromised secret and check for unauthorized access.
+- [ ] **Record** — log the incident: timestamp, operator, secret affected, rotation performed, and follow-up actions.
+- [ ] **Notify** — inform affected users/consumers if sessions were invalidated or signing keys changed.
+- [ ] **Review** — schedule a post-incident review and update this runbook if any step was unclear.
+
+### Staging drill
+
+Before relying on this runbook in production, rehearse it in staging:
+
+1. Perform a full dual-key JWT rotation (set previous, switch current, roll out, wait one TTL, clear previous).
+2. Confirm a token signed with the previous key validates during the window and is rejected after `JWT_SECRET_PREVIOUS` is cleared.
+3. Walk the incident checklist end to end and note any gaps.
+4. Have a peer review the checklist and record the drill outcome.
 
 ---
 
@@ -189,16 +253,4 @@ Verification failures are logged with the reason (missing header, bad signature,
 See backend/.env.example for the full list of required variables.
 ```
 
-This prevents the app from starting in a partially-configured state that could silently fall back to insecure defaults.
-
-## Manual checklist
-
-Use this checklist after any secret rotation to confirm the change is complete:
-
-- [ ] New secret generated with sufficient entropy (≥ 32 random bytes).
-- [ ] Secret updated in the secret manager / deployment environment.
-- [ ] Backend redeployed (or process restarted) and startup probes pass.
-- [ ] Old secret removed from all local notes, CI variables, and chat logs.
-- [ ] For `WEBHOOK_SECRET`: webhook consumers notified and previous secret expired after grace period.
-- [ ] For `JWT_SECRET`: users re-authenticated or re-login window communicated.
-- [ ] No plaintext secret values appear in application logs (see `docs/` log redaction guidance).
+This prevents the app from starting with an incomplete configuration.
