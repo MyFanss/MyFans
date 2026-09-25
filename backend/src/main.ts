@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { WebhookHmacMiddleware } from './webhooks/webhook-hmac.middleware';
+import { RedactionExceptionFilter } from './common/logging/redaction.exception-filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -12,6 +13,10 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  // Scrub secrets (JWTs, cookies, webhook secrets, payout fields) from any
+  // exception output before it is returned or logged.
+  app.useGlobalFilters(new RedactionExceptionFilter());
 
   // Enforce HMAC verification on inbound webhook routes before they reach
   // controllers. The middleware accepts both the current and previous secret
