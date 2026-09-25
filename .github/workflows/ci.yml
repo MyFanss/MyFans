@@ -66,3 +66,57 @@
 
       - name: Check interface docs drift
         run: node scripts/check-interface-docs-drift.mjs
+
+  # ─────────────────────────────────────────────
+  # Security hardening + CSRF e2e (Issue #1807)
+  # Runs the hardening and CSRF e2e suites on every PR
+  # against a real Postgres service container so regressions
+  # cannot merge to main. This job name is the required
+  # status check documented in backend/docs/BRANCH_PROTECTION.md.
+  # ─────────────────────────────────────────────
+  security-hardening-e2e:
+    name: Security — hardening + csrf e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/app_test
+      NODE_ENV: test
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run security hardening e2e
+        run: npm test -- --runInBand test/security-hardening.e2e-spec.ts
+
+      - name: Run csrf e2e
+        run: npm test -- --runInBand test/csrf.e2e-spec.ts

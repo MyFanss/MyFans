@@ -28,6 +28,37 @@ import { createHash } from 'crypto';
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const MAX_BODY_BYTES = 1024 * 1024; // 1MB guard against huge bodies
 
+/**
+ * Tracing is opt-in via env (see backend/docs/TRACING.md). When disabled the
+ * span helper is a no-op so there is no overhead on the money path.
+ */
+const TRACING_ENABLED = process.env.TRACING_ENABLED === 'true';
+
+interface Span {
+  end(): void;
+  setAttribute(key: string, value: string): void;
+}
+
+/**
+ * Minimal span emitter. Kept dependency-free and swappable for an OTel
+ * exporter; only non-PII attributes (correlation id, route, outcome) are set.
+ */
+function startSpan(name: string): Span {
+  if (!TRACING_ENABLED) {
+    return { end: () => undefined, setAttribute: () => undefined };
+  }
+  const startedAt = Date.now();
+  return {
+    end: () => {
+      // eslint-disable-next-line no-console
+      console.debug(
+        JSON.stringify({ span: name, durationMs: Date.now() - startedAt }),
+      );
+    },
+    setAttribute: () => undefined,
+  };
+}
+
 interface IdempotencyRecord {
   bodyHash: string;
   status: number;
@@ -86,32 +117,42 @@ export class CheckoutController {
   @HttpCode(HttpStatus.OK)
   async confirm(
     @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Headers('x-correlation-id') correlationId: string | undefined,
     @Body() body: Record<string, unknown>,
     @Req() _req: Request,
   ): Promise<unknown> {
-    const key = requireIdempotencyKey(idempotencyKey);
-    const bodyHash = hashBody(body);
+    const span = startSpan('checkout.confirm');
+    span.setAttribute('correlation.id', correlationId ?? 'unknown');
+    try {
+      const key = requireIdempotencyKey(idempotencyKey);
+      const bodyHash = hashBody(body);
 
-    const existing = idempotencyStore.get(key);
-    if (existing) {
-      if (existing.bodyHash !== bodyHash) {
-        throw new ConflictException(
-          'Idempotency-Key was reused with a different request body',
-        );
+      const existing = idempotencyStore.get(key);
+      if (existing) {
+        if (existing.bodyHash !== bodyHash) {
+          span.setAttribute('checkout.outcome', 'conflict');
+          throw new ConflictException(
+            'Idempotency-Key was reused with a different request body',
+          );
+        }
+        span.setAttribute('checkout.outcome', 'replayed');
+        return existing.response;
       }
-      return existing.response;
+
+      const response = await this.processCheckout(body);
+
+      idempotencyStore.set(key, {
+        bodyHash,
+        status: HttpStatus.OK,
+        response,
+        expiresAt: Date.now() + IDEMPOTENCY_TTL_MS,
+      });
+
+      span.setAttribute('checkout.outcome', 'confirmed');
+      return response;
+    } finally {
+      span.end();
     }
-
-    const response = await this.processCheckout(body);
-
-    idempotencyStore.set(key, {
-      bodyHash,
-      status: HttpStatus.OK,
-      response,
-      expiresAt: Date.now() + IDEMPOTENCY_TTL_MS,
-    });
-
-    return response;
   }
 
   /**
