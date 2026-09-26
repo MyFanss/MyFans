@@ -63,6 +63,25 @@ test.beforeEach(async ({ page }) => {
       return;
     }
 
+    if (url.includes('/creators')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          creators: [
+            {
+              id: 'smoke-creator-1',
+              handle: 'smokecreator',
+              displayName: 'Smoke Creator',
+              avatarUrl: '',
+              subscriberCount: 12,
+            },
+          ],
+        }),
+      });
+      return;
+    }
+
     if (url.includes('/health')) {
       await route.fulfill({
         status: 200,
@@ -140,4 +159,62 @@ test('smoke: subscribe page renders at least one creator', async ({ page }) => {
   // The page heading or at least one creator card must appear
   const heading = page.getByRole('heading', { name: /subscribe/i }).first();
   await expect(heading).toBeVisible({ timeout: 10_000 });
+});
+
+// ---------------------------------------------------------------------------
+// Smoke 5: Home live creators strip renders from the creators API
+// ---------------------------------------------------------------------------
+
+test('smoke: home live creators strip renders creators from API', async ({ page }) => {
+  await page.goto('/');
+
+  // The strip must render the creator returned by the live creators API stub
+  await expect(page.getByText(/smoke creator/i).first()).toBeVisible({ timeout: 10_000 });
+  // No fake paid badges should be shown for creators
+  await expect(page.getByText(/paid badge|verified paid/i)).toHaveCount(0);
+});
+
+// ---------------------------------------------------------------------------
+// Smoke 6: Home creators strip shows honest empty state when API returns none
+// ---------------------------------------------------------------------------
+
+test('smoke: home creators strip shows empty state when no creators', async ({ page }) => {
+  await page.route('**/v1/creators**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ creators: [] }),
+    });
+  });
+
+  await page.goto('/');
+
+  // Honest empty copy must be shown instead of mock creators
+  await expect(page.getByText(/no creators|be the first/i).first()).toBeVisible({ timeout: 10_000 });
+});
+
+// ---------------------------------------------------------------------------
+// Smoke 7: Home creators strip shows error state when API is down
+// ---------------------------------------------------------------------------
+
+test('smoke: home creators strip shows error state when API is down', async ({ page }) => {
+  await page.route('**/v1/creators**', async (route) => {
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'down' }) });
+  });
+
+  await page.goto('/');
+
+  // Error copy must be shown and no mock creators leaked
+  await expect(page.getByText(/couldn.t load|try again|unable to load/i).first()).toBeVisible({ timeout: 10_000 });
+});
+
+// ---------------------------------------------------------------------------
+// Smoke 8: Freighter-only wallet messaging on home
+// ---------------------------------------------------------------------------
+
+test('smoke: home shows Freighter-only wallet messaging', async ({ page }) => {
+  await page.goto('/');
+
+  // Honest wallet copy must reference Freighter and not promise other wallets
+  await expect(page.getByText(/freighter/i).first()).toBeVisible({ timeout: 10_000 });
 });

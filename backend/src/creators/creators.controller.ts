@@ -12,9 +12,55 @@ interface DashboardSummary {
   updatedAt: string;
 }
 
+interface CreatorListItem {
+  id: string;
+  handle: string;
+  displayName: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  subscriberCount: number;
+  isVerified: boolean;
+}
+
+interface CreatorsListResponse {
+  creators: CreatorListItem[];
+  total: number;
+  updatedAt: string;
+}
+
 @Controller('creators')
 export class CreatorsController {
   constructor(private readonly creatorsService: CreatorsService) {}
+
+  @Get()
+  async listCreators(
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+  ): Promise<CreatorsListResponse> {
+    const parsedLimit = Number.parseInt(limit ?? '', 10);
+    const safeLimit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 1), 50)
+      : 12;
+
+    const creators = await this.creatorsService.listCreators({
+      limit: safeLimit,
+      cursor: cursor ?? null,
+    });
+
+    return {
+      creators: creators.map((creator) => ({
+        id: creator.id,
+        handle: creator.handle,
+        displayName: creator.displayName,
+        avatarUrl: creator.avatarUrl ?? null,
+        bio: creator.bio ?? null,
+        subscriberCount: creator.subscriberCount ?? 0,
+        isVerified: creator.isVerified ?? false,
+      })),
+      total: creators.length,
+      updatedAt: new Date().toISOString(),
+    };
+  }
 
   @Get(':id/dashboard-summary')
   @UseGuards(CreatorAuthGuard)
