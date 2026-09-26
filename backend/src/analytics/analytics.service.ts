@@ -55,6 +55,18 @@ export interface MrrSnapshot {
 }
 
 /**
+ * Live summary payload for the creator dashboard home.
+ *
+ * Derived entirely from the live event stream — never from mocks. `isEmpty`
+ * lets the dashboard render an explicit empty state (e.g. zero subscribers)
+ * without inferring it from individual counters.
+ */
+export interface DashboardSummary extends MrrSnapshot {
+  /** True when the creator has no subscribers and no activity in the window. */
+  isEmpty: boolean;
+}
+
+/**
  * AnalyticsModule service.
  *
  * Responsibilities:
@@ -178,6 +190,35 @@ export class AnalyticsService {
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),
     };
+  }
+
+  /**
+   * Live summary for the creator dashboard home.
+   *
+   * Wraps `getMrrSnapshot` with an explicit empty-state flag so the dashboard
+   * can render "no subscribers yet" without guessing. Creator-only, same as
+   * the underlying aggregate. No mocked data is ever returned here.
+   */
+  getDashboardSummary(
+    creatorId: string,
+    requesterId: string,
+    periodStart: Date,
+    periodEnd: Date,
+  ): DashboardSummary {
+    const snapshot = this.getMrrSnapshot(
+      creatorId,
+      requesterId,
+      periodStart,
+      periodEnd,
+    );
+
+    const isEmpty =
+      snapshot.activeSubscriptions === 0 &&
+      snapshot.newSubscriptions === 0 &&
+      snapshot.cancelledSubscriptions === 0 &&
+      snapshot.uploads === 0;
+
+    return { ...snapshot, isEmpty };
   }
 
   /**
