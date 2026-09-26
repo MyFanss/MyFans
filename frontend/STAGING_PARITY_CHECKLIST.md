@@ -21,6 +21,7 @@ The following `NEXT_PUBLIC_` variables control the frontend's behavior across di
 | `NEXT_PUBLIC_FLAG_BOOKMARKS` | `true` (if testing) | `false` (until release) | Parity Optional |
 | `NEXT_PUBLIC_FLAG_REFERRAL_CODES` | `true` (if testing) | `false` (until release) | Parity Optional |
 | `NEXT_PUBLIC_FLAG_WALLETCONNECT` | `true` (if testing) | `false` (default off) | Parity Optional |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | WC Project ID (only when flag on) | **unset** (flag off) | **REQUIRED WHEN FLAG ON** |
 | `NEXT_PUBLIC_FLAG_UPLOADS` | `true` (if testing) | `false` (until release) | Parity Optional |
 | `NEXT_PUBLIC_FLAG_POLLER` | `true` (if testing) | `false` (prod default off) | Parity Optional |
 | `NEXT_PUBLIC_FEATURE_FLAGS_URL` | Staging Flags URL | Production Flags URL | Recommended |
@@ -39,6 +40,26 @@ Flags are resolved by the backend `FeatureFlagsModule` and consumed by the front
 
 > **Security:** Dangerous flags (e.g. `WALLETCONNECT`, `POLLER`) should require an admin role to flip at runtime where runtime toggling is supported. Never enable them by default in production.
 
+## WalletConnect (Sign Client) Enablement
+
+WalletConnect is wired through `@walletconnect/sign-client` and is **gated behind the `WALLETCONNECT` flag, which defaults to off**. When the flag is off, the wallet setup UI shows a **"Coming soon"** state and **no WalletConnect Sign Client calls are made** (no relay connection, no session proposal).
+
+### Enabling WalletConnect
+
+1. Set `NEXT_PUBLIC_FLAG_WALLETCONNECT=true` for the target environment.
+2. Set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` to a valid WalletConnect Cloud project ID. This is **required** when the flag is on — if it is missing, the Sign Client initialization throws a clear error (`WalletConnect is enabled but NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is not set`) instead of failing silently at runtime.
+3. Ensure the CSP `connect-src` allowlist includes the WalletConnect relay hosts (see `frontend/docs/CSP.md`).
+4. Verify the WC flow end-to-end on Staging before enabling in Production.
+
+### Disabling WalletConnect
+
+- Set `NEXT_PUBLIC_FLAG_WALLETCONNECT=false` (or unset it). The UI falls back to the "Coming soon" state and no WC calls are made. `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` may be left unset.
+
+### Edge cases
+
+- **Flag on, project id missing** → clear error at init; do not attempt a relay connection.
+- **Session disconnect** → the client tears down the session and the UI returns to the disconnected state.
+
 ## Parity Verification Checklist
 
 ### 1. Networking & API
@@ -54,6 +75,7 @@ Flags are resolved by the backend `FeatureFlagsModule` and consumed by the front
 - [ ] `NEXT_PUBLIC_FEATURE_FLAGS_URL` is set to the environment-specific flag provider (if using a remote provider).
 - [ ] Any local overrides in environment variables match the release plan.
 - [ ] `WALLETCONNECT`, `UPLOADS`, and `POLLER` are **off** in production unless explicitly enabled per the blast-radius table above.
+- [ ] If `WALLETCONNECT` is on, `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is set and the CSP `connect-src` allowlist includes the WC relay hosts.
 - [ ] Staging vs Production flag values are compared and any intentional mismatch is documented.
 
 ### 4. Security
@@ -79,3 +101,4 @@ console.table(JSON.parse(localStorage.getItem('flags:status') || '{}'));
 - **Contract Mismatches**: If transactions fail with "Contract not found", double-check that the ID in the environment variables matches the deployment on the current `NEXT_PUBLIC_STELLAR_NETWORK`.
 - **UI Differences**: Ensure both environments are using the same build command (`npm run build`) and have the same `NODE_ENV`.
 - **Flag Mismatches**: If a feature behaves differently between Staging and Production, compare the flag values against the blast-radius table and confirm the production defaults (`WALLETCONNECT`/`UPLOADS`/`POLLER` off).
+- **WalletConnect errors**: If WC fails to initialize, confirm `NEXT_PUBLIC_FLAG_WALLETCONNECT` is on, `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is set, and the CSP `connect-src` allowlist includes the WC relay hosts.
