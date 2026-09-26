@@ -22,4 +22,16 @@ test.describe('skeleton loading states', () => {
     await page.goto('/dashboard', { waitUntil: 'commit' });
     await expect(page.locator('.skeleton-shimmer').first()).toBeVisible({ timeout: 3000 });
   });
+
+  test('home creators strip shows skeleton before creators load', async ({ page }: { page: Page }) => {
+    await page.route('**/api/**', slowApi);
+    await page.goto('/', { waitUntil: 'commit' });
+    await expect(page.locator('.skeleton-shimmer').first()).toBeVisible({ timeout: 3000 });
+  });
+
+  test('discover creators strip shows skeleton before creators load', async ({ page }: { page: Page }) => {
+    await page.route('**/api/**', slowApi);
+    await page.goto('/discover', { waitUntil: 'commit' });
+    await expect(page.locator('.skeleton-shimmer').first()).toBeVisible({ timeout: 3000 });
+  });
 });

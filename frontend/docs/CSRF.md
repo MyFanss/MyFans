@@ -18,6 +18,34 @@ readable by JavaScript (`csrf_token`), then echoed back in the
 3. On `403` responses with a CSRF error code, the client refreshes the
    token once and retries the request.
 
+## Client helper
+
+The api-client exposes a CSRF helper that all mutating calls go through:
+
+- `getCsrfToken()` reads the `csrf_token` cookie; if it is absent it
+  falls back to `GET /api/csrf` and caches the returned token in memory.
+- `withCsrf(headers)` returns the request headers with `X-CSRF-Token`
+  set to the current token.
+- `csrfFetch(input, init)` wraps `fetch`: it attaches the CSRF header to
+  mutating methods, and on a `403` CSRF failure it refreshes the token
+  once and retries the request a single time.
+- If no token can be obtained, the helper throws a clear
+  `CsrfTokenError` ("CSRF token missing or unavailable") instead of
+  sending an unauthenticated mutation.
+
+### Wired routes
+
+The helper is required on the following money and settings mutations:
+
+- `POST /api/checkout` (checkout)
+- `POST /api/subscriptions/confirm` (subscribe confirm)
+- `POST /api/plans` (plan create)
+- `PATCH /api/settings` (settings PATCH)
+
+Each of these MUST send the `X-CSRF-Token` header. Requests missing or
+carrying an invalid token are rejected with `403 Forbidden` and are never
+persisted.
+
 ## Messages module
 
 Sending a message is a state-changing operation and therefore **requires**
@@ -52,6 +80,21 @@ on render to prevent stored XSS.
 Send endpoints are rate limited per user/thread to mitigate abuse. Exceeding
 the limit returns `429 Too Many Requests`.
 
+## SameSite assumptions
+
+The `csrf_token` cookie is assumed to be `SameSite=Lax` (or `Strict`) and
+readable by JavaScript (not `HttpOnly`). Cross-site requests therefore do
+not carry the cookie, and the double-submit check fails closed. If the
+cookie is ever made `HttpOnly`, the client must rely solely on
+`GET /api/csrf` to obtain the token.
+
+## Demo routes
+
+Demo/sandbox routes are exempt from CSRF enforcement on the backend and do
+not require the header. The client helper still attaches the token when one
+is available, so demo flows remain unaffected.
+
 ## Out of scope
 
-End-to-end encryption (E2EE) is not covered by this document.
+End-to-end encryption (E2EE) is not covered by this document. A cookieless
+CSRF redesign is also out of scope.
