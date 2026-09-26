@@ -40,6 +40,37 @@ that is tested by both the TypeScript vitest suite and (optionally) the Rust
 
 ---
 
+## Frontend builders
+
+`frontend/src/lib/stellar.ts` exposes three pure builders that produce real
+Soroban contract-invocation transactions (never empty Horizon placeholders):
+
+| Builder | Contract method | Args (in order) |
+|---|---|---|
+| `buildSubscriptionTx` | `subscribe` | `subscriber`, `plan_id` |
+| `buildExtendSubscriptionTx` | `extend` | `subscriber`, `plan_id`, `extra_cycles` |
+| `buildCancelTx` | `cancel` | `subscriber`, `plan_id`, `reason` |
+
+Each builder takes a `networkPassphrase` parameter and uses it when
+constructing the transaction so the network is explicit at build time.
+Builders are pure: they only assemble the unsigned transaction. Signing is a
+separate step (Freighter / WalletConnect) and is never performed inside a
+builder.
+
+### Network guard
+
+Builders must be blocked when the network guard fails (e.g. the configured
+network does not match the expected passphrase). A failed guard must prevent
+the transaction from being built rather than emitting a placeholder tx.
+
+### Fee bumps
+
+Fee-bump transactions are **not** produced by these builders. If a fee bump is
+required, it must be applied as a separate wrapping step after signing; the
+builders document this and never silently substitute an empty transaction.
+
+---
+
 ## How to regenerate after a contract interface change
 
 1. **Update the contract** — change the method signature in Rust source.
