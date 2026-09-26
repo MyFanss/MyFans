@@ -62,15 +62,22 @@ export class CreatorsController {
   async listCreators(
     @Query('limit') limit?: string,
     @Query('cursor') cursor?: string,
+    @Query('q') q?: string,
   ): Promise<CreatorsListResponse> {
     const parsedLimit = Number.parseInt(limit ?? '', 10);
     const safeLimit = Number.isFinite(parsedLimit)
       ? Math.min(Math.max(parsedLimit, 1), 50)
       : 12;
 
+    // Trim and cap the search term; ignore tiny queries so the landing page
+    // only issues a live search once the user has typed something meaningful.
+    const rawQuery = (q ?? '').trim();
+    const searchQuery = rawQuery.length >= 2 ? rawQuery.slice(0, 100) : null;
+
     const creators = await this.creatorsService.listCreators({
       limit: safeLimit,
       cursor: cursor ?? null,
+      query: searchQuery,
     });
 
     return {
