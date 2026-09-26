@@ -29,6 +29,67 @@ test.describe('Critical User Flow: Connect → Subscribe → Unlock', () => {
     await expect(page.getByText('Exclusive Content')).not.toBeVisible();
   });
 
+  test('submits a Soroban subscribe tx with an Idempotency-Key and shows pending state', async ({
+    page,
+  }) => {
+    const submitted: { url: string; idempotencyKey?: string; body: any }[] = [];
+    await page.route('**/api/subscriptions', async (route) => {
+      const request = route.request();
+      submitted.push({
+        url: request.url(),
+        idempotencyKey: request.headers()['idempotency-key'],
+        body: request.postDataJSON(),
+      });
+      await route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({ id: 'sub_1', status: 'pending' }),
+      });
+    });
+
+    await page.goto('/subscribe');
+    await page.getByRole('button', { name: 'Connect Wallet' }).click();
+    await expect(page.getByText(/GTEST1\.\.\.\d+/i)).toBeVisible({ timeout: 10_000 });
+
+    const subscribeButton = page.getByRole('button', { name: 'Subscribe' }).first();
+    await subscribeButton.click();
+
+    // Pending state is rendered while the transaction is in flight
+    await expect(page.getByText(/pending/i)).toBeVisible({ timeout: 10_000 });
+
+    // Exactly one submission, carrying an Idempotency-Key and a signed Soroban tx
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].idempotencyKey).toBeTruthy();
+    expect(submitted[0].body?.signedXdr).toContain('_signed');
+  });
+
+  test('disables the submit button while the subscribe tx is in flight (no double submit)', async ({
+    page,
+  }) => {
+    let submissions = 0;
+    await page.route('**/api/subscriptions', async (route) => {
+      submissions += 1;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({ id: 'sub_1', status: 'pending' }),
+      });
+    });
+
+    await page.goto('/subscribe');
+    await page.getByRole('button', { name: 'Connect Wallet' }).click();
+    await expect(page.getByText(/GTEST1\.\.\.\d+/i)).toBeVisible({ timeout: 10_000 });
+
+    const subscribeButton = page.getByRole('button', { name: 'Subscribe' }).first();
+    await subscribeButton.click();
+    await expect(subscribeButton).toBeDisabled();
+    await subscribeButton.click({ force: true }).catch(() => {});
+
+    await expect(page.getByText(/pending/i)).toBeVisible({ timeout: 10_000 });
+    expect(submissions).toBe(1);
+  });
+
   test('handles disconnected state gracefully on gated content', async ({ page }) => {
     await page.goto('/content/1');
     await expect(page.getByRole('button', { name: /Subscribe to Lena Nova/i })).toBeVisible();
