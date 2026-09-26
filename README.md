@@ -294,3 +294,6 @@ This README describes the MyFans project on Stellar. Implement each module (cont
 
 <!-- handsoff-issue-1788 -->
 - #1788: FeedModule: subscription-gated teasers, cursor pagination, no full body leak
+
+<!-- handsoff-issue-1821 -->
+- #1821: Fan subscriptions pages: active/history/payments from /v1/subscriptions only
