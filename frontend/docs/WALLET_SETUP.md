@@ -10,6 +10,7 @@ where available.
 | -------- | ------- | -------------- | --------------- | ----- |
 | Freighter | Yes     | Yes            | Yes             | Reference path; required for demos |
 | Lobstr    | Yes     | Yes            | Yes             | Optional; dispatched separately from Freighter |
+| WalletConnect | Flag-gated | Flag-gated | Flag-gated | Off by default; see below |
 
 Hardware wallets (e.g. Ledger) are **out of scope** for this path.
 
@@ -35,6 +36,40 @@ When **both** extensions are installed, the wallet the user selected in the
 connect modal is the one used for the session; the other is ignored. Switching
 wallets mid-session re-runs connect and re-checks the network guard before any
 signing is allowed.
+
+## WalletConnect (flag-gated)
+
+WalletConnect support is built on `@walletconnect/sign-client` and is **off by
+default**. When the feature flag is off, the app makes **no** WalletConnect
+calls and the connect UI shows a **Coming soon** state instead of attempting a
+session.
+
+### Enabling
+
+1. Set the WalletConnect feature flag to on (see `frontend/docs/FEATURE_FLAGS.md`).
+2. Provide a WalletConnect **project id** via the `WALLETCONNECT_PROJECT_ID`
+   environment variable. The project id is required whenever the flag is on.
+3. Allow the WalletConnect relay origins in the Content-Security-Policy
+   `connect-src` directive (see `frontend/docs/CSP.md`).
+
+If the flag is on but no project id is configured, the app fails fast with a
+clear error rather than attempting a session with an empty id. Do **not** enable
+WalletConnect by default in production.
+
+### Connect / sign
+
+When enabled, connect and sign are routed through the Sign Client: the app
+creates a session, requests the `stellar_signTransaction` method, and submits
+the signed envelope itself. Session disconnect tears the session down and
+returns the UI to the disconnected state. As with the extension wallets, the app
+never signs on the user's behalf.
+
+### Staging checklist
+
+- [ ] Feature flag on in staging only.
+- [ ] `WALLETCONNECT_PROJECT_ID` set in staging env.
+- [ ] CSP `connect-src` includes the WalletConnect relay origins.
+- [ ] Flag off in production (Coming soon shown).
 
 ## Network guard
 
@@ -66,16 +101,23 @@ the conditions below, so a misrouted wallet is never a silent no-op:
 | User rejected sign   | You cancelled the signature request. |
 | Popup blocked        | Allow popups for this site, then retry. |
 | Unsupported wallet   | This wallet is not supported for signing yet. |
+| WalletConnect off    | WalletConnect is coming soon. |
+| WalletConnect no project id | WalletConnect is enabled but no project id is configured. |
 
 ## Testing
 
 - Unit tests cover wallet dispatch (connect / network detect / sign) for both
   Freighter and Lobstr routes.
+- Unit tests assert that with the WalletConnect flag off, no WalletConnect calls
+  are made.
 - `frontend/e2e/network-status.spec.ts` covers the network guard.
 - The subscribe flow is exercised with a mocked wallet.
+- Manual WalletConnect testing is optional and requires the flag on plus a
+  project id.
 
 ## Honesty note
 
 This document reflects the current reference path. Freighter is the only
 wallet guaranteed to work end-to-end; Lobstr is best-effort and dispatched
-separately. Full Lobstr **mobile** support is out of scope and not guaranteed.
+separately. WalletConnect is flag-gated and off by default. Full Lobstr
+**mobile** support is out of scope and not guaranteed.

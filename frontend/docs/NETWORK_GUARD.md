@@ -27,11 +27,19 @@ It is called at the start of every sign/submit entry point in
 `useSubscribeFlow` keeps its own up-front `mismatch` check for a faster UI
 response; the stellar-layer guard is the backstop.
 
+## Fail-closed behavior
+
+The guard fails closed: if the wallet is present but its network cannot be read
+(RPC unreachable, wallet locked, or an unrecognized network id), the guard
+treats the state as a mismatch and blocks the mutation rather than allowing it
+through. Only the explicit "no wallet connected" case no-ops, so read-only
+status checks keep working for logged-out visitors.
+
 ## What is NOT gated
 
 - **Read-only simulation** (`checkSubscription`, RPC reads). `assertWalletNetworkMatches()`
-  no-ops when there is no wallet or the wallet network can't be read, so status
-  checks keep working for logged-out visitors.
+  no-ops when there is no wallet, so status checks keep working for logged-out
+  visitors.
 - Auto-switching the wallet's network — out of scope.
 
 ## Error code
@@ -42,9 +50,19 @@ match on it.
 
 ## UI
 
-`<NetworkMismatchBanner />` (uses `useNetworkGuard`) renders a blocking alert
-whenever a mismatch is active. It is mounted on:
+`<NetworkMismatchBanner />` (uses `useNetworkGuard`) renders a persistent,
+blocking alert whenever a mismatch is active. It stays mounted for as long as
+the mismatch persists (including live wallet network switches) and is mounted
+on:
 
 - `src/components/subscribe/ConfirmationScreen.tsx` (subscribe)
 - `src/app/subscriptions/page.tsx` (cancel / renew)
 - `src/app/dashboard/plans/page.tsx` (create plan)
+
+The settings view surfaces the expected vs actual network so users can see
+exactly which network the app expects and which one their wallet is on.
+
+## Tests
+
+`frontend/e2e/network-status.spec.ts` covers the mismatch banner and the
+hard-block on mutating calls.

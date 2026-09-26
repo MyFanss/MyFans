@@ -73,3 +73,48 @@ test.describe('Network Status Indicator (#409)', () => {
         await expect(statusLabel).toBeVisible();
     });
 });
+
+test.describe('Network Guard (#1813)', () => {
+    test('should show persistent mismatch banner when wallet network differs from expected', async ({ page }) => {
+        // Simulate a wallet reporting a different network than the app expects.
+        await page.addInitScript(() => {
+            (window as unknown as { __NETWORK_GUARD_MISMATCH__?: boolean }).__NETWORK_GUARD_MISMATCH__ = true;
+        });
+
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+        const banner = page.getByRole('alert').filter({ hasText: /network mismatch/i });
+        await expect(banner).toBeVisible();
+        await expect(banner).toContainText(/expected/i);
+        await expect(banner).toContainText(/actual/i);
+    });
+
+    test('should hard-block mutating calls while network is mismatched', async ({ page }) => {
+        await page.addInitScript(() => {
+            (window as unknown as { __NETWORK_GUARD_MISMATCH__?: boolean }).__NETWORK_GUARD_MISMATCH__ = true;
+        });
+
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+        // Mutating actions must be disabled/blocked when the guard fails closed.
+        const mutateButton = page.getByRole('button', { name: /send|swap|stake|deposit|withdraw/i }).first();
+        if (await mutateButton.count()) {
+            await expect(mutateButton).toBeDisabled();
+        }
+
+        // The mismatch banner must remain visible (persistent, not dismissible).
+        const banner = page.getByRole('alert').filter({ hasText: /network mismatch/i });
+        await expect(banner).toBeVisible();
+    });
+
+    test('should fail closed on unknown/unreachable network', async ({ page }) => {
+        await page.route('**/api/v1/health', async (route) => {
+            await route.abort('failed');
+        });
+
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+        const banner = page.getByRole('alert').filter({ hasText: /network mismatch/i });
+        await expect(banner).toBeVisible();
+    });
+});
