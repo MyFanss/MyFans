@@ -28,6 +28,32 @@ interface CreatorsListResponse {
   updatedAt: string;
 }
 
+interface CreatorPlan {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  currency: string;
+  interval: string;
+  isActive: boolean;
+}
+
+interface CreatorPlansResponse {
+  creatorId: string;
+  plans: CreatorPlan[];
+  updatedAt: string;
+}
+
+interface CreatorAccessResponse {
+  creatorId: string;
+  hasAccess: boolean;
+  subscriptionStatus: string;
+  planId: string | null;
+  teaser: string | null;
+  contentCid: string | null;
+  updatedAt: string;
+}
+
 @Controller('creators')
 export class CreatorsController {
   constructor(private readonly creatorsService: CreatorsService) {}
@@ -58,6 +84,48 @@ export class CreatorsController {
         isVerified: creator.isVerified ?? false,
       })),
       total: creators.length,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  @Get(':id/plans')
+  async getCreatorPlans(@Param('id') id: string): Promise<CreatorPlansResponse> {
+    const plans = await this.creatorsService.getCreatorPlans(id);
+
+    return {
+      creatorId: id,
+      plans: plans.map((plan) => ({
+        id: plan.id,
+        name: plan.name,
+        description: plan.description ?? null,
+        price: plan.price ?? 0,
+        currency: plan.currency ?? 'USD',
+        interval: plan.interval ?? 'month',
+        isActive: plan.isActive ?? true,
+      })),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  @Get(':id/access')
+  async getCreatorAccess(
+    @Param('id') id: string,
+    @Req() req: Request,
+  ): Promise<CreatorAccessResponse> {
+    const viewerId = (req as Request & { user?: { id: string } }).user?.id ?? null;
+
+    const access = await this.creatorsService.getCreatorAccess(id, viewerId);
+
+    // Never ship the full content CID to a viewer without access; only a teaser.
+    const hasAccess = access.hasAccess === true;
+
+    return {
+      creatorId: id,
+      hasAccess,
+      subscriptionStatus: access.subscriptionStatus ?? 'none',
+      planId: access.planId ?? null,
+      teaser: access.teaser ?? null,
+      contentCid: hasAccess ? access.contentCid ?? null : null,
       updatedAt: new Date().toISOString(),
     };
   }

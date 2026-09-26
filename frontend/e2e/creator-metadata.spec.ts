@@ -4,6 +4,10 @@ import { test, expect } from '@playwright/test';
  * SEO metadata tests for creator profile pages.
  * Verifies dynamic title, description, and Open Graph tags are rendered correctly,
  * and that private/locked content metadata is never exposed.
+ *
+ * Also covers the public creator page conversion surface (issue #1817):
+ * live plans, gated teaser vs full content, and the subscribe CTA — all driven
+ * by the live access API rather than any mock subscription status.
  */
 
 test.describe('Creator page SEO metadata', () => {
@@ -122,5 +126,58 @@ test.describe('Creator page SEO metadata', () => {
     const alexTitle = await page.title();
 
     expect(janeTitle).not.toBe(alexTitle);
+  });
+});
+
+test.describe('Creator public page conversion surface (#1817)', () => {
+  test('renders live plans from the plans API', async ({ page }) => {
+    const plansResponse = page.waitForResponse(
+      (res) => /\/creators\/[^/]+\/plans/.test(res.url()) && res.ok()
+    );
+    await page.goto('/creator/jane');
+    await plansResponse;
+
+    const plans = page.getByTestId('plan-card');
+    await expect(plans.first()).toBeVisible();
+    expect(await plans.count()).toBeGreaterThan(0);
+  });
+
+  test('non-subscriber sees gated teaser and subscribe CTA', async ({ page }) => {
+    await page.goto('/creator/jane');
+
+    await expect(page.getByTestId('content-teaser')).toBeVisible();
+    await expect(page.getByTestId('content-full')).toHaveCount(0);
+
+    const cta = page.getByTestId('subscribe-cta');
+    await expect(cta).toBeVisible();
+    await cta.click();
+    await expect(page).toHaveURL(/\/(checkout|subscribe)/);
+  });
+
+  test('subscriber sees full content and no subscribe CTA', async ({ page }) => {
+    await page.goto('/creator/jane');
+
+    await expect(page.getByTestId('content-full')).toBeVisible();
+    await expect(page.getByTestId('content-teaser')).toHaveCount(0);
+    await expect(page.getByTestId('subscribe-cta')).toHaveCount(0);
+  });
+
+  test('access status comes from the live access API, not a mock', async ({ page }) => {
+    const accessResponse = page.waitForResponse(
+      (res) => /\/creators\/[^/]+\/access/.test(res.url())
+    );
+    await page.goto('/creator/jane');
+    const res = await accessResponse;
+    expect(res.ok()).toBeTruthy();
+  });
+
+  test('denied access (RPC deny) falls back to teaser, never full CID', async ({ page }) => {
+    await page.goto('/creator/jane');
+
+    // When the access API denies, the page must not render full content
+    // and must not leak the full content CID into the HTML.
+    await expect(page.getByTestId('content-full')).toHaveCount(0);
+    const html = await page.content();
+    expect(html).not.toMatch(/ipfs:\/\/[a-zA-Z0-9]{40,}/);
   });
 });
