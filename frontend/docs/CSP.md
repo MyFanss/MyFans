@@ -43,6 +43,35 @@ Everything else is blocked. A host that isn't the API origin, isn't in
 added automatically — this is intentional, so a compromised or unexpected
 host can't sneak into the policy.
 
+## WalletConnect relays (only when the feature flag is on)
+
+WalletConnect (Sign Client) is **off by default** and gated behind a feature
+flag. When it is disabled, the app makes no WalletConnect calls and the
+`connect-src` policy does **not** need any WalletConnect relay hosts — the
+policy above is complete and nothing extra is added.
+
+When WalletConnect is **enabled** (flag on **and** a project id configured),
+the Sign Client opens a WebSocket to the WalletConnect relay and the browser
+will block it unless the relay host is in `connect-src`. The relay hosts are
+added to `connect-src` **only** in that enabled case, so a default/off build
+never widens the policy:
+
+- `wss://relay.walletconnect.com`
+- `wss://relay.walletconnect.org`
+- `https://verify.walletconnect.com` (attestation / verify API)
+
+These are added by `buildConnectSrcHosts()` in `src/lib/csp.ts` when the
+WalletConnect feature flag is enabled and a project id is present. If the
+flag is on but the project id is missing, the app surfaces a clear
+configuration error instead of silently attempting a relay connection that
+CSP would block anyway.
+
+**Enabling WalletConnect therefore requires a CSP change in the same
+deploy** — flip the flag, set the project id, and confirm the relay hosts
+above appear in the served `Content-Security-Policy` header. See
+`docs/WALLET_SETUP.md` for the full enable steps and
+`STAGING_PARITY_CHECKLIST.md` for the staging verification checklist.
+
 ## Updating the host list
 
 - **Adding a new default Stellar/Soroban host** (e.g. Stellar ships a new
@@ -52,6 +81,10 @@ host can't sneak into the policy.
   `NEXT_PUBLIC_SOROBAN_RPC_URL` and/or `NEXT_PUBLIC_HORIZON_URL` in your env
   (see `.env.example`) — no code change needed, the host is picked up
   automatically.
+- **Enabling WalletConnect**: set the feature flag and project id (see
+  `docs/WALLET_SETUP.md`); the relay hosts are added to `connect-src`
+  automatically when the flag is on. Do not add relay hosts manually for a
+  flag-off build.
 - **Verifying nothing regressed**: run the CSP regression test in
   `src/lib/csp.test.ts` (`npm test -- csp`). It asserts the default Stellar
   hosts are always present and that a configured RPC/Horizon host is added,
@@ -77,6 +110,8 @@ What it asserts:
   `NEXT_PUBLIC_HORIZON_URL` is added and deduped against the defaults.
 - Hosts that aren't the API origin, a default Stellar host, or an
   env-configured RPC/Horizon host are **not** added.
+- WalletConnect relay hosts are **absent** when the feature flag is off, and
+  present only when the flag is on with a project id configured.
 - `localhost:*` / `127.0.0.1:*` only appear outside production.
 
 Run it directly with `npm test -- csp` (or `npm test` for the full suite).
@@ -120,4 +155,6 @@ other tends to break Freighter connect, so review them together.
 - `src/lib/contract-config.ts` — resolves `sorobanRpcUrl` / `horizonUrl` per
   network; keep `NETWORK_DEFAULTS` there in sync with
   `DEFAULT_STELLAR_CONNECT_HOSTS`.
+- `docs/WALLET_SETUP.md` — WalletConnect enable steps and the flag/project
+  id requirements.
 - `docs/SECURITY_HEADERS.md` — the rest of the security header set.
