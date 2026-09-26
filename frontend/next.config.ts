@@ -20,12 +20,33 @@ const pageExtensions = demoRoutesEnabled
   ? ['demo.tsx', 'demo.ts', 'demo.jsx', 'demo.js', ...basePageExtensions]
   : basePageExtensions;
 
+/**
+ * Extra connect-src origins supplied via env, comma-separated. Used for
+ * staging-only APIs and the WalletConnect relay when the flag is on. In
+ * production these are ignored so the CSP never widens to a wildcard or an
+ * unvetted host. See docs/CSP.md for the full allowlist and env variables.
+ */
+function getExtraConnectSrc(): string[] {
+  if (isProd) return [];
+  const raw = process.env.NEXT_PUBLIC_CSP_EXTRA_CONNECT_SRC;
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0 && origin !== '*');
+}
+
 // Builds the CSP header value, including connect-src hosts derived from
-// NEXT_PUBLIC_SOROBAN_RPC_URL / NEXT_PUBLIC_HORIZON_URL. See src/lib/csp.ts
-// and docs/CSP.md for the full host list and how to update it.
+// NEXT_PUBLIC_SOROBAN_RPC_URL / NEXT_PUBLIC_HORIZON_URL, the backend API,
+// wallet extension origins, and any non-prod NEXT_PUBLIC_CSP_EXTRA_CONNECT_SRC
+// entries. See src/lib/csp.ts and docs/CSP.md for the full host list.
 function getCSP() {
   const apiHost = new URL(getApiBaseUrl()).host;
-  return buildContentSecurityPolicy({ apiHost, isProd });
+  return buildContentSecurityPolicy({
+    apiHost,
+    isProd,
+    extraConnectSrc: getExtraConnectSrc(),
+  });
 }
 
 const nextConfig: NextConfig = {
