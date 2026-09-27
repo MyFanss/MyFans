@@ -46,7 +46,7 @@
     "@vitejs/plugin-react": "^5.2.0",
     "ajv": "^6.12.6",
     "axe-core": "^4.13.0",
-    "chromatic": "11.28.1",
+    "chromatic": "18.9.5",
     "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",

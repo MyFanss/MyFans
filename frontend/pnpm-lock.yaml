@@ -94,8 +94,8 @@ importers:
         specifier: ^4.13.0
         version: 4.13.0
       chromatic:
-        specifier: 11.28.1
-        version: 11.28.1
+        specifier: 18.9.5
+        version: 18.9.5
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -3056,6 +3056,22 @@ packages:
       '@chromatic-com/cypress':
         optional: true
       '@chromatic-com/playwright':
+        optional: true
+
+  chromatic@18.9.5:
+    resolution: {integrity: sha512-PHYJ7f8j7eeautlPPgIy/FBWTaLY3H8UYavkCpRdfLP9w9wya/dJZ3tjL8RqbFb5EazUkXqg2qCuAOzUS/zTMA==}
+    engines: {node: '>=22.0.0'}
+    hasBin: true
+    peerDependencies:
+      '@chromatic-com/cypress': ^0.*.* || ^1.0.0
+      '@chromatic-com/playwright': ^0.*.* || ^1.0.0
+      '@chromatic-com/vitest': ^0.*.* || ^1.0.0
+    peerDependenciesMeta:
+      '@chromatic-com/cypress':
+        optional: true
+      '@chromatic-com/playwright':
+        optional: true
+      '@chromatic-com/vitest':
         optional: true
 
   chrome-trace-event@1.0.4:
@@ -9164,6 +9180,10 @@ snapshots:
       readdirp: 5.1.1
 
   chromatic@11.28.1: {}
+
+  chromatic@18.9.5:
+    dependencies:
+      semver: 7.7.4
 
   chrome-trace-event@1.0.4: {}
 
