@@ -43,7 +43,7 @@
     "@types/node": "^20",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^4.4.1",
+    "@vitejs/plugin-react": "^5.2.0",
     "ajv": "^6.12.6",
     "axe-core": "^4.13.0",
     "chromatic": "11.28.1",
