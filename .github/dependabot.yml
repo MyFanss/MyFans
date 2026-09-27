@@ -1,0 +1,108 @@
+# Dependabot configuration (Issue #1856)
+# Policy and triage process: docs/DEPENDENCY_UPDATES.md
+#
+# - Weekly cadence (not daily) to keep PR volume low.
+# - Minor + patch updates are grouped into ONE PR per ecosystem/package.
+# - Major updates arrive as individual PRs so breaking changes are reviewed alone.
+# - Security updates are grouped separately so they are never blocked behind
+#   routine bumps.
+# - No auto-merge: every bot PR must pass the same required CI checks as a
+#   human PR and be approved by a CODEOWNER.
+# - Commit messages follow Conventional Commits (`build(deps): …`) so they land
+#   under "Build" in the generated changelog (docs/CHANGELOG_GUIDE.md).
+
+version: 2
+
+updates:
+  # ───────────────────────────── npm: backend ─────────────────────────────
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels: [dependencies, backend]
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      backend-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      backend-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
+
+  # ───────────────────────────── npm: frontend ────────────────────────────
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels: [dependencies, frontend]
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      frontend-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      # Storybook packages must move in lock-step; keep them in their own group.
+      frontend-storybook:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["storybook", "@storybook/*", "@chromatic-com/*", "chromatic"]
+      frontend-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
+
+  # ───────────────────────────── Cargo: contract ──────────────────────────
+  - package-ecosystem: cargo
+    directory: /contract
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 3
+    labels: [dependencies, contract]
+    commit-message:
+      prefix: build
+      include: scope
+    ignore:
+      # soroban-sdk is pinned exactly in contract/Cargo.toml and asserted by
+      # contract/scripts/release-check.sh. Bumps change host semantics and ABI
+      # snapshots and must follow docs/CONTRACT_UPGRADE_GOVERNANCE.md, so they
+      # are done by hand. Advisories are still caught by `cargo audit` in CI.
+      - dependency-name: soroban-sdk
+    groups:
+      contract-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      contract-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
+
+  # ─────────────────────────── GitHub Actions ─────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      time: "05:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 3
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      github-actions:
+        patterns: ["*"]

@@ -1,0 +1,53 @@
+# Validate repo automation config against published JSON schemas (Issue #1856).
+#
+# Checks .github/dependabot.yml against the Dependabot schema and the listed
+# workflow files against the GitHub Actions workflow schema, so a typo in bot
+# or workflow config fails the PR instead of silently disabling automation.
+#
+# Add new workflow files to WORKFLOWS below as they are brought under
+# validation.
+
+name: Repo config validate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/dependabot.yml'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Dependabot + workflow config
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      WORKFLOWS: >-
+        .github/workflows/postgres-restore-drill.yml
+        .github/workflows/repo-config-validate.yml
+        .github/workflows/release-notes.yml
+        .github/workflows/pr-title.yml
+        .github/workflows/e2e-testnet-nightly.yml
+        .github/workflows/e2e-pr.yml
+        .github/workflows/futurenet-smoke.yml
+        .github/workflows/security-audit.yml
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install check-jsonschema
+        run: pip install --quiet 'check-jsonschema>=0.29'
+
+      - name: Validate dependabot.yml
+        run: check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml
+
+      - name: Validate workflows
+        # shellcheck disable=SC2086 — WORKFLOWS is an intentional word-split list
+        run: check-jsonschema --builtin-schema vendor.github-workflows $WORKFLOWS

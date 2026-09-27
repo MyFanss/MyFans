@@ -63,6 +63,15 @@ cd contract && cargo test
 - [ ] Rate-limiting, auth guards, and feature flags behave as expected where touched
 - [ ] Linting passes: `cd backend && npm run lint` / `cd frontend && npm run lint`
 
+## Changelog
+
+<!-- PRs are squash-merged: the PR title becomes the commit on main and feeds release notes. See docs/CHANGELOG_GUIDE.md. -->
+
+- [ ] PR title follows Conventional Commits: `type(scope): summary` (scope = `contract` / `backend` / `frontend` where applicable)
+- [ ] Breaking change? Title has `!` and the description includes a `BREAKING CHANGE:` note
+- [ ] `contract/CHANGELOG.md` updated if contract behaviour, storage, or versions changed
+- [ ] No secrets, keys, or connection strings in the title or description
+
 ## Related issues
 
 <!-- Closes #NNN -->

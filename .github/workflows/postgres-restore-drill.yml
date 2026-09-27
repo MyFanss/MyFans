@@ -1,0 +1,68 @@
+# Postgres backup/restore drill (Issue #1855)
+#
+# Exercises scripts/postgres/{backup,restore,drill}.sh end to end against a
+# disposable Postgres service container: encrypted backup → checksum verify →
+# restore into an empty database → row-count comparison → rejection of
+# truncated, wrongly-keyed, and overwrite-without-force restores.
+#
+# Uses synthetic seed data only. No production credentials or backups are
+# ever available to this workflow. Runbook: docs/POSTGRES_BACKUP_RESTORE.md.
+
+name: Postgres restore drill
+
+on:
+  schedule:
+    # Weekly: Wednesdays 04:00 UTC
+    - cron: '0 4 * * 3'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/postgres/**'
+      - '.github/workflows/postgres-restore-drill.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  drill:
+    name: Postgres — backup/restore drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        # Match the major version used in docker-compose.yml.
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Postgres client tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client gnupg
+          pg_dump --version
+          gpg --version | head -1
+
+      - name: Run drill
+        run: |
+          chmod +x scripts/postgres/*.sh
+          DRILL_REPORT="$GITHUB_STEP_SUMMARY" scripts/postgres/drill.sh
