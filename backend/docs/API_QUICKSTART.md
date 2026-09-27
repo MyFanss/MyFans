@@ -253,8 +253,7 @@ curl -s -X POST http://localhost:3001/v1/auth/logout \
 # Logout from all sessions
 curl -s -X POST http://localhost:3001/v1/auth/logout \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"all_devices": true}'
+  -d '{"all": true}'
 ```
 
 ---
@@ -265,9 +264,9 @@ curl -s -X POST http://localhost:3001/v1/auth/logout \
 |------|-----------|-------|
 | Auth | `/v1/auth` | Challenge/verify, refresh, logout |
 | Users | `/v1/users` | Profiles, settings |
-| Subscriptions | `/v1/subscriptions` | Creator subscription tiers and status |
-| Content | `/v1/content` | Gated posts and media — access is time-gated by the ledger clock (see [§14](#14-ledger-clock-and-skew-budget)) |
-| Payments | `/v1/payments` | Stellar payment intents |
+| Subscriptions | `/v1/subscriptions` | Creator subscription tiers |
+| Payments | `/v1/payments` | Stellar/Soroban payment intents |
+| Content | `/v1/content` | Posts, media |
 | Health | `/v1/health` | Liveness and readiness probes |
 
 ---
@@ -276,45 +275,66 @@ curl -s -X POST http://localhost:3001/v1/auth/logout \
 
 - All request and response bodies are JSON (`Content-Type: application/json`).
 - Timestamps are ISO-8601 UTC strings.
-- IDs are UUIDs unless otherwise noted.
 - Monetary amounts are strings to avoid floating-point precision loss.
+- IDs are UUIDs unless otherwise noted.
+- Successful responses return the resource directly (no envelope).
+- Errors use the shared error envelope described in [Error format](#10-error-format).
 
 ---
 
 ## 7. Rate limiting
 
-Rate limits are enforced per IP (and per user where authenticated). Auth
-endpoints are limited to **5 requests per minute per IP**. Exceeding a limit
-returns `429 Too Many Requests` with a `Retry-After` header.
+Rate limits are enforced per IP (and per user when authenticated). Exceeding a
+limit returns `429 Too Many Requests` with a `Retry-After` header.
+
+| Scope | Limit |
+|-------|-------|
+| Auth endpoints | 5 req / min / IP |
+| General API | 100 req / min / IP |
 
 ---
 
 ## 8. CSRF protection
 
-State-changing requests from browsers must include a valid CSRF token. See
-[`CSRF.md`](./CSRF.md) for the full flow and header names.
+State-changing requests from browsers must include the CSRF token issued at
+login. Non-browser clients using Bearer tokens are exempt.
 
 ---
 
 ## 9. Idempotency
 
 Mutating endpoints accept an `Idempotency-Key` header. Replaying the same key
-with the same body returns the original response instead of re-executing the
-operation.
+returns the original response instead of re-executing the operation.
 
 ---
 
 ## 10. Error format
 
-Errors use a consistent envelope:
+All errors are produced by the Nest exception filter and share a single
+envelope. Clients should parse this shape rather than assuming a bare string
+or a framework-specific body.
 
 ```json
 {
-  "statusCode": 403,
-  "message": "Access denied",
-  "error": "Forbidden"
+  "statusCode": 400,
+  "message": "Validation failed",
+  "code": "VALIDATION_ERROR",
+  "correlationId": "0f8fad5b-d9cb-469f-a165-70867728950e"
 }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `statusCode` | `number` | HTTP status code, mirrors the response status. |
+| `message` | `string` | Human-readable, safe-to-display summary. Never contains stack traces or internal details. |
+| `code` | `string` | Stable machine-readable error code (e.g. `VALIDATION_ERROR`, `UNAUTHORIZED`). |
+| `correlationId` | `string` | Request correlation id. Surface this to users on fatal errors so support can trace the request. |
+
+### Client parsing notes
+
+- **Non-JSON bodies.** A proxy or gateway may return HTML or an empty body. Treat any body that does not parse as JSON as an unknown error and fall back to the HTTP status.
+- **Network failures.** A request that never reaches the server has no envelope. Synthesize one with a client-side code (e.g. `NETWORK_ERROR`) and no `correlationId`.
+- **Never render raw server output.** Do not display stack traces, SQL, or internal messages. Only show `message` and, on fatal errors, `correlationId`.
 
 ---
 
@@ -322,68 +342,33 @@ Errors use a consistent envelope:
 
 ```bash
 cd backend
-npm test            # unit tests
-npm run test:e2e    # end-to-end tests
+npm test          # unit tests
+npm run test:e2e  # end-to-end tests
 ```
 
 ---
 
 ## 12. Adding a new endpoint — checklist
 
-1. Add the controller route and DTOs.
-2. Mark it `@Public()` only if it truly needs no auth.
-3. Add it to the OpenAPI spec (`npm run openapi:generate`).
-4. Add unit and e2e coverage.
-5. Document it here if it is part of a public workflow.
+- [ ] Controller method decorated with the appropriate HTTP verb and path.
+- [ ] DTOs validated with `class-validator`.
+- [ ] `@Public()` only when the route is genuinely unauthenticated.
+- [ ] Errors thrown via the shared exception types so the filter emits the standard envelope.
+- [ ] OpenAPI spec regenerated (`npm run openapi:generate`).
+- [ ] Unit and e2e tests added.
 
 ---
 
 ## 13. OpenAPI source of truth
 
-The committed [`backend/openapi.json`](../openapi.json) is generated from the
-running app and drift-tested in CI. If you add or change a route, regenerate
-the spec and commit it alongside your change.
+The committed spec at [`backend/openapi.json`](../openapi.json) is generated
+from the running app and drift-tested in CI. Regenerate it whenever routes or
+schemas change.
 
 ---
 
 ## 14. Ledger clock and skew budget
 
-Content access gating is time-based, and the authoritative time is the
-**ledger clock** — the close time reported by Soroban RPC — not the host wall
-clock. A host whose wall clock drifts ahead of the ledger could otherwise
-unlock content before its on-chain unlock time, so the backend compares the two
-and enforces a **skew budget**.
-
-### How it works
-
-- `LedgerClockService` reads the latest ledger close time from Soroban RPC.
-- The absolute difference between the wall clock and the ledger clock is the
-  current **skew**.
-- If `skew <= LEDGER_CLOCK_SKEW_BUDGET_MS`, the ledger clock is trusted and
-  used for gating decisions.
-- If `skew > LEDGER_CLOCK_SKEW_BUDGET_MS`, the clock is considered unreliable
-  (e.g. a host clock jump) and gated access is **denied**.
-- If the ledger clock is **unreadable** (RPC returns null or errors), gated
-  access is **denied** — the service fails closed.
-
-### Configuration
-
-| Env var | Default | Description |
-|---------|---------|-------------|
-| `LEDGER_CLOCK_SKEW_BUDGET_MS` | `30000` | Maximum tolerated wall-clock vs ledger-clock skew, in milliseconds. |
-| `LEDGER_CLOCK_CACHE_TTL_MS` | `5000` | How long a successfully read ledger time is cached before re-reading RPC. |
-
-### Failure modes
-
-| Condition | Behaviour |
-|-----------|-----------|
-| RPC returns null / errors | Gated access denied (fail closed) |
-| Skew within budget | Ledger time trusted; gating proceeds |
-| Skew exceeds budget (clock jump) | Gated access denied |
-
-> **Security note:** the service never falls back to the wall clock for gated
-decisions. An unreadable or untrusted ledger clock always denies access rather
-than risk unlocking expired or not-yet-unlocked content.
-
-See [`frontend/docs/CONTENT_ACCESS.md`](../../frontend/docs/CONTENT_ACCESS.md)
-for the user-facing access rules.
+The backend tolerates a bounded clock skew between the API host and the
+Stellar ledger close time. Requests signed outside the skew budget are
+rejected with `code: "CLOCK_SKEW"`.

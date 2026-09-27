@@ -68,6 +68,33 @@
         run: node scripts/check-interface-docs-drift.mjs
 
   # ─────────────────────────────────────────────
+  # Staging parity (Issue #1844)
+  # Enforces STAGING_PARITY_CHECKLIST.md: NEXT_PUBLIC_*
+  # consistency, network vs RPC host, and non-empty
+  # contract ids. Fails closed so a mismatched staging
+  # deploy cannot proceed. Required check for staging.
+  # ─────────────────────────────────────────────
+  staging-parity:
+    name: Staging — parity check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run staging parity check
+        run: node scripts/check-staging-parity.mjs
+
+  # ─────────────────────────────────────────────
   # Security hardening + CSRF e2e (Issue #1807)
   # Runs the hardening and CSRF e2e suites on every PR
   # against a real Postgres service container so regressions

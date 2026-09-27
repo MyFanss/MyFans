@@ -4,13 +4,20 @@
 #   postgres        — PostgreSQL 15 database
 #   redis           — Redis 7 cache / session store
 #   api             — NestJS backend (production build)
-#   worker-poller   — Soroban event poller worker
-#   worker-outbox   — Email outbox / transactional-mail worker
+#   worker-poller   — Soroban event poller worker (profile: workers)
+#   worker-outbox   — Email outbox / transactional-mail worker (profile: workers)
 #   frontend        — Next.js frontend (production build)
 #
 # Usage:
 #   cp backend/.env.example backend/.env   # fill in required values
-#   docker compose up
+#   docker compose up                      # core stack (postgres, redis, api, frontend)
+#   docker compose --profile workers up    # core stack + poller/outbox workers
+#
+# Env generation:
+#   Copy backend/.env.example to backend/.env and override every value.
+#   The defaults in .env.example are LOCAL-ONLY placeholders — never reuse
+#   them outside your machine. DB_PASSWORD is required (compose fails fast
+#   if it is unset).
 #
 # Health checks:
 #   Liveness  → GET /v1/health   (process-up, never fails on dep issues)
@@ -35,7 +42,7 @@ services:
     user: postgres
     environment:
       POSTGRES_USER: ${DB_USER:-myfans}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required — copy backend/.env.example to backend/.env and set it}
       POSTGRES_DB: ${DB_NAME:-myfans}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -86,12 +93,14 @@ services:
   # ──────────────────────────────────────────────────────────────
   # Worker — Soroban event poller
   # Same image as api; entry-point overridden to run only the poller.
+  # Opt-in via the "workers" profile so the core stack stays lean.
   # ──────────────────────────────────────────────────────────────
   worker-poller:
     build:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    profiles: ["workers"]
     <<: *backend-env
     environment:
       NODE_ENV: production
@@ -116,12 +125,14 @@ services:
 
   # ──────────────────────────────────────────────────────────────
   # Worker — Email outbox processor
+  # Opt-in via the "workers" profile so the core stack stays lean.
   # ──────────────────────────────────────────────────────────────
   worker-outbox:
     build:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    profiles: ["workers"]
     <<: *backend-env
     environment:
       NODE_ENV: production
