@@ -10,6 +10,12 @@
  * - Reads may degrade (report failure) but never falsely report success.
  * - Writes are fail-closed: a failed/timed-out write is never reported as success.
  * - Set USE_MOCK_RPC=1 (or RPC_MOCK=1) to route through the mock RPC in CI.
+ *
+ * Staging parity (issue #1844):
+ * - Validates NEXT_PUBLIC_* consistency against STAGING_PARITY_CHECKLIST.md.
+ * - Ensures the configured network matches the RPC host(s).
+ * - Ensures contract ids are present and non-empty.
+ * - Fails closed (non-zero exit) on any mismatch so CI blocks the deploy.
  */
 import { ContractHealthService } from '../src/contract-health/contract-health.service';
 import { loadContractIds } from '../src/contract-health/contract-ids.loader';
@@ -19,6 +25,25 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_ATTEMPTS = 4;
 const DEFAULT_BASE_DELAY_MS = 200;
 const DEFAULT_MAX_DELAY_MS = 4_000;
+
+/**
+ * Known Stellar networks and the RPC host fragments that belong to them.
+ * Used to detect futurenet/testnet mixes that would silently break QA.
+ */
+const NETWORK_RPC_HOSTS: Record<string, string[]> = {
+  testnet: ['testnet', 'soroban-testnet'],
+  futurenet: ['futurenet', 'soroban-futurenet'],
+  mainnet: ['mainnet', 'soroban-mainnet', 'stellar.org'],
+  local: ['127.0.0.1', 'localhost'],
+};
+
+/** NEXT_PUBLIC_* keys that must be present and consistent for staging parity. */
+const REQUIRED_PUBLIC_KEYS = [
+  'NEXT_PUBLIC_STELLAR_NETWORK',
+  'NEXT_PUBLIC_SOROBAN_RPC_URL',
+  'NEXT_PUBLIC_MYFANS_CONTRACT_ID',
+  'NEXT_PUBLIC_MYFANS_TOKEN_CONTRACT_ID',
+];
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -107,6 +132,69 @@ async function failClosedWrite<T>(label: string, op: () => Promise<T>): Promise<
   }
 }
 
+/**
+ * Validate NEXT_PUBLIC_* consistency for staging parity. Returns a list of
+ * human-readable problems; an empty list means parity holds.
+ */
+export function checkStagingParity(env: NodeJS.ProcessEnv = process.env): string[] {
+  const problems: string[] = [];
+
+  // 1. Required NEXT_PUBLIC_* keys must be present and non-empty.
+  for (const key of REQUIRED_PUBLIC_KEYS) {
+    const value = env[key];
+    if (value === undefined || value.trim() === '') {
+      problems.push(`Missing or empty required env var: ${key}`);
+    }
+  }
+
+  // 2. Network must match the RPC host(s).
+  const network = (env.NEXT_PUBLIC_STELLAR_NETWORK ?? '').trim().toLowerCase();
+  const rpcUrl = (env.NEXT_PUBLIC_SOROBAN_RPC_URL ?? '').trim();
+  if (network && rpcUrl) {
+    const known = NETWORK_RPC_HOSTS[network];
+    if (!known) {
+      problems.push(
+        `Unknown NEXT_PUBLIC_STELLAR_NETWORK "${network}" (expected one of: ${Object.keys(
+          NETWORK_RPC_HOSTS,
+        ).join(', ')})`,
+      );
+    } else {
+      const host = rpcUrl.toLowerCase();
+      const matches = known.some((fragment) => host.includes(fragment));
+      if (!matches) {
+        problems.push(
+          `Network/RPC mismatch: NEXT_PUBLIC_STELLAR_NETWORK="${network}" but ` +
+            `NEXT_PUBLIC_SOROBAN_RPC_URL="${rpcUrl}" does not look like a ${network} host`,
+        );
+      }
+      // Detect futurenet/testnet mixes explicitly.
+      for (const [other, fragments] of Object.entries(NETWORK_RPC_HOSTS)) {
+        if (other === network) continue;
+        if (fragments.some((fragment) => host.includes(fragment))) {
+          problems.push(
+            `Network/RPC mix: NEXT_PUBLIC_STELLAR_NETWORK="${network}" but RPC host ` +
+              `"${rpcUrl}" looks like ${other}`,
+          );
+        }
+      }
+    }
+  }
+
+  // 3. Contract ids must be present and non-empty.
+  const contractKeys = [
+    'NEXT_PUBLIC_MYFANS_CONTRACT_ID',
+    'NEXT_PUBLIC_MYFANS_TOKEN_CONTRACT_ID',
+  ];
+  for (const key of contractKeys) {
+    const value = env[key];
+    if (value === undefined || value.trim() === '') {
+      problems.push(`Missing or empty contract id: ${key}`);
+    }
+  }
+
+  return problems;
+}
+
 async function main() {
   const service = new ContractHealthService();
   const ids = loadContractIds();
@@ -119,6 +207,18 @@ async function main() {
       `maxDelay=${RPC_MAX_DELAY_MS}ms timeout=${RPC_TIMEOUT_MS}ms`,
   );
   console.log(`Contracts: ${JSON.stringify(ids)}\n`);
+
+  // Staging parity gate — fail closed before touching the network.
+  const parityProblems = checkStagingParity();
+  if (parityProblems.length > 0) {
+    console.error('Staging parity check failed:');
+    for (const problem of parityProblems) {
+      console.error(`  ❌ ${problem}`);
+    }
+    console.error('\nSee frontend/STAGING_PARITY_CHECKLIST.md for expected values.');
+    process.exit(1);
+  }
+  console.log('✅ Staging parity check passed.\n');
 
   const checks = await Promise.all([
     retryRead('myfans:is_subscriber', () =>

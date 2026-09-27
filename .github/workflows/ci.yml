@@ -79,6 +79,17 @@
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+  # Staging parity (Issue #1844)
+  # Enforces STAGING_PARITY_CHECKLIST.md: NEXT_PUBLIC_*
+  # consistency, network vs RPC host, and non-empty
+  # contract ids. Fails closed so a mismatched staging
+  # deploy cannot proceed. Required check for staging.
+  # ─────────────────────────────────────────────
+  staging-parity:
+    name: Staging — parity check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     defaults:
       run:
         working-directory: frontend
@@ -98,6 +109,9 @@
 
       - name: Build Storybook
         run: npm run build-storybook
+
+      - name: Run staging parity check
+        run: node scripts/check-staging-parity.mjs
 
   # ─────────────────────────────────────────────
   # Security hardening + CSRF e2e (Issue #1807)
