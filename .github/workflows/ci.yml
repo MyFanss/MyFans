@@ -68,6 +68,38 @@
         run: node scripts/check-interface-docs-drift.mjs
 
   # ─────────────────────────────────────────────
+  # Demo routes gate (Issue #1835)
+  # Fails the build if demo-only routes (wallet-demo,
+  # error-test, ui, subscribe-example, settings-demo)
+  # are reachable in a production build. Preview
+  # environments keep demos enabled via the
+  # ALLOW_DEMO_ROUTES flag. Required check for branch
+  # protection; see frontend/docs/DEMO_ROUTES.md.
+  # ─────────────────────────────────────────────
+  demo-routes-gate:
+    name: Frontend — demo routes gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Production build must not expose demo routes.
+      - name: Check demo routes are gated in prod
+        run: node scripts/check-demo-routes.mjs
+        env:
+          NODE_ENV: production
+          ALLOW_DEMO_ROUTES: "false"
+
   # Storybook build (Issue #1842)
   # Builds the frontend Storybook so broken stories or
   # missing decorators/providers fail the PR instead of
@@ -112,6 +144,20 @@
 
       - name: Run staging parity check
         run: node scripts/check-staging-parity.mjs
+
+      # Production build must not expose demo routes.
+      - name: Check demo routes are gated in prod
+        run: node scripts/check-demo-routes.mjs
+        env:
+          NODE_ENV: production
+          ALLOW_DEMO_ROUTES: "false"
+
+      # Preview environments are allowed to keep demos enabled.
+      - name: Check demo routes allowed in preview
+        run: node scripts/check-demo-routes.mjs
+        env:
+          NODE_ENV: production
+          ALLOW_DEMO_ROUTES: "true"
 
   # ─────────────────────────────────────────────
   # Security hardening + CSRF e2e (Issue #1807)
