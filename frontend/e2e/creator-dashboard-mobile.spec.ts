@@ -118,4 +118,16 @@ test.describe('Creator dashboard mobile audit', () => {
     expect(box!.width).toBeGreaterThanOrEqual(44);
     expect(box!.height).toBeGreaterThanOrEqual(44);
   });
+
+  // ── No horizontal scroll traps ───────────────────────────────────────────
+
+  test('dashboard pages do not overflow horizontally on mobile', async ({ page }) => {
+    for (const path of ['/dashboard', '/dashboard/plans', '/dashboard/earnings', '/dashboard/subscribers']) {
+      await page.goto(path);
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow, `horizontal overflow on ${path}`).toBeLessThanOrEqual(1);
+    }
+  });
 });
