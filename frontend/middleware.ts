@@ -22,13 +22,20 @@ import { demoRoutesEnabled, isDemoRoute } from '@/lib/demo-routes';
  * are intentionally excluded so marketing pages and creator profiles return 200
  * for logged-out visitors without any redirect overhead.
  *
+ * ## Role enforcement
+ * The middleware only checks for the *presence* of the auth token — it does NOT
+ * enforce creator vs fan roles.  Role-level enforcement (e.g. blocking fans from
+ * `/dashboard`) is handled by `RouteGuard` on the client, which calls `fetchMe()`
+ * and checks `me.is_creator`. See also frontend/docs/ADR-001-role-model.md.
+ *
  * ## Out of scope
- * Role-level enforcement (creator vs fan) is handled by RouteGuard on the
- * client, because it requires a `/users/me` fetch that cannot run in Edge
- * middleware without a backend call.
+ * Edge A/B testing.  Secret values are never written to middleware edge logs.
+ *
+ * Refs: #1829 (middleware protection), frontend/docs/AUTH_MIDDLEWARE.md
  */
 
 // ── Protected route prefixes ──────────────────────────────────────────────
+// Keep in sync with the table in frontend/docs/AUTH_MIDDLEWARE.md.
 
 const PROTECTED_PREFIXES = [
   '/dashboard',
@@ -44,10 +51,23 @@ const PROTECTED_PREFIXES = [
   '/favorites',
 ] as const;
 
+// ── Public asset extensions (skip auth check even if under a protected path) ─
+
+const PUBLIC_ASSET_EXTENSIONS = ['.ico', '.png', '.jpg', '.jpeg', '.svg', '.webp', '.txt', '.xml'];
+
+function isPublicAsset(pathname: string): boolean {
+  return PUBLIC_ASSET_EXTENSIONS.some((ext) => pathname.endsWith(ext));
+}
+
 // ── Middleware ─────────────────────────────────────────────────────────────
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Skip public static assets to avoid false-positive auth redirects.
+  if (isPublicAsset(pathname)) {
+    return NextResponse.next();
+  }
 
   // ── Demo / story routes ──────────────────────────────────────────────────
   // When demos are disabled (production build) these files are never compiled,
@@ -78,12 +98,26 @@ export function middleware(request: NextRequest) {
     request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
 
   if (!authToken) {
-    // Redirect to sign-in with original path as return URL.
+    // Preserve the original path as returnUrl so sign-in can redirect back.
     const signInUrl = new URL('/auth/sign-in', request.url);
     signInUrl.searchParams.set('returnUrl', pathname);
     const response = NextResponse.redirect(signInUrl);
-    // Ensure no dashboard HTML leaks into the response body even if a cached
-    // version exists upstream.
+    // Prevent a cached redirect from leaking protected-route HTML.
+    response.headers.set('Cache-Control', 'no-store');
+    // Never log the token value — only record the protected path.
+    return response;
+  }
+
+  // Expired JWT detection: a minimal structural check (three dot-separated
+  // segments).  Full signature verification cannot run in Edge middleware
+  // without a backend call; the backend/RouteGuard performs authoritative
+  // verification.  This catches obviously malformed tokens early.
+  const parts = authToken.split('.');
+  if (parts.length !== 3) {
+    const signInUrl = new URL('/auth/sign-in', request.url);
+    signInUrl.searchParams.set('returnUrl', pathname);
+    signInUrl.searchParams.set('reason', 'invalid_token');
+    const response = NextResponse.redirect(signInUrl);
     response.headers.set('Cache-Control', 'no-store');
     return response;
   }
@@ -101,6 +135,10 @@ export function middleware(request: NextRequest) {
  *
  * Protected routes are checked inside the function body above; all other
  * paths pass through without any auth check.
+ *
+ * Documented protected prefixes (frontend/docs/AUTH_MIDDLEWARE.md):
+ *   /dashboard, /settings, /messages, /earnings, /notifications,
+ *   /profile, /subscriptions, /transactions, /pending, /checkout, /favorites
  */
 export const config = {
   matcher: [
