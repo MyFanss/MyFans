@@ -256,6 +256,8 @@ Per-package commands are also available via root `package.json` scripts (`build:
 - **[Bug Bash Checklist](docs/BUG_BASH_CHECKLIST.md)** - Comprehensive QA checklist before major releases
 - **[Changelog Guide](docs/CHANGELOG_GUIDE.md)** - How to use conventional commits for automatic changelog generation
 - **[Postgres Backup / Restore](docs/POSTGRES_BACKUP_RESTORE.md)** - Backup runbook, restore decision tree, and CI drill
+- **[Dependency Update Policy](docs/DEPENDENCY_UPDATES.md)** - Dependabot schedule, grouping, and review rules for bot PRs
+- **[E2E Testnet Path](docs/E2E_TESTNET_PATH.md)** - Create plan → subscribe → gated access proof on testnet, with nightly job
 
 ### Development
 - **[Changelog](CHANGELOG.md)** - Automatically generated from conventional commits

@@ -1,0 +1,100 @@
+# Nightly E2E testnet proof path (Issue #1858) — OPTIONAL
+#
+# Runs scripts/e2e-testnet/run-path.sh against the deployed testnet
+# subscription contract: create plan → subscribe → access gated → cancel →
+# access revoked, using throwaway friendbot-funded accounts only.
+#
+# Configuration (Settings → Secrets and variables → Actions → Variables):
+#   TESTNET_SUBSCRIPTION_CONTRACT_ID   required to enable the job
+#   TESTNET_RPC_URL                    optional (default: SDF public testnet RPC)
+#   TESTNET_API_URL / TESTNET_API_CREATOR_ID  optional backend anonymous-gating check
+# These are public identifiers, so repository *variables* (not secrets) are used.
+# No signing key is ever passed to this workflow.
+#
+# Outcomes:
+#   PASS          → green
+#   INCONCLUSIVE  → green with a warning (faucet/RPC down, contract paused, upgrade mid-run)
+#   FAIL          → red (real regression) — see docs/E2E_TESTNET_PATH.md#triage
+# Unconfigured  → skipped with a notice (never red), because this job is optional.
+#
+# Runbook: docs/E2E_TESTNET_PATH.md
+
+name: E2E testnet path (nightly)
+
+on:
+  schedule:
+    - cron: '30 3 * * *' # 03:30 UTC daily
+  workflow_dispatch:
+    inputs:
+      contract_id:
+        description: 'Override subscription contract id (testnet)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-testnet-path
+  cancel-in-progress: false
+
+jobs:
+  path:
+    name: Testnet — plan → subscribe → gated access
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUBSCRIPTION_CONTRACT_ID: ${{ inputs.contract_id || vars.TESTNET_SUBSCRIPTION_CONTRACT_ID }}
+      STELLAR_RPC_URL: ${{ vars.TESTNET_RPC_URL || 'https://soroban-testnet.stellar.org' }}
+      API_URL: ${{ vars.TESTNET_API_URL }}
+      API_CREATOR_ID: ${{ vars.TESTNET_API_CREATOR_ID }}
+      EVIDENCE_DIR: e2e-evidence
+    steps:
+      - name: Check configuration
+        id: cfg
+        run: |
+          if [ -z "$SUBSCRIPTION_CONTRACT_ID" ]; then
+            echo "::notice::TESTNET_SUBSCRIPTION_CONTRACT_ID is not set; nightly testnet path skipped."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.cfg.outputs.enabled == 'true'
+
+      - name: Install stellar-cli
+        if: steps.cfg.outputs.enabled == 'true'
+        run: |
+          # Prebuilt release binary (fast) instead of cargo install.
+          url="$(curl -fsSL https://api.github.com/repos/stellar/stellar-cli/releases/latest \
+            | grep -oE 'https://[^"]+stellar-cli-[0-9.]+-x86_64-unknown-linux-gnu\.tar\.gz' | head -1)"
+          test -n "$url" || { echo "::error::Could not find stellar-cli release asset"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL "$url" | tar -xz -C "$RUNNER_TEMP/bin" stellar
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/stellar" --version
+
+      - name: Run path
+        if: steps.cfg.outputs.enabled == 'true'
+        id: run
+        run: |
+          set +e
+          bash scripts/e2e-testnet/run-path.sh
+          rc=$?
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          if [ -f "$EVIDENCE_DIR/evidence.md" ]; then cat "$EVIDENCE_DIR/evidence.md" >> "$GITHUB_STEP_SUMMARY"; fi
+          case "$rc" in
+            0) echo "PASS" ;;
+            10|11|12) echo "::warning::E2E testnet path INCONCLUSIVE (exit $rc) — see summary; not a product failure."; exit 0 ;;
+            *) echo "::error::E2E testnet path FAILED (exit $rc)"; exit "$rc" ;;
+          esac
+
+      - name: Upload evidence
+        if: always() && steps.cfg.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-testnet-evidence-${{ github.run_id }}
+          path: e2e-evidence/
+          retention-days: 30

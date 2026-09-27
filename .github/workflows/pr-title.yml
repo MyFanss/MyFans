@@ -1,0 +1,37 @@
+# Conventional PR title check (Issue #1857)
+#
+# PRs are squash-merged, so the PR title becomes the commit subject on main
+# and feeds the generated changelog. This check keeps new history
+# conventional. See docs/CHANGELOG_GUIDE.md.
+
+name: PR title
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  conventional-title:
+    name: PR title — Conventional Commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          re='^(feat|fix|perf|refactor|revert|docs|test|build|ci|chore|style)(\([a-z0-9,/_-]+\))?!?: .+'
+          if printf '%s' "$TITLE" | grep -Eq "$re"; then
+            echo "OK: $TITLE"
+          else
+            echo "::error::PR title must follow Conventional Commits, e.g. 'feat(frontend): add wallet picker' or 'fix(contract)!: cap fee bps'."
+            echo "Got: $TITLE"
+            echo "Allowed types: feat fix perf refactor revert docs test build ci chore style"
+            echo "Scopes: contract | backend | frontend | docs | deps | ci (comma-separate for multi-package PRs)"
+            echo "See docs/CHANGELOG_GUIDE.md"
+            exit 1
+          fi

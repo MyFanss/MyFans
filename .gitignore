@@ -69,3 +69,7 @@ frontend/test-results/
 contract/wasm-size-report.txt
 **/wasm-size-report.txt
 **/*.snap
+
+# Local outputs from ops scripts (docs/POSTGRES_BACKUP_RESTORE.md, docs/E2E_TESTNET_PATH.md)
+/backups/
+e2e-evidence/

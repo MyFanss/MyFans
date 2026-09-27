@@ -13,6 +13,7 @@ This document describes how secrets are stored, validated, and rotated in the My
 | `WEBHOOK_SECRET` | HMAC-SHA256 signing of outbound webhooks | Yes | On compromise; recommended every 30 days |
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_NAME` | Database connection | Yes | When infrastructure changes |
 | `SOROBAN_RPC_URL` | Soroban RPC endpoint | Yes | When provider changes |
+| `BACKUP_ENCRYPTION_KEY` | age identity / gpg passphrase for Postgres backups (ops only; not read by the app) | Ops | Yearly or on compromise — keep old keys until their backups expire. See [Postgres Backup / Restore](../../docs/POSTGRES_BACKUP_RESTORE.md#5-security-encryption-and-access-control) |
 
 All required variables are validated at startup via `src/common/secrets-validation.ts`. The app exits immediately if any are missing.
 
@@ -29,6 +30,7 @@ All required variables are validated at startup via `src/common/secrets-validati
 |---|---|---|
 | `JWT_SECRET` / `JWT_SECRET_PREVIOUS` | Backend lead | Backend lead |
 | `DB_PASSWORD` | Platform / DBA | Platform lead |
+| `BACKUP_ENCRYPTION_KEY` | Platform / DBA | Platform lead |
 | `WEBHOOK_SECRET` | Integrations owner | Backend lead |
 | CI/CD secrets (GitHub Actions) | Repo admin | Repo admin |
 

@@ -1,0 +1,112 @@
+# Release notes from Conventional Commits (Issue #1857)
+#
+# - Tag push  → generate notes for the tag and create/update the GitHub Release.
+#     v1.2.3            whole monorepo, compared to the previous v* tag
+#     contract-v1.2.3   contract/ only, compared to the previous contract-v* tag
+#     backend-v1.2.3    backend/ only
+#     frontend-v1.2.3   frontend/ only
+# - workflow_dispatch → DRY RUN: notes are written to the job summary only.
+# - pull_request touching the generator → unit tests + dry run.
+#
+# Guide: docs/CHANGELOG_GUIDE.md. The generator redacts secret-looking strings,
+# but release notes are public — never put credentials in commit messages.
+
+name: Release notes
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'contract-v*'
+      - 'backend-v*'
+      - 'frontend-v*'
+  workflow_dispatch:
+    inputs:
+      from:
+        description: 'Start ref (exclusive). Empty = previous tag'
+        required: false
+        default: ''
+      to:
+        description: 'End ref (inclusive)'
+        required: false
+        default: 'HEAD'
+      package:
+        description: 'Limit to one package'
+        required: false
+        default: ''
+        type: choice
+        options: ['', contract, backend, frontend]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/changelog/**'
+      - '.github/workflows/release-notes.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  notes:
+    name: Generate release notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # only used on tag pushes to create the Release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags for range detection
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Unit tests
+        run: node --test scripts/changelog/generate.test.mjs
+
+      - name: Resolve range and package
+        id: cfg
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          IN_FROM: ${{ inputs.from }}
+          IN_TO: ${{ inputs.to }}
+          IN_PACKAGE: ${{ inputs.package }}
+        run: |
+          args=()
+          if [ "$EVENT" = "push" ]; then
+            tag="$REF_NAME"
+            case "$tag" in
+              contract-v*) args+=(--package contract --tag-prefix contract-v) ;;
+              backend-v*)  args+=(--package backend  --tag-prefix backend-v) ;;
+              frontend-v*) args+=(--package frontend --tag-prefix frontend-v) ;;
+              v*)          args+=(--tag-prefix v) ;;
+            esac
+            args+=(--to "$tag" --version "$tag")
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          else
+            [ -n "$IN_FROM" ] && args+=(--from "$IN_FROM")
+            args+=(--to "${IN_TO:-HEAD}" --version "Unreleased (dry run)")
+            [ -n "$IN_PACKAGE" ] && args+=(--package "$IN_PACKAGE")
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+          printf '%s\n' "${args[@]}" > "$RUNNER_TEMP/changelog-args"
+
+      - name: Generate notes
+        run: |
+          mapfile -t args < "$RUNNER_TEMP/changelog-args"
+          node scripts/changelog/generate.mjs "${args[@]}" --out "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish GitHub Release
+        if: steps.cfg.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.cfg.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
