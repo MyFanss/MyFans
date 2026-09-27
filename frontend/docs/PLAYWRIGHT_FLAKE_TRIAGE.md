@@ -121,3 +121,43 @@ npm run dev
 - Open the Playwright HTML report and inspect the retry trace
 - Verify the frontend starts cleanly on `http://localhost:3000`
 - Record whether the issue was a startup problem, race condition, shared state leak, or real product regression
+
+## CI Artifacts & Secret Hygiene
+
+When a required spec fails in CI, the workflow uploads Playwright artifacts so the
+failure can be triaged without re-running:
+
+- `frontend/playwright-report/` — HTML report
+- `frontend/test-results/` — traces, screenshots, and videos for failed tests
+
+Artifacts are uploaded **only on failure** (`if: failure()`) and retained for a
+short window. Traces are captured on the first retry per `playwright.config.ts`.
+
+**No secrets in traces.** Before relying on a trace, confirm it does not contain
+credentials or tokens:
+
+- Wallet interactions must use the shared mock fixtures (see below), never real
+  keys or funded accounts.
+- Auth/session setup must inject test-only sessions; do not record real cookies
+  or bearer tokens into traces.
+- If a trace does capture a secret, treat it as a leak: rotate the value, delete
+  the artifact, and add a masking step before re-enabling trace capture.
+
+## Stable Fixtures
+
+Required specs must not depend on execution order or on live wallet state. Use
+the shared fixtures under `frontend/e2e/fixtures/`:
+
+- **Wallet mock** — deterministic `window.ethereum` stub with fixed accounts and
+  chain id; no real network calls, no funded accounts.
+- **Auth/session setup** — a fixture that seeds a test session before navigation
+  so specs do not rely on a previous test having logged in.
+
+Guidelines:
+
+- Each spec sets up its own state via fixtures; never assume a prior spec ran.
+- Reset browser storage between tests (the config already isolates contexts).
+- Prefer role/text selectors and `expect(...).toPass()`/web-first assertions over
+  fixed sleeps so wallet and transaction UI can settle deterministically.
+- If a spec needs a new fixture, add it to `frontend/e2e/fixtures/` rather than
+  inlining ad-hoc mocks, so order dependence cannot creep back in.
