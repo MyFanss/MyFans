@@ -52,9 +52,6 @@ export default function PendingPage() {
     const controller = new AbortController();
     let active = true;
 
-    setLoading(true);
-    setError(null);
-
     fetchPending(controller.signal)
       .then((next) => {
         if (active) setItems(next);
