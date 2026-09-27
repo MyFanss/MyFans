@@ -127,3 +127,60 @@ jobs:
           name: playwright-results-shard-${{ matrix.shard }}
           path: frontend/test-results/
           retention-days: 7
+
+  playwright-money-path:
+    name: Playwright — money-path specs (required)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run money-path e2e specs
+        # Required money-path list per issue #1841:
+        #   subscribe-flow-complete, cancel-renew-flow, content-actions
+        # These are the critical revenue/entitlement paths that smoke-only CI
+        # missed. Keep this job name stable — it is a required status check.
+        # Wallet RPC is mocked via route interception in each spec file; no
+        # real keys or secrets are used. Flake triage guidance lives in
+        # frontend/docs/PLAYWRIGHT_FLAKE_TRIAGE.md.
+        run: >
+          npx playwright test
+          subscribe-flow-complete.spec.ts
+          cancel-renew-flow.spec.ts
+          content-actions.spec.ts
+          --workers=1
+          --reporter=html,github
+        env:
+          CI: true
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-money-path-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-money-path-results
+          path: frontend/test-results/
+          retention-days: 7
