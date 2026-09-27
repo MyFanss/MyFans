@@ -204,10 +204,10 @@ Assume **Freighter is the reference implementation** and the only wallet with a 
 
 4. **Integration**
    - End-to-end: create plan → subscribe → access gated content.
-   - Optional: fiat on-ramp (anchor) so fans can pay with card.
+   - Optional: fiat on-ramp (anchor) so fans can pay with card. See [Fiat On-Ramp Spike](docs/FIAT_ONRAMP_SPIKE.md).
 
 5. **Launch**
-   - Testnet beta; security review; mainnet deployment; docs and community.
+   - Testnet beta ([runbook](docs/TESTNET_BETA_RUNBOOK.md), [bug bash](docs/BUG_BASH_CHECKLIST.md)); security review; mainnet deployment ([readiness gate](docs/MAINNET_READINESS.md)); docs and community.
 
 ---
 
@@ -262,7 +262,10 @@ Per-package commands are also available via root `package.json` scripts (`build:
 - **[Security Policy](SECURITY.md)** - Security reporting, penetration testing tracker, and best practices
 - **[Secret Management](backend/docs/SECRET_MANAGEMENT.md)** - JWT and secret rotation runbooks
 - **[CORS & Security Headers](backend/docs/CORS_AND_SECURITY_HEADERS.md)** - Per-environment CORS allowlist and header configuration
-- **[Bug Bash Checklist](docs/BUG_BASH_CHECKLIST.md)** - Comprehensive QA checklist before major releases
+- **[Bug Bash Checklist](docs/BUG_BASH_CHECKLIST.md)** - Binary pass/fail testnet beta checklist: money path, auth, gating, pause, CSRF/CSP headers, a11y
+- **[Testnet Beta Runbook](docs/TESTNET_BETA_RUNBOOK.md)** - Ordered launch steps: deploy contracts, set IDs, enable poller, pause drill, invites, rollback
+- **[Mainnet Readiness Gate](docs/MAINNET_READINESS.md)** - Go/no-go checklist: audits, pause tested, backups, monitoring, fee caps, sign-off
+- **[Fiat On-Ramp Spike](docs/FIAT_ONRAMP_SPIKE.md)** - Anchor/ramp evaluation, threat model, and MVP recommendation
 - **[Changelog Guide](docs/CHANGELOG_GUIDE.md)** - How to use conventional commits for automatic changelog generation
 - **[Postgres Backup / Restore](docs/POSTGRES_BACKUP_RESTORE.md)** - Backup runbook, restore decision tree, and CI drill
 - **[Dependency Update Policy](docs/DEPENDENCY_UPDATES.md)** - Dependabot schedule, grouping, and review rules for bot PRs
