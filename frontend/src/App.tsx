@@ -11,11 +11,18 @@ import { LoadingSpinner } from './components/LoadingSpinner';
 const demosEnabled =
   import.meta.env.MODE !== 'production' || import.meta.env.VITE_ENABLE_DEMOS === 'true';
 
+// The pending page must never surface fabricated pending checkouts or
+// transactions in production. It is only registered when demos are enabled
+// (non-production builds or an explicit VITE_ENABLE_DEMOS opt-in). See
+// docs/PENDING_PAGE.md for the decision and rationale.
+const pendingEnabled = demosEnabled;
+
 const WalletDemo = demosEnabled ? lazy(() => import('./pages/WalletDemo')) : null;
 const ErrorTest = demosEnabled ? lazy(() => import('./pages/ErrorTest')) : null;
 const UiShowcase = demosEnabled ? lazy(() => import('./pages/UiShowcase')) : null;
 const SubscribeExample = demosEnabled ? lazy(() => import('./pages/SubscribeExample')) : null;
 const SettingsDemo = demosEnabled ? lazy(() => import('./pages/SettingsDemo')) : null;
+const Pending = pendingEnabled ? lazy(() => import('./pages/Pending')) : null;
 
 const Home = lazy(() => import('./pages/Home'));
 const Wallet = lazy(() => import('./pages/Wallet'));
@@ -59,6 +66,9 @@ export function App() {
           )}
           {demosEnabled && SettingsDemo && (
             <Route path="settings-demo" element={<SettingsDemo />} />
+          )}
+          {pendingEnabled && Pending && (
+            <Route path="pending" element={<Pending />} />
           )}
 
           <Route path="404" element={<NotFound />} />
