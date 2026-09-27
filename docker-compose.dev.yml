@@ -4,16 +4,24 @@
 #   postgres        — PostgreSQL 15 (persistent volume)
 #   redis           — Redis 7
 #   api             — NestJS backend with hot-reload (bind-mounted source)
-#   worker-poller   — Soroban event poller (hot-reload)
-#   worker-outbox   — Email outbox worker (hot-reload)
+#   worker-poller   — Soroban event poller (hot-reload, optional profile)
+#   worker-outbox   — Email outbox worker (hot-reload, optional profile)
 #   frontend        — Next.js dev server (bind-mounted source)
 #
 # Usage:
 #   cp backend/.env.example backend/.env.dev   # fill in JWT_SECRET etc.
 #   docker compose -f docker-compose.dev.yml --profile dev up
 #
+# Workers are optional and gated behind the "workers" profile so the default
+# stack stays lean. Enable them explicitly:
+#   docker compose -f docker-compose.dev.yml --profile dev --profile workers up
+#
 # Health checks use /v1/health/ready so the readiness probe always reflects
 # real dependency state (DB, Redis). See backend/docs/API_QUICKSTART.md.
+#
+# NOTE: default secrets below are for LOCAL development only. Override
+# DB_PASSWORD / JWT_SECRET (and any Stellar/creator IDs) before running
+# against shared or staging environments.
 
 x-backend-dev-env: &backend-dev-env
   env_file: ./backend/.env.dev
@@ -93,14 +101,14 @@ services:
       start_period: 60s
 
   # ──────────────────────────────────────────────────────────────
-  # Worker — Soroban event poller (dev)
+  # Worker — Soroban event poller (dev, optional "workers" profile)
   # ──────────────────────────────────────────────────────────────
   worker-poller:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
     restart: unless-stopped
-    profiles: [dev]
+    profiles: [workers]
     <<: *backend-dev-env
     environment:
       NODE_ENV: development
@@ -121,21 +129,21 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/v1/health/ready || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
 
   # ──────────────────────────────────────────────────────────────
-  # Worker — Email outbox processor (dev)
+  # Worker — Email outbox processor (dev, optional "workers" profile)
   # ──────────────────────────────────────────────────────────────
   worker-outbox:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
     restart: unless-stopped
-    profiles: [dev]
+    profiles: [workers]
     <<: *backend-dev-env
     environment:
       NODE_ENV: development
@@ -155,7 +163,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/v1/health/ready || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
