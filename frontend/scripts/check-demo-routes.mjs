@@ -24,9 +24,11 @@ const DEMO_ROUTES = [
   'settings-demo',
 ];
 
-const demosEnabled =
-  process.env.NODE_ENV !== 'production' ||
-  process.env.NEXT_PUBLIC_FLAG_DEMOS === 'true';
+// Preview / non-production environments are allowed to keep demos enabled.
+// Only a real production build (NODE_ENV=production) without the explicit
+// NEXT_PUBLIC_FLAG_DEMOS=true opt-in must exclude them.
+const isProduction = process.env.NODE_ENV === 'production';
+const demosEnabled = !isProduction || process.env.NEXT_PUBLIC_FLAG_DEMOS === 'true';
 
 if (demosEnabled) {
   console.warn(

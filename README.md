@@ -68,8 +68,19 @@ You will keep only these three folders and this README; other files can be remov
 
 ---
 
+## Getting Started
+
+New here? Start with the **[QUICKSTART.md](QUICKSTART.md)** — the single canonical
+first-hour guide from a clean clone to subscribing on **Stellar testnet** with
+**Freighter**. It covers the honest wallet support matrix, required environment
+variables (including where contract ids come from), the local Docker Compose
+stack, and CSP/network troubleshooting.
+
+---
+
 ## Documentation
 
+- [QUICKSTART.md](QUICKSTART.md) – clone-to-subscribe on testnet (Freighter-first).
 - [Contract Upgrade Governance](docs/CONTRACT_UPGRADE_GOVERNANCE.md) – required process, upgrade log, and rollback criteria for mainnet contract upgrades.
 - [Contract Changelog](contract/CHANGELOG.md) – version history for the Soroban contracts.
 - [Security Policy](SECURITY.md) – how to report vulnerabilities.
@@ -125,7 +136,7 @@ The current frontend wallet implementation does not treat all wallets equally:
 
 | Wallet | Current repo status | Practical difference in MyFans |
 |--------|----------------------|--------------------------------|
-| **Freighter** | Fully wired for connection and transaction signing | The reference wallet. **Guaranteed** for every flow; local onboarding (see [frontend/docs/LOCAL_QUICKSTART.md](frontend/docs/LOCAL_QUICKSTART.md)) is Freighter-only |
+| **Freighter** | Fully wired for connection and transaction signing | The reference wallet. **Guaranteed** for every flow; local onboarding (see [QUICKSTART.md](QUICKSTART.md)) is Freighter-only |
 | **Lobstr** | Connection and signing dispatch wired (`signTransaction` routes to Lobstr when it is the connected wallet) | Usable for connect + subscribe/cancel signing; still less battle-tested than Freighter |
 | **WalletConnect** | Sign Client wired behind the `walletConnect` feature flag (off by default); requires `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID` | Enable the flag + set a project ID for QR-based mobile wallet connect/sign. With the flag off the UI shows "Coming soon" |
 
@@ -134,9 +145,7 @@ Assume **Freighter is the reference implementation** and the only wallet with a 
 ### Tech
 
 - **Next.js** (App Router or Pages as you prefer).
-- **TypeScript**.
-- Stellar/Soroban: **@stellar/stellar-sdk** and Soroban client usage (invoke contract, send transactions).
-- State: React state or a light client store; backend can supply contract addresses and plan metadata.
+- *
 
 ---
 

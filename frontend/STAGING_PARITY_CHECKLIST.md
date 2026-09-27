@@ -83,6 +83,29 @@ WalletConnect is wired through `@walletconnect/sign-client` and is **gated behin
 - [ ] CSP headers are verified to allow the API and Stellar hosts configured for the environment.
 - [ ] Dangerous flags require an admin role to flip at runtime.
 
+## Automated Parity Check
+
+The manual checklist above is enforced by `frontend/scripts/check-staging-parity.mjs`. It validates the `NEXT_PUBLIC_*` variables, checks that the configured network matches the Horizon/Soroban hosts, and confirms every contract id is present and non-empty. It **fails closed** (non-zero exit) on any mismatch so CI can block a staging deploy.
+
+Run it locally against an env file:
+
+```bash
+node frontend/scripts/check-staging-parity.mjs --env-file .env.staging
+```
+
+Or against the current process environment (as CI does on staging deploy):
+
+```bash
+node frontend/scripts/check-staging-parity.mjs
+```
+
+### What it checks
+
+- **Required variables** — `NEXT_PUBLIC_APP_ENV`, `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_STELLAR_NETWORK`, `NEXT_PUBLIC_HORIZON_URL`, `NEXT_PUBLIC_SOROBAN_RPC_URL` are present and non-empty.
+- **Network vs hosts** — `NEXT_PUBLIC_STELLAR_NETWORK` must be one of `testnet`, `futurenet`, or `mainnet`, and `NEXT_PUBLIC_HORIZON_URL` / `NEXT_PUBLIC_SOROBAN_RPC_URL` must point at the matching hosts. This catches a Futurenet/Testnet mix.
+- **Contract ids** — every `NEXT_PUBLIC_*_CONTRACT_ID` is present and non-empty.
+- **WalletConnect** — when `NEXT_PUBLIC_FLAG_WALLETCONNECT` is on, `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` must be set.
+
 ## Verification Commands
 
 To verify the current build configuration, you can check the headers or use the following command in the browser console:

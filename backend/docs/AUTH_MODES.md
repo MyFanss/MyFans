@@ -76,6 +76,52 @@ if (primaryLink) {
 }
 ```
 
+## Sign-in: canonical challenge-login endpoints only
+
+The sign-in surface must use **only** the canonical challenge-login
+endpoints. There is no password form and no register endpoint on this
+surface — the deprecated register copy that pointed contributors at dead
+APIs has been removed.
+
+### Canonical endpoints
+
+1. **Issue Challenge**: `POST /v1/auth/challenge`
+   - Request: `{ "stellarAddress": "G..." }`
+   - Response: `{ "nonce": "...", "expiresAt": "..." }`
+   - Challenge is single-use and short-lived
+
+2. **Verify Challenge**: `POST /v1/auth/challenge/verify`
+   - Request: `{ "stellarAddress": "G...", "nonce": "...", "signature": "..." }`
+   - Response: `{ "token": "...", "stellarAddress": "..." }`
+   - Signature is Ed25519(nonce) produced by the wallet keypair
+
+These are the only endpoints the sign-in page may call. Do **not** call
+`/v1/auth/register` or any other deprecated register endpoint.
+
+### Freighter flow (honest path)
+
+1. Request a challenge from `POST /v1/auth/challenge`.
+2. Ask Freighter to sign the returned nonce with the user's keypair.
+3. Submit the signed challenge to `POST /v1/auth/challenge/verify`.
+
+If the user dismisses the Freighter prompt, treat it as a **non-error user
+state** (e.g. "Sign-in cancelled") — do not surface it as a failure.
+
+### Error map
+
+| Condition | UX |
+|-----------|----|
+| Wallet cancel (user dismissed Freighter) | Non-error state: "Sign-in cancelled" |
+| HTTP 429 (throttled) | "Too many attempts — please wait a moment and try again." |
+| Challenge expired / invalid nonce | Prompt to retry sign-in from the start |
+| Signature verification failure | "Could not verify signature — please try again." |
+
+### Security considerations
+
+- No password forms: password auth is unsupported on this surface.
+- Challenges are single-use and expire; never reuse a nonce.
+- Never log or persist the raw signature beyond verification.
+
 ### Deprecation Note
 
 The deprecated `src/auth/wallet-auth.service.ts` (in the dead `src/auth/` module)
