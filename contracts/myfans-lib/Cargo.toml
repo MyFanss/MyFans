@@ -1,0 +1,25 @@
+[package]
+name = "myfans-lib"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Shared error types and utilities for MyFans Soroban contracts"
+license = "Apache-2.0"
+repository = "https://github.com/myfans/myfans"
+homepage = "https://github.com/myfans/myfans"
+documentation = "https://github.com/myfans/myfans/tree/main/contract/docs/interfaces"
+keywords = ["soroban", "stellar", "myfans", "shared"]
+categories = ["no-std"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { version = "21.7.6", default-features = false }
+
+[dev-dependencies]
+soroban-sdk = { version = "21.7.6", features = ["testutils"] }
+
+[features]
+default = []
+testutils = ["soroban-sdk/testutils"]
