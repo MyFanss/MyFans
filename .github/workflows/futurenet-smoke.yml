@@ -1,15 +1,21 @@
 # Futurenet smoke test — verifies deployed contracts are reachable on Futurenet.
 #
-# Behaviour:
-#   - If ALL required contract IDs and secrets are present → invoke getter methods
-#     on every core contract and report results.
-#   - If ANY required contract ID or secret is missing:
-#       • On release branches (main, release/*) → fail the job (red CI) so the gap
-#         is not silently ignored and broken releases are caught before shipping.
-#       • On other branches   → skip with an explicit warning so feature branches are not
-#         blocked by deployment secrets they don't own.
-#       • Fork PRs may skip the smoke check only when the PR body contains the
-#         explicit marker `[skip-futurenet-smoke]`.
+# Fail-closed contract ID gate (Issue #1848):
+#   - Every required contract ID is validated by contract/scripts/validate-contract-ids.mjs
+#     (missing, empty, malformed or duplicate IDs are all failures; partial sets
+#     name exactly which keys are wrong).
+#   - Release context → the gate job FAILS when anything is wrong, so a green
+#     smoke can never ship a UI wired to nothing. Release context is:
+#       • push / schedule / manual run on main or release/*
+#       • pull requests whose base branch is release/*
+#   - Any other context → the gate passes with warnings and the smoke is skipped.
+#   - Fork PRs never receive secrets. In release context they fail unless the
+#     PR body contains the explicit marker `[skip-futurenet-smoke]`, in which
+#     case the gate passes with a notice saying the smoke was skipped.
+#
+# The validation report and redacted smoke logs are uploaded as artifacts.
+# No secret values are printed: the validator reports key names and statuses
+# only, and logs are scrubbed of the RPC URL and contract IDs before upload.
 #
 # Required GitHub Actions secrets:
 #   FUTURENET_RPC_URL              - Soroban RPC endpoint for Futurenet
@@ -20,6 +26,7 @@
 #   CONTRACT_ID_EARNINGS           - Deployed earnings contract ID
 #
 # Admin key is NEVER passed to this workflow; read-only getter calls only.
+# Job names are required status checks for release/* — see docs/BRANCH_PROTECTION.md.
 
 name: Futurenet Smoke
 
@@ -27,7 +34,7 @@ on:
   # Run daily at 06:00 UTC
   schedule:
     - cron: '0 6 * * *'
-  # Run after any push to main (deployment changes)
+  # Run after any push to main / release branches (deployment changes)
   push:
     branches:
       - main
@@ -45,124 +52,135 @@ on:
         required: false
         default: 'manual smoke run'
 
+permissions:
+  contents: read
+
 jobs:
   # ─────────────────────────────────────────────────────────────────────────
-  # Guard: check that all required secrets / IDs are present.
+  # Gate: validate contract IDs and decide whether the smoke may run.
   # ─────────────────────────────────────────────────────────────────────────
-  check-prerequisites:
-    name: Check contract IDs and secrets
+  gate:
+    name: Futurenet smoke — contract ID gate
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
-      ready: ${{ steps.guard.outputs.ready }}
-      missing: ${{ steps.guard.outputs.missing }}
-      is_release: ${{ steps.guard.outputs.is_release }}
-      fork_skip: ${{ steps.guard.outputs.fork_skip }}
+      ready: ${{ steps.validate.outputs.ready }}
+      is_release: ${{ steps.context.outputs.is_release }}
     steps:
-      - name: Evaluate required inputs
-        id: guard
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Determine release context
+        id: context
         env:
-          RPC_URL:          ${{ secrets.FUTURENET_RPC_URL }}
-          ID_SUBSCRIPTION:  ${{ secrets.CONTRACT_ID_SUBSCRIPTION }}
-          ID_TOKEN:         ${{ secrets.CONTRACT_ID_MYFANS_TOKEN }}
-          ID_REGISTRY:      ${{ secrets.CONTRACT_ID_CREATOR_REGISTRY }}
-          ID_CONTENT:       ${{ secrets.CONTRACT_ID_CONTENT_ACCESS }}
-          ID_EARNINGS:      ${{ secrets.CONTRACT_ID_EARNINGS }}
-          REF_NAME:         ${{ github.ref_name }}
-          EVENT_NAME:       ${{ github.event_name }}
-          PR_BODY:          ${{ github.event.pull_request.body }}
-          PR_HEAD_REPO:     ${{ github.event.pull_request.head.repo.full_name }}
-          BASE_REPO:        ${{ github.repository }}
+          EVENT_NAME:   ${{ github.event_name }}
+          REF_NAME:     ${{ github.ref_name }}
+          BASE_REF:     ${{ github.base_ref }}
+          PR_BODY:      ${{ github.event.pull_request.body }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO:    ${{ github.repository }}
         run: |
-          missing=""
-          [ -z "$RPC_URL" ]         && missing="$missing FUTURENET_RPC_URL"
-          [ -z "$ID_SUBSCRIPTION" ] && missing="$missing CONTRACT_ID_SUBSCRIPTION"
-          [ -z "$ID_TOKEN" ]        && missing="$missing CONTRACT_ID_MYFANS_TOKEN"
-          [ -z "$ID_REGISTRY" ]     && missing="$missing CONTRACT_ID_CREATOR_REGISTRY"
-          [ -z "$ID_CONTENT" ]      && missing="$missing CONTRACT_ID_CONTENT_ACCESS"
-          [ -z "$ID_EARNINGS" ]     && missing="$missing CONTRACT_ID_EARNINGS"
+          # For pull_request events ref_name is "<n>/merge", so use the base branch.
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            branch="$BASE_REF"
+            case "$branch" in release/*) is_release=true ;; *) is_release=false ;; esac
+          else
+            branch="$REF_NAME"
+            case "$branch" in main|release/*) is_release=true ;; *) is_release=false ;; esac
+          fi
 
-          # Release branches must fail closed when IDs are empty/missing.
-          is_release=false
-          case "$REF_NAME" in
-            main|release/*) is_release=true ;;
-          esac
-          echo "is_release=$is_release" >> "$GITHUB_OUTPUT"
-
-          # Fork PRs may skip only with an explicit marker in the PR body.
+          is_fork=false
           fork_skip=false
           if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$PR_HEAD_REPO" ] && [ "$PR_HEAD_REPO" != "$BASE_REPO" ]; then
-            case "$PR_BODY" in
-              *"[skip-futurenet-smoke]"*) fork_skip=true ;;
-            esac
+            is_fork=true
+            case "$PR_BODY" in *"[skip-futurenet-smoke]"*) fork_skip=true ;; esac
           fi
-          echo "fork_skip=$fork_skip" >> "$GITHUB_OUTPUT"
 
-          if [ -n "$missing" ]; then
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            # Trim leading space
-            echo "missing=${missing# }" >> "$GITHUB_OUTPUT"
-          else
+          echo "Branch: $branch | release context: $is_release | fork PR: $is_fork | fork skip marker: $fork_skip"
+          {
+            echo "is_release=$is_release"
+            echo "fork_skip=$fork_skip"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate contract IDs and RPC URL
+        id: validate
+        env:
+          IS_RELEASE:                   ${{ steps.context.outputs.is_release }}
+          FORK_SKIP:                    ${{ steps.context.outputs.fork_skip }}
+          FUTURENET_RPC_URL:            ${{ secrets.FUTURENET_RPC_URL }}
+          CONTRACT_ID_SUBSCRIPTION:     ${{ secrets.CONTRACT_ID_SUBSCRIPTION }}
+          CONTRACT_ID_MYFANS_TOKEN:     ${{ secrets.CONTRACT_ID_MYFANS_TOKEN }}
+          CONTRACT_ID_CREATOR_REGISTRY: ${{ secrets.CONTRACT_ID_CREATOR_REGISTRY }}
+          CONTRACT_ID_CONTENT_ACCESS:   ${{ secrets.CONTRACT_ID_CONTENT_ACCESS }}
+          CONTRACT_ID_EARNINGS:         ${{ secrets.CONTRACT_ID_EARNINGS }}
+        run: |
+          mkdir -p smoke-artifacts
+          report=smoke-artifacts/contract-id-report.json
+
+          strict=true
+          if [ "$IS_RELEASE" != "true" ] || [ "$FORK_SKIP" = "true" ]; then
+            strict=false
+          fi
+
+          args=(--env "--report=$report")
+          [ "$strict" = "true" ] || args+=(--allow-missing)
+
+          ids_ok=true
+          node contract/scripts/validate-contract-ids.mjs "${args[@]}" || ids_ok=false
+          if [ "$(node -p "require('./$report').valid")" != "true" ]; then
+            ids_ok=false
+          fi
+
+          rpc_ok=true
+          if [ -z "$FUTURENET_RPC_URL" ]; then
+            rpc_ok=false
+            if [ "$strict" = "true" ]; then
+              echo "::error::FUTURENET_RPC_URL secret is not set"
+            else
+              echo "::warning::FUTURENET_RPC_URL secret is not set"
+            fi
+          fi
+
+          if [ "$ids_ok" = "true" ] && [ "$rpc_ok" = "true" ]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
-            echo "missing=" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "ready=false" >> "$GITHUB_OUTPUT"
+
+          if [ "$FORK_SKIP" = "true" ]; then
+            echo "::notice::Futurenet smoke SKIPPED for fork PR via explicit [skip-futurenet-smoke] marker."
+            exit 0
+          fi
+          if [ "$strict" = "true" ]; then
+            echo "::error::Futurenet smoke cannot run in release context with missing or invalid contract IDs."
+            echo "Add or fix the secrets under Settings → Secrets and variables → Actions."
+            echo "See contract/docs/CONTRACT_DEPLOY_RUNBOOK.md for the deploy + ID-write steps."
+            exit 1
+          fi
+          echo "::warning::Futurenet smoke skipped (non-release context). It WILL fail on main and release/* until IDs are configured."
+
+      - name: Upload contract ID report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: futurenet-contract-id-report
+          path: smoke-artifacts/contract-id-report.json
+          if-no-files-found: warn
+          retention-days: 14
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Fail loudly on release branches when IDs are missing.
-  # ─────────────────────────────────────────────────────────────────────────
-  fail-on-missing-release:
-    name: "FAIL – contract IDs missing on release branch"
-    needs: check-prerequisites
-    if: needs.check-prerequisites.outputs.ready == 'false' && needs.check-prerequisites.outputs.is_release == 'true' && needs.check-prerequisites.outputs.fork_skip != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Report missing secrets and fail
-        run: |
-          echo "::error::Futurenet smoke cannot run on release branch: missing secrets/IDs:"
-          echo "::error::  ${{ needs.check-prerequisites.outputs.missing }}"
-          echo ""
-          echo "Add the missing secrets under Settings → Secrets and variables → Actions."
-          echo "See contract/docs/CONTRACT_DEPLOY_RUNBOOK.md for the deploy + ID-write steps."
-          exit 1
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Skip gracefully on non-release branches when IDs are missing.
-  # ─────────────────────────────────────────────────────────────────────────
-  skip-on-missing-branch:
-    name: "SKIP – contract IDs not configured (non-release)"
-    needs: check-prerequisites
-    if: needs.check-prerequisites.outputs.ready == 'false' && needs.check-prerequisites.outputs.is_release != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Warn and skip
-        run: |
-          echo "::warning::Futurenet smoke skipped – the following secrets/IDs are not set:"
-          echo "::warning::  ${{ needs.check-prerequisites.outputs.missing }}"
-          echo ""
-          echo "This is acceptable on feature branches.  The smoke WILL fail on release"
-          echo "branches (main, release/*) until all required secrets are configured."
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Explicit skip for fork PRs that opt out with the marker.
-  # ─────────────────────────────────────────────────────────────────────────
-  skip-fork-pr:
-    name: "SKIP – fork PR opted out with [skip-futurenet-smoke]"
-    needs: check-prerequisites
-    if: needs.check-prerequisites.outputs.ready == 'false' && needs.check-prerequisites.outputs.fork_skip == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Acknowledge explicit fork skip
-        run: |
-          echo "::warning::Futurenet smoke skipped for fork PR via explicit [skip-futurenet-smoke] marker."
-          echo "Release branches still fail closed when IDs are empty."
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Actual smoke test – runs only when all IDs are present.
+  # Actual smoke test – runs only when all IDs are present and valid.
   # ─────────────────────────────────────────────────────────────────────────
   smoke:
-    name: Smoke – invoke contract getters on Futurenet
-    needs: check-prerequisites
-    if: needs.check-prerequisites.outputs.ready == 'true'
+    name: Futurenet smoke — invoke contract getters
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       SOROBAN_NETWORK: futurenet
       SOROBAN_RPC_URL: ${{ secrets.FUTURENET_RPC_URL }}
@@ -172,6 +190,7 @@ jobs:
       CONTRACT_ID_CREATOR_REGISTRY: ${{ secrets.CONTRACT_ID_CREATOR_REGISTRY }}
       CONTRACT_ID_CONTENT_ACCESS:   ${{ secrets.CONTRACT_ID_CONTENT_ACCESS }}
       CONTRACT_ID_EARNINGS:         ${{ secrets.CONTRACT_ID_EARNINGS }}
+      SMOKE_LOG_DIR: smoke-logs
 
     steps:
       - name: Checkout
@@ -185,6 +204,7 @@ jobs:
       # Add a network config entry pointing at Futurenet RPC
       - name: Configure Futurenet network
         run: |
+          mkdir -p "$SMOKE_LOG_DIR"
           stellar network add \
             --rpc-url      "$SOROBAN_RPC_URL" \
             --network-passphrase "Test SDF Future Network ; October 2022" \
@@ -192,63 +212,70 @@ jobs:
 
       # ── Subscription contract ──────────────────────────────────────────
       - name: Smoke – subscription contract (get_config)
-        id: smoke_subscription
         run: |
           echo "Calling get_config on subscription contract…"
           stellar contract invoke \
             --id      "$CONTRACT_ID_SUBSCRIPTION" \
             --network futurenet \
             --fn      get_config \
-            -- 2>&1 | tee /tmp/smoke-subscription.log
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+            -- 2>&1 | tee "$SMOKE_LOG_DIR/subscription.log"
 
       # ── MyFans token contract ──────────────────────────────────────────
       - name: Smoke – myfans token contract (name)
-        id: smoke_token
         run: |
           echo "Calling name() on myfans token contract…"
           stellar contract invoke \
             --id      "$CONTRACT_ID_MYFANS_TOKEN" \
             --network futurenet \
             --fn      name \
-            -- 2>&1 | tee /tmp/smoke-token.log
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+            -- 2>&1 | tee "$SMOKE_LOG_DIR/token.log"
 
       # ── Creator registry contract ──────────────────────────────────────
       - name: Smoke – creator registry contract (get_admin)
-        id: smoke_registry
         run: |
           echo "Calling get_admin on creator registry contract…"
           stellar contract invoke \
             --id      "$CONTRACT_ID_CREATOR_REGISTRY" \
             --network futurenet \
             --fn      get_admin \
-            -- 2>&1 | tee /tmp/smoke-registry.log
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+            -- 2>&1 | tee "$SMOKE_LOG_DIR/registry.log"
 
       # ── Content access contract ────────────────────────────────────────
       - name: Smoke – content access contract (get_admin)
-        id: smoke_content
         run: |
           echo "Calling get_admin on content access contract…"
           stellar contract invoke \
             --id      "$CONTRACT_ID_CONTENT_ACCESS" \
             --network futurenet \
             --fn      get_admin \
-            -- 2>&1 | tee /tmp/smoke-content.log
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+            -- 2>&1 | tee "$SMOKE_LOG_DIR/content.log"
 
       # ── Earnings contract ──────────────────────────────────────────────
       - name: Smoke – earnings contract (get_admin)
-        id: smoke_earnings
         run: |
           echo "Calling get_admin on earnings contract…"
           stellar contract invoke \
             --id      "$CONTRACT_ID_EARNINGS" \
             --network futurenet \
             --fn      get_admin \
-            -- 2>&1 | tee /tmp/smoke-earnings.log
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+            -- 2>&1 | tee "$SMOKE_LOG_DIR/earnings.log"
+
+      # Artifacts are not masked by Actions, so scrub secret values first.
+      - name: Redact smoke logs
+        if: always()
+        run: |
+          shopt -s nullglob
+          node -e '
+            const fs = require("fs");
+            const names = ["SOROBAN_RPC_URL", "CONTRACT_ID_SUBSCRIPTION", "CONTRACT_ID_MYFANS_TOKEN",
+              "CONTRACT_ID_CREATOR_REGISTRY", "CONTRACT_ID_CONTENT_ACCESS", "CONTRACT_ID_EARNINGS"];
+            const secrets = names.map((n) => [n, process.env[n]]).filter(([, v]) => v);
+            for (const file of process.argv.slice(1)) {
+              let text = fs.readFileSync(file, "utf8");
+              for (const [name, value] of secrets) text = text.split(value).join(`[redacted:${name}]`);
+              fs.writeFileSync(file, text);
+            }
+          ' "$SMOKE_LOG_DIR"/*.log
 
       # ── Aggregate results ──────────────────────────────────────────────
       - name: Summarise smoke results
@@ -256,10 +283,19 @@ jobs:
         run: |
           echo "## Futurenet smoke results" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          for f in /tmp/smoke-*.log; do
+          for f in "$SMOKE_LOG_DIR"/*.log; do
             [ -f "$f" ] || continue
-            echo "### $f" >> "$GITHUB_STEP_SUMMARY"
+            echo "### $(basename "$f" .log)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             cat "$f" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           done
+
+      - name: Upload smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: futurenet-smoke-logs
+          path: smoke-logs/*.log
+          if-no-files-found: warn
+          retention-days: 14

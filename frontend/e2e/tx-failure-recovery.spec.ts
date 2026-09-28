@@ -9,7 +9,7 @@ test.describe('Transaction Failure Recovery', () => {
   test.beforeEach(async ({ page }) => {
     // Mock Freighter wallet
     await page.addInitScript(() => {
-      (window as any).freighter = {
+      (window as unknown as { freighter: unknown }).freighter = {
         getPublicKey: async () => 'GTEST1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
         signTransaction: async (_xdr: string) => {
           throw new Error('User rejected the request');
@@ -111,7 +111,7 @@ test.describe('Transaction Failure Recovery', () => {
 
   test('API 409 conflict is surfaced as a recoverable failure', async ({ page }) => {
     await page.addInitScript(() => {
-      (window as any).freighter = {
+      (window as unknown as { freighter: unknown }).freighter = {
         getPublicKey: async () => 'GTEST1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
         signTransaction: async (_xdr: string) => 'SIGNED_XDR',
       };
@@ -144,7 +144,7 @@ test.describe('Transaction Failure Recovery', () => {
 
   test('submit button is disabled while the transaction is in flight', async ({ page }) => {
     await page.addInitScript(() => {
-      (window as any).freighter = {
+      (window as unknown as { freighter: unknown }).freighter = {
         getPublicKey: async () => 'GTEST1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
         signTransaction: async (_xdr: string) => {
           await new Promise((resolve) => setTimeout(resolve, 1500));

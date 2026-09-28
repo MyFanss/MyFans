@@ -29,7 +29,7 @@ test.describe('Complete Subscription Flow E2E', () => {
   test.beforeEach(async ({ page }) => {
     // Mock Freighter wallet
     await page.addInitScript(() => {
-      (window as any).freighter = {
+      (window as unknown as { freighter: unknown }).freighter = {
         getPublicKey: async () => {
           // Simulate slight delay
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -407,7 +407,7 @@ test.describe('Subscription Flow - Edge Cases', () => {
   test.beforeEach(async ({ page }) => {
     // Mock wallet
     await page.addInitScript(() => {
-      (window as any).freighter = {
+      (window as unknown as { freighter: unknown }).freighter = {
         getPublicKey: async () => 'GTEST1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
         signTransaction: async (xdr: string) => xdr + '_signed',
         isConnected: async () => true,

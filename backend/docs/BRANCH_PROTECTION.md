@@ -22,34 +22,34 @@ protection rules must be applied to the `main` and `develop` branches in GitHub.
 
 ## 3. Status Check Requirements
 
-The required check names below are the **exact `name:` values** from
-`.github/workflows/ci.yml`.  They are case-sensitive.
+Required check names are maintained in **one place**:
+[`.github/required-checks.json`](../../.github/required-checks.json), mirrored in
+[`docs/BRANCH_PROTECTION.md`](../../docs/BRANCH_PROTECTION.md) and verified in CI by
+`scripts/ci/verify-required-checks.mjs`. Don't copy the list here; it drifts.
 
-- [x] **Require status checks to pass before merging**
-    - [x] **Require branches to be up to date before merging**
-    - **Required Status Checks** (backend-relevant subset):
-        - `commitlint`
-        - `Backend (Node.js 20)`
-        - `Backend (Node.js 22)`
-        - `Backend DB Migrations (Postgres)`
-        - `Postgres Backup / Restore Drill`
-        - `Security Hardening + CSRF E2E (Postgres)`
+Backend-relevant required checks today:
 
-> `Frontend` and `Contract` checks are also required on `main`/`develop`.
-> See the full list in [`docs/BRANCH_PROTECTION.md`](../../docs/BRANCH_PROTECTION.md).
+- `npm audit — backend (high)`: high/critical advisories in production
+  dependencies fail the PR. Exceptions go in `backend/.auditignore` and need a
+  tracking issue link.
 
-### Security Hardening + CSRF E2E (Postgres)
+The backend test jobs (`Backend — unit tests`, `Backend — e2e tests (Postgres)`,
+`Security — hardening + csrf e2e`) run on every PR but are **not yet required**
+because they currently fail for pre-existing reasons. See "Not yet required" in
+the canonical doc for why. Promote them once they're green.
 
-The `Security Hardening + CSRF E2E (Postgres)` check runs on every `pull_request`
+### Security — hardening + csrf e2e
+
+The `Security — hardening + csrf e2e` check runs on every `pull_request`
 (including forks) and executes the hardening suites against a real Postgres
 service container:
 
 - `backend/test/security-hardening.e2e-spec.ts`
 - `backend/test/csrf.e2e-spec.ts`
 
-It must be marked **required** so hardening regressions cannot merge.  Do not
-skip this job on fork PRs without an explicit, documented maintainer decision —
-if it is skipped, the required check stays pending and the PR cannot merge.
+Once green, mark it **required** so hardening regressions can't merge. Don't
+skip this job on fork PRs without an explicit, documented maintainer decision.
+If it's skipped, a required check stays pending and the PR can't merge.
 
 #### Flake triage
 
@@ -79,41 +79,15 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5432/myfans_test \
 
 ---
 
-## GitHub CLI (backend checks only)
+## GitHub CLI
 
-To apply or refresh the backend required checks (full set in root docs):
+The ruleset commands live in [`docs/BRANCH_PROTECTION.md`](../../docs/BRANCH_PROTECTION.md#applying-the-rules-on-github).
+To check that the live rules match the repo:
 
 ```bash
-# Full command in docs/BRANCH_PROTECTION.md — this is the backend-relevant excerpt.
-gh api -X PUT /repos/MyFanss/MyFans/branches/main/protection \
-  -H "Accept: application/vnd.github+json" \
-  --input - <<'EOF'
-{
-  "required_status_checks": {
-    "strict": true,
-    "contexts": [
-      "commitlint",
-      "Backend (Node.js 20)",
-      "Backend (Node.js 22)",
-      "Backend DB Migrations (Postgres)",
-      "Postgres Backup / Restore Drill",
-      "Security Hardening + CSRF E2E (Postgres)",
-      "Frontend",
-      "Contract"
-    ]
-  },
-  "enforce_admins": true,
-  "required_pull_request_reviews": {
-    "dismiss_stale_reviews": true,
-    "require_code_owner_reviews": true,
-    "required_approving_review_count": 1
-  },
-  "restrictions": null,
-  "required_linear_history": true
-}
-EOF
+node scripts/ci/verify-required-checks.mjs --remote
 ```
 
 ## Maintenance
-Review quarterly; cross-check with `.github/workflows/ci.yml` job names.  Last
-reviewed: **2026-08-31**.
+Review quarterly; `node scripts/ci/verify-required-checks.mjs --remote` does the
+cross-check. Last reviewed: **2026-09-27**.

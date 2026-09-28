@@ -1,4 +1,11 @@
 {
-  "myfans": "",
-  "myfansToken": ""
+  "network": "",
+  "rpcUrl": "",
+  "contracts": {
+    "myfansToken": "",
+    "creatorRegistry": "",
+    "subscription": "",
+    "contentAccess": "",
+    "earnings": ""
+  }
 }

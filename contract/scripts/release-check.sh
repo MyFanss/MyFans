@@ -130,8 +130,8 @@ fi
 
 DEPLOYED_JSON="$ROOT_DIR/deployed.json"
 if [[ -f "$DEPLOYED_JSON" ]]; then
-  run_step "deployed.json schema version" \
-    bash "$SCRIPT_DIR/test-deploy-output.sh" "$DEPLOYED_JSON"
+  run_step "deployed.json schema version + contract IDs" \
+    bash "$SCRIPT_DIR/test-deploy-output.sh" "$DEPLOYED_JSON" --require-schema-version
 else
   echo "[release-check] deployed.json not found — skipping schema check (expected before first deploy)"
 fi

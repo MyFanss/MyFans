@@ -1,11 +1,23 @@
-# Audit Exceptions - Contract
-
-# Add documented exceptions below with format:
-# RUSTSEC-YYYY-ZZZZ: Reason for exception (deadline if applicable)
+# Audit exceptions — contract
+#
+# Read by scripts/ci/cargo-audit-gate.mjs (CI job "cargo audit — contract").
+# The gate fails on every RustSec vulnerability that is not listed here.
+# Informational advisories (unmaintained / unsound / yanked) are reported as
+# warnings but do not fail CI, so they need no entry.
+#
+# Format — one exception per line:
+#   <RUSTSEC-ID>: <reason> <tracking issue URL> [expires YYYY-MM-DD]
+#
+# A GitHub issue link is REQUIRED; entries without one, duplicates, and
+# expired entries fail the gate. See docs/BRANCH_PROTECTION.md.
 #
 # Example:
-# RUSTSEC-2024-0001: False positive, not applicable to our use case
-# RUSTSEC-2024-0002: Waiting for upstream fix, ETA 2024-06-01
+#   RUSTSEC-2024-0001: Not reachable from wasm32 target https://github.com/MyFanss/MyFans/issues/1234 expires 2026-12-31
 
-# Currently no exceptions - all high/critical vulnerabilities must be fixed before merge
-
+# Currently no exceptions — all vulnerabilities must be fixed before merge.
+#
+# Known informational warnings (not gated, kept here for context):
+#   RUSTSEC-2024-0436 paste (unmaintained) — transitive via soroban-sdk 21.7.7;
+#     compile-time macro only, no runtime surface. Clears when soroban-sdk is upgraded.
+#   RUSTSEC-2026-0012 keccak (unsound) — only with the `asm` feature on ARMv8;
+#     contracts compile to wasm32-unknown-unknown so the path is never exercised.

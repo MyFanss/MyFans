@@ -1,11 +1,16 @@
-# Audit Exceptions - Frontend
-
-# Add documented exceptions below with format:
-# NPM-ID: Reason for exception (deadline if applicable)
+# Audit exceptions — frontend
+#
+# Read by scripts/ci/npm-audit-gate.mjs (CI job "npm audit — frontend").
+# The gate fails on any high/critical advisory that is not listed here.
+#
+# Format — one exception per line:
+#   <ADVISORY-ID>: <reason> <tracking issue URL> [expires YYYY-MM-DD]
+#
+# ADVISORY-ID is the GHSA id from the advisory URL (preferred) or NPM-<id>.
+# A GitHub issue link is REQUIRED; entries without one, duplicates, and
+# expired entries fail the gate. See docs/BRANCH_PROTECTION.md.
 #
 # Example:
-# NPM-1234: False positive, not applicable to our use case
-# NPM-5678: Waiting for upstream fix, ETA 2024-06-01
+#   GHSA-xxxx-xxxx-xxxx: Only reachable from the build toolchain https://github.com/MyFanss/MyFans/issues/1234 expires 2026-12-31
 
-# Currently no exceptions - all high/critical vulnerabilities must be fixed before merge
-
+# Currently no exceptions — all high/critical advisories must be fixed before merge.
