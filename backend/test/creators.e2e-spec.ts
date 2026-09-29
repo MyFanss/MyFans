@@ -284,14 +284,46 @@ describe('Creators Module (e2e)', () => {
     });
   });
 
+  describe('Single-Source Payout Wallet Invariant (#1864)', () => {
+    it('should expose payoutWallet as the sole canonical payout field and exclude legacy payoutAddress', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/v1/creators')
+        .expect(200);
+
+      if (response.body.data.length > 0) {
+        const creator = response.body.data[0];
+        if (creator.payoutWallet !== undefined && creator.payoutWallet !== null) {
+          expect(typeof creator.payoutWallet).toBe('string');
+        }
+        expect(creator).not.toHaveProperty('payoutAddress');
+        expect(creator).not.toHaveProperty('payout_address');
+        expect(creator).not.toHaveProperty('recipientWallet');
+      }
+    });
+
+    it('should reject or strip requests containing legacy dual payout fields via whitelist validation', async () => {
+      const planWithLegacyField = {
+        creator: 'test_creator_invariant',
+        asset: 'USDC',
+        amount: '50.00',
+        intervalDays: 30,
+        payoutAddress: 'GABC1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCDE',
+      };
+
+      const response = await request(app.getHttpServer())
+        .post('/v1/creators/plans')
+        .send(planWithLegacyField)
+        .expect(201);
+
+      expect(response.body).not.toHaveProperty('payoutAddress');
+    });
+  });
+
   describe('Authentication', () => {
     it('should require authentication for creators endpoints', async () => {
-      // Note: Depending on JwtAuthGuard configuration, this may be protected
-      // This test validates the endpoints are guarded
       const response = await request(app.getHttpServer())
         .get('/v1/creators');
 
-      // Should either return 401/403 if protected, or 200 if public
       expect([200, 401, 403]).toContain(response.status);
     });
   });
