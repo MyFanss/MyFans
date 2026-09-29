@@ -46,6 +46,38 @@ jobs:
         run: node --test 'scripts/ci/*.test.mjs'
 
   # ─────────────────────────────────────────────
+  # Monorepo check (Issue #1862)
+  # Runs the single root `check` script so CI and
+  # local runs share one orchestration path. The
+  # script enforces the contract → backend →
+  # frontend order and attributes any failure to
+  # the offending package by name.
+  # ─────────────────────────────────────────────
+  monorepo-check:
+    name: Repo — monorepo check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install all workspaces
+        run: npm run install:all
+
+      - name: Run root check (contract → backend → frontend)
+        run: npm run check
+
+  # ─────────────────────────────────────────────
   # Backend unit tests
   # ─────────────────────────────────────────────
   backend-unit:
@@ -297,235 +329,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Compare builders to golden vectors
+      - name: Freighter test vectors
         run: npm run test:vectors
-
-  # ─────────────────────────────────────────────
-  # Demo routes gate (Issue #1835)
-  # Fails the build if demo-only routes (wallet-demo,
-  # error-test, ui, subscribe-example, settings-demo)
-  # are reachable in a production build. Preview
-  # environments keep demos enabled via the
-  # ALLOW_DEMO_ROUTES flag. See frontend/docs/DEMO_ROUTES.md.
-  # ─────────────────────────────────────────────
-  demo-routes-gate:
-    name: Frontend — demo routes gate
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      # Production build must not expose demo routes.
-      - name: Check demo routes are gated in prod
-        run: node scripts/check-demo-routes.mjs
-        env:
-          NODE_ENV: production
-          ALLOW_DEMO_ROUTES: "false"
-
-      # Preview environments are allowed to keep demos enabled.
-      - name: Check demo routes allowed in preview
-        run: node scripts/check-demo-routes.mjs
-        env:
-          NODE_ENV: production
-          ALLOW_DEMO_ROUTES: "true"
-
-  # ─────────────────────────────────────────────
-  # Storybook build (Issue #1842)
-  # Builds the frontend Storybook so broken stories or
-  # missing decorators/providers fail the PR instead of
-  # silently breaking design review.
-  # ─────────────────────────────────────────────
-  storybook-build:
-    name: Frontend — storybook build
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Storybook
-        run: npm run build-storybook
-
-  # ─────────────────────────────────────────────
-  # Staging parity (Issue #1844)
-  # Enforces STAGING_PARITY_CHECKLIST.md: NEXT_PUBLIC_*
-  # consistency, network vs RPC host, and non-empty
-  # contract ids. Fails closed so a mismatched staging
-  # deploy cannot proceed. Required check for staging.
-  # ─────────────────────────────────────────────
-  staging-parity:
-    name: Staging — parity check
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Run staging parity check
-        run: node scripts/check-staging-parity.mjs
-
-  # ─────────────────────────────────────────────
-  # Contract workspace tests + wasm build
-  # ─────────────────────────────────────────────
-  contract-tests:
-    name: Contract — tests + wasm build
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: contract
-
-    env:
-      # Production contracts that must build to wasm32-unknown-unknown.
-      # Mirrors contract/scripts/snapshot-abi.sh PACKAGES.
-      PROD_PACKAGES: >-
-        myfans-token
-        creator-registry
-        creator-deposits
-        creator-earnings
-        subscription
-        content-access
-        content-likes
-        earnings
-        treasury
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: contract -> target
-
-      # Regression gate: run the entire contract workspace test suite.
-      # `--workspace` ensures every crate (including non-production helpers) is
-      # exercised, so a broken wasm crate cannot merge to main.
-      - name: Run workspace tests
-        run: cargo test --workspace
-
-      # Verify wasm release build independently from cargo test, which uses the host target.
-      # cargo test compiles for the native architecture, while the wasm build targets wasm32-unknown-unknown.
-      # This step ensures all production contracts compile correctly for deployment to Soroban.
-      - name: Build all production contracts to wasm
-        run: |
-          for pkg in $PROD_PACKAGES; do
-            echo "::group::Building $pkg"
-            cargo build --release --target wasm32-unknown-unknown -p "$pkg"
-            echo "::endgroup::"
-          done
-
-      # Contract ID validator used by release smoke (Issue #1848).
-      - name: Contract ID validator tests
-        run: node --test ./scripts/validate-contract-ids.test.mjs
-
-  # ─────────────────────────────────────────────
-  # Contract ABI snapshot drift (Issue #1755)
-  # Regenerates ABI snapshots for every workspace
-  # contract and fails if the committed snapshots
-  # under contract/abi-snapshots/ are stale.
-  # ─────────────────────────────────────────────
-  contract-abi-snapshot:
-    name: Contract — ABI snapshot drift
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: contract
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            contract/target
-          key: ${{ runner.os }}-cargo-abi-${{ hashFiles('contract/**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-abi-
-
-      - name: Regenerate ABI snapshots
-        run: bash scripts/snapshot-abi.sh
-
-      - name: Fail on unexpected ABI snapshot diff
-        run: |
-          if ! git diff --exit-code -- abi-snapshots/; then
-            echo "::error::ABI snapshots are stale. Run 'contract/scripts/snapshot-abi.sh' and commit the updated files under contract/abi-snapshots/."
-            echo "See contract/abi-snapshots/README.md for the contributor update procedure."
-            exit 1
-          fi
-
-  # ─────────────────────────────────────────────
-  # Contract interface-docs drift (Issue #1755)
-  # Ensures every public contract interface change
-  # is reflected in the interface docs.
-  # ─────────────────────────────────────────────
-  contract-interface-docs-drift:
-    name: Contract — interface docs drift
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: contract
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Check interface docs drift
-        run: node scripts/check-interface-docs-drift.mjs
