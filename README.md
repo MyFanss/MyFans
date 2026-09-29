@@ -127,6 +127,55 @@ Maintainers run a **weekly triage** (see the pinned triage issue/discussion) to:
 4. Confirm the query links in this section still resolve and point at the
    current label names.
 
+## Monorepo Checks
+
+The root `package.json` exposes a single orchestration entry point so local runs
+and CI behave identically:
+
+```bash
+npm run install:all   # install dependencies for every package
+npm run check         # lint + test + build across the monorepo
+```
+
+### Required execution order
+
+`check` runs packages in a fixed order because later packages depend on earlier
+artifacts:
+
+1. **contract** — Rust/Soroban crate (lint, test, build)
+2. **backend** — Nest.js API (lint, test, build)
+3. **frontend** — Next.js app (lint, test, build)
+
+Do not reorder these steps; the backend and frontend consume contract artifacts
+and generated types.
+
+### Failure attribution
+
+When a package fails, `check` prints the offending package name and the failing
+step before exiting non-zero, e.g.:
+
+```
+[check] FAILED: contract (step: test)
+[check] see output above for details
+```
+
+This makes it obvious which package broke instead of failing opaquely.
+
+### Skip policy when `src` is absent
+
+If a package has no `src/` directory (e.g. a partial install or a package that
+has not been scaffolded yet), `check` **skips** that package and prints a clear
+`[check] SKIP: <package> (no src/)` line. It does **not** silently pass and it
+does **not** fail-closed on a missing `src/` alone — a genuinely broken package
+will still fail on its own lint/test/build step. CI relies on this same script,
+so a partial install surfaces as an explicit skip rather than a confusing crash.
+
+### CI
+
+CI invokes the same root `check` script (`npm run check`) rather than ad-hoc
+per-package commands, so local and CI results stay in sync. CI never passes
+`--force` or otherwise bypasses tests.
+
 ---
 
 ## Documentation
