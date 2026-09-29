@@ -1,5 +1,11 @@
 # Content-Security-Policy: connect-src hosts
 
+> **Header ownership across layers:** this document covers the frontend
+> `connect-src` directive only. For the full picture of which layer sets
+> which security header (backend Helmet, frontend Next CSP, wallet
+> extensions, edge/preview), see
+> [`docs/SECURITY_HEADERS_MATRIX.md`](./SECURITY_HEADERS_MATRIX.md).
+
 The `Content-Security-Policy` header is built in `next.config.ts` via
 `buildContentSecurityPolicy()` (`src/lib/csp.ts`). This document covers the
 `connect-src` directive specifically, since it's the one that controls which
@@ -157,73 +163,16 @@ What it asserts:
   `NEXT_PUBLIC_HORIZON_URL` is added and deduped against the defaults.
 - Hosts that aren't the API origin, a default Stellar host, or an
   env-configured RPC/Horizon host are **not** added.
-- WalletConnect relay hosts are **absent** when the feature flag is off, and
-  present only when the flag is on with a project id configured.
-- `localhost:*` / `127.0.0.1:*` only appear outside production.
-- Production `connect-src` contains no bare `*` / scheme-only wildcard.
+- `localhost` / `127.0.0.1` are present in local dev and absent in
+  preview/staging/production.
 
-Run it directly with `npm test -- csp` (or `npm test` for the full suite).
+## Related documents
 
-**When you need to update the host list**, edit
-`DEFAULT_STELLAR_CONNECT_HOSTS` in `src/lib/csp.ts` and update the
-corresponding assertions/list in `src/lib/csp.test.ts` and the "What's
-allowed" section above in the same change — the test is intentionally
-written to fail if the two drift apart, so a host removal must be a
-deliberate, reviewed edit in both places, not an accidental side effect of
-an unrelated refactor.
-
-## Preview / staging environments
-
-Preview and staging are treated as **deployed** environments, not dev:
-
-- They must set `NEXT_PUBLIC_APP_ENV` (`preview` / `staging`) — this alone
-  drops `localhost:*` from `connect-src` regardless of `NODE_ENV`.
-- Their `connect-src` is still built purely from *their own*
-  `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SOROBAN_RPC_URL`, and
-  `NEXT_PUBLIC_HORIZON_URL` — a preview pointed at a preview API/RPC only
-  allows those hosts, and nothing leaks in from production defaults.
-- Staging may point at extra APIs/RPCs beyond production; add each one via
-  the env vars above so it appears explicitly in `connect-src` rather than
-  being covered by a wildcard.
-- Keep the CSP env vars in the deploy config in sync with
-  `STAGING_PARITY_CHECKLIST.md` → *Networking & API*.
-
-## COEP / CORP and wallet extensions
-
-`connect-src` is only half of what wallet extensions (Freighter, Lobstr,
-…) need. The cross-origin isolation headers (`Cross-Origin-Embedder-Policy`,
-`Cross-Origin-Resource-Policy`, `Cross-Origin-Opener-Policy`) also have to
-be relaxed on wallet-heavy routes or the extension cannot inject its
-bridge. That policy — route-scoped `credentialless` COEP on
-`/checkout`, `/subscribe`, `/wallet-demo` and `require-corp` elsewhere — is
-documented in `docs/SECURITY_HEADERS.md`. Changing either file without the
-other tends to break Freighter connect, so review them together.
-
-## Manual verification checklist
-
-After any change to `connect-src` or the wallet headers, verify:
-
-1. **Freighter connect** — load the app, connect Freighter, confirm no CSP
-   violations in the console and the account/balance loads.
-2. **Sign + submit** — build and submit a testnet transaction; confirm the
-   Horizon/Soroban RPC calls succeed (no `Refused to connect` errors).
-3. **Header contents** — inspect the served `Content-Security-Policy`
-   response header and confirm the expected hosts are present and that
-   production contains no wildcard.
-4. **WalletConnect (if enabled)** — confirm the relay hosts appear only when
-   the flag is on with a project id set.
-
-An optional Playwright assertion can check the `Content-Security-Policy`
-response header on a smoke route to catch accidental wildcard/regression in
-CI; the unit test in `src/lib/csp.test.ts` remains the primary guard.
-
-## Related
-
-- `src/lib/csp.ts` — host + CSP string construction, unit-tested directly.
-- `src/lib/csp.test.ts` — regression test guarding wallet connect-src hosts.
-- `src/lib/contract-config.ts` — resolves `sorobanRpcUrl` / `horizonUrl` per
-  network; keep `NETWORK_DEFAULTS` there in sync with
-  `DEFAULT_STELLAR_CONNECT_HOSTS`.
-- `docs/WALLET_SETUP.md` — WalletConnect enable steps and the flag/project
-  id requirements.
-- `docs/SECURITY_HEADERS.md` — COEP/CORP/COOP policy for wallet routes.
+- [`docs/SECURITY_HEADERS_MATRIX.md`](./SECURITY_HEADERS_MATRIX.md) — single
+  source of truth for which layer (backend Helmet, frontend Next CSP,
+  wallet extensions, edge/preview) sets which security header, with
+  per-environment examples and verification steps.
+- [`docs/WALLET_SETUP.md`](./WALLET_SETUP.md) — wallet enable steps,
+  including the WalletConnect flag/project-id flow referenced above.
+- `backend/docs/CORS_AND_SECURITY_HEADERS.md` — backend Helmet/CORS header
+  ownership and configuration.

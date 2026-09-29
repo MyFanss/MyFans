@@ -187,6 +187,21 @@ per-package commands, so local and CI results stay in sync. CI never passes
 
 ---
 
+## Security
+
+Security headers are owned by more than one layer (backend Helmet, frontend Next.js
+CSP, and the edge/CDN). To avoid broken wallets or a weak XSS posture, the single
+source of truth for **which layer sets which header** — plus per-environment
+examples and wallet-extension caveats — is:
+
+- [Security Headers Matrix](docs/SECURITY_HEADERS_MATRIX.md) – header ownership across backend, frontend, edge, and preview deploys.
+- [Frontend CSP](frontend/docs/CSP.md) – Next.js Content-Security-Policy details.
+- [Backend CORS & Security Headers](backend/docs/CORS_AND_SECURITY_HEADERS.md) – Helmet configuration and CORS.
+
+When changing any header, update the matrix first and keep the three docs in sync.
+
+---
+
 ## 1. Smart Contract (Soroban) – `contract/`
 
 ### Responsibilities
