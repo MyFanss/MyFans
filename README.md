@@ -78,6 +78,55 @@ stack, and CSP/network troubleshooting.
 
 ---
 
+## Contributing
+
+We welcome contributions of all sizes. To find work that fits your experience,
+use the curated issue queries below (they open directly on GitHub):
+
+- **Good first issue** — true starter tasks (docs and tests only):
+  [good first issue](https://github.com/MyFans/MyFans/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+- **Help wanted** — well-scoped tasks where maintainers will mentor:
+  [help wanted](https://github.com/MyFans/MyFans/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
+- **Documentation** — docs-only improvements:
+  [documentation](https://github.com/MyFans/MyFans/issues?q=is%3Aissue+is%3Aopen+label%3Adocumentation)
+- **Tests** — test coverage and fixtures:
+  [tests](https://github.com/MyFans/MyFans/issues?q=is%3Aissue+is%3Aopen+label%3Atests)
+- **All open issues** — the full backlog:
+  [all open issues](https://github.com/MyFans/MyFans/issues?q=is%3Aissue+is%3Aopen)
+
+Before opening a pull request, read **[CONTRIBUTING.md](CONTRIBUTING.md)** for the
+branch/commit conventions, local checks, and review expectations. Please also
+follow our **[Code of Conduct](CODE_OF_CONDUCT.md)**.
+
+### Starter task labeling policy
+
+To keep the starter set trustworthy, `good first issue` is reserved for tasks
+that are genuinely approachable for a first-time contributor:
+
+- **Allowed**: documentation fixes, test additions, small refactors with clear
+  acceptance criteria, and other low-risk, well-scoped changes.
+- **Not allowed**: money-path code (payments, fees, treasury, subscription
+  billing), contract upgrade/governance logic, auth/session handling, or any
+  hard/critical issue. These must **never** be labeled `good first issue` even
+  when they look small — mislabeling them wastes contributor time and risks
+  production funds.
+
+If you are unsure whether a task qualifies, open a discussion or ask in the
+issue before labeling it.
+
+### Triage cadence
+
+Maintainers run a **weekly triage** (see the pinned triage issue/discussion) to:
+
+1. Review newly opened issues and apply `good first issue` / `help wanted`
+   labels only where the policy above allows.
+2. Re-check existing starter labels and remove any that no longer meet the bar
+   (e.g. scope grew into money-path code).
+3. Keep at least **10+** genuine starter tasks labeled at all times so new
+   contributors always have a navigable entry point.
+4. Confirm the query links in this section still resolve and point at the
+   current label names.
+
 ## Monorepo Checks
 
 The root `package.json` exposes a single orchestration entry point so local runs
