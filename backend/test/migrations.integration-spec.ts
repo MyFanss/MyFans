@@ -13,6 +13,9 @@
  *   DB_NAME     (default: myfans_test)
  */
 import 'reflect-metadata';
+import * as fs from 'fs';
+import * as path from 'path';
+import { spawnSync, SpawnSyncReturns } from 'child_process';
 import { DataSource, QueryRunner } from 'typeorm';
 
 // ── Migration classes (same order as migration.datasource.ts) ────────────────
@@ -82,6 +85,31 @@ async function columnExists(
   return Array.isArray(result) && result.length > 0;
 }
 
+function runMigrationScript(args: string[] = []): SpawnSyncReturns<string> {
+  const scriptPath = path.resolve(__dirname, '../scripts/run-migrations.ts');
+  const backendDir = path.resolve(__dirname, '..');
+  const tsNodeBin = path.resolve(backendDir, 'node_modules/.bin/ts-node');
+
+  const cmd = fs.existsSync(tsNodeBin) ? tsNodeBin : 'npx';
+  const spawnArgs = fs.existsSync(tsNodeBin)
+    ? ['-r', 'tsconfig-paths/register', scriptPath, ...args]
+    : ['ts-node', '-r', 'tsconfig-paths/register', scriptPath, ...args];
+
+  return spawnSync(cmd, spawnArgs, {
+    cwd: backendDir,
+    env: {
+      ...process.env,
+      DB_HOST: process.env.DB_HOST ?? 'localhost',
+      DB_PORT: process.env.DB_PORT ?? '5432',
+      DB_USER: process.env.DB_USER ?? 'myfans_ci',
+      DB_PASSWORD: process.env.DB_PASSWORD ?? 'myfans_ci',
+      DB_NAME: process.env.DB_NAME ?? 'myfans_test',
+    },
+    encoding: 'utf-8',
+    timeout: 45_000,
+  });
+}
+
 // ── Test suite ────────────────────────────────────────────────────────────────
 
 describe('Database migrations (integration)', () => {
@@ -127,8 +155,12 @@ describe('Database migrations (integration)', () => {
   });
 
   afterAll(async () => {
-    await qr.release();
-    await ds.destroy();
+    if (qr && !qr.isReleased) {
+      await qr.release();
+    }
+    if (ds && ds.isInitialized) {
+      await ds.destroy();
+    }
   });
 
   // ── Up migrations ──────────────────────────────────────────────────────────
@@ -198,12 +230,79 @@ describe('Database migrations (integration)', () => {
     expect(ran.length).toBe(0);
   });
 
+  // ── CLI runner (scripts/run-migrations.ts) integration tests ───────────────
+
+  describe('scripts/run-migrations.ts runner', () => {
+    it('running with no pending migrations exits 0 and prints "[migrations] no pending migrations"', () => {
+      // At this point in the test suite, all 13 migrations are already applied
+      const res = runMigrationScript([]);
+      expect(res.error).toBeUndefined();
+      expect(res.status).toBe(0);
+      expect(res.stdout).toContain('[migrations] running pending migrations…');
+      expect(res.stdout).toContain('[migrations] no pending migrations');
+    });
+
+    it('after applying a migration, running with --revert exits 0 and prints "[migrations] revert complete"', async () => {
+      // Execute the script with --revert to roll back the last migration
+      const revertRes = runMigrationScript(['--revert']);
+      expect(revertRes.error).toBeUndefined();
+      expect(revertRes.status).toBe(0);
+      expect(revertRes.stdout).toContain(
+        '[migrations] reverting last migration…',
+      );
+      expect(revertRes.stdout).toContain('[migrations] revert complete');
+
+      // Verify in the database that exactly one migration was undone
+      const rows: unknown = await qr.query(
+        `SELECT name FROM migrations ORDER BY timestamp ASC`,
+      );
+      expect(Array.isArray(rows) ? rows.length : 0).toBe(12);
+
+      // Re-apply using the runner without --revert and assert it ran the pending migration
+      const reapplyRes = runMigrationScript([]);
+      expect(reapplyRes.error).toBeUndefined();
+      expect(reapplyRes.status).toBe(0);
+      expect(reapplyRes.stdout).toContain(
+        '[migrations] running pending migrations…',
+      );
+      expect(reapplyRes.stdout).toContain(
+        '[migrations] ran: CreateUserWalletLinks1751000000000',
+      );
+
+      // Verify all 13 are tracked again
+      const restoredRows: unknown = await qr.query(
+        `SELECT name FROM migrations ORDER BY timestamp ASC`,
+      );
+      expect(Array.isArray(restoredRows) ? restoredRows.length : 0).toBe(13);
+    });
+
+    it('the datasource is destroyed on both paths (no lingering connections)', () => {
+      // Apply path with no pending migrations exits cleanly (destroy() in finally)
+      const noPendingRes = runMigrationScript([]);
+      expect(noPendingRes.status).toBe(0);
+      expect(noPendingRes.signal).toBeNull();
+      expect(noPendingRes.error).toBeUndefined();
+
+      // Revert path exits cleanly (destroy() in finally)
+      const revertRes = runMigrationScript(['--revert']);
+      expect(revertRes.status).toBe(0);
+      expect(revertRes.signal).toBeNull();
+      expect(revertRes.error).toBeUndefined();
+
+      // Clean up by re-applying so schema is intact for downstream revert tests
+      const reapplyRes = runMigrationScript([]);
+      expect(reapplyRes.status).toBe(0);
+      expect(reapplyRes.signal).toBeNull();
+      expect(reapplyRes.error).toBeUndefined();
+    });
+  });
+
   // ── Down migrations (revert all in reverse order) ─────────────────────────
 
   it('reverts all migrations down without error', async () => {
     // Revert one at a time in reverse order
     for (let i = 0; i < 13; i++) {
-      await ds.undoLastMigration({ transaction: true });
+      await ds.undoLastMigration({ transaction: 'each' });
     }
 
     // All tracked migrations should be gone
