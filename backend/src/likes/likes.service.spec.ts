@@ -3,6 +3,20 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Like } from './like.entity';
+
+  const likes: Array<{ id: number; userId: number; postId: number }> = [];
+  let nextId = 1;
+
+  const repositoryMock = {
+    findOne: jest.fn(async ({ where }: any) => {
+      return (
+        likes.find(
+          (like) =>
+            like.userId === where.userId && like.postId === where.postId,
+        ) ?? null
+      );
+    }),
+    create: jest.fn((data: any) => ({ id
 import { LikesService } from './likes.service';
 
 describe('LikesService', () => {
