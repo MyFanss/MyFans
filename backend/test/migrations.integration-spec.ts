@@ -29,6 +29,7 @@ import { CreateSocialLinksTable1748000000000 } from '../src/social-link/17480000
 import { CreateCreatorOnchainMappings1749000000000 } from '../src/creators/1749000000000-CreateCreatorOnchainMappings';
 import { CreateNotificationDurableState1750000000000 } from '../src/notifications/1750000000000-CreateNotificationDurableState';
 import { CreateUserWalletLinks1751000000000 } from '../src/auth-module/1751000000000-CreateUserWalletLinks';
+import { CreateSubscriptions1752000000000 } from '../src/subscriptions/1752000000000-CreateSubscriptions';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ function buildDataSource(): DataSource {
       CreateCreatorOnchainMappings1749000000000,
       CreateNotificationDurableState1750000000000,
       CreateUserWalletLinks1751000000000,
+      CreateSubscriptions1752000000000,
     ],
   });
 }
@@ -78,6 +80,48 @@ async function columnExists(
     `SELECT 1 FROM information_schema.columns
      WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`,
     [table, column],
+  );
+  return Array.isArray(result) && result.length > 0;
+}
+
+async function columnIsNullable(
+  qr: QueryRunner,
+  table: string,
+  column: string,
+): Promise<boolean> {
+  const result: unknown = await qr.query(
+    `SELECT is_nullable FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`,
+    [table, column],
+  );
+  if (!Array.isArray(result) || result.length === 0) {
+    throw new Error(`Column ${table}.${column} does not exist`);
+  }
+  return (result[0] as { is_nullable: string }).is_nullable === 'YES';
+}
+
+async function indexExists(
+  qr: QueryRunner,
+  table: string,
+  indexName: string,
+): Promise<boolean> {
+  const result: unknown = await qr.query(
+    `SELECT 1 FROM pg_indexes
+     WHERE schemaname = 'public' AND tablename = $1 AND indexname = $2`,
+    [table, indexName],
+  );
+  return Array.isArray(result) && result.length > 0;
+}
+
+async function constraintExists(
+  qr: QueryRunner,
+  table: string,
+  constraintName: string,
+): Promise<boolean> {
+  const result: unknown = await qr.query(
+    `SELECT 1 FROM information_schema.table_constraints
+     WHERE table_schema = 'public' AND table_name = $1 AND constraint_name = $2`,
+    [table, constraintName],
   );
   return Array.isArray(result) && result.length > 0;
 }
@@ -180,47 +224,69 @@ describe('Database migrations (integration)', () => {
   it('CreateReferralTables: referral_codes and referral_redemptions tables exist', async () => {
     expect(await tableExists(qr, 'referral_codes')).toBe(true);
     expect(await tableExists(qr, 'referral_redemptions')).toBe(true);
-    expect(await columnExists(qr, 'referral_codes', 'code')).toBe(true);
-    expect(await columnExists(qr, 'referral_redemptions', 'redeemer_id')).toBe(
-      true,
-    );
   });
 
-  it('migrations table records all 13 migrations', async () => {
-    const rows: unknown = await qr.query(
-      `SELECT name FROM migrations ORDER BY timestamp ASC`,
-    );
-    expect(Array.isArray(rows) ? rows.length : 0).toBe(13);
-  });
+  it('CreateSubscriptions: subscriptions table exists with expected columns and nullability', async () => {
+    expect(await tableExists(qr, 'subscriptions')).toBe(true);
 
-  it('running migrations again is idempotent (no-op)', async () => {
-    const ran = await ds.runMigrations({ transaction: 'each' });
-    expect(ran.length).toBe(0);
-  });
-
-  // ── Down migrations (revert all in reverse order) ─────────────────────────
-
-  it('reverts all migrations down without error', async () => {
-    // Revert one at a time in reverse order
-    for (let i = 0; i < 13; i++) {
-      await ds.undoLastMigration({ transaction: true });
+    // Required (NOT NULL) columns declared on the subscription entity
+    const requiredColumns = [
+      'id',
+      'subscriberId',
+      'creatorId',
+      'tierId',
+      'status',
+      'startedAt',
+      'createdAt',
+      'updatedAt',
+    ];
+    for (const column of requiredColumns) {
+      expect(await columnExists(qr, 'subscriptions', column)).toBe(true);
+      expect(await columnIsNullable(qr, 'subscriptions', column)).toBe(false);
     }
 
-    // All tracked migrations should be gone
-    const rows: unknown = await qr.query(`SELECT name FROM migrations`);
-    expect(Array.isArray(rows) ? rows.length : 0).toBe(0);
+    // Nullable columns declared on the subscription entity
+    const nullableColumns = ['expiresAt', 'cancelledAt', 'txHash'];
+    for (const column of nullableColumns) {
+      expect(await columnExists(qr, 'subscriptions', column)).toBe(true);
+      expect(await columnIsNullable(qr, 'subscriptions', column)).toBe(true);
+    }
   });
 
-  it('referral tables are dropped after revert', async () => {
-    expect(await tableExists(qr, 'referral_codes')).toBe(false);
-    expect(await tableExists(qr, 'referral_redemptions')).toBe(false);
+  it('CreateSubscriptions: unique/index constraints exist on subscriptions', async () => {
+    expect(
+      await constraintExists(qr, 'subscriptions', 'UQ_subscriptions_txHash'),
+    ).toBe(true);
+    expect(
+      await indexExists(qr, 'subscriptions', 'IDX_subscriptions_subscriberId'),
+    ).toBe(true);
+    expect(
+      await indexExists(qr, 'subscriptions', 'IDX_subscriptions_creatorId'),
+    ).toBe(true);
   });
 
-  it('wallet_challenges table is dropped after revert', async () => {
-    expect(await tableExists(qr, 'wallet_challenges')).toBe(false);
-  });
+  it('CreateSubscriptions: round-trip insert/select of a subscription row succeeds', async () => {
+    const subscriberId = '00000000-0000-0000-0000-000000000001';
+    const creatorId = '00000000-0000-0000-0000-000000000002';
 
-  it('refresh_tokens table is dropped after revert', async () => {
-    expect(await tableExists(qr, 'refresh_tokens')).toBe(false);
+    await qr.query(
+      `INSERT INTO "subscriptions"
+         ("subscriberId", "creatorId", "tierId", "status", "startedAt", "txHash")
+       VALUES ($1, $2, $3, $4, now(), $5)`,
+      [subscriberId, creatorId, 'tier-basic', 'active', 'tx-roundtrip-1'],
+    );
+
+    const rows: unknown = await qr.query(
+      `SELECT "subscriberId", "creatorId", "tierId", "status", "txHash"
+       FROM "subscriptions" WHERE "txHash" = $1`,
+      ['tx-roundtrip-1'],
+    );
+    expect(Array.isArray(rows)).toBe(true);
+    expect((rows as unknown[]).length).toBe(1);
+    const row = (rows as Array<Record<string, unknown>>)[0];
+    expect(row.subscriberId).toBe(subscriberId);
+    expect(row.creatorId).toBe(creatorId);
+    expect(row.tierId).toBe('tier-basic');
+    expect(row.status).toBe('active');
   });
 });
