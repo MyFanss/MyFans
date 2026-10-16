@@ -143,13 +143,18 @@ impl SubscriptionContract {
         Ok(plan_id)
     }
 
-    /// Subscribe to a plan. Requires fan auth. Blocked while paused.
-    pub fn subscribe(env: Env, fan: Address, plan_id: u64) {
+    /// Subscribe to a plan. Requires fan auth. Blocked while paused. The
+    /// `asset` argument must match the plan's asset or the call reverts with
+    /// `Error::AssetMismatch` before any charge or subscription write.
+    pub fn subscribe(env: Env, fan: Address, plan_id: u64, asset: Address) {
         fan.require_auth();
         Self::require_active(&env);
         let plan = Self::load_plan(&env, plan_id);
         if !plan.active {
             panic_with_error!(&env, Error::PlanInactive);
+        }
+        if asset != plan.asset {
+            panic_with_error!(&env, Error::AssetMismatch);
         }
         Self::charge(&env, &fan, &plan);
         let expires_at = Self::next_expiry(&env, plan.interval);
