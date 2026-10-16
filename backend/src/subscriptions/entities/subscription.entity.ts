@@ -69,7 +69,14 @@ export function canTransition(
   return SUBSCRIPTION_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
-@Entity('subscriptions')
+/**
+ * Table name for the subscription entity. Exported so the migration and
+ * the migration integration test can reference the same source of truth
+ * instead of duplicating the literal.
+ */
+export const SUBSCRIPTIONS_TABLE = 'subscriptions';
+
+@Entity(SUBSCRIPTIONS_TABLE)
 export class Subscription {
   @PrimaryGeneratedColumn('uuid')
   id: string;

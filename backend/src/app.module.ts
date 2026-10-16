@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -189,17 +188,13 @@ if (isProduction && corsCredentials && corsOrigins.includes('*')) {
   ],
 })
 export class AppModule {
-  configure(consumer: MiddlewareConsumer) {
+  configure(consumer: MiddlewareConsumer): void {
     consumer
       .apply(CorrelationIdMiddleware, LoggingMiddleware, MetricsMiddleware)
       .forRoutes('*');
 
-    consumer
-      .apply(IdempotencyMiddleware)
-      .forRoutes(...IDEMPOTENCY_ROUTES);
-
     consumer.apply(CsrfMiddleware).forRoutes(...CSRF_ROUTES);
+
+    consumer.apply(IdempotencyMiddleware).forRoutes(...IDEMPOTENCY_ROUTES);
   }
 }
-=======
->>>>>>> upstream/main
