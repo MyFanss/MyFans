@@ -258,3 +258,11 @@ The current frontend wallet implementation does not treat all wallets equally:
 Ass
 
 /* … truncated 7713 chars — edit only what you need near the top … */
+
+## Handsoff notes
+
+<!-- handsoff-issue-1942 -->
+- #1942: frontend/src/lib/api/client.ts and base-url.ts: add unit tests for base URL resolution and request behavior
+
+<!-- handsoff-issue-1944 -->
+- #1944: frontend/lib/api-client.ts: add unit tests for request/get/post, error envelope, and 204 handling
