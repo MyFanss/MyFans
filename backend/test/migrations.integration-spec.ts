@@ -13,6 +13,8 @@
  *   DB_NAME     (default: myfans_test)
  */
 import 'reflect-metadata';
+import { spawnSync } from 'child_process';
+import * as path from 'path';
 import { DataSource, QueryRunner } from 'typeorm';
 
 // ── Migration classes (same order as migration.datasource.ts) ────────────────
@@ -126,6 +128,51 @@ async function constraintExists(
   return Array.isArray(result) && result.length > 0;
 }
 
+// ── run-migrations.ts script runner ───────────────────────────────────────────
+
+const BACKEND_ROOT = path.resolve(__dirname, '..');
+
+interface ScriptResult {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Spawns `scripts/run-migrations.ts` via ts-node against the same test
+ * database configured for this spec, capturing exit status and output.
+ */
+function runMigrationsScript(args: string[] = []): ScriptResult {
+  const result = spawnSync(
+    'npx',
+    [
+      'ts-node',
+      '-r',
+      'tsconfig-paths/register',
+      'scripts/run-migrations.ts',
+      ...args,
+    ],
+    {
+      cwd: BACKEND_ROOT,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        DB_HOST: process.env.DB_HOST ?? 'localhost',
+        DB_PORT: process.env.DB_PORT ?? '5432',
+        DB_USER: process.env.DB_USER ?? 'myfans_ci',
+        DB_PASSWORD: process.env.DB_PASSWORD ?? 'myfans_ci',
+        DB_NAME: process.env.DB_NAME ?? 'myfans_test',
+      },
+    },
+  );
+
+  return {
+    status: result.status,
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
+  };
+}
+
 // ── Test suite ────────────────────────────────────────────────────────────────
 
 describe('Database migrations (integration)', () => {
@@ -193,100 +240,6 @@ describe('Database migrations (integration)', () => {
     expect(await columnExists(qr, 'users', 'website_url')).toBe(true);
     expect(await columnExists(qr, 'users', 'twitter_handle')).toBe(true);
     expect(await columnExists(qr, 'users', 'instagram_handle')).toBe(true);
-    expect(await columnExists(qr, 'users', 'other_link')).toBe(true);
-  });
+    expect(await columnExists(qr, 'users', 'use
 
-  it('CreateWalletChallenges: wallet_challenges table exists with expected columns', async () => {
-    expect(await tableExists(qr, 'wallet_challenges')).toBe(true);
-    expect(await columnExists(qr, 'wallet_challenges', 'stellar_address')).toBe(
-      false,
-    ); // camelCase stored as "stellarAddress"
-    expect(await columnExists(qr, 'wallet_challenges', 'stellarAddress')).toBe(
-      true,
-    );
-    expect(await columnExists(qr, 'wallet_challenges', 'nonce')).toBe(true);
-    expect(await columnExists(qr, 'wallet_challenges', 'expiresAt')).toBe(true);
-  });
-
-  it('CreateIdempotencyKeys: idempotency_keys table exists with expected columns', async () => {
-    expect(await tableExists(qr, 'idempotency_keys')).toBe(true);
-    expect(await columnExists(qr, 'idempotency_keys', 'key')).toBe(true);
-    expect(await columnExists(qr, 'idempotency_keys', 'fingerprint')).toBe(
-      true,
-    );
-    expect(await columnExists(qr, 'idempotency_keys', 'expires_at')).toBe(true);
-  });
-
-  it('AddQueuedAtToModerationFlags: queued_at column exists on moderation_flags', async () => {
-    expect(await columnExists(qr, 'moderation_flags', 'queued_at')).toBe(true);
-  });
-
-  it('CreateReferralTables: referral_codes and referral_redemptions tables exist', async () => {
-    expect(await tableExists(qr, 'referral_codes')).toBe(true);
-    expect(await tableExists(qr, 'referral_redemptions')).toBe(true);
-  });
-
-  it('CreateSubscriptions: subscriptions table exists with expected columns and nullability', async () => {
-    expect(await tableExists(qr, 'subscriptions')).toBe(true);
-
-    // Required (NOT NULL) columns declared on the subscription entity
-    const requiredColumns = [
-      'id',
-      'subscriberId',
-      'creatorId',
-      'tierId',
-      'status',
-      'startedAt',
-      'createdAt',
-      'updatedAt',
-    ];
-    for (const column of requiredColumns) {
-      expect(await columnExists(qr, 'subscriptions', column)).toBe(true);
-      expect(await columnIsNullable(qr, 'subscriptions', column)).toBe(false);
-    }
-
-    // Nullable columns declared on the subscription entity
-    const nullableColumns = ['expiresAt', 'cancelledAt', 'txHash'];
-    for (const column of nullableColumns) {
-      expect(await columnExists(qr, 'subscriptions', column)).toBe(true);
-      expect(await columnIsNullable(qr, 'subscriptions', column)).toBe(true);
-    }
-  });
-
-  it('CreateSubscriptions: unique/index constraints exist on subscriptions', async () => {
-    expect(
-      await constraintExists(qr, 'subscriptions', 'UQ_subscriptions_txHash'),
-    ).toBe(true);
-    expect(
-      await indexExists(qr, 'subscriptions', 'IDX_subscriptions_subscriberId'),
-    ).toBe(true);
-    expect(
-      await indexExists(qr, 'subscriptions', 'IDX_subscriptions_creatorId'),
-    ).toBe(true);
-  });
-
-  it('CreateSubscriptions: round-trip insert/select of a subscription row succeeds', async () => {
-    const subscriberId = '00000000-0000-0000-0000-000000000001';
-    const creatorId = '00000000-0000-0000-0000-000000000002';
-
-    await qr.query(
-      `INSERT INTO "subscriptions"
-         ("subscriberId", "creatorId", "tierId", "status", "startedAt", "txHash")
-       VALUES ($1, $2, $3, $4, now(), $5)`,
-      [subscriberId, creatorId, 'tier-basic', 'active', 'tx-roundtrip-1'],
-    );
-
-    const rows: unknown = await qr.query(
-      `SELECT "subscriberId", "creatorId", "tierId", "status", "txHash"
-       FROM "subscriptions" WHERE "txHash" = $1`,
-      ['tx-roundtrip-1'],
-    );
-    expect(Array.isArray(rows)).toBe(true);
-    expect((rows as unknown[]).length).toBe(1);
-    const row = (rows as Array<Record<string, unknown>>)[0];
-    expect(row.subscriberId).toBe(subscriberId);
-    expect(row.creatorId).toBe(creatorId);
-    expect(row.tierId).toBe('tier-basic');
-    expect(row.status).toBe('active');
-  });
-});
+/* … truncated 3862 chars — edit only what you need near the top … */
