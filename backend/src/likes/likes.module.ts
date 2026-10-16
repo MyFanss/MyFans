@@ -5,9 +5,13 @@ import { LikesService } from './likes.service';
 import { Like } from './entities/like.entity';
 import { Post } from '../posts/entities/post.entity';
 import { Comment } from '../comments/entities/comment.entity';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Like, Post, Comment])],
+  imports: [
+    TypeOrmModule.forFeature([Like, Post, Comment]),
+    SubscriptionsModule,
+  ],
   controllers: [LikesController],
   providers: [LikesService],
   exports: [LikesService],
