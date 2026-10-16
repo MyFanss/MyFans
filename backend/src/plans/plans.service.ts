@@ -5,26 +5,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 
-/**
- * Plan metadata linked to an on-chain plan_id.
- *
- * Metadata is keyed by the on-chain plan_id so the dashboard can render a
- * plan without trusting the chain alone, while the chain remains the source
- * of truth for the plan's existence. Only the plan's creator may mutate the
- * metadata; listing by creator is public.
- */
-export interface PlanMetadata {
-  planId: string;
-  creator: string;
-  asset: string;
-  amount: string;
-  interval: string;
-  title?: string;
-  description?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import { PlanMetadata } from './entities/plan-metadata.entity';
+
+export { PlanMetadata };
 
 export interface UpsertPlanMetadataInput {
   planId: string;
@@ -42,20 +28,24 @@ const INTERVAL_PATTERN = /^[1-9]\d*(s|m|h|d|w|mo|y)$/;
 
 @Injectable()
 export class PlansService {
-  private readonly plans = new Map<string, PlanMetadata>();
+  constructor(
+    @InjectRepository(PlanMetadata)
+    private readonly plans: Repository<PlanMetadata>,
+  ) {}
 
   /**
    * Create metadata for an on-chain plan_id. Fails if metadata already exists
    * for that plan_id (plan_id collision / duplicate registration).
    */
-  create(input: UpsertPlanMetadataInput): PlanMetadata {
+  async create(input: UpsertPlanMetadataInput): Promise<PlanMetadata> {
     const planId = this.normalizePlanId(input.planId);
-    if (this.plans.has(planId)) {
+    const existing = await this.plans.findOne({ where: { planId } });
+    if (existing) {
       throw new ConflictException(`Plan metadata already exists for plan_id ${planId}`);
     }
 
     const now = new Date().toISOString();
-    const plan: PlanMetadata = {
+    const plan = this.plans.create({
       planId,
       creator: this.normalizeCreator(input.creator),
       asset: this.validateAsset(input.asset),
@@ -65,18 +55,21 @@ export class PlansService {
       description: input.description,
       createdAt: now,
       updatedAt: now,
-    };
+    });
 
-    this.plans.set(planId, plan);
-    return plan;
+    return this.plans.save(plan);
   }
 
   /**
    * Update metadata for an existing plan_id. Only the creator that owns the
    * plan may mutate it.
    */
-  update(planId: string, requester: string, input: Partial<UpsertPlanMetadataInput>): PlanMetadata {
-    const existing = this.getOwned(planId, requester);
+  async update(
+    planId: string,
+    requester: string,
+    input: Partial<UpsertPlanMetadataInput>,
+  ): Promise<PlanMetadata> {
+    const existing = await this.getOwned(planId, requester);
 
     const updated: PlanMetadata = {
       ...existing,
@@ -88,26 +81,25 @@ export class PlansService {
       updatedAt: new Date().toISOString(),
     };
 
-    this.plans.set(existing.planId, updated);
-    return updated;
+    return this.plans.save(updated);
   }
 
   /**
    * Delete metadata for a plan_id. Only the creator that owns the plan may
    * mutate it.
    */
-  remove(planId: string, requester: string): PlanMetadata {
-    const existing = this.getOwned(planId, requester);
-    this.plans.delete(existing.planId);
+  async remove(planId: string, requester: string): Promise<PlanMetadata> {
+    const existing = await this.getOwned(planId, requester);
+    await this.plans.delete({ planId: existing.planId });
     return existing;
   }
 
   /**
    * Read metadata for a plan_id. Public.
    */
-  findOne(planId: string): PlanMetadata {
+  async findOne(planId: string): Promise<PlanMetadata> {
     const normalized = this.normalizePlanId(planId);
-    const plan = this.plans.get(normalized);
+    const plan = await this.plans.findOne({ where: { planId: normalized } });
     if (!plan) {
       throw new NotFoundException(`No plan metadata for plan_id ${normalized}`);
     }
@@ -117,15 +109,16 @@ export class PlansService {
   /**
    * List metadata for a creator. Public.
    */
-  listByCreator(creator: string): PlanMetadata[] {
+  async listByCreator(creator: string): Promise<PlanMetadata[]> {
     const normalized = this.normalizeCreator(creator);
-    return Array.from(this.plans.values())
-      .filter((plan) => plan.creator === normalized)
-      .sort((a, b) => a.planId.localeCompare(b.planId));
+    return this.plans.find({
+      where: { creator: normalized },
+      order: { planId: 'ASC' },
+    });
   }
 
-  private getOwned(planId: string, requester: string): PlanMetadata {
-    const existing = this.findOne(planId);
+  private async getOwned(planId: string, requester: string): Promise<PlanMetadata> {
+    const existing = await this.findOne(planId);
     const normalizedRequester = this.normalizeCreator(requester);
     if (existing.creator !== normalizedRequester) {
       throw new ForbiddenException('Only the plan creator may mutate plan metadata');

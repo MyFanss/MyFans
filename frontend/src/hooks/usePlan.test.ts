@@ -1,0 +1,124 @@
+import { renderHook, waitFor, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { usePlan } from './usePlan';
+import { fetchPlan } from '../lib/plans';
+import { NETWORK_GUARD } from '../lib/network';
+
+vi.mock('../lib/plans', () => ({
+  fetchPlan: vi.fn(),
+}));
+
+vi.mock('../lib/network', () => ({
+  NETWORK_GUARD: vi.fn(),
+}));
+
+const mockedFetchPlan = vi.mocked(fetchPlan);
+const mockedNetworkGuard = vi.mocked(NETWORK_GUARD);
+
+const PLAN = {
+  id: 'plan-1',
+  asset: 'USDC',
+  amount: '25',
+  interval: 'monthly',
+  network: 'testnet',
+};
+
+describe('usePlan', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedNetworkGuard.mockReturnValue({ ok: true });
+  });
+
+  it('is loading while fetchPlan is pending and stops after resolution', async () => {
+    let resolveFetch: (value: unknown) => void = () => {};
+    mockedFetchPlan.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }) as ReturnType<typeof fetchPlan>,
+    );
+
+    const { result } = renderHook(() => usePlan('plan-1'));
+
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      resolveFetch(PLAN);
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+  });
+
+  it('populates plan and confirmParams on a successful load', async () => {
+    mockedFetchPlan.mockResolvedValue(PLAN as ReturnType<typeof fetchPlan> extends Promise<infer T> ? T : never);
+
+    const { result } = renderHook(() => usePlan('plan-1'));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.plan).toEqual(PLAN);
+    expect(result.current.confirmParams).toMatchObject({
+      asset: 'USDC',
+      amount: '25',
+      interval: 'monthly',
+      network: 'testnet',
+    });
+    expect(result.current.canSign).toBe(true);
+    expect(result.current.mismatchReason).toBeNull();
+  });
+
+  it('sets the no-longer-available error and canSign false when fetchPlan resolves falsy', async () => {
+    mockedFetchPlan.mockResolvedValue(null as never);
+
+    const { result } = renderHook(() => usePlan('plan-1'));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.error).toMatch(/no longer available/i);
+    expect(result.current.canSign).toBe(false);
+    expect(result.current.mismatchReason).toBeTruthy();
+  });
+
+  it('sets the error message and canSign false when fetchPlan rejects', async () => {
+    mockedFetchPlan.mockRejectedValue(new Error('boom'));
+
+    const { result } = renderHook(() => usePlan('plan-1'));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.error).toBeTruthy();
+    expect(result.current.canSign).toBe(false);
+    expect(result.current.mismatchReason).toBeTruthy();
+  });
+
+  it('sets mismatchReason from the network guard and canSign false on mismatch', async () => {
+    mockedFetchPlan.mockResolvedValue(PLAN as never);
+    mockedNetworkGuard.mockReturnValue({ ok: false, reason: 'Wrong network' });
+
+    const { result } = renderHook(() => usePlan('plan-1'));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.mismatchReason).toBe('Wrong network');
+    expect(result.current.canSign).toBe(false);
+  });
+
+  it('refetch re-invokes fetchPlan and updates state', async () => {
+    mockedFetchPlan.mockResolvedValue(PLAN as never);
+
+    const { result } = renderHook(() => usePlan('plan-1'));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(mockedFetchPlan).toHaveBeenCalledTimes(1);
+
+    const updated = { ...PLAN, amount: '50' };
+    mockedFetchPlan.mockResolvedValue(updated as never);
+
+    await act(async () => {
+      await result.current.refetch();
+    });
+
+    expect(mockedFetchPlan).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(result.current.plan).toEqual(updated));
+    expect(result.current.confirmParams).toMatchObject({ amount: '50' });
+  });
+});

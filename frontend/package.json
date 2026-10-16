@@ -13,7 +13,7 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "chromatic": "chromatic",
-    "test": "vitest run"
+    "test": "vitest run && node --test scripts/*.test.mjs"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^14.5.0",

@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { AnalyticsController } from './analytics.controller';
-import { AnalyticsService } from './analytics.service';
+import {
+  ANALYTICS_EVENT_SINK,
+  AnalyticsService,
+  InMemoryAnalyticsEventSink,
+} from './analytics.service';
 import { MrrService } from './mrr.service';
 import { SubscriptionCreatedHandler } from './handlers/subscription-created.handler';
 import { SubscriptionRenewedHandler } from './handlers/subscription-renewed.handler';
@@ -14,6 +18,10 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
   providers: [
     AnalyticsService,
     MrrService,
+    {
+      provide: ANALYTICS_EVENT_SINK,
+      useFactory: () => new InMemoryAnalyticsEventSink(),
+    },
     SubscriptionCreatedHandler,
     SubscriptionRenewedHandler,
     SubscriptionCanceledHandler,
