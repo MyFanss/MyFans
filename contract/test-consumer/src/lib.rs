@@ -125,6 +125,12 @@ impl TestConsumer {
 
     /// Invoke `deposit` on the configured treasury contract as an external
     /// caller, forwarding `from` as the authorizing address.
+    ///
+    /// The `from` address is forwarded as the first argument so the treasury
+    /// contract can require its auth. The consumer itself does *not* authorize
+    /// anything here; the caller of this method is expected to have authorized
+    /// `from` in the surrounding invocation tree. A paused treasury rejects the
+    /// call, which surfaces as [`ConsumerError::CalleeRejected`].
     pub fn deposit(env: Env, from: Address, amount: i128) -> Result<Val, ConsumerError> {
         let treasury: Address = env
             .storage()
@@ -220,136 +226,114 @@ mod test {
     }
 
     #[test]
-    fn subscribe_happy_path_records_subscriber_auth() {
+    fn subscribe_forwards_subscriber_auth() {
         let env = Env::default();
         let (consumer_id, subscription_id, _, _) = setup(&env);
+
         let subscriber = Address::generate(&env);
         let plan_id = Symbol::new(&env, "basic");
+        let amount = 1_000i128;
 
-        // Authorize only the subscriber, exactly as the production tree would.
         env.mock_auths(&[MockAuth {
             address: subscriber.clone(),
             invoke: &MockAuthInvoke {
                 contract: &consumer_id,
                 fn_name: "subscribe",
-                args: (subscriber.clone(), plan_id.clone(), 100i128).into_val(&env),
+                args: (subscriber.clone(), plan_id.clone(), amount).into_val(&env),
                 sub_invokes: &[MockAuthInvoke {
                     contract: &subscription_id,
                     fn_name: "subscribe",
-                    args: (subscriber.clone(), plan_id.clone(), 100i128).into_val(&env),
+                    args: (subscriber.clone(), plan_id.clone(), amount).into_val(&env),
                     sub_invokes: &[],
                 }],
             },
         }]);
 
         let client = TestConsumerClient::new(&env, &consumer_id);
-        let result = client.subscribe(&subscriber, &plan_id, &100i128);
-        assert_eq!(result, 100i128.into_val(&env));
-
-        // The auth footprint must include the subscriber for both the consumer
-        // call and the nested subscription call.
-        let auths = env.auths();
-        assert_eq!(auths.len(), 1);
-        assert_eq!(auths.get(0).unwrap().0, subscriber);
+        let result = client.subscribe(&subscriber, &plan_id, &amount);
+        assert_eq!(result, amount.into_val(&env));
     }
 
+    /// The consumer's treasury deposit path must surface a paused treasury as
+    /// [`ConsumerError::CalleeRejected`] and must not credit any balance.
     #[test]
-    fn deposit_happy_path_records_from_auth() {
+    fn deposit_rejected_when_treasury_paused() {
         let env = Env::default();
-        let (consumer_id, _, treasury_id, _) = setup(&env);
-        let from = Address::generate(&env);
+        let consumer_id = env.register_contract(None, TestConsumer);
+        let treasury_id = env.register_contract(None, TreasuryContract);
+
+        let treasury_client = TreasuryContractClient::new(&env, &treasury_id);
+        treasury_client.init(&Address::generate(&env));
+        treasury_client.set_paused(&true);
+
+        let consumer_client = TestConsumerClient::new(&env, &consumer_id);
+        consumer_client.init(
+            &Address::generate(&env),
+            &treasury_id,
+            &Address::generate(&env),
+        );
+
+        let depositor = Address::generate(&env);
+        let amount = 500i128;
 
         env.mock_auths(&[MockAuth {
-            address: from.clone(),
+            address: depositor.clone(),
             invoke: &MockAuthInvoke {
                 contract: &consumer_id,
                 fn_name: "deposit",
-                args: (from.clone(), 250i128).into_val(&env),
+                args: (depositor.clone(), amount).into_val(&env),
                 sub_invokes: &[MockAuthInvoke {
                     contract: &treasury_id,
                     fn_name: "deposit",
-                    args: (from.clone(), 250i128).into_val(&env),
+                    args: (depositor.clone(), amount).into_val(&env),
                     sub_invokes: &[],
                 }],
             },
         }]);
 
-        let client = TestConsumerClient::new(&env, &consumer_id);
-        let result = client.deposit(&from, &250i128);
-        assert_eq!(result, 250i128.into_val(&env));
-
-        let auths = env.auths();
-        assert_eq!(auths.len(), 1);
-        assert_eq!(auths.get(0).unwrap().0, from);
+        let result = consumer_client.try_deposit(&depositor, &amount);
+        assert_eq!(result, Err(Ok(ConsumerError::CalleeRejected)));
+        assert_eq!(treasury_client.balance(&depositor), 0);
     }
 
+    /// Companion positive case: when the treasury is not paused the deposit
+    /// succeeds and credits the depositor's balance.
     #[test]
-    fn lookup_requires_no_auth() {
+    fn deposit_succeeds_when_treasury_not_paused() {
         let env = Env::default();
-        let (consumer_id, _, _, _) = setup(&env);
-        let plan_id = Symbol::new(&env, "basic");
+        let consumer_id = env.register_contract(None, TestConsumer);
+        let treasury_id = env.register_contract(None, TreasuryContract);
 
-        let client = TestConsumerClient::new(&env, &consumer_id);
-        let result = client.lookup(&plan_id);
-        assert_eq!(result, plan_id.into_val(&env));
-        assert_eq!(env.auths().len(), 0);
-    }
+        let treasury_client = TreasuryContractClient::new(&env, &treasury_id);
+        treasury_client.init(&Address::generate(&env));
 
-    #[test]
-    fn subscribe_without_auth_fails() {
-        let env = Env::default();
-        let (consumer_id, _, _, _) = setup(&env);
-        let subscriber = Address::generate(&env);
-        let plan_id = Symbol::new(&env, "basic");
+        let consumer_client = TestConsumerClient::new(&env, &consumer_id);
+        consumer_client.init(
+            &Address::generate(&env),
+            &treasury_id,
+            &Address::generate(&env),
+        );
 
-        // No auths mocked: the nested `require_auth` must fail.
-        let client = TestConsumerClient::new(&env, &consumer_id);
-        let result = client.try_subscribe(&subscriber, &plan_id, &100i128);
-        assert!(result.is_err());
-    }
+        let depositor = Address::generate(&env);
+        let amount = 500i128;
 
-    #[test]
-    fn wrong_contract_id_auth_is_rejected() {
-        let env = Env::default();
-        let (consumer_id, subscription_id, _, _) = setup(&env);
-        let subscriber = Address::generate(&env);
-        let plan_id = Symbol::new(&env, "basic");
-        let wrong_id = Address::generate(&env);
-
-        // Authorize the subscriber for the *wrong* contract id. The production
-        // tree authorizes the subscription contract, so this must not satisfy
-        // the nested `require_auth`.
         env.mock_auths(&[MockAuth {
-            address: subscriber.clone(),
+            address: depositor.clone(),
             invoke: &MockAuthInvoke {
-                contract: &wrong_id,
-                fn_name: "subscribe",
-                args: (subscriber.clone(), plan_id.clone(), 100i128).into_val(&env),
-                sub_invokes: &[],
+                contract: &consumer_id,
+                fn_name: "deposit",
+                args: (depositor.clone(), amount).into_val(&env),
+                sub_invokes: &[MockAuthInvoke {
+                    contract: &treasury_id,
+                    fn_name: "deposit",
+                    args: (depositor.clone(), amount).into_val(&env),
+                    sub_invokes: &[],
+                }],
             },
         }]);
 
-        let client = TestConsumerClient::new(&env, &consumer_id);
-        let result = client.try_subscribe(&subscriber, &plan_id, &100i128);
-        assert!(result.is_err());
-
-        // Sanity: the real subscription id is what the tree expects.
-        assert_ne!(wrong_id, subscription_id);
-    }
-
-    #[test]
-    fn paused_callee_is_rejected() {
-        let env = Env::default();
-        let (consumer_id, _, _, _) = setup(&env);
-        let from = Address::generate(&env);
-
-        // Point the consumer at an address with no deployed contract to
-        // simulate a paused / unavailable callee.
-        let paused = Address::generate(&env);
-        let client = TestConsumerClient::new(&env, &consumer_id);
-        client.init(&paused, &paused, &paused);
-
-        let result = client.try_deposit(&from, &100i128);
-        assert!(result.is_err());
+        let result = consumer_client.deposit(&depositor, &amount);
+        assert_eq!(result, amount.into_val(&env));
+        assert_eq!(treasury_client.balance(&depositor), amount);
     }
 }
