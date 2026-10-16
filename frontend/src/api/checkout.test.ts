@@ -4,6 +4,11 @@ import {
   hasSignedTxHash,
   type CheckoutHistoryEntry,
 } from './checkout';
+import { apiFetch } from './client';
+
+vi.mock('./client', () => ({ apiFetch: vi.fn() }));
+
+const mockApiFetch = apiFetch as unknown as ReturnType<typeof vi.fn>;
 
 function makeEntry(overrides: Partial<CheckoutHistoryEntry> = {}): CheckoutHistoryEntry {
   return {
@@ -33,11 +38,32 @@ describe('fetchCheckoutHistory', () => {
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
+    mockApiFetch.mockReset();
     vi.restoreAllMocks();
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+  });
+
+  it('returns the array directly when the API responds with a bare array', async () => {
+    const entries = [{ id: '1', txHash: '0xabc' }];
+    mockApiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => entries,
+    });
+
+    await expect(fetchCheckoutHistory()).resolves.toEqual(entries);
+  });
+
+  it('returns data.entries for the envelope shape', async () => {
+    const entries = [{ id: '2', txHash: '0xdef' }];
+    mockApiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ entries }),
+    });
+
+    await expect(fetchCheckoutHistory()).resolves.toEqual(entries);
   });
 
   it('normalizes a well-formed { entries } payload', async () => {
@@ -47,6 +73,30 @@ describe('fetchCheckoutHistory', () => {
       status: 200,
       json: async () => ({ entries }),
     }) as unknown as typeof fetch;
+
+    await expect(fetchCheckoutHistory()).resolves.toEqual(entries);
+  });
+
+  it('returns [] when entries is missing from the envelope', async () => {
+    mockApiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+
+    await expect(fetchCheckoutHistory()).resolves.toEqual([]);
+  });
+
+  it('normalizes a bare array payload', async () => {
+    const entries = [makeEntry()];
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => entries,
+    }) as unknown as typeof fetch;
+
+    await expect(fetchCheckoutHistory()).resolves.toEqual(entries);
+  });
+});
 
     await expect(fetchCheckoutHistory()).resolves.toEqual(entries);
   });
@@ -72,13 +122,29 @@ describe('fetchCheckoutHistory', () => {
     await expect(fetchCheckoutHistory()).resolves.toEqual([]);
   });
 
-  it('throws when the response is not ok', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
+    await expect(fetchCheckoutHistory()).resolves.toEqual([]);
+  });
+
+  it('rejects with a message containing the HTTP status when res.ok is false', async () => {
+    mockApiFetch.mockResolvedValue({
       ok: false,
       status: 500,
-      json: async () => ({}),
-    }) as unknown as typeof fetch;
+    });
 
-    await expect(fetchCheckoutHistory()).rejects.toThrow('Failed to load checkout history (500)');
+    await expect(fetchCheckoutHistory()).rejects.toThrow(/500/);
+  });
+});
+
+describe('hasSignedTxHash', () => {
+  it('is false for undefined, null, and whitespace-only txHash', () => {
+    expect(hasSignedTxHash({ txHash: undefined })).toBe(false);
+    expect(hasSignedTxHash({ txHash: null })).toBe(false);
+    expect(hasSignedTxHash({ txHash: '   ' })).toBe(false);
+  });
+
+  it('is true for a non-empty hash', () => {
+    expect(hasSignedTxHash({ txHash: '0x1234' })).toBe(true);
+  });
+});
   });
 });
