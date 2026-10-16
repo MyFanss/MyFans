@@ -43,7 +43,7 @@ export class PlansController {
   @ApiResponse({ status: HttpStatus.CREATED, type: PlanMetadata })
   @ApiResponse({ status: HttpStatus.CONFLICT, description: 'plan_id already has metadata' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Caller is not the plan creator' })
-  create(
+  async create(
     @Req() req: AuthenticatedRequest,
     @Body() dto: CreatePlanMetadataDto,
   ): Promise<PlanMetadata> {
@@ -54,7 +54,7 @@ export class PlansController {
   @ApiOperation({ summary: 'Publicly list plan metadata, optionally filtered by creator' })
   @ApiQuery({ name: 'creator', required: false, description: 'Creator id or wallet address' })
   @ApiResponse({ status: HttpStatus.OK, type: [PlanMetadata] })
-  list(@Query('creator') creator?: string): Promise<PlanMetadata[]> {
+  async list(@Query('creator') creator?: string): Promise<PlanMetadata[]> {
     return this.plansService.listByCreator(creator);
   }
 
@@ -63,7 +63,7 @@ export class PlansController {
   @ApiParam({ name: 'planId', description: 'On-chain plan_id' })
   @ApiResponse({ status: HttpStatus.OK, type: PlanMetadata })
   @ApiResponse({ status: HttpStatus.NOT_FOUND })
-  findOne(@Param('planId') planId: string): Promise<PlanMetadata> {
+  async findOne(@Param('planId') planId: string): Promise<PlanMetadata> {
     return this.plansService.findByPlanId(planId);
   }
 
@@ -75,7 +75,7 @@ export class PlansController {
   @ApiResponse({ status: HttpStatus.OK, type: PlanMetadata })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Caller is not the plan creator' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND })
-  update(
+  async update(
     @Req() req: AuthenticatedRequest,
     @Param('planId') planId: string,
     @Body() dto: UpdatePlanMetadataDto,
@@ -92,7 +92,7 @@ export class PlansController {
   @ApiResponse({ status: HttpStatus.NO_CONTENT })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Caller is not the plan creator' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND })
-  remove(
+  async remove(
     @Req() req: AuthenticatedRequest,
     @Param('planId') planId: string,
   ): Promise<void> {
