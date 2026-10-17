@@ -3,6 +3,22 @@ import {
   useContext,
   useState,
   useEffect,
+/**
+ * UserContext — global authenticated user state.
+ *
+ * Provides the current user record (or null when unauthenticated) and a
+ * `refreshUser` helper so any component can trigger a re-fetch after an
+ * onboarding step or profile update.
+ *
+ * Refs: #1828 (role persistence), ADR-001-role-model.md
+ */
+'use client';
+
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
   useCallback,
   type ReactNode,
 } from 'react';
@@ -15,6 +31,15 @@ interface UserContextValue {
 }
 
 const UserContext = createContext<UserContextValue | undefined>(undefined);
+  /** Re-fetch /users/me and update the context. */
+  refreshUser: () => Promise<void>;
+}
+
+const UserContext = createContext<UserContextValue>({
+  user: null,
+  loading: true,
+  refreshUser: async () => {},
+});
 
 export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -25,6 +50,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     try {
       const u = await fetchMe();
       setUser(u);
+      const me = await fetchMe();
+      setUser(me);
     } catch {
       setUser(null);
     } finally {
@@ -34,6 +61,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refreshUser();
+    void refreshUser();
   }, [refreshUser]);
 
   return (
@@ -47,4 +75,5 @@ export function useUser(): UserContextValue {
   const ctx = useContext(UserContext);
   if (!ctx) throw new Error('useUser must be used within UserProvider');
   return ctx;
+  return useContext(UserContext);
 }

@@ -53,4 +53,22 @@ describe('AppController (e2e)', () => {
     expect(res.body).not.toHaveProperty('stack');
     expect(JSON.stringify(res.body)).not.toMatch(/\bat\s+\S+\s+\(/);
   });
+
+  it('versioned 404 (/v1/does-not-exist) carries a correlationId and no stack', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/v1/does-not-exist')
+      .expect(404);
+
+    // The filter must always attach a correlation ID on versioned 404s so
+    // clients can surface it on fatal toasts.
+    expect(typeof res.body.correlationId).toBe('string');
+    expect(res.body.correlationId.length).toBeGreaterThan(0);
+
+    expect(res.body.statusCode).toBe(404);
+    expect(typeof res.body.message).toBe('string');
+
+    // Raw server stacks / internal details must never leak to clients.
+    expect(res.body).not.toHaveProperty('stack');
+    expect(JSON.stringify(res.body)).not.toMatch(/\bat\s+\S+\s+\(/);
+  });
 });

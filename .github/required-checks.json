@@ -1,0 +1,29 @@
+{
+  "$comment": "Source of truth for required status checks (Issue #1847). 'context' must equal the job's `name:` exactly — that string is what GitHub reports as the check. Verified by scripts/ci/verify-required-checks.mjs (locally and in CI) and mirrored in docs/BRANCH_PROTECTION.md. Run with --remote to compare against the live rulesets.",
+  "rulesets": [
+    {
+      "target": "main",
+      "checks": [
+        { "context": "Repo — required checks alignment", "workflow": ".github/workflows/ci.yml", "job": "required-checks-alignment" },
+        { "context": "Frontend — eslint", "workflow": ".github/workflows/ci.yml", "job": "frontend-eslint" },
+        { "context": "Frontend — vitest", "workflow": ".github/workflows/ci.yml", "job": "frontend-vitest" },
+        { "context": "Frontend — storybook build", "workflow": ".github/workflows/ci.yml", "job": "storybook-build" },
+        { "context": "npm audit — backend (high)", "workflow": ".github/workflows/security-audit.yml", "job": "npm-audit-backend" },
+        { "context": "npm audit — frontend (high)", "workflow": ".github/workflows/security-audit.yml", "job": "npm-audit-frontend" },
+        { "context": "cargo audit — contract", "workflow": ".github/workflows/security-audit.yml", "job": "cargo-audit" }
+      ]
+    },
+    {
+      "target": "release/**",
+      "checks": [
+        { "context": "Frontend — eslint", "workflow": ".github/workflows/ci.yml", "job": "frontend-eslint" },
+        { "context": "Frontend — vitest", "workflow": ".github/workflows/ci.yml", "job": "frontend-vitest" },
+        { "context": "Frontend — storybook build", "workflow": ".github/workflows/ci.yml", "job": "storybook-build" },
+        { "context": "npm audit — backend (high)", "workflow": ".github/workflows/security-audit.yml", "job": "npm-audit-backend" },
+        { "context": "npm audit — frontend (high)", "workflow": ".github/workflows/security-audit.yml", "job": "npm-audit-frontend" },
+        { "context": "cargo audit — contract", "workflow": ".github/workflows/security-audit.yml", "job": "cargo-audit" },
+        { "context": "Futurenet smoke — contract ID gate", "workflow": ".github/workflows/futurenet-smoke.yml", "job": "gate" }
+      ]
+    }
+  ]
+}

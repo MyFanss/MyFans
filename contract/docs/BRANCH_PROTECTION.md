@@ -1,24 +1,21 @@
-# Branch Protection
+# Branch Protection — Contract
 
-This document lists the required status checks that must pass before a pull
-request can be merged into the protected branches (`main`, `release/*`).
+Required check names for the whole repo are maintained in
+[`.github/required-checks.json`](../../.github/required-checks.json) and documented in
+[`docs/BRANCH_PROTECTION.md`](../../docs/BRANCH_PROTECTION.md). CI verifies them with
+`scripts/ci/verify-required-checks.mjs`, so this file doesn't repeat the list.
 
-## Required status checks
+## Contract-relevant required checks
 
-| Check name | Workflow | Purpose |
+| Check name | Branches | Gates |
 | --- | --- | --- |
-| `abi-snapshot` | `.github/workflows/abi-snapshot.yml` | Fails when a contract's public ABI differs from the committed snapshot in `contract/abi-snapshots/`. |
-| `interface-docs-drift` | `.github/workflows/interface-docs-drift.yml` | Fails when interface docs drift from the contract interfaces (missing/renamed methods, undocumented errors). |
-| `contract-deploy-smoke` | `.github/workflows/contract-deploy-smoke.yml` | Fail-closed deploy smoke test for all workspace contracts. |
+| `cargo audit — contract` | `main`, `release/**` | No RustSec vulnerability in `contract/Cargo.lock` unless listed in `contract/.auditignore` with a tracking issue |
+| `Futurenet smoke — contract ID gate` | `release/**` | Fails closed when any contract ID is missing, empty, malformed or duplicated in release context (see `scripts/validate-contract-ids.mjs`) |
 
-## Enabling the checks
-
-1. Open **Settings → Branches → Branch protection rules** for the target branch.
-2. Enable **Require status checks to pass before merging**.
-3. Add each check name from the table above (they appear after the workflows
-   have run at least once on a PR).
-4. Enable **Require branches to be up to date before merging** so snapshots are
-   validated against the latest base.
+`Contract — tests + wasm build`, `Contract — ABI snapshot drift` and
+`Contract — interface docs drift` run on every PR but are **not yet required**
+because they currently fail for pre-existing reasons. See "Not yet required" in
+the canonical doc.
 
 ## Contributor expectations
 
@@ -26,5 +23,8 @@ request can be merged into the protected branches (`main`, `release/*`).
   snapshot and interface docs in the same PR. See
   [`contract/abi-snapshots/README.md`](../abi-snapshots/README.md) for the
   update procedure.
-- Do not commit stale snapshots to hide interface changes; the `abi-snapshot`
-  check will fail on unexpected diffs.
+- Don't commit stale snapshots to hide interface changes. The ABI snapshot
+  job fails on unexpected diffs.
+- Never hand-edit `contract/contract-ids.json`. Regenerate it from a real deploy
+  and validate it with `./scripts/test-deploy-output.sh contract-ids.json`
+  (see [CONTRACT_DEPLOY_RUNBOOK.md](CONTRACT_DEPLOY_RUNBOOK.md)).

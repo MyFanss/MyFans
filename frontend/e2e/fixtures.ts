@@ -15,7 +15,7 @@ export async function setupWalletMock(page: Page, options: {
   delay?: number;
 } = {}) {
   await page.addInitScript((opts) => {
-    (window as any).freighter = {
+    (window as unknown as { freighter: unknown }).freighter = {
       getPublicKey: async () => {
         if (opts.delay) {
           await new Promise(resolve => setTimeout(resolve, opts.delay));

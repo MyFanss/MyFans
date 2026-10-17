@@ -64,7 +64,7 @@ test.describe('Theme persistence (dark / light / system)', () => {
     await page.evaluate((key) => localStorage.setItem(key, 'dark'), STORAGE_KEY);
 
     // Intercept the HTML response to verify data-theme is set synchronously.
-    let themeAtDOMContentLoaded: string | null = null;
+    const themeAtDOMContentLoaded: string | null = null;
     await page.evaluate(() => {
       document.addEventListener('DOMContentLoaded', () => {
         (window as unknown as Record<string, unknown>).__themeAtDCL =

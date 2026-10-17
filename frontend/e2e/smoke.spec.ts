@@ -16,7 +16,7 @@ import { test, expect } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
   // Mock Freighter wallet
   await page.addInitScript(() => {
-    (window as any).freighter = {
+    (window as unknown as { freighter: unknown }).freighter = {
       isConnected: async () => true,
       getPublicKey: async () => 'GSMOKE1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567',
       signTransaction: async (xdr: string) => xdr + '_signed',
@@ -132,7 +132,7 @@ test('smoke: wallet connect shows connected address', async ({ page }) => {
 test('smoke: gated content shows subscribe prompt for unauthenticated visitor', async ({ page }) => {
   // Override wallet to simulate disconnected state
   await page.addInitScript(() => {
-    (window as any).freighter = {
+    (window as unknown as { freighter: unknown }).freighter = {
       isConnected: async () => false,
       getPublicKey: async () => { throw new Error('Not connected'); },
       signTransaction: async () => { throw new Error('Not connected'); },
