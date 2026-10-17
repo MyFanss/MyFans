@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import DashboardNav from './DashboardNav';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
@@ -22,6 +23,7 @@ export default function DashboardLayout({
       <aside style={styles.sidebar} aria-label="Dashboard navigation">
         <p style={styles.brand}>MyFans</p>
         <p style={styles.dashLabel}>Creator Dashboard</p>
+        <DashboardNav />
         <nav>
           <ul style={styles.navList}>
             {navLinks.map(({ href, label }) => (
