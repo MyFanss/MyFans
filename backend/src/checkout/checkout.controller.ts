@@ -135,8 +135,21 @@ export class CheckoutController {
     const span = startSpan('checkout.confirm');
     span.setAttribute('correlation.id', correlationId ?? 'unknown');
     try {
-      const key = requireIdempotencyKey(idempotencyKey);
-      const bodyHash = hashBody(body);
+      let key: string;
+      try {
+        key = requireIdempotencyKey(idempotencyKey);
+      } catch (err) {
+        span.setAttribute('checkout.outcome', 'missing_key');
+        throw err;
+      }
+
+      let bodyHash: string;
+      try {
+        bodyHash = hashBody(body);
+      } catch (err) {
+        span.setAttribute('checkout.outcome', 'too_large');
+        throw err;
+      }
 
       const existing = this.idempotencyStore.get(key);
       if (existing) {
