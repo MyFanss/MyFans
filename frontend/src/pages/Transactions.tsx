@@ -15,11 +15,11 @@ const EXPLORER_BASE: Record<StellarNetwork, string> = {
   futurenet: 'https://stellar.expert/explorer/futurenet/tx/',
 };
 
-function explorerUrl(network: StellarNetwork, hash: string): string {
+export function explorerUrl(network: StellarNetwork, hash: string): string {
   return `${EXPLORER_BASE[network]}${encodeURIComponent(hash)}`;
 }
 
-function isRealHash(hash: string | null | undefined): hash is string {
+export function isRealHash(hash: string | null | undefined): hash is string {
   if (!hash) return false;
   const trimmed = hash.trim();
   // Stellar tx hashes are 64 hex chars. Reject placeholders like "pending",
