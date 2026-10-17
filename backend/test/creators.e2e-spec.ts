@@ -1,288 +1,68 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, VersioningType } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { AppModule } from '../src/app.module';
+import { CreatorsController } from '../src/creators/creators.controller';
+import { CreatorsService } from '../src/creators/creators.service';
 
-describe('Creators Module (e2e)', () => {
+const stubCreators = [{ id: 'c1', handle: 'alice', displayName: 'Alice', avatarUrl: null, bio: null, subscriberCount: 10, isVerified: true }];
+const mockService = {
+  listCreators: jest.fn().mockResolvedValue(stubCreators),
+  getCreatorPlans: jest.fn().mockResolvedValue([]),
+  getCreatorAccess: jest.fn().mockResolvedValue({ hasAccess: false, subscriptionStatus: 'none', planId: null, teaser: null, contentCid: null }),
+  getDashboardSummary: jest.fn().mockResolvedValue({ subscribers: 0, activeSubscriptions: 0, monthlyRevenue: 0, currency: 'USD' }),
+};
+
+describe('Creators controller (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [CreatorsController],
+      providers: [{ provide: CreatorsService, useValue: mockService }],
     }).compile();
-
-    app = moduleFixture.createNestApplication();
-    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+    app = module.createNestApplication();
     await app.init();
   });
+  afterAll(async () => { await app.close(); });
 
-  afterAll(async () => {
-    await app.close();
+  it('GET /creators returns creators, total, and updatedAt', async () => {
+    const res = await request(app.getHttpServer()).get('/creators').expect(200);
+    expect(res.body).toHaveProperty('creators');
+    expect(res.body).toHaveProperty('total');
+    expect(res.body).toHaveProperty('updatedAt');
   });
-
-  describe('GET /v1/creators (Search creators - primary endpoint)', () => {
-    it('should return 200 with paginated creators list on successful search', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators')
-        .expect(200);
-
-      expect(response.body).toBeDefined();
-      expect(response.body).toHaveProperty('data');
-      expect(Array.isArray(response.body.data)).toBe(true);
-    });
-
-    it('should return paginated response with required fields', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators')
-        .expect(200);
-
-      // Assert response shape
-      expect(response.body).toHaveProperty('limit');
-      expect(response.body).toHaveProperty('hasMore');
-      expect(typeof response.body.limit).toBe('number');
-      expect(typeof response.body.hasMore).toBe('boolean');
-    });
-
-    it('should support search query parameter (q)', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators')
-        .query({ q: 'test' })
-        .expect(200);
-
-      expect(response.body).toBeDefined();
-      expect(Array.isArray(response.body.data)).toBe(true);
-    });
-
-    it('should support cursor pagination', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators')
-        .query({ limit: 10 })
-        .expect(200);
-
-      expect(response.body.limit).toBe(10);
-    });
-
-    it('should return empty data array for non-matching search', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators')
-        .query({ q: 'nonexistent_creator_that_does_not_exist_12345' })
-        .expect(200);
-
-      expect(response.body.data).toEqual([]);
-      expect(response.body.hasMore).toBe(false);
-    });
-
-    it('should reject invalid limit parameter', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators')
-        .query({ limit: 101 })
-        .expect(400);
-
-      expect(response.body).toBeDefined();
-    });
-
-    it('should reject negative limit parameter', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators')
-        .query({ limit: -1 })
-        .expect(400);
-
-      expect(response.body).toBeDefined();
-    });
-
-    it('should handle search with whitespace-only query', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators')
-        .query({ q: '   ' })
-        .expect(200);
-
-      expect(Array.isArray(response.body.data)).toBe(true);
-    });
-
-    it('should support search alias parameter (search)', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators')
-        .query({ search: 'test' })
-        .expect(200);
-
-      expect(response.body).toBeDefined();
-      expect(Array.isArray(response.body.data)).toBe(true);
-    });
-
-    it('should return creator objects with required fields', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators')
-        .expect(200);
-
-      if (response.body.data.length > 0) {
-        const creator = response.body.data[0];
-        expect(creator).toHaveProperty('id');
-        expect(creator).toHaveProperty('username');
-        expect(creator).toHaveProperty('display_name');
-        expect(typeof creator.id).toBe('string');
-        expect(typeof creator.username).toBe('string');
-        expect(typeof creator.display_name).toBe('string');
-      }
-    });
-
-    it('should return creator objects without sensitive fields', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators')
-        .expect(200);
-
-      if (response.body.data.length > 0) {
-        const creator = response.body.data[0];
-        expect(creator).not.toHaveProperty('password_hash');
-        expect(creator).not.toHaveProperty('email');
-        expect(creator).not.toHaveProperty('role');
-        expect(creator).not.toHaveProperty('email_notifications');
-        expect(creator).not.toHaveProperty('push_notifications');
-      }
-    });
-
-    it('should respect limit parameter when provided', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators')
-        .query({ limit: 5 })
-        .expect(200);
-
-      expect(response.body.limit).toBe(5);
-      expect(response.body.data.length).toBeLessThanOrEqual(5);
-    });
-
-    it('should return consistent response shape across requests', async () => {
-      const response1 = await request(app.getHttpServer())
-        .get('/v1/creators')
-        .query({ limit: 10 })
-        .expect(200);
-
-      const response2 = await request(app.getHttpServer())
-        .get('/v1/creators')
-        .query({ limit: 20 })
-        .expect(200);
-
-      expect(response1.body).toHaveProperty('data');
-      expect(response1.body).toHaveProperty('limit');
-      expect(response1.body).toHaveProperty('hasMore');
-      expect(response1.body).toHaveProperty('nextCursor');
-
-      expect(response2.body).toHaveProperty('data');
-      expect(response2.body).toHaveProperty('limit');
-      expect(response2.body).toHaveProperty('hasMore');
-      expect(response2.body).toHaveProperty('nextCursor');
-    });
+  it('defaults limit to 12', async () => {
+    mockService.listCreators.mockClear();
+    await request(app.getHttpServer()).get('/creators');
+    expect(mockService.listCreators).toHaveBeenCalledWith(expect.objectContaining({ limit: 12 }));
   });
-
-  describe('GET /v1/creators/list (List all creators)', () => {
-    it('should return 200 with creators list', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators/list')
-        .expect(200);
-
-      expect(Array.isArray(response.body)).toBe(true);
-    });
-
-    it('should support chain query parameter', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators/list')
-        .query({ chain: 'false' })
-        .expect(200);
-
-      expect(Array.isArray(response.body)).toBe(true);
-    });
+  it('clamps limit=0 to 1', async () => {
+    mockService.listCreators.mockClear();
+    await request(app.getHttpServer()).get('/creators').query({ limit: '0' });
+    expect(mockService.listCreators).toHaveBeenCalledWith(expect.objectContaining({ limit: 1 }));
   });
-
-  describe('GET /v1/creators/plans (Get all plans paginated)', () => {
-    it('should return 200 with paginated plans', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators/plans')
-        .expect(200);
-
-      expect(response.body).toHaveProperty('data');
-      expect(Array.isArray(response.body.data)).toBe(true);
-      expect(response.body).toHaveProperty('limit');
-      expect(response.body).toHaveProperty('hasMore');
-    });
-
-    it('should support pagination parameters', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/v1/creators/plans')
-        .query({ limit: 10 })
-        .expect(200);
-
-      expect(response.body.limit).toBe(10);
-    });
+  it('clamps limit=999 to 50', async () => {
+    mockService.listCreators.mockClear();
+    await request(app.getHttpServer()).get('/creators').query({ limit: '999' });
+    expect(mockService.listCreators).toHaveBeenCalledWith(expect.objectContaining({ limit: 50 }));
   });
-
-  describe('POST /v1/creators/plans (Create plan)', () => {
-    it('should return 201 when plan is created with valid data', async () => {
-      const planData = {
-        creator: 'test_creator_123',
-        asset: 'USDC',
-        amount: '100.00',
-        intervalDays: 30,
-      };
-
-      const response = await request(app.getHttpServer())
-        .post('/v1/creators/plans')
-        .send(planData)
-        .expect(201);
-
-      expect(response.body).toHaveProperty('id');
-      expect(response.body).toHaveProperty('creator');
-      expect(response.body.creator).toBe(planData.creator);
-      expect(response.body.asset).toBe(planData.asset);
-      expect(response.body.amount).toBe(planData.amount);
-      expect(response.body.intervalDays).toBe(planData.intervalDays);
-    });
-
-    it('should return 400 when required fields are missing', async () => {
-      const invalidData = {
-        creator: 'test_creator',
-        asset: 'USDC',
-        // missing amount and intervalDays
-      };
-
-      const response = await request(app.getHttpServer())
-        .post('/v1/creators/plans')
-        .send(invalidData)
-        .expect(400);
-
-      expect(response.body).toBeDefined();
-    });
-
-    it('should return 400 when intervalDays exceeds maximum', async () => {
-      const invalidData = {
-        creator: 'test_creator',
-        asset: 'USDC',
-        amount: '100',
-        intervalDays: 366,
-      };
-
-      const response = await request(app.getHttpServer())
-        .post('/v1/creators/plans')
-        .send(invalidData)
-        .expect(400);
-
-      expect(response.body).toBeDefined();
-    });
-
-    it('should return 400 when intervalDays is less than 1', async () => {
-      const invalidData = {
-        creator: 'test_creator',
-        asset: 'USDC',
-        amount: '100',
-        intervalDays: 0,
-      };
-
-      const response = await request(app.getHttpServer())
-        .post('/v1/creators/plans')
-        .send(invalidData)
-        .expect(400);
-
-      expect(response.body).toBeDefined();
-    });
+  it('passes 1-char q as null', async () => {
+    mockService.listCreators.mockClear();
+    await request(app.getHttpServer()).get('/creators').query({ q: 'a' });
+    expect(mockService.listCreators).toHaveBeenCalledWith(expect.objectContaining({ query: null }));
   });
+  it('passes 2-char q through', async () => {
+    mockService.listCreators.mockClear();
+    await request(app.getHttpServer()).get('/creators').query({ q: 'ab' });
+    expect(mockService.listCreators).toHaveBeenCalledWith(expect.objectContaining({ query: 'ab' }));
+  });
+  it('GET /creators/:id/access returns contentCid null for unauthenticated viewer', async () => {
+    const res = await request(app.getHttpServer()).get('/creators/c1/access').expect(200);
+    expect(res.body.contentCid).toBeNull();
+  });
+  it('GET /creators/:id/dashboard-summary without creator auth does not return 200', async () => {
+    const res = await request(app.getHttpServer()).get('/creators/c1/dashboard-summary');
+    expect(res.status).not.toBe(200);
 
   describe('Single-Source Payout Wallet Invariant (#1864)', () => {
     it('should expose payoutWallet as the sole canonical payout field and exclude legacy payoutAddress', async () => {

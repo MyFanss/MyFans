@@ -28,14 +28,14 @@ const PENDING_API = '/api/pending';
 /** Items older than this are surfaced as stuck so users get a clear next step. */
 const STUCK_AFTER_MS = 30 * 60 * 1000;
 
-function isStuck(item: PendingItem, now: number): boolean {
+export function isStuck(item: PendingItem, now: number): boolean {
   if (item.status === 'stuck') return true;
   const created = Date.parse(item.createdAt);
   if (Number.isNaN(created)) return false;
   return now - created > STUCK_AFTER_MS;
 }
 
-async function fetchPending(signal: AbortSignal): Promise<PendingItem[]> {
+export async function fetchPending(signal: AbortSignal): Promise<PendingItem[]> {
   const res = await fetch(PENDING_API, { signal, headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`Pending API responded ${res.status}`);
   const data = (await res.json()) as { items?: PendingItem[] };
