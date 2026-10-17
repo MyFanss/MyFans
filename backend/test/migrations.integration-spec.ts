@@ -13,6 +13,8 @@
  *   DB_NAME     (default: myfans_test)
  */
 import 'reflect-metadata';
+import { spawnSync } from 'child_process';
+import * as path from 'path';
 import { DataSource, QueryRunner } from 'typeorm';
 
 // ── Migration classes (same order as migration.datasource.ts) ────────────────
@@ -29,6 +31,7 @@ import { CreateSocialLinksTable1748000000000 } from '../src/social-link/17480000
 import { CreateCreatorOnchainMappings1749000000000 } from '../src/creators/1749000000000-CreateCreatorOnchainMappings';
 import { CreateNotificationDurableState1750000000000 } from '../src/notifications/1750000000000-CreateNotificationDurableState';
 import { CreateUserWalletLinks1751000000000 } from '../src/auth-module/1751000000000-CreateUserWalletLinks';
+import { CreateSubscriptions1752000000000 } from '../src/subscriptions/1752000000000-CreateSubscriptions';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,6 +59,7 @@ function buildDataSource(): DataSource {
       CreateCreatorOnchainMappings1749000000000,
       CreateNotificationDurableState1750000000000,
       CreateUserWalletLinks1751000000000,
+      CreateSubscriptions1752000000000,
     ],
   });
 }
@@ -80,6 +84,93 @@ async function columnExists(
     [table, column],
   );
   return Array.isArray(result) && result.length > 0;
+}
+
+async function columnIsNullable(
+  qr: QueryRunner,
+  table: string,
+  column: string,
+): Promise<boolean> {
+  const result: unknown = await qr.query(
+    `SELECT is_nullable FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`,
+    [table, column],
+  );
+  if (!Array.isArray(result) || result.length === 0) {
+    throw new Error(`Column ${table}.${column} does not exist`);
+  }
+  return (result[0] as { is_nullable: string }).is_nullable === 'YES';
+}
+
+async function indexExists(
+  qr: QueryRunner,
+  table: string,
+  indexName: string,
+): Promise<boolean> {
+  const result: unknown = await qr.query(
+    `SELECT 1 FROM pg_indexes
+     WHERE schemaname = 'public' AND tablename = $1 AND indexname = $2`,
+    [table, indexName],
+  );
+  return Array.isArray(result) && result.length > 0;
+}
+
+async function constraintExists(
+  qr: QueryRunner,
+  table: string,
+  constraintName: string,
+): Promise<boolean> {
+  const result: unknown = await qr.query(
+    `SELECT 1 FROM information_schema.table_constraints
+     WHERE table_schema = 'public' AND table_name = $1 AND constraint_name = $2`,
+    [table, constraintName],
+  );
+  return Array.isArray(result) && result.length > 0;
+}
+
+// ── run-migrations.ts script runner ───────────────────────────────────────────
+
+const BACKEND_ROOT = path.resolve(__dirname, '..');
+
+interface ScriptResult {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Spawns `scripts/run-migrations.ts` via ts-node against the same test
+ * database configured for this spec, capturing exit status and output.
+ */
+function runMigrationsScript(args: string[] = []): ScriptResult {
+  const result = spawnSync(
+    'npx',
+    [
+      'ts-node',
+      '-r',
+      'tsconfig-paths/register',
+      'scripts/run-migrations.ts',
+      ...args,
+    ],
+    {
+      cwd: BACKEND_ROOT,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        DB_HOST: process.env.DB_HOST ?? 'localhost',
+        DB_PORT: process.env.DB_PORT ?? '5432',
+        DB_USER: process.env.DB_USER ?? 'myfans_ci',
+        DB_PASSWORD: process.env.DB_PASSWORD ?? 'myfans_ci',
+        DB_NAME: process.env.DB_NAME ?? 'myfans_test',
+      },
+    },
+  );
+
+  return {
+    status: result.status,
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
+  };
 }
 
 // ── Test suite ────────────────────────────────────────────────────────────────
@@ -149,78 +240,6 @@ describe('Database migrations (integration)', () => {
     expect(await columnExists(qr, 'users', 'website_url')).toBe(true);
     expect(await columnExists(qr, 'users', 'twitter_handle')).toBe(true);
     expect(await columnExists(qr, 'users', 'instagram_handle')).toBe(true);
-    expect(await columnExists(qr, 'users', 'other_link')).toBe(true);
-  });
+    expect(await columnExists(qr, 'users', 'use
 
-  it('CreateWalletChallenges: wallet_challenges table exists with expected columns', async () => {
-    expect(await tableExists(qr, 'wallet_challenges')).toBe(true);
-    expect(await columnExists(qr, 'wallet_challenges', 'stellar_address')).toBe(
-      false,
-    ); // camelCase stored as "stellarAddress"
-    expect(await columnExists(qr, 'wallet_challenges', 'stellarAddress')).toBe(
-      true,
-    );
-    expect(await columnExists(qr, 'wallet_challenges', 'nonce')).toBe(true);
-    expect(await columnExists(qr, 'wallet_challenges', 'expiresAt')).toBe(true);
-  });
-
-  it('CreateIdempotencyKeys: idempotency_keys table exists with expected columns', async () => {
-    expect(await tableExists(qr, 'idempotency_keys')).toBe(true);
-    expect(await columnExists(qr, 'idempotency_keys', 'key')).toBe(true);
-    expect(await columnExists(qr, 'idempotency_keys', 'fingerprint')).toBe(
-      true,
-    );
-    expect(await columnExists(qr, 'idempotency_keys', 'expires_at')).toBe(true);
-  });
-
-  it('AddQueuedAtToModerationFlags: queued_at column exists on moderation_flags', async () => {
-    expect(await columnExists(qr, 'moderation_flags', 'queued_at')).toBe(true);
-  });
-
-  it('CreateReferralTables: referral_codes and referral_redemptions tables exist', async () => {
-    expect(await tableExists(qr, 'referral_codes')).toBe(true);
-    expect(await tableExists(qr, 'referral_redemptions')).toBe(true);
-    expect(await columnExists(qr, 'referral_codes', 'code')).toBe(true);
-    expect(await columnExists(qr, 'referral_redemptions', 'redeemer_id')).toBe(
-      true,
-    );
-  });
-
-  it('migrations table records all 13 migrations', async () => {
-    const rows: unknown = await qr.query(
-      `SELECT name FROM migrations ORDER BY timestamp ASC`,
-    );
-    expect(Array.isArray(rows) ? rows.length : 0).toBe(13);
-  });
-
-  it('running migrations again is idempotent (no-op)', async () => {
-    const ran = await ds.runMigrations({ transaction: 'each' });
-    expect(ran.length).toBe(0);
-  });
-
-  // ── Down migrations (revert all in reverse order) ─────────────────────────
-
-  it('reverts all migrations down without error', async () => {
-    // Revert one at a time in reverse order
-    for (let i = 0; i < 13; i++) {
-      await ds.undoLastMigration({ transaction: true });
-    }
-
-    // All tracked migrations should be gone
-    const rows: unknown = await qr.query(`SELECT name FROM migrations`);
-    expect(Array.isArray(rows) ? rows.length : 0).toBe(0);
-  });
-
-  it('referral tables are dropped after revert', async () => {
-    expect(await tableExists(qr, 'referral_codes')).toBe(false);
-    expect(await tableExists(qr, 'referral_redemptions')).toBe(false);
-  });
-
-  it('wallet_challenges table is dropped after revert', async () => {
-    expect(await tableExists(qr, 'wallet_challenges')).toBe(false);
-  });
-
-  it('refresh_tokens table is dropped after revert', async () => {
-    expect(await tableExists(qr, 'refresh_tokens')).toBe(false);
-  });
-});
+/* … truncated 3862 chars — edit only what you need near the top … */

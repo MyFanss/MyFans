@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 // Mock wallet for testing
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    (window as any).freighter = {
+    (window as unknown as { freighter: unknown }).freighter = {
       getPublicKey: async () => 'GTEST1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
       signTransaction: async (xdr: string) => xdr + '_signed',
     };
@@ -32,7 +32,7 @@ test.describe('Critical User Flow: Connect → Subscribe → Unlock', () => {
   test('submits a Soroban subscribe tx with an Idempotency-Key and shows pending state', async ({
     page,
   }) => {
-    const submitted: { url: string; idempotencyKey?: string; body: any }[] = [];
+    const submitted: { url: string; idempotencyKey?: string; body: { signedXdr?: string } | null }[] = [];
     await page.route('**/api/subscriptions', async (route) => {
       const request = route.request();
       submitted.push({

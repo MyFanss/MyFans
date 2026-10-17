@@ -48,6 +48,19 @@ export interface ApiOptions extends RequestInit {
 }
 
 /**
+ * Build a deterministic idempotency key for plan metadata writes.
+ *
+ * The key is derived solely from the on-chain plan id so that a retry after an
+ * ambiguous failure (timeout, dropped response, tab reload) sends the exact
+ * same key as the original attempt and the backend can deduplicate it. It must
+ * never depend on Date.now() or Math.random(), which would produce a fresh key
+ * on every call and defeat deduplication.
+ */
+export function metadataIdempotencyKey(planId: string): string {
+  return `plan-metadata:${planId}`;
+}
+
+/**
  * Perform an API request against /api/v1/*. Mutating methods automatically
  * attach the CSRF token and retry once on a CSRF failure.
  */

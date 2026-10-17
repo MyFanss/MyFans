@@ -1,5 +1,46 @@
 # Contributing Guide
 
+Thanks for your interest in contributing! This guide covers how to find work, how we triage it, and the conventions for adding database entities.
+
+## Finding Something to Work On
+
+We keep a curated set of starter tasks so new contributors can land a first PR without wading through the whole backlog. Browse the live queries below:
+
+- [Good first issues](https://github.com/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) — small, self-contained tasks suitable for a first contribution.
+- [Help wanted](https://github.com/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22) — tasks we'd like community help with, may need more context.
+- [Documentation](https://github.com/issues?q=is%3Aopen+is%3Aissue+label%3Adocumentation) — docs-only changes, a great low-risk starting point.
+- [Tests](https://github.com/issues?q=is%3Aopen+is%3Aissue+label%3Atests) — test-only changes, also a good low-risk starting point.
+
+If you're unsure where to start, pick a `good first issue` and comment on it to claim it. If a task turns out to be larger than expected, say so on the issue and we'll re-scope or re-label it.
+
+## Triage Cadence
+
+We review the open backlog on a **weekly** cadence to keep the starter set healthy:
+
+1. Scan newly opened issues and label genuine starters with `good first issue`.
+2. Confirm existing `good first issue` tasks are still accurate and unclaimed; remove the label if a task has grown in scope.
+3. Keep the starter set at **10 or more** open tasks so there is always something to pick up.
+4. Post a short weekly triage note summarizing what was added, re-labeled, or closed.
+
+### What qualifies as a starter task
+
+A task may be labeled `good first issue` only when it is:
+
+- **Docs-only** (e.g. `documentation`) or **tests-only** (e.g. `tests`), or an equally small, self-contained change.
+- Clearly scoped, with enough context in the issue body to complete it without deep codebase knowledge.
+- Not on the money path and not otherwise hard or critical.
+
+### What must NOT be labeled `good first issue`
+
+- **Money-path issues** — anything touching payments, billing, balances, payouts, or financial calculations.
+- Hard, critical, or security-sensitive issues, or anything requiring broad architectural knowledge.
+
+Mislabeling a hard issue as a starter wastes contributor time and dilutes the label. When in doubt, leave it unlabeled and ask in the issue.
+
+## Code of Conduct
+
+All contributors are expected to follow our [Code of Conduct](./CODE_OF_CONDUCT.md).
+
 ## Adding a New Database Entity
 
 When adding a new feature that requires a database table, follow this checklist to ensure your entity is properly registered:

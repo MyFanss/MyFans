@@ -35,7 +35,7 @@ const MOCK_SUBSCRIPTION = {
 // Helper function to setup wallet mock
 async function setupWalletMock(page: Page) {
   await page.addInitScript(() => {
-    (window as any).freighter = {
+    (window as unknown as { freighter: unknown }).freighter = {
       getPublicKey: async () => {
         await new Promise(resolve => setTimeout(resolve, 100));
         return 'GTEST1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890';
@@ -78,7 +78,7 @@ async function setupStellarMocks(page: Page) {
 }
 
 // Helper function to setup subscription list mock
-async function setupSubscriptionListMock(page: Page, subscriptions: any[] = [MOCK_SUBSCRIPTION]) {
+async function setupSubscriptionListMock(page: Page, subscriptions: unknown[] = [MOCK_SUBSCRIPTION]) {
   await page.route('**/localhost:3001/subscriptions/list**', async (route) => {
     await route.fulfill({
       status: 200,

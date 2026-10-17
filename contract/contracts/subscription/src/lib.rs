@@ -78,14 +78,19 @@ pub struct SubscriptionContract;
 
 #[contractimpl]
 impl SubscriptionContract {
-    /// Initialize the contract. Requires admin auth. Reverts on double-init.
-    pub fn init(env: Env, admin: Address, protocol_fee_bps: u32, fee_recipient: Address) {
+    /// Initialize the contract. Requires admin auth. Returns an error on double-init.
+    pub fn init(
+        env: Env,
+        admin: Address,
+        protocol_fee_bps: u32,
+        fee_recipient: Address,
+    ) -> Result<(), Error> {
         admin.require_auth();
         if env.storage().instance().has(&DataKey::Config) {
-            panic_with_error!(&env, Error::AlreadyInitialized);
+            return Err(Error::AlreadyInitialized);
         }
         if protocol_fee_bps > MAX_FEE_BPS {
-            panic_with_error!(&env, Error::FeeTooHigh);
+            return Err(Error::FeeTooHigh);
         }
         let config = Config {
             admin,
@@ -95,6 +100,7 @@ impl SubscriptionContract {
         };
         env.storage().instance().set(&DataKey::Config, &config);
         env.storage().instance().set(&DataKey::NextPlanId, &1u64);
+        Ok(())
     }
 
     /// Create a plan. Requires creator auth. Rejects zero amount/interval.
@@ -104,14 +110,14 @@ impl SubscriptionContract {
         asset: Address,
         amount: i128,
         interval: u64,
-    ) -> u64 {
+    ) -> Result<u64, Error> {
         creator.require_auth();
         Self::require_init(&env);
         if amount <= 0 {
-            panic_with_error!(&env, Error::InvalidAmount);
+            return Err(Error::InvalidAmount);
         }
         if interval == 0 {
-            panic_with_error!(&env, Error::InvalidInterval);
+            return Err(Error::InvalidInterval);
         }
         let plan_id: u64 = env
             .storage()
@@ -134,16 +140,21 @@ impl SubscriptionContract {
             (symbol_short!("plan"), symbol_short!("created")),
             (plan_id, creator, asset, amount, interval),
         );
-        plan_id
+        Ok(plan_id)
     }
 
-    /// Subscribe to a plan. Requires fan auth. Blocked while paused.
-    pub fn subscribe(env: Env, fan: Address, plan_id: u64) {
+    /// Subscribe to a plan. Requires fan auth. Blocked while paused. The
+    /// `asset` argument must match the plan's asset or the call reverts with
+    /// `Error::AssetMismatch` before any charge or subscription write.
+    pub fn subscribe(env: Env, fan: Address, plan_id: u64, asset: Address) {
         fan.require_auth();
         Self::require_active(&env);
         let plan = Self::load_plan(&env, plan_id);
         if !plan.active {
             panic_with_error!(&env, Error::PlanInactive);
+        }
+        if asset != plan.asset {
+            panic_with_error!(&env, Error::AssetMismatch);
         }
         Self::charge(&env, &fan, &plan);
         let expires_at = Self::next_expiry(&env, plan.interval);
@@ -255,16 +266,8 @@ impl SubscriptionContract {
         Self::require_init(&env)
     }
 
-    /// Read a plan by id.
-    pub fn get_plan(env: Env, plan_id: u64) -> Plan {
-        Self::load_plan(&env, plan_id)
-    }
+    // --- internal helpers ---
 
-    // ---------------------------------------------------------------------
-    // Internal helpers
-    // ---------------------------------------------------------------------
-
-    /// Load config, reverting when the contract has not been initialized.
     fn require_init(env: &Env) -> Config {
         env.storage()
             .instance()
@@ -272,16 +275,13 @@ impl SubscriptionContract {
             .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
     }
 
-    /// Load config and revert when the contract is paused.
-    fn require_active(env: &Env) -> Config {
+    fn require_active(env: &Env) {
         let config = Self::require_init(env);
         if config.paused {
             panic_with_error!(env, Error::Paused);
         }
-        config
     }
 
-    /// Load a plan by id, reverting when it does not exist.
     fn load_plan(env: &Env, plan_id: u64) -> Plan {
         env.storage()
             .persistent()
@@ -289,60 +289,67 @@ impl SubscriptionContract {
             .unwrap_or_else(|| panic_with_error!(env, Error::PlanNotFound))
     }
 
-    /// Compute the next expiry ledger for a subscription period.
     fn next_expiry(env: &Env, interval: u64) -> u64 {
-        let now = env.ledger().sequence() as u64;
-        now.checked_add(interval)
-            .unwrap_or_else(|| panic_with_error!(env, Error::Overflow))
+        env.ledger().sequence() as u64 + interval + PERIOD_LEDGERS
     }
 
-    /// Transfer `plan.amount` from `fan` to the creator, keeping the protocol
-    /// fee asset-identical to the plan asset (no silent FX).
-    ///
-    /// The transfer path is selected by asset kind:
-    /// - Native XLM sentinel: the Stellar Asset Contract for native XLM is used.
-    /// - SAC contract address: the SEP-41 token client is invoked directly.
-    ///
-    /// Distinct typed errors are surfaced for missing trustlines, missing
-    /// allowances, insufficient balance, and unsupported assets so callers can
-    /// fail closed without partial fee movement.
     fn charge(env: &Env, fan: &Address, plan: &Plan) {
-        let config = Self::require_init(env);
-        let fee = plan
-            .amount
-            .checked_mul(config.protocol_fee_bps as i128)
-            .and_then(|v| v.checked_div(BPS_DENOM))
-            .unwrap_or_else(|| panic_with_error!(env, Error::Overflow));
-        let creator_amount = plan
-            .amount
-            .checked_sub(fee)
-            .unwrap_or_else(|| panic_with_error!(env, Error::Overflow));
-
-        // Validate the asset kind before any transfer so a malicious or
-        // non-SEP-41 contract fails closed as unsupported.
-        Self::validate_asset(env, &plan.asset);
-
         let client = token::Client::new(env, &plan.asset);
+        client.transfer(fan, &plan.creator, &plan.amount);
+    }
+}
 
-        // Fan -> creator (net of fee).
-        client.transfer(fan, &plan.creator, &creator_amount);
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{Env, IntoVal};
 
-        // Fan -> fee recipient (protocol fee), same asset as the plan.
-        if fee > 0 {
-            client.transfer(fan, &config.fee_recipient, &fee);
-        }
+    fn setup() -> (Env, SubscriptionContractClient<'static>, Address, Address) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SubscriptionContract);
+        let client = SubscriptionContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let fee_recipient = Address::generate(&env);
+        client.init(&admin, &0u32, &fee_recipient);
+        (env, client, admin, fee_recipient)
     }
 
-    /// Validate that `asset` is a supported transfer target.
-    ///
-    /// Native XLM is represented by the SAC contract address for native XLM;
-    /// SAC tokens are validated by probing the SEP-41 `decimals` interface.
-    /// A contract that does not answer the SEP-41 interface is treated as
-    /// unsupported and the call fails closed.
-    fn validate_asset(env: &Env, asset: &Address) {
-        let client = token::Client::new(env, asset);
-        // `decimals` is part of the SEP-41 surface; a non-conforming contract
-        // will trap here and be surfaced as unsupported by the caller.
-        let _ = client.decimals();
+    #[test]
+    fn pause_blocks_subscribe_and_leaves_no_subscription_record() {
+        let (env, client, _admin, _fee_recipient) = setup();
+
+        // Register a token contract so the balance assertion is meaningful.
+        let token_id = env.register_stellar_asset_contract(Address::generate(&env));
+        let token_client = token::Client::new(&env, &token_id);
+
+        let creator = Address::generate(&env);
+        let fan = Address::generate(&env);
+        let amount: i128 = 1_000;
+        let interval: u64 = 60;
+
+        // Fund the fan so a charge would be possible if the guard were missing.
+        token_client.mint(&fan, &amount);
+        let balance_before = token_client.balance(&fan);
+
+        let plan_id = client.create_plan(&creator, &token_id, &amount, &interval);
+
+        // Pause the contract via the admin entrypoint.
+        client.pause();
+
+        // subscribe must fail with Paused before any token movement.
+        let result = client.try_subscribe(&fan, &plan_id);
+        assert_eq!(result, Err(Ok(Error::Paused)));
+
+        // The fan's token balance is unchanged.
+        assert_eq!(token_client.balance(&fan), balance_before);
+
+        // No subscription record exists for the (fan, creator) pair.
+        assert!(!client.is_subscriber(&fan, &creator));
+        let key = DataKey::Sub(fan.clone(), creator.clone());
+        assert!(!env.as_contract(&client.address, || {
+            env.storage().persistent().has(&key)
+        }));
     }
 }

@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 const DEFAULT_ROOT = path.resolve(__dirname, '..');
 const INTERFACES_DIR = path.join(DEFAULT_ROOT, 'docs', 'interfaces');
 
-const KNOWN_NON_CONTRACT_DOCS = new Set(['README.md', 'runbook.md']);
+export const KNOWN_NON_CONTRACT_DOCS = new Set(['README.md', 'runbook.md']);
 
 function readText(filePath) {
   return fs.readFileSync(filePath, 'utf8');
@@ -21,7 +21,7 @@ function parseSourcePathFromHeading(markdown) {
   return heading[1].trim();
 }
 
-function parseDocumentedMethods(markdown) {
+export function parseDocumentedMethods(markdown) {
   const lines = markdown.split(/\r?\n/);
   const methods = new Set();
   let inMethodsTable = false;
@@ -68,7 +68,7 @@ function parseDocumentedMethods(markdown) {
   return methods;
 }
 
-function parseDocumentedErrors(markdown) {
+export function parseDocumentedErrors(markdown) {
   const lines = markdown.split(/\r?\n/);
   const errors = new Set();
   let inErrorsTable = false;
@@ -114,7 +114,7 @@ function parseDocumentedErrors(markdown) {
   return errors;
 }
 
-function parseContractMethods(rustSource) {
+export function parseContractMethods(rustSource) {
   const blocks = extractContractImplBlocks(rustSource);
   const methods = new Set();
   if (blocks.length === 0) {
@@ -132,7 +132,7 @@ function parseContractMethods(rustSource) {
   return methods;
 }
 
-function parseContractErrors(rustSource) {
+export function parseContractErrors(rustSource) {
   const errors = new Set();
   const enumRegex = /#\[contracterror\][\s\S]*?enum\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\{([\s\S]*?)\}/g;
   let enumMatch;
@@ -147,7 +147,7 @@ function parseContractErrors(rustSource) {
   return errors;
 }
 
-function extractContractImplBlocks(rustSource) {
+export function extractContractImplBlocks(rustSource) {
   const blocks = [];
   const marker = '#[contractimpl]';
   let cursor = 0;
@@ -309,53 +309,26 @@ function printFailures(summary, rootDir) {
       console.error(`  stale docs methods: ${result.staleDocs.join(', ')}`);
     }
     if (result.undocumentedErrors?.length) {
-      console.error(
-        `  undocumented errors: ${result.undocumentedErrors.join(', ')}`,
-      );
+      console.error(`  undocumented errors: ${result.undocumentedErrors.join(', ')}`);
     }
     if (result.staleErrorDocs?.length) {
-      console.error(
-        `  stale docs errors: ${result.staleErrorDocs.join(', ')}`,
-      );
+      console.error(`  stale docs errors: ${result.staleErrorDocs.join(', ')}`);
     }
   }
 }
 
-function runCli() {
-  if (!fs.existsSync(INTERFACES_DIR)) {
-    console.error(`interfaces dir not found: ${INTERFACES_DIR}`);
-    process.exit(1);
-  }
-
-  const summary = checkInterfaceDocsDrift(DEFAULT_ROOT);
+function main() {
+  const summary = checkInterfaceDocsDrift();
   if (summary.ok) {
-    console.log(
-      `Interface docs drift check passed (${summary.checked} files).`,
-    );
+    console.log(`Interface docs drift check passed (${summary.checked} file(s)).`);
     return;
   }
 
-  console.error(
-    `Interface docs drift check failed (${summary.failed.length}/${summary.checked} files).`,
-  );
+  console.error('Interface docs drift detected:');
   printFailures(summary, DEFAULT_ROOT);
-  process.exit(1);
+  process.exitCode = 1;
 }
 
-const invokedDirectly =
-  process.argv[1] && path.resolve(process.argv[1]) === __filename;
-
-if (invokedDirectly) {
-  runCli();
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main();
 }
-
-export {
-  parseSourcePathFromHeading,
-  parseDocumentedMethods,
-  parseDocumentedErrors,
-  parseContractMethods,
-  parseContractErrors,
-  extractContractImplBlocks,
-  collectInterfaceMarkdownFiles,
-  validateDocFile,
-};

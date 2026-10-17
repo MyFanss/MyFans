@@ -33,6 +33,44 @@ export interface AnalyticsEvent {
 }
 
 /**
+ * Durable/backed store for analytics events.
+ *
+ * `record()` writes through `append()` and aggregate reads go through
+ * `list()`, so a Redis- or database-backed sink can be swapped in for
+ * multi-instance deployments without changing any caller.
+ */
+export interface AnalyticsEventSink {
+  append(event: AnalyticsEvent): void;
+  list(): AnalyticsEvent[];
+}
+
+/**
+ * Default in-memory sink. Retains at most `maxSize` events, evicting the
+ * oldest first so a long-running process cannot grow without bound.
+ */
+export class InMemoryAnalyticsEventSink implements AnalyticsEventSink {
+  private readonly events: AnalyticsEvent[] = [];
+
+  constructor(private readonly maxSize: number = InMemoryAnalyticsEventSink.resolveMaxSize()) {}
+
+  private static resolveMaxSize(): number {
+    const parsed = Number.parseInt(process.env.ANALYTICS_EVENT_SINK_MAX_SIZE ?? '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 10_000;
+  }
+
+  append(event: AnalyticsEvent): void {
+    this.events.push(event);
+    if (this.events.length > this.maxSize) {
+      this.events.splice(0, this.events.length - this.maxSize);
+    }
+  }
+
+  list(): AnalyticsEvent[] {
+    return [...this.events];
+  }
+}
+
+/**
  * Aggregated MRR snapshot for a creator dashboard.
  * All monetary values are in minor units (cents).
  */
@@ -74,15 +112,16 @@ export interface DashboardSummary extends MrrSnapshot {
  *  - Compute live MRR server-side for the creator dashboard (no mocked data).
  *  - Enforce creator-only authorization on aggregate reads.
  *
- * Events are kept in-memory here as the emission layer; a durable sink can be
- * wired behind `record()` without changing callers. Aggregates are derived
- * from the same event stream the subscription poller feeds, so the dashboard
- * and the poller never disagree.
+ * Events flow through an injected `AnalyticsEventSink`; the default in-memory
+ * sink is bounded, and a durable sink can be wired behind `record()` without
+ * changing callers. Aggregates are derived from the same event stream the
+ * subscription poller feeds, so the dashboard and the poller never disagree.
  */
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
-  private readonly events: AnalyticsEvent[] = [];
+
+  constructor(private readonly eventSink: AnalyticsEventSink) {}
 
   /**
    * Emit an analytics event. Called by subscription and upload flows.
@@ -93,7 +132,7 @@ export class AnalyticsService {
     if (!event.creatorId) {
       throw new ForbiddenException('creatorId is required for analytics events');
     }
-    this.events.push({
+    this.eventSink.append({
       ...event,
       occurredAt: event.occurredAt ?? new Date().toISOString(),
     });
@@ -157,7 +196,7 @@ export class AnalyticsService {
     let cancelledSubscriptions = 0;
     let uploads = 0;
 
-    for (const event of this.events) {
+    for (const event of this.eventSink.list()) {
       if (event.creatorId !== creatorId) continue;
       const at = Date.parse(event.occurredAt);
       const inWindow = at >= startMs && at < endMs;
@@ -232,7 +271,8 @@ export class AnalyticsService {
     if (requesterId !== creatorId) {
       throw new ForbiddenException('Analytics export is creator-only');
     }
-    return this.events
+    return this.eventSink
+      .list()
       .filter((event) => event.creatorId === creatorId)
       .map((event) => (includePii ? { ...event } : { ...event, subscriberRef: undefined }));
   }

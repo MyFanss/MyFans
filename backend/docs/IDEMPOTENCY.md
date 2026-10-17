@@ -177,11 +177,22 @@ constraint (loser gets 409). No in-memory state is used.
    (method/path mismatch).
 4. Send two concurrent requests with `Idempotency-Key: test-2` → one gets
    `201`, the other gets `409`.
-5. Send `POST /v1/posts` with `Idempotency-Key: test-1` but a **different
-   body** → expect `409` (body mismatch).
-6. Wait for TTL expiry (or manually delete the record) → same key accepted
-   again as new.
-6. Send `POST /v1/checkout/confirm` with `Idempotency-Key: checkout-1` and body
-   `A` → expect `201`; repeat with body `B` → expect `409`.
-7. Send `POST /v1/checkout/confirm` without an `Idempotency-Key` header →
-   expect `400`.
+5. Send `POST /v1/earnings/withdraw/prepare` with `Idempotency-Key: test-3`
+   → expect `201`; repeat → expect `201` with the same `prepareId`.
+6. Send `POST /v1/earnings/withdraw/confirm` with `Idempotency-Key: test-4`
+   → expect `201`; repeat → expect `201` with the same settlement result.
+7. Send `POST /v1/checkout/confirm` without an `Idempotency-Key` header
+   → expect `400`.
+
+## Guarded Routes
+
+The middleware guards the following money-path routes. This list is the source
+of truth that `IDEMPOTENCY_ROUTES` in `backend/src/app.module.ts` must match:
+
+| Method | Path |
+|--------|------|
+| `POST` | `/v1/checkout/confirm` |
+| `POST` | `/v1/subscriptions` |
+| `POST` | `/v1/payments` |
+| `POST` | `/v1/earnings/withdraw/prepare` |
+| `POST` | `/v1/earnings/withdraw/confirm` |

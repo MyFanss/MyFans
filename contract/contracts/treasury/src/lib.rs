@@ -252,66 +252,99 @@ mod test {
     }
 
     #[test]
-    fn withdraw_requires_admin_auth() {
+    fn deposit_rejects_non_positive_amount() {
         let (env, client, _admin) = setup();
         let payer = Address::generate(&env);
+
         env.mock_auths(&[MockAuth {
             address: &payer,
             invoke: &MockAuthInvoke {
                 contract: &client.address,
                 fn_name: "deposit",
-                args: (payer.clone(), 100i128).into_val(&env),
+                args: (payer.clone(), 0i128).into_val(&env),
                 sub_invokes: &[],
             },
         }]);
-        client.deposit(&payer, &100);
+        let res = client.try_deposit(&payer, &0);
+        assert_eq!(res, Err(Ok(TreasuryError::InvalidAmount)));
+        assert_eq!(client.balance(&payer), 0);
 
-        // Random address attempts withdraw without admin auth.
-        let attacker = Address::generate(&env);
-        let res = client.try_withdraw(&attacker, &50);
-        assert!(res.is_err());
-        assert_eq!(client.balance(&payer), 100);
+        env.mock_auths(&[MockAuth {
+            address: &payer,
+            invoke: &MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "deposit",
+                args: (payer.clone(), -50i128).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        let res = client.try_deposit(&payer, &-50);
+        assert_eq!(res, Err(Ok(TreasuryError::InvalidAmount)));
+        assert_eq!(client.balance(&payer), 0);
     }
 
     #[test]
-    fn withdraw_exact_and_over_balance() {
-        let (env, client, admin) = setup();
-        let payer = Address::generate(&env);
+    fn withdraw_rejects_non_admin() {
+        let (env, client, _admin) = setup();
+        let target = Address::generate(&env);
+        let attacker = Address::generate(&env);
+
+        // Fund the target so a successful withdraw would be possible.
         env.mock_auths(&[MockAuth {
-            address: &payer,
+            address: &target,
             invoke: &MockAuthInvoke {
                 contract: &client.address,
                 fn_name: "deposit",
-                args: (payer.clone(), 100i128).into_val(&env),
+                args: (target.clone(), 100i128).into_val(&env),
                 sub_invokes: &[],
             },
         }]);
-        client.deposit(&payer, &100);
+        client.deposit(&target, &100);
+        assert_eq!(client.balance(&target), 100);
+
+        // Only the attacker authorizes; the admin does not.
+        env.mock_auths(&[MockAuth {
+            address: &attacker,
+            invoke: &MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "withdraw",
+                args: (target.clone(), 50i128).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        let res = client.try_withdraw(&target, &50);
+        assert!(res.is_err());
+        assert_eq!(client.balance(&target), 100);
+    }
+
+    #[test]
+    fn withdraw_rejects_insufficient_balance() {
+        let (env, client, admin) = setup();
+        let target = Address::generate(&env);
+
+        env.mock_auths(&[MockAuth {
+            address: &target,
+            invoke: &MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "deposit",
+                args: (target.clone(), 100i128).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        client.deposit(&target, &100);
+        assert_eq!(client.balance(&target), 100);
 
         env.mock_auths(&[MockAuth {
             address: &admin,
             invoke: &MockAuthInvoke {
                 contract: &client.address,
                 fn_name: "withdraw",
-                args: (payer.clone(), 100i128).into_val(&env),
+                args: (target.clone(), 150i128).into_val(&env),
                 sub_invokes: &[],
             },
         }]);
-        client.withdraw(&payer, &100);
-        assert_eq!(client.balance(&payer), 0);
-
-        // Over-balance withdraw reverts and leaves state unchanged.
-        env.mock_auths(&[MockAuth {
-            address: &admin,
-            invoke: &MockAuthInvoke {
-                contract: &client.address,
-                fn_name: "withdraw",
-                args: (payer.clone(), 1i128).into_val(&env),
-                sub_invokes: &[],
-            },
-        }]);
-        let res = client.try_withdraw(&payer, &1);
+        let res = client.try_withdraw(&target, &150);
         assert_eq!(res, Err(Ok(TreasuryError::InsufficientBalance)));
-        assert_eq!(client.balance(&payer), 0);
+        assert_eq!(client.balance(&target), 100);
     }
 }

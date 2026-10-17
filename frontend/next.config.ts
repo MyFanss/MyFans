@@ -26,7 +26,7 @@ const pageExtensions = demoRoutesEnabled
  * production these are ignored so the CSP never widens to a wildcard or an
  * unvetted host. See docs/CSP.md for the full allowlist and env variables.
  */
-function getExtraConnectSrc(): string[] {
+export function getExtraConnectSrc(): string[] {
   if (isProd) return [];
   const raw = process.env.NEXT_PUBLIC_CSP_EXTRA_CONNECT_SRC;
   if (!raw) return [];
@@ -40,7 +40,7 @@ function getExtraConnectSrc(): string[] {
 // NEXT_PUBLIC_SOROBAN_RPC_URL / NEXT_PUBLIC_HORIZON_URL, the backend API,
 // wallet extension origins, and any non-prod NEXT_PUBLIC_CSP_EXTRA_CONNECT_SRC
 // entries. See src/lib/csp.ts and docs/CSP.md for the full host list.
-function getCSP() {
+export function getCSP() {
   const apiHost = new URL(getApiBaseUrl()).host;
   return buildContentSecurityPolicy({
     apiHost,
@@ -151,6 +151,8 @@ const nextConfig: NextConfig = {
     ];
   },
 };
+
+export { nextConfig };
 
 export default withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',

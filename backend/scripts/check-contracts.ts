@@ -45,7 +45,7 @@ const REQUIRED_PUBLIC_KEYS = [
   'NEXT_PUBLIC_MYFANS_TOKEN_CONTRACT_ID',
 ];
 
-function envInt(name: string, fallback: number): number {
+export function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
   const parsed = Number.parseInt(raw, 10);
@@ -57,11 +57,11 @@ const RPC_MAX_ATTEMPTS = envInt('RPC_MAX_ATTEMPTS', DEFAULT_MAX_ATTEMPTS);
 const RPC_BASE_DELAY_MS = envInt('RPC_BASE_DELAY_MS', DEFAULT_BASE_DELAY_MS);
 const RPC_MAX_DELAY_MS = envInt('RPC_MAX_DELAY_MS', DEFAULT_MAX_DELAY_MS);
 
-function useMockRpc(): boolean {
+export function useMockRpc(): boolean {
   return process.env.USE_MOCK_RPC === '1' || process.env.RPC_MOCK === '1';
 }
 
-function resolveRpcUrl(): string {
+export function resolveRpcUrl(): string {
   if (useMockRpc()) {
     return process.env.MOCK_RPC_URL ?? 'http://127.0.0.1:8545';
   }
@@ -76,12 +76,12 @@ function sleep(ms: number): Promise<void> {
  * Exponential backoff with full jitter, bounded by RPC_MAX_DELAY_MS.
  * Jitter prevents synchronized retry storms across CI runners.
  */
-function backoffDelay(attempt: number): number {
+export function backoffDelay(attempt: number): number {
   const exp = Math.min(RPC_MAX_DELAY_MS, RPC_BASE_DELAY_MS * 2 ** (attempt - 1));
   return Math.floor(Math.random() * exp);
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new Error(`RPC timeout after ${timeoutMs}ms: ${label}`));
@@ -103,7 +103,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
  * Retry a read operation with a bounded budget. Reads may degrade: on
  * exhaustion we surface the failure rather than fabricating a success.
  */
-async function retryRead<T>(label: string, op: () => Promise<T>): Promise<T> {
+export async function retryRead<T>(label: string, op: () => Promise<T>): Promise<T> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= RPC_MAX_ATTEMPTS; attempt++) {
     try {
@@ -221,39 +221,20 @@ async function main() {
   console.log('✅ Staging parity check passed.\n');
 
   const checks = await Promise.all([
-    retryRead('myfans:is_subscriber', () =>
-      service.checkContract('myfans', ids.myfans, 'is_subscriber', []),
-    ),
-    retryRead('myfans-token:version', () =>
-      service.checkContract('myfans-token', ids.myfansToken, 'version', []),
-    ),
+    retryRead('myfans.get_admin', () => service.getAdmin(ids.myfans)),
+    retryRead('myfans.get_fee_bps', () => service.getFeeBps(ids.myfans)),
+    retryRead('token.get_admin', () => service.getAdmin(ids.token)),
   ]);
 
-  let failed = false;
-
-  for (const result of checks) {
-    const status = result.ok ? '✅ PASS' : '❌ FAIL';
-    console.log(`${status}  ${result.contract} (${result.contractId}) — ${result.durationMs}ms`);
-    if (!result.ok) {
-      console.error(`       Error: ${result.error}`);
-      failed = true;
-    }
+  console.log('Contract health checks passed:');
+  for (const check of checks) {
+    console.log(`  ✅ ${JSON.stringify(check)}`);
   }
-
-  if (failed) {
-    console.error('\nContract health checks failed.');
-    process.exit(1);
-  }
-
-  console.log('\nAll contract health checks passed.');
 }
-
-// Exported for unit tests (retry/timeout/fail-closed behavior).
-export { retryRead, failClosedWrite, withTimeout, backoffDelay };
 
 if (require.main === module) {
   main().catch((err) => {
-    console.error('Unexpected error:', err.message);
+    console.error('Contract health check failed:', err instanceof Error ? err.message : err);
     process.exit(1);
   });
 }

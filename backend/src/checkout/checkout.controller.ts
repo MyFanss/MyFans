@@ -5,6 +5,7 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Inject,
   Post,
   Req,
 } from '@nestjs/common';
@@ -27,6 +28,13 @@ import { createHash } from 'crypto';
 
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const MAX_BODY_BYTES = 1024 * 1024; // 1MB guard against huge bodies
+
+/**
+ * Injection token for the idempotency store. The in-memory implementation is
+ * registered as the default provider; a Redis-backed store can be swapped in
+ * for multi-instance deployments without touching the controller.
+ */
+export const IDEMPOTENCY_STORE = 'IDEMPOTENCY_STORE';
 
 /**
  * Tracing is opt-in via env (see backend/docs/TRACING.md). When disabled the
@@ -59,19 +67,19 @@ function startSpan(name: string): Span {
   };
 }
 
-interface IdempotencyRecord {
+export interface IdempotencyRecord {
   bodyHash: string;
   status: number;
   response: unknown;
   expiresAt: number;
 }
 
-interface IdempotencyStore {
+export interface IdempotencyStore {
   get(key: string): IdempotencyRecord | undefined;
   set(key: string, record: IdempotencyRecord): void;
 }
 
-class InMemoryIdempotencyStore implements IdempotencyStore {
+export class InMemoryIdempotencyStore implements IdempotencyStore {
   private readonly records = new Map<string, IdempotencyRecord>();
 
   get(key: string): IdempotencyRecord | undefined {
@@ -91,8 +99,6 @@ class InMemoryIdempotencyStore implements IdempotencyStore {
   }
 }
 
-const idempotencyStore: IdempotencyStore = new InMemoryIdempotencyStore();
-
 function hashBody(body: unknown): string {
   const serialized = JSON.stringify(body ?? null);
   if (Buffer.byteLength(serialized, 'utf8') > MAX_BODY_BYTES) {
@@ -110,6 +116,11 @@ function requireIdempotencyKey(key: string | undefined): string {
 
 @Controller('checkout')
 export class CheckoutController {
+  constructor(
+    @Inject(IDEMPOTENCY_STORE)
+    private readonly idempotencyStore: IdempotencyStore,
+  ) {}
+
   /**
    * Confirm a checkout / subscribe. Money path: requires Idempotency-Key.
    */
@@ -140,7 +151,7 @@ export class CheckoutController {
         throw err;
       }
 
-      const existing = idempotencyStore.get(key);
+      const existing = this.idempotencyStore.get(key);
       if (existing) {
         if (existing.bodyHash !== bodyHash) {
           span.setAttribute('checkout.outcome', 'conflict');
@@ -154,7 +165,7 @@ export class CheckoutController {
 
       const response = await this.processCheckout(body);
 
-      idempotencyStore.set(key, {
+      this.idempotencyStore.set(key, {
         bodyHash,
         status: HttpStatus.OK,
         response,

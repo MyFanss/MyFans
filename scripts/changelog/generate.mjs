@@ -208,7 +208,7 @@ export function readCommits(from, to) {
     });
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const opts = { to: 'HEAD', version: 'Unreleased', tagPrefix: 'v', all: false, strict: false };
   const needs = (i) => {
     if (i + 1 >= argv.length) throw new Error(`Missing value for ${argv[i]}`);
@@ -221,72 +221,83 @@ function parseArgs(argv) {
       case '--to': opts.to = needs(i); i++; break;
       case '--version': opts.version = needs(i); i++; break;
       case '--date': opts.date = needs(i); i++; break;
-      case '--package': opts.package = needs(i); i++; break;
+      case '--package': {
+        const name = needs(i);
+        i++;
+        if (!PACKAGES.includes(name)) {
+          throw new Error(`Unknown package "${name}". Expected one of: ${PACKAGES.join(', ')}`);
+        }
+        opts.package = name;
+        break;
+      }
       case '--tag-prefix': opts.tagPrefix = needs(i); i++; break;
       case '--repo': opts.repo = needs(i); i++; break;
-      case '--out': opts.out = needs(i); i++; break;
-      case '--prepend': opts.prepend = needs(i); i++; break;
       case '--all': opts.all = true; break;
       case '--strict': opts.strict = true; break;
+      case '--out': opts.out = needs(i); i++; break;
+      case '--prepend': opts.prepend = needs(i); i++; break;
       case '-h':
       case '--help': opts.help = true; break;
-      default: throw new Error(`Unknown option: ${a}`);
+      default:
+        throw new Error(`Unknown option: ${a}`);
     }
-  }
-  if (opts.package && !PACKAGES.includes(opts.package)) {
-    throw new Error(`--package must be one of: ${PACKAGES.join(', ')}`);
   }
   return opts;
 }
 
-function main() {
-  let opts;
-  try {
-    opts = parseArgs(process.argv.slice(2));
-  } catch (err) {
-    console.error(`[changelog] ${err.message}`);
-    process.exit(1);
-  }
+/** Filter commits to those touching the requested package. */
+export function filterByPackage(commits, pkg) {
+  if (!pkg) return commits;
+  return commits.filter((c) => c.packages.includes(pkg));
+}
+
+export function main(argv = process.argv.slice(2)) {
+  const opts = parseArgs(argv);
   if (opts.help) {
-    const src = readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n');
-    console.log(src.slice(1, 25).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
-    return;
+    process.stdout.write('See header of scripts/changelog/generate.mjs for usage.\n');
+    return 0;
   }
 
   const from = opts.from ?? previousTag(opts.tagPrefix, opts.to);
   let commits = readCommits(from, opts.to);
-  if (opts.package) commits = commits.filter((c) => c.packages.includes(opts.package));
+  commits = filterByPackage(commits, opts.package);
 
-  const nonConventional = commits.filter((c) => !c.conventional);
-  if (opts.strict && nonConventional.length) {
-    console.error(`[changelog] ${nonConventional.length} non-conventional commit(s) in range:`);
-    for (const c of nonConventional) console.error(`  ${c.hash.slice(0, 7)} ${c.desc}`);
-    process.exit(1);
+  if (opts.strict) {
+    const bad = commits.filter((c) => !c.conventional);
+    if (bad.length) {
+      process.stderr.write(
+        `Strict mode: ${bad.length} commit(s) are not Conventional Commits:\n` +
+          bad.map((c) => `  ${c.hash.slice(0, 7)} ${c.desc}`).join('\n') +
+          '\n',
+      );
+      return 1;
+    }
   }
 
-  const md = render(commits, {
+  const section = render(commits, {
     version: opts.version,
     date: opts.date ?? new Date().toISOString().slice(0, 10),
     repo: opts.repo ?? process.env.GITHUB_REPOSITORY ?? 'MyFanss/MyFans',
     all: opts.all,
   });
 
-  console.error(
-    `[changelog] range ${from ?? '(root)'}..${opts.to}: ${commits.length} commits, ` +
-      `${nonConventional.length} non-conventional${opts.package ? `, package=${opts.package}` : ''}`,
-  );
   if (opts.prepend) {
-    try {
-      writeFileSync(opts.prepend, insertIntoChangelog(readFileSync(opts.prepend, 'utf8'), md));
-    } catch (err) {
-      console.error(`[changelog] ${opts.prepend}: ${err.message}`);
-      process.exit(1);
-    }
+    const existing = readFileSync(opts.prepend, 'utf8');
+    writeFileSync(opts.prepend, insertIntoChangelog(existing, section));
+  } else if (opts.out) {
+    writeFileSync(opts.out, section);
+  } else {
+    process.stdout.write(section);
   }
-  if (opts.out) writeFileSync(opts.out, md);
-  else if (!opts.prepend) process.stdout.write(md);
+  return 0;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main();
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMain) {
+  try {
+    process.exitCode = main();
+  } catch (err) {
+    process.stderr.write(`${err.message}\n`);
+    process.exitCode = 1;
+  }
 }

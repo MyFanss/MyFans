@@ -1,22 +1,27 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, VersioningType } from '@nestjs/common';
-import request from 'supertest';
-import cookieParser from 'cookie-parser';
+import { Test } from '@nestjs/testing';
+import * as cookieParser from 'cookie-parser';
+import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { CSRF_COOKIE, CSRF_HEADER } from '../src/common/middleware/csrf.middleware';
+import {
+  CSRF_COOKIE,
+  CSRF_HEADER,
+} from '../src/common/middleware/csrf.middleware';
 
-describe('CSRF Protection (e2e)', () => {
+describe('CSRF protection (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleRef.createNestApplication();
     app.use(cookieParser());
-    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+    app.enableVersioning({
+      type: VersioningType.URI,
+      defaultVersion: '1',
+    });
     await app.init();
   });
 
@@ -24,68 +29,106 @@ describe('CSRF Protection (e2e)', () => {
     await app.close();
   });
 
-  it('GET /v1/csrf/token returns a CSRF cookie and token in body', async () => {
+  const getCsrfCookie = (setCookie: string[] | undefined): string => {
+    const entry = (setCookie ?? []).find((c) =>
+      c.startsWith(`${CSRF_COOKIE}=`),
+    );
+    expect(entry).toBeDefined();
+    return entry as string;
+  };
+
+  const getCsrfCookieValue = (setCookie: string[] | undefined): string => {
+    const entry = getCsrfCookie(setCookie);
+    return entry.split(';')[0].slice(`${CSRF_COOKIE}=`.length);
+  };
+
+  it('GET /v1/csrf/token returns a csrfToken body field and sets the CSRF cookie', async () => {
     const res = await request(app.getHttpServer())
       .get('/v1/csrf/token')
       .expect(200);
 
-    expect(res.body.csrfToken).toBeDefined();
     expect(typeof res.body.csrfToken).toBe('string');
+    expect(res.body.csrfToken.length).toBeGreaterThan(0);
 
-    const cookies = res.headers['set-cookie'];
-    expect(cookies).toBeDefined();
-
-    const csrfCookie = (Array.isArray(cookies) ? cookies : [cookies]).find(
-      (c: string) => c.startsWith(CSRF_COOKIE + '='),
-    );
-    expect(csrfCookie).toBeDefined();
+    const cookie = getCsrfCookie(res.headers['set-cookie']);
+    expect(cookie).toContain(`${CSRF_COOKIE}=`);
   });
 
-  it('POST without CSRF token is rejected with 403', async () => {
+  it('sets the CSRF cookie with the expected attributes', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/v1/csrf/token')
+      .expect(200);
+
+    const cookie = getCsrfCookie(res.headers['set-cookie']);
+
+    // The cookie must be readable by browser JavaScript (double-submit).
+    expect(cookie).not.toMatch(/HttpOnly/i);
+    expect(cookie).toContain('Path=/');
+    expect(cookie).toMatch(/SameSite/i);
+  });
+
+  it('returns a body csrfToken that matches the CSRF cookie value', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/v1/csrf/token')
+      .expect(200);
+
+    const cookieValue = getCsrfCookieValue(res.headers['set-cookie']);
+    expect(res.body.csrfToken).toBe(cookieValue);
+  });
+
+  it('rejects a POST without a CSRF token with 403', async () => {
     await request(app.getHttpServer())
       .post('/v1/posts')
-      .send({ title: 'test' })
+      .send({ title: 'Hello' })
       .expect(403);
   });
 
-  it('POST with valid CSRF token succeeds (not 403)', async () => {
-    // First, obtain a CSRF token
+  it('accepts a POST with a valid CSRF token', async () => {
     const tokenRes = await request(app.getHttpServer())
       .get('/v1/csrf/token')
       .expect(200);
 
-    const csrfToken = tokenRes.body.csrfToken;
-    const cookies = tokenRes.headers['set-cookie'];
-    const cookieString = Array.isArray(cookies) ? cookies.join('; ') : cookies;
+    const token = tokenRes.body.csrfToken;
+    const cookie = getCsrfCookie(tokenRes.headers['set-cookie']);
 
-    // POST with the token — may get 401 (auth) but should NOT get 403 (CSRF)
     const res = await request(app.getHttpServer())
       .post('/v1/posts')
-      .set('Cookie', cookieString)
-      .set(CSRF_HEADER, csrfToken)
-      .send({ title: 'test' });
+      .set('Cookie', cookie)
+      .set(CSRF_HEADER, token)
+      .send({ title: 'Hello' });
 
     expect(res.status).not.toBe(403);
   });
 
-  it('POST to webhook route succeeds without CSRF token (exempt)', async () => {
-    // Webhook routes use HMAC auth, not CSRF. The request may fail on HMAC
-    // verification (401/400) but should NOT be blocked by CSRF (403).
+  it('rejects a POST with a mismatched cookie/header pair with 403', async () => {
+    const tokenRes = await request(app.getHttpServer())
+      .get('/v1/csrf/token')
+      .expect(200);
+
+    const cookie = getCsrfCookie(tokenRes.headers['set-cookie']);
+
+    await request(app.getHttpServer())
+      .post('/v1/posts')
+      .set('Cookie', cookie)
+      .set(CSRF_HEADER, 'deliberately-wrong-token')
+      .send({ title: 'Hello' })
+      .expect(403);
+  });
+
+  it('exempts /v1/webhook routes from CSRF protection', async () => {
     const res = await request(app.getHttpServer())
-      .post('/v1/webhook')
-      .set('Content-Type', 'application/json')
+      .post('/v1/webhook/stripe')
       .send({ event: 'test' });
 
     expect(res.status).not.toBe(403);
   });
 
-  it('Bearer-authenticated request bypasses CSRF', async () => {
+  it('bypasses CSRF for Bearer-authenticated requests', async () => {
     const res = await request(app.getHttpServer())
       .post('/v1/posts')
-      .set('Authorization', 'Bearer fake-jwt-token')
-      .send({ title: 'test' });
+      .set('Authorization', 'Bearer test-token')
+      .send({ title: 'Hello' });
 
-    // Should not get 403 — Bearer clients are exempt from CSRF
     expect(res.status).not.toBe(403);
   });
 });

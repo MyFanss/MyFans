@@ -43,6 +43,10 @@ pub enum SubscriptionError {
     /// Subscription is already active; renew instead of subscribing again.
     AlreadySubscribed = 9,
     /// Asset passed by the caller does not match the plan asset.
+    ///
+    /// `subscribe` takes an explicit `asset` argument and returns this error
+    /// when it differs from `plan.asset`, so the charged token always matches
+    /// the plan the fan subscribed to.
     AssetMismatch = 10,
     /// Ledger arithmetic would overflow `u64`.
     LedgerOverflow = 11,
