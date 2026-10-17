@@ -90,9 +90,11 @@ export function usePlan(planId: string | undefined): UsePlanResult {
   let mismatchReason: string | null = null;
   if (!plan || !confirmParams) {
     mismatchReason = error ?? 'Plan not loaded.';
+  } else if (!confirmParams.network) {
+    mismatchReason = 'Plan network is missing.';
   } else if (!guard.ok) {
     mismatchReason = guard.reason ?? 'Network mismatch.';
-  } else if (!confirmParams.asset || !confirmParams.amount || !confirmParams.interval) {
+  } else if (!confirmParams.asset || !confirmParams.amount || !confirmParams.interval || !confirmParams.network) {
     mismatchReason = 'Plan parameters are incomplete.';
   }
 
