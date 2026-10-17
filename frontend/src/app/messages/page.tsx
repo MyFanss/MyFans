@@ -47,7 +47,7 @@ interface MessageListResponse {
 
 // ── State ────────────────────────────────────────────────────────────────
 
-type PageState =
+export type PageState =
   | { status: 'loading' }
   | { status: 'unauth' }
   | { status: 'error'; message: string }
@@ -60,7 +60,7 @@ type PageState =
       sending: boolean;
     };
 
-type Action =
+export type Action =
   | { type: 'LOAD_UNAUTH' }
   | { type: 'LOAD_ERROR'; message: string }
   | { type: 'LOAD_SUCCESS'; conversations: Conversation[] }
@@ -70,7 +70,7 @@ type Action =
   | { type: 'SEND_DONE'; message: Message }
   | { type: 'SEND_FAIL' };
 
-function reducer(state: PageState, action: Action): PageState {
+export function reducer(state: PageState, action: Action): PageState {
   switch (action.type) {
     case 'LOAD_UNAUTH':
       return { status: 'unauth' };

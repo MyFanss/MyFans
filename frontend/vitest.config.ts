@@ -5,6 +5,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      'react-router-dom': fileURLToPath(new URL('./src/test/setup.ts', import.meta.url)),
     },
   },
   test: {
