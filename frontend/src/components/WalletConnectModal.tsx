@@ -14,6 +14,7 @@ type WalletErrorCode =
   | 'wrong_network'
   | 'rejected'
   | 'popup_blocked'
+  | 'unsupported'
   | 'unknown';
 
 interface WalletError {
@@ -52,6 +53,13 @@ function mapError(err: unknown): WalletError {
   const raw = err instanceof Error ? err.message : String(err ?? '');
   const lower = raw.toLowerCase();
 
+  if (lower.includes('only freighter is supported')) {
+    return {
+      code: 'unsupported',
+      message:
+        'Only Freighter is supported right now. Lobstr and other wallets aren\'t connected in this reference path.',
+    };
+  }
   if (lower.includes('not installed') || lower.includes('not available')) {
     return {
       code: 'missing',
