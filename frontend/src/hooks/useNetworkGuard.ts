@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 /**
  * Network guard (see frontend/docs/NETWORK_GUARD.md).
@@ -61,6 +61,10 @@ export function useNetworkGuard(options: UseNetworkGuardOptions = {}): NetworkGu
   const [actual, setActual] = useState<NetworkId>('unknown');
   const [unreachable, setUnreachable] = useState<boolean>(true);
 
+  // Guards against overlapping polls: a slow `resolveActual` must not be
+  // superseded by a newer tick racing ahead while an older one is in flight.
+  const inFlightRef = useRef(false);
+
   const refresh = useCallback(async () => {
     if (!resolveActual) {
       // No resolver configured: fail closed rather than assume a network.
@@ -68,6 +72,12 @@ export function useNetworkGuard(options: UseNetworkGuardOptions = {}): NetworkGu
       setUnreachable(true);
       return;
     }
+    if (inFlightRef.current) {
+      // A resolution is already pending; skip this tick so the latest settled
+      // result is the one reflected in state.
+      return;
+    }
+    inFlightRef.current = true;
     try {
       const resolved = normalizeNetwork(await resolveActual());
       setActual(resolved);
@@ -76,6 +86,8 @@ export function useNetworkGuard(options: UseNetworkGuardOptions = {}): NetworkGu
       // RPC unreachable or wallet error: fail closed.
       setActual('unknown');
       setUnreachable(true);
+    } finally {
+      inFlightRef.current = false;
     }
   }, [resolveActual]);
 
