@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { fetchPlan, buildSubscribeTx, signAndSubmit } from '../../services/subscribe';
-import { getNetwork, NETWORK_GUARD } from '../../config/network';
+import { getActiveNetwork } from '../../config/network';
+import { checkNetworkGuard } from '../../lib/stellar/networkGuard';
 import type { Plan, SubscribeTxArgs } from '../../types/subscribe';
 
 interface DisplayedParams {
@@ -40,7 +41,7 @@ export default function SubscribeConfirm() {
   const [submitting, setSubmitting] = useState(false);
   const mounted = useRef(true);
 
-  const network = getNetwork();
+  const network = getActiveNetwork();
 
   const load = useCallback(async () => {
     if (!planId) {
@@ -84,7 +85,12 @@ export default function SubscribeConfirm() {
     [plan, network],
   );
 
-  const networkMismatch = network !== NETWORK_GUARD;
+  // Compare against the plan's own expected network (not a static global
+  // constant) via the shared guard utility, so a plan settling on a
+  // different network than the app default is neither blocked incorrectly
+  // nor allowed to sign under a mismatched network (#2010).
+  const networkGuard = plan ? checkNetworkGuard(plan.network, network) : null;
+  const networkMismatch = networkGuard !== null && !networkGuard.ok;
   const argsMismatch =
     displayed !== null && txArgs !== null && !matchesTxArgs(displayed, txArgs);
   const canSign =
@@ -125,9 +131,10 @@ export default function SubscribeConfirm() {
     <div className="subscribe-confirm">
       <h1>Confirm subscription</h1>
 
-      {networkMismatch && (
+      {networkMismatch && networkGuard && (
         <div className="banner banner--error" role="alert">
-          Wrong network: connected to {network}, expected {NETWORK_GUARD}.
+          Wrong network: connected to {networkGuard.actual ?? network}, expected{' '}
+          {networkGuard.expected}.
         </div>
       )}
 

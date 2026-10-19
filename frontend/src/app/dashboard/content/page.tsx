@@ -26,7 +26,7 @@ const UPLOAD_ENABLED =
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-interface ContentItem {
+export interface ContentItem {
   id: string;
   title: string;
   description?: string;
@@ -44,7 +44,7 @@ interface UploadForm {
   file: File | null;
 }
 
-interface PageState {
+export interface PageState {
   items: ContentItem[];
   itemsLoading: boolean;
   itemsError: string | null;
@@ -63,9 +63,10 @@ interface PageState {
   toggleError: string | null;
 }
 
-type Action =
+export type Action =
   | { type: 'ITEMS_LOADED'; items: ContentItem[]; cursor: string | null; append: boolean }
   | { type: 'ITEMS_ERROR'; message: string }
+  | { type: 'LOAD_MORE' }
   | { type: 'SHOW_UPLOAD' }
   | { type: 'HIDE_UPLOAD' }
   | { type: 'UPLOAD_FIELD'; field: keyof Omit<UploadForm, 'file'>; value: string | boolean }
@@ -113,6 +114,8 @@ export function reducer(state: PageState, action: Action): PageState {
       };
     case 'ITEMS_ERROR':
       return { ...state, itemsLoading: false, itemsError: action.message };
+    case 'LOAD_MORE':
+      return { ...state, itemsLoading: true };
     case 'SHOW_UPLOAD':
       // Always start from a clean state: a prior failed upload must not
       // leave a stale progress bar or stale field values visible when the
@@ -201,6 +204,11 @@ export default function DashboardContentPage() {
   useEffect(() => {
     void loadItems(null, false);
   }, [loadItems]);
+
+  const handleLoadMore = useCallback(() => {
+    dispatch({ type: 'LOAD_MORE' });
+    void loadItems(state.cursor, true);
+  }, [loadItems, state.cursor]);
 
   // ── Upload ─────────────────────────────────────────────────────────────
 
@@ -393,7 +401,9 @@ export default function DashboardContentPage() {
       )}
 
       {/* ── Content list ── */}
-      {state.itemsLoading && <p role="status" style={{ color: '#aaa' }}>Loading content…</p>}
+      {state.itemsLoading && state.items.length === 0 && (
+        <p role="status" style={{ color: '#aaa' }}>Loading content…</p>
+      )}
 
       {state.itemsError && (
         <div role="alert" style={s.errorBanner}>
@@ -455,9 +465,10 @@ export default function DashboardContentPage() {
         <button
           style={{ ...s.ghostBtn, marginTop: '1rem' }}
           type="button"
-          onClick={() => void loadItems(state.cursor, true)}
+          onClick={handleLoadMore}
+          disabled={state.itemsLoading}
         >
-          Load more
+          {state.itemsLoading ? 'Loading…' : 'Load more'}
         </button>
       )}
     </main>

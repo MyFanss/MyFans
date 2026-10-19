@@ -31,7 +31,7 @@ type AllowedField = (typeof EXPORT_ALLOWED_FIELDS)[number];
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-interface Subscriber {
+export interface Subscriber {
   id: string;
   planId: string;
   status: string;
@@ -48,7 +48,7 @@ interface SubscribersResponse {
   total?: number;
 }
 
-interface PageState {
+export interface PageState {
   items: Subscriber[];
   loading: boolean;
   error: string | null;
@@ -59,7 +59,7 @@ interface PageState {
   exporting: boolean;
 }
 
-type Action =
+export type Action =
   | { type: 'LOADED'; items: Subscriber[]; cursor: string | null; total: number | null; append: boolean }
   | { type: 'ERROR'; message: string }
   | { type: 'LOAD_MORE' }
@@ -68,7 +68,7 @@ type Action =
   | { type: 'EXPORTING' }
   | { type: 'EXPORT_DONE' };
 
-const initialState: PageState = {
+export const initialState: PageState = {
   items: [],
   loading: true,
   error: null,
@@ -79,7 +79,7 @@ const initialState: PageState = {
   exporting: false,
 };
 
-function reducer(state: PageState, action: Action): PageState {
+export function reducer(state: PageState, action: Action): PageState {
   switch (action.type) {
     case 'LOADED':
       return {

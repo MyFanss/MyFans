@@ -115,14 +115,19 @@ test('smoke: wallet connect shows connected address', async ({ page }) => {
   await page.goto('/');
 
   const connectBtn = page.getByRole('button', { name: /connect wallet/i });
+  const address = page.getByText(/GSMOKE/i);
+
+  // Click the connect button if it's rendered; this is a setup step, not a
+  // pass/fail branch -- the assertion below is deterministic either way.
   if (await connectBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
     await connectBtn.click();
-    // After connecting, the truncated address should appear
-    await expect(page.getByText(/GSMOKE/i)).toBeVisible({ timeout: 10_000 });
-  } else {
-    // Already connected state – address visible directly
-    await expect(page.getByText(/GSMOKE/i)).toBeVisible({ timeout: 10_000 });
   }
+
+  // Deterministic outcome: either clicking the connect button revealed the
+  // address, or the address was already visible. Fails if neither is true
+  // within the timeout, so a regression that removes the button and never
+  // renders the address can no longer pass silently.
+  await expect(address).toBeVisible({ timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
