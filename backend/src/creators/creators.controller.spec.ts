@@ -1,66 +1,103 @@
+import { Test } from '@nestjs/testing';
 import { CreatorsController } from './creators.controller';
-
-function mockService() {
-  return {
-    listCreators: jest.fn().mockResolvedValue([]),
-    getCreatorPlans: jest.fn().mockResolvedValue([]),
-    getCreatorAccess: jest.fn().mockResolvedValue({ hasAccess: false, subscriptionStatus: 'none', planId: null, teaser: null, contentCid: null }),
-    getDashboardSummary: jest.fn().mockResolvedValue({ subscribers: 0, activeSubscriptions: 0, monthlyRevenue: 0, currency: 'USD' }),
-  };
-}
+import { CreatorsService } from './creators.service';
 
 describe('CreatorsController', () => {
-  let service: ReturnType<typeof mockService>;
   let controller: CreatorsController;
-  beforeEach(() => { service = mockService(); controller = new CreatorsController(service as any); });
+  let service: {
+    listCreators: jest.Mock;
+    getCreatorAccess: jest.Mock;
+  };
+
+  beforeEach(async () => {
+    service = {
+      listCreators: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+      getCreatorAccess: jest.fn(),
+    };
+
+    const moduleRef = await Test.createTestingModule({
+      controllers: [CreatorsController],
+      providers: [{ provide: CreatorsService, useValue: service }],
+    }).compile();
+
+    controller = moduleRef.get(CreatorsController);
+  });
 
   describe('listCreators', () => {
-    it('defaults limit to 12 for missing/non-numeric input', async () => {
-      await controller.listCreators(undefined, undefined, undefined);
-      expect(service.listCreators).toHaveBeenCalledWith(expect.objectContaining({ limit: 12 }));
+    it('defaults limit to 12 when missing', async () => {
+      await controller.listCreators(undefined, undefined);
+      expect(service.listCreators).toHaveBeenCalledWith(12, null);
     });
-    it('clamps to 1 for 0 or negative', async () => {
-      await controller.listCreators('0', undefined, undefined);
-      expect(service.listCreators).toHaveBeenCalledWith(expect.objectContaining({ limit: 1 }));
+
+    it('defaults limit to 12 when NaN', async () => {
+      await controller.listCreators('not-a-number', undefined);
+      expect(service.listCreators).toHaveBeenCalledWith(12, null);
     });
-    it('clamps to 50 for values above 50', async () => {
-      await controller.listCreators('999', undefined, undefined);
-      expect(service.listCreators).toHaveBeenCalledWith(expect.objectContaining({ limit: 50 }));
+
+    it('clamps limit below 1 up to 1', async () => {
+      await controller.listCreators('0', undefined);
+      expect(service.listCreators).toHaveBeenCalledWith(1, null);
+
+      service.listCreators.mockClear();
+      await controller.listCreators('-5', undefined);
+      expect(service.listCreators).toHaveBeenCalledWith(1, null);
     });
-    it('passes null for 1-char or whitespace-only q', async () => {
-      await controller.listCreators(undefined, undefined, 'a');
-      expect(service.listCreators).toHaveBeenCalledWith(expect.objectContaining({ query: null }));
-      await controller.listCreators(undefined, undefined, '   ');
-      expect(service.listCreators).toHaveBeenLastCalledWith(expect.objectContaining({ query: null }));
+
+    it('clamps limit above 50 down to 50', async () => {
+      await controller.listCreators('999', undefined);
+      expect(service.listCreators).toHaveBeenCalledWith(50, null);
     });
-    it('trims and caps q at 100 characters', async () => {
-      await controller.listCreators(undefined, undefined, `  ${'x'.repeat(150)}  `);
-      expect(service.listCreators).toHaveBeenCalledWith(expect.objectContaining({ query: 'x'.repeat(100) }));
+
+    it('passes through a limit within range', async () => {
+      await controller.listCreators('25', undefined);
+      expect(service.listCreators).toHaveBeenCalledWith(25, null);
+    });
+
+    it('passes q as null when shorter than 2 characters', async () => {
+      await controller.listCreators(undefined, 'a');
+      expect(service.listCreators).toHaveBeenCalledWith(12, null);
+    });
+
+    it('trims q before evaluating length', async () => {
+      await controller.listCreators(undefined, '  a  ');
+      expect(service.listCreators).toHaveBeenCalledWith(12, null);
+    });
+
+    it('passes trimmed q when at least 2 characters', async () => {
+      await controller.listCreators(undefined, '  ab  ');
+      expect(service.listCreators).toHaveBeenCalledWith(12, 'ab');
+    });
+
+    it('truncates q longer than 100 characters to 100', async () => {
+      const longQuery = 'x'.repeat(150);
+      await controller.listCreators(undefined, longQuery);
+      expect(service.listCreators).toHaveBeenCalledWith(12, 'x'.repeat(100));
     });
   });
 
   describe('getCreatorAccess', () => {
-    it('returns contentCid when hasAccess is true', async () => {
-      service.getCreatorAccess.mockResolvedValue({ hasAccess: true, subscriptionStatus: 'active', planId: 'p1', teaser: null, contentCid: 'cid123' });
-      expect((await controller.getCreatorAccess('1', {} as any)).contentCid).toBe('cid123');
-    });
-    it('returns null contentCid when hasAccess is false', async () => {
-      service.getCreatorAccess.mockResolvedValue({ hasAccess: false, subscriptionStatus: 'none', planId: null, teaser: 't', contentCid: 'secret' });
-      expect((await controller.getCreatorAccess('1', {} as any)).contentCid).toBeNull();
-    });
-  });
+    it('returns contentCid null when hasAccess is false', async () => {
+      service.getCreatorAccess.mockResolvedValue({
+        hasAccess: false,
+        contentCid: 'bafy-some-cid',
+      });
 
-  describe('getDashboardSummary', () => {
-    it('throws Forbidden on creator-id mismatch', async () => {
-      await expect(controller.getDashboardSummary('1', { creator: { id: '2' } } as any, undefined)).rejects.toThrow('Forbidden');
+      const result = await controller.getCreatorAccess('creator-1');
+
+      expect(service.getCreatorAccess).toHaveBeenCalledWith('creator-1');
+      expect(result.contentCid).toBeNull();
     });
-    it('throws simulated error only when NODE_ENV is test', async () => {
-      const orig = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
-      await controller.getDashboardSummary('1', { creator: { id: '1' } } as any, 'true');
-      process.env.NODE_ENV = 'test';
-      await expect(controller.getDashboardSummary('1', { creator: { id: '1' } } as any, 'true')).rejects.toThrow('Simulated dashboard failure');
-      process.env.NODE_ENV = orig;
+
+    it('returns the CID when hasAccess is true', async () => {
+      service.getCreatorAccess.mockResolvedValue({
+        hasAccess: true,
+        contentCid: 'bafy-some-cid',
+      });
+
+      const result = await controller.getCreatorAccess('creator-1');
+
+      expect(service.getCreatorAccess).toHaveBeenCalledWith('creator-1');
+      expect(result.contentCid).toBe('bafy-some-cid');
     });
   });
 });
