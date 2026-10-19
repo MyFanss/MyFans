@@ -1,4 +1,7 @@
+import { InjectRepository } from '@nestjs/typeorm';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Repository } from 'typeorm';
+import { SocialLink } from './entities/social-link.entity';
 
 /**
  * Allowed URL schemes for profile social links.
@@ -14,15 +17,6 @@ export const MAX_SOCIAL_LINK_PLATFORM_LENGTH = 64;
 
 /** Maximum number of social links a single user may have. */
 export const MAX_SOCIAL_LINKS_PER_USER = 10;
-
-export interface SocialLink {
-  id: string;
-  userId: string;
-  platform: string;
-  url: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
 
 export interface CreateSocialLinkInput {
   platform: string;
@@ -103,7 +97,7 @@ function sanitizePlatform(rawPlatform: unknown): string {
 }
 
 /**
- * In-memory CRUD service for profile social links.
+ * CRUD service for profile social links persisted via TypeORM.
  *
  * URL validation/sanitization is enforced on every write so that unsafe
  * schemes (javascript:, data:, http:) and overlong inputs are rejected.
@@ -112,49 +106,50 @@ function sanitizePlatform(rawPlatform: unknown): string {
  */
 @Injectable()
 export class SocialLinksService {
-  private readonly links = new Map<string, SocialLink>();
-  private sequence = 0;
+  constructor(
+    @InjectRepository(SocialLink)
+    private readonly socialLinkRepository: Repository<SocialLink>,
+  ) {}
 
-  list(userId: string): SocialLink[] {
-    return Array.from(this.links.values()).filter(
-      (link) => link.userId === userId,
-    );
+  async list(userId: string): Promise<SocialLink[]> {
+    return this.socialLinkRepository.find({
+      where: { userId },
+      order: { createdAt: 'ASC' },
+    });
   }
 
-  findOne(userId: string, id: string): SocialLink {
-    const link = this.links.get(id);
+  async findOne(userId: string, id: string): Promise<SocialLink> {
+    const link = await this.socialLinkRepository.findOne({
+      where: { id, userId },
+    });
 
-    if (!link || link.userId !== userId) {
+    if (!link) {
       throw new NotFoundException('social link not found');
     }
 
     return link;
   }
 
-  create(userId: string, input: CreateSocialLinkInput): SocialLink {
+  async create(userId: string, input: CreateSocialLinkInput): Promise<SocialLink> {
     const platform = sanitizePlatform(input?.platform);
     const url = sanitizeSocialLinkUrl(input?.url);
 
-    if (this.list(userId).length >= MAX_SOCIAL_LINKS_PER_USER) {
+    const count = await this.socialLinkRepository.count({ where: { userId } });
+    if (count >= MAX_SOCIAL_LINKS_PER_USER) {
       throw new BadRequestException('too many social links');
     }
 
-    const now = new Date();
-    const link: SocialLink = {
-      id: `sl_${++this.sequence}`,
+    const link = this.socialLinkRepository.create({
       userId,
       platform,
       url,
-      createdAt: now,
-      updatedAt: now,
-    };
+    });
 
-    this.links.set(link.id, link);
-    return link;
+    return this.socialLinkRepository.save(link);
   }
 
-  update(userId: string, id: string, input: UpdateSocialLinkInput): SocialLink {
-    const existing = this.findOne(userId, id);
+  async update(userId: string, id: string, input: UpdateSocialLinkInput): Promise<SocialLink> {
+    const existing = await this.findOne(userId, id);
 
     const platform =
       input?.platform === undefined
@@ -166,19 +161,14 @@ export class SocialLinksService {
         ? existing.url
         : sanitizeSocialLinkUrl(input.url);
 
-    const updated: SocialLink = {
-      ...existing,
-      platform,
-      url,
-      updatedAt: new Date(),
-    };
+    existing.platform = platform;
+    existing.url = url;
 
-    this.links.set(id, updated);
-    return updated;
+    return this.socialLinkRepository.save(existing);
   }
 
-  remove(userId: string, id: string): void {
-    this.findOne(userId, id);
-    this.links.delete(id);
+  async remove(userId: string, id: string): Promise<void> {
+    await this.findOne(userId, id);
+    await this.socialLinkRepository.delete({ id, userId });
   }
 }
