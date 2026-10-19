@@ -10,7 +10,7 @@
  */
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { persistRole } from '@/lib/users-api';
 import { useUser } from '@/context/UserContext';
@@ -20,8 +20,16 @@ export default function FanOnboardingPage() {
   const { refreshUser } = useUser();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Issue #2012: `saving` (React state) is not applied synchronously, so two
+  // rapid clicks — or a click plus an Enter keypress — can both read
+  // `saving === false` and enter handleGetStarted before the `disabled`
+  // attribute takes effect. A ref updates immediately, so it closes that
+  // window; `saving` is kept as-is purely for the disabled/aria-busy UI.
+  const inFlightRef = useRef(false);
 
   async function handleGetStarted() {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -31,6 +39,7 @@ export default function FanOnboardingPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save role. Please try again.');
     } finally {
+      inFlightRef.current = false;
       setSaving(false);
     }
   }
