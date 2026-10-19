@@ -26,12 +26,12 @@ import { apiFetch } from '@/lib/api/client';
 // ── PII export allowlist ──────────────────────────────────────────────────
 // Only these fields are written to the CSV export.
 // DO NOT add walletAddress, email, or phone without a privacy review.
-const EXPORT_ALLOWED_FIELDS = ['id', 'planId', 'status', 'createdAt'] as const;
+export const EXPORT_ALLOWED_FIELDS = ['id', 'planId', 'status', 'createdAt'] as const;
 type AllowedField = (typeof EXPORT_ALLOWED_FIELDS)[number];
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-interface Subscriber {
+export interface Subscriber {
   id: string;
   planId: string;
   status: string;
@@ -48,7 +48,7 @@ interface SubscribersResponse {
   total?: number;
 }
 
-interface PageState {
+export interface PageState {
   items: Subscriber[];
   loading: boolean;
   error: string | null;
@@ -59,7 +59,7 @@ interface PageState {
   exporting: boolean;
 }
 
-type Action =
+export type Action =
   | { type: 'LOADED'; items: Subscriber[]; cursor: string | null; total: number | null; append: boolean }
   | { type: 'ERROR'; message: string }
   | { type: 'LOAD_MORE' }
@@ -68,7 +68,7 @@ type Action =
   | { type: 'EXPORTING' }
   | { type: 'EXPORT_DONE' };
 
-const initialState: PageState = {
+export const initialState: PageState = {
   items: [],
   loading: true,
   error: null,
@@ -79,7 +79,7 @@ const initialState: PageState = {
   exporting: false,
 };
 
-function reducer(state: PageState, action: Action): PageState {
+export function reducer(state: PageState, action: Action): PageState {
   switch (action.type) {
     case 'LOADED':
       return {
@@ -110,13 +110,28 @@ function reducer(state: PageState, action: Action): PageState {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function buildCsvRow(item: Subscriber): string {
-  return EXPORT_ALLOWED_FIELDS.map((field: AllowedField) => {
-    const raw = item[field] ?? '';
-    // Escape double-quotes per RFC 4180
-    const escaped = String(raw).replace(/"/g, '""');
-    return `"${escaped}"`;
-  }).join(',');
+// Leading characters that spreadsheet applications (Excel, Google Sheets)
+// interpret as the start of a formula when a CSV cell is opened. A value
+// beginning with any of these must be neutralized before export, even
+// though EXPORT_ALLOWED_FIELDS is currently a small allowlist: this helper
+// is the single place every future allowlisted field will flow through.
+const FORMULA_TRIGGER_RE = /^[=+\-@\t\r]/;
+
+function escapeCsvField(raw: unknown): string {
+  let value = String(raw ?? '');
+  // Neutralize spreadsheet formula injection (CSV injection): prefix a
+  // leading single quote so the cell is treated as text, not a formula.
+  if (FORMULA_TRIGGER_RE.test(value)) {
+    value = `'${value}`;
+  }
+  // Escape double-quotes per RFC 4180
+  const escaped = value.replace(/"/g, '""');
+  return `"${escaped}"`;
+}
+
+export function buildCsvRow(item: Subscriber): string {
+  return EXPORT_ALLOWED_FIELDS.map((field: AllowedField) => escapeCsvField(item[field]))
+    .join(',');
 }
 
 function downloadCsv(items: Subscriber[], filename: string): void {

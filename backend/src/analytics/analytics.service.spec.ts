@@ -1,13 +1,18 @@
-import { ForbiddenException } from '@nestjs/common';
-import { AnalyticsService, InMemoryAnalyticsEventSink } from './analytics.service';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  ANALYTICS_EVENTS,
+  AnalyticsEvent,
+  AnalyticsService,
+  InMemoryAnalyticsEventSink,
+} from './analytics.service';
 
 describe('InMemoryAnalyticsEventSink', () => {
   it('retains events up to the configured cap', () => {
     const sink = new InMemoryAnalyticsEventSink(3);
 
-    sink.append({ type: 'subscribe', userId: 'u1' } as any);
-    sink.append({ type: 'cancel', userId: 'u2' } as any);
-    sink.append({ type: 'upload', userId: 'u3' } as any);
+    sink.append({ name: 'subscribe', creatorId: 'c1', occurredAt: new Date().toISOString() });
+    sink.append({ name: 'cancel', creatorId: 'c1', occurredAt: new Date().toISOString() });
+    sink.append({ name: 'upload', creatorId: 'c1', occurredAt: new Date().toISOString() });
 
     expect(sink.list()).toHaveLength(3);
   });
@@ -15,20 +20,20 @@ describe('InMemoryAnalyticsEventSink', () => {
   it('evicts the oldest events once the cap is exceeded', () => {
     const sink = new InMemoryAnalyticsEventSink(2);
 
-    sink.append({ type: 'subscribe', userId: 'u1' } as any);
-    sink.append({ type: 'cancel', userId: 'u2' } as any);
-    sink.append({ type: 'upload', userId: 'u3' } as any);
+    sink.append({ name: 'subscribe', creatorId: 'c1', subscriberRef: 'u1', occurredAt: new Date().toISOString() });
+    sink.append({ name: 'cancel', creatorId: 'c1', subscriberRef: 'u2', occurredAt: new Date().toISOString() });
+    sink.append({ name: 'upload', creatorId: 'c1', subscriberRef: 'u3', occurredAt: new Date().toISOString() });
 
     const events = sink.list();
     expect(events).toHaveLength(2);
-    expect(events.map((e: any) => e.userId)).toEqual(['u2', 'u3']);
+    expect(events.map((e) => e.subscriberRef)).toEqual(['u2', 'u3']);
   });
 
   it('defaults to a sane maximum when no cap is provided', () => {
     const sink = new InMemoryAnalyticsEventSink();
 
     for (let i = 0; i < 100; i += 1) {
-      sink.append({ type: 'subscribe', userId: `u${i}` } as any);
+      sink.append({ name: 'subscribe', creatorId: `c${i}`, occurredAt: new Date().toISOString() });
     }
 
     expect(sink.list().length).toBeLessThanOrEqual(100);
@@ -36,10 +41,12 @@ describe('InMemoryAnalyticsEventSink', () => {
 });
 
 describe('AnalyticsService', () => {
+  let sink: InMemoryAnalyticsEventSink;
   let service: AnalyticsService;
 
   beforeEach(() => {
-    service = new AnalyticsService();
+    sink = new InMemoryAnalyticsEventSink(100);
+    service = new AnalyticsService(sink);
   });
 
   describe('record()', () => {
@@ -50,6 +57,7 @@ describe('AnalyticsService', () => {
           creatorId: '',
           subscriberRef: 'sub-1',
           amountCents: 500,
+          occurredAt: new Date().toISOString(),
         }),
       ).toThrow(ForbiddenException);
     });
@@ -61,8 +69,42 @@ describe('AnalyticsService', () => {
           creatorId: undefined as unknown as string,
           subscriberRef: 'sub-1',
           amountCents: 500,
+          occurredAt: new Date().toISOString(),
         }),
       ).toThrow(ForbiddenException);
+    });
+
+    it('defaults occurredAt to the current time when omitted', () => {
+      const before = Date.now();
+      service.record({
+        name: 'upload',
+        creatorId: 'creator-1',
+      } as unknown as AnalyticsEvent);
+      const after = Date.now();
+
+      const [event] = sink.list();
+      const at = Date.parse(event.occurredAt);
+      expect(at).toBeGreaterThanOrEqual(before);
+      expect(at).toBeLessThanOrEqual(after);
+    });
+
+    it('stores a valid ISO-8601 occurredAt unchanged', () => {
+      const occurredAt = '2026-01-15T12:00:00.000Z';
+      service.record({ name: 'upload', creatorId: 'creator-1', occurredAt });
+
+      const [event] = sink.list();
+      expect(event.occurredAt).toBe(occurredAt);
+    });
+
+    it('throws BadRequestException when occurredAt is not a parseable ISO-8601 timestamp', () => {
+      expect(() =>
+        service.record({
+          name: 'upload',
+          creatorId: 'creator-1',
+          occurredAt: 'not-a-date',
+        }),
+      ).toThrow(BadRequestException);
+      expect(sink.list()).toHaveLength(0);
     });
   });
 
@@ -71,10 +113,11 @@ describe('AnalyticsService', () => {
     const subscriberRef = 'sub-1';
     const amountCents = 1500;
 
-    it('recordSubscribe emits a subscribe event with the expected shape', () => {
-      const event = service.recordSubscribe({ creatorId, subscriberRef, amountCents });
+    it('recordSubscribe appends a subscribe event with the expected shape', () => {
+      service.recordSubscribe(creatorId, subscriberRef, amountCents);
 
-      expect(event.name).toBe('subscribe');
+      const [event] = sink.list();
+      expect(event.name).toBe(ANALYTICS_EVENTS.SUBSCRIBE);
       expect(event.creatorId).toBe(creatorId);
       expect(event.subscriberRef).toBe(subscriberRef);
       expect(event.amountCents).toBe(amountCents);
@@ -82,58 +125,57 @@ describe('AnalyticsService', () => {
       expect(new Date(event.occurredAt).toISOString()).toBe(event.occurredAt);
     });
 
-    it('recordCancel emits a cancel event with the expected shape', () => {
-      const event = service.recordCancel({ creatorId, subscriberRef, amountCents });
+    it('recordCancel appends a cancel event with the expected shape', () => {
+      service.recordCancel(creatorId, subscriberRef, amountCents);
 
-      expect(event.name).toBe('cancel');
+      const [event] = sink.list();
+      expect(event.name).toBe(ANALYTICS_EVENTS.CANCEL);
       expect(event.creatorId).toBe(creatorId);
       expect(event.subscriberRef).toBe(subscriberRef);
       expect(event.amountCents).toBe(amountCents);
-      expect(typeof event.occurredAt).toBe('string');
-      expect(new Date(event.occurredAt).toISOString()).toBe(event.occurredAt);
     });
 
-    it('recordUpload emits an upload event with the expected shape', () => {
-      const event = service.recordUpload({ creatorId, subscriberRef, amountCents });
+    it('recordUpload appends an upload event with the expected shape', () => {
+      service.recordUpload(creatorId);
 
-      expect(event.name).toBe('upload');
+      const [event] = sink.list();
+      expect(event.name).toBe(ANALYTICS_EVENTS.UPLOAD);
       expect(event.creatorId).toBe(creatorId);
-      expect(event.subscriberRef).toBe(subscriberRef);
-      expect(event.amountCents).toBe(amountCents);
-      expect(typeof event.occurredAt).toBe('string');
-      expect(new Date(event.occurredAt).toISOString()).toBe(event.occurredAt);
+      expect(event.subscriberRef).toBeUndefined();
     });
   });
 
   describe('MRR snapshot authorization', () => {
     const creatorId = 'creator-1';
+    const periodStart = new Date('2026-01-01T00:00:00.000Z');
+    const periodEnd = new Date('2026-02-01T00:00:00.000Z');
 
     it('rejects a requesterId that differs from creatorId', () => {
       expect(() =>
-        service.getMrrSnapshot({ requesterId: 'someone-else', creatorId }),
+        service.getMrrSnapshot(creatorId, 'someone-else', periodStart, periodEnd),
       ).toThrow(ForbiddenException);
     });
 
     it('returns the documented snapshot fields when requesterId matches creatorId', () => {
-      const snapshot = service.getMrrSnapshot({ requesterId: creatorId, creatorId });
+      service.recordSubscribe(creatorId, 'sub-1', 1000);
 
-      expect(snapshot).toBeDefined();
+      const snapshot = service.getMrrSnapshot(creatorId, creatorId, periodStart, periodEnd);
+
       expect(snapshot.creatorId).toBe(creatorId);
-      expect(typeof snapshot.mrrCents).toBe('number');
-      expect(typeof snapshot.activeSubscribers).toBe('number');
-      expect(typeof snapshot.generatedAt).toBe('string');
-      expect(new Date(snapshot.generatedAt).toISOString()).toBe(snapshot.generatedAt);
+      expect(snapshot.mrrCents).toBe(1000);
+      expect(snapshot.activeSubscriptions).toBe(1);
+      expect(snapshot.periodStart).toBe(periodStart.toISOString());
+      expect(snapshot.periodEnd).toBe(periodEnd.toISOString());
     });
   });
 
   it('routes recorded events through the injected sink', () => {
-    const sink = new InMemoryAnalyticsEventSink(10);
-    const service = new AnalyticsService(sink as any);
-
-    service.record({ type: 'subscribe', userId: 'u1' } as any);
+    service.record({
+      name: 'subscribe',
+      creatorId: 'creator-1',
+      occurredAt: new Date().toISOString(),
+    });
 
     expect(sink.list()).toHaveLength(1);
-  });
-});
   });
 });

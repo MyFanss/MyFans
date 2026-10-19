@@ -1,4 +1,4 @@
-import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, ForbiddenException, BadRequestException } from '@nestjs/common';
 
 /**
  * Analytics event names emitted by the platform.
@@ -131,6 +131,11 @@ export class AnalyticsService {
   record(event: AnalyticsEvent): void {
     if (!event.creatorId) {
       throw new ForbiddenException('creatorId is required for analytics events');
+    }
+    if (event.occurredAt !== undefined && Number.isNaN(Date.parse(event.occurredAt))) {
+      throw new BadRequestException(
+        'occurredAt must be a valid ISO-8601 timestamp',
+      );
     }
     this.eventSink.append({
       ...event,

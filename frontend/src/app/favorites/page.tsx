@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useReducer, useCallback } from 'react';
+import { useCallback, useEffect, useReducer, useRef } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api/client';
 
@@ -25,7 +25,7 @@ type Action =
   | { type: 'TOGGLE_COMMIT'; id: string }
   | { type: 'TOGGLE_ROLLBACK'; id: string; restore: boolean };
 
-function reducer(state: FavoritesState, action: Action): FavoritesState {
+export function reducer(state: FavoritesState, action: Action): FavoritesState {
   switch (action.type) {
     case 'LOAD_START':
       return { ...state, auth: 'loading', error: null };
@@ -62,7 +62,7 @@ function reducer(state: FavoritesState, action: Action): FavoritesState {
   }
 }
 
-const initialState: FavoritesState = {
+export const initialState: FavoritesState = {
   auth: 'loading',
   ids: [],
   error: null,
@@ -73,35 +73,44 @@ const initialState: FavoritesState = {
 
 export default function FavoritesPage() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Extracted so the retry control can re-run the exact same load, not just
+  // the initial mount effect (#2005).
+  const loadFavorites = useCallback(async () => {
+    dispatch({ type: 'LOAD_START' });
+
+    try {
+      const res = await apiFetch('/api/v1/favorites', { method: 'GET' });
+      if (!mountedRef.current) return;
+      if (res.status === 401) {
+        dispatch({ type: 'LOAD_UNAUTH' });
+        return;
+      }
+      if (!res.ok) {
+        dispatch({ type: 'LOAD_ERROR', message: `Error loading favorites (${res.status})` });
+        return;
+      }
+      const data = (await res.json()) as string[];
+      if (!mountedRef.current) return;
+      dispatch({ type: 'LOAD_SUCCESS', ids: Array.isArray(data) ? data : [] });
+    } catch {
+      if (mountedRef.current)
+        dispatch({ type: 'LOAD_ERROR', message: 'Network error. Please try again.' });
+    }
+  }, []);
 
   // Load favorites on mount
   useEffect(() => {
-    let cancelled = false;
-    dispatch({ type: 'LOAD_START' });
-
-    apiFetch('/api/v1/favorites', { method: 'GET' })
-      .then(async (res) => {
-        if (cancelled) return;
-        if (res.status === 401) {
-          dispatch({ type: 'LOAD_UNAUTH' });
-          return;
-        }
-        if (!res.ok) {
-          const msg = `Error loading favorites (${res.status})`;
-          dispatch({ type: 'LOAD_ERROR', message: msg });
-          return;
-        }
-        const data = (await res.json()) as string[];
-        dispatch({ type: 'LOAD_SUCCESS', ids: Array.isArray(data) ? data : [] });
-      })
-      .catch(() => {
-        if (!cancelled) dispatch({ type: 'LOAD_ERROR', message: 'Network error. Please try again.' });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void loadFavorites();
+  }, [loadFavorites]);
 
   const toggle = useCallback(
     async (id: string) => {
@@ -157,19 +166,15 @@ export default function FavoritesPage() {
       <h1 style={styles.heading}>Favorites</h1>
 
       {state.error && (
-        <p role="alert" style={styles.error}>
-          {state.error}
-        </p>
+        <div role="alert" style={styles.error}>
+          <p style={styles.errorText}>{state.error}</p>
+          <button onClick={() => void loadFavorites()} style={styles.retryBtn} type="button">
+            Retry
+          </button>
+        </div>
       )}
 
-      {state.ids.length === 0 ? (
-        <div style={styles.empty}>
-          <p>{"You haven't marked any creators as favorites yet"}</p>
-          <Link href="/discover" style={styles.ctaLink}>
-            Discover Creators
-          </Link>
-        </div>
-      ) : (
+      {state.ids.length > 0 ? (
         <>
           <p style={styles.count}>You have {state.ids.length} favorite creator{state.ids.length !== 1 ? 's' : ''}</p>
           <ul style={styles.list}>
@@ -189,6 +194,17 @@ export default function FavoritesPage() {
             ))}
           </ul>
         </>
+      ) : (
+        // A load failure is surfaced above via the error banner + retry;
+        // only show the genuine empty state when there is no error (#2005).
+        !state.error && (
+          <div style={styles.empty}>
+            <p>{"You haven't marked any creators as favorites yet"}</p>
+            <Link href="/discover" style={styles.ctaLink}>
+              Discover Creators
+            </Link>
+          </div>
+        )
       )}
     </main>
   );
@@ -257,11 +273,26 @@ const styles = {
     textDecoration: 'none',
   },
   error: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: '0.75rem 1rem',
     borderRadius: '6px',
     background: '#3b1a1a',
     color: '#f87171',
     marginBottom: '1rem',
     border: '1px solid #7f1d1d',
+  },
+  errorText: {
+    margin: 0,
+  },
+  retryBtn: {
+    background: 'transparent',
+    border: '1px solid #f87171',
+    color: '#f87171',
+    borderRadius: '4px',
+    padding: '0.2rem 0.5rem',
+    cursor: 'pointer',
+    fontSize: '0.75rem',
   },
 } as const;

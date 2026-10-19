@@ -34,11 +34,23 @@ export function normalizeNetwork(raw: string | null | undefined): StellarNetwork
     return value as StellarNetwork;
   }
 
-  // Match by well-known network passphrase fragments.
-  if (value.includes("PUBLIC GLOBAL") || value.includes("PUBLIC")) return "PUBLIC";
-  if (value.includes("TESTNET")) return "TESTNET";
-  if (value.includes("FUTURENET")) return "FUTURENET";
+  // Match by well-known network passphrase fragments. Order matters here:
+  // the more specific networks (FUTURENET, TESTNET, STANDALONE) must be
+  // checked before the generic PUBLIC fallback, and PUBLIC itself must
+  // require the actual public-network passphrase fragment rather than a
+  // bare "PUBLIC" substring. Otherwise an unrelated passphrase that merely
+  // contains the word "PUBLIC" (e.g. a custom/standalone passphrase like
+  // "Standalone Network ; PUBLIC") would shadow the network it's actually
+  // naming and normalize to PUBLIC — defeating the point of this guard
+  // (#2006).
+  if (value.includes("FUTURENET") || value.includes("FUTURE NETWORK")) {
+    return "FUTURENET";
+  }
+  if (value.includes("TESTNET") || value.includes("TEST SDF NETWORK")) {
+    return "TESTNET";
+  }
   if (value.includes("STANDALONE")) return "STANDALONE";
+  if (value.includes("PUBLIC GLOBAL")) return "PUBLIC";
 
   return null;
 }
