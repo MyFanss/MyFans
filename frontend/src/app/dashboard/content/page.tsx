@@ -78,14 +78,14 @@ type Action =
   | { type: 'TOGGLE_DONE'; id: string; isGated: boolean }
   | { type: 'TOGGLE_ERROR'; message: string };
 
-const emptyUpload: UploadForm = {
+export const emptyUpload: UploadForm = {
   title: '',
   description: '',
   isGated: false,
   file: null,
 };
 
-const initialState: PageState = {
+export const initialState: PageState = {
   items: [],
   itemsLoading: true,
   itemsError: null,
@@ -100,7 +100,7 @@ const initialState: PageState = {
   toggleError: null,
 };
 
-function reducer(state: PageState, action: Action): PageState {
+export function reducer(state: PageState, action: Action): PageState {
   switch (action.type) {
     case 'ITEMS_LOADED':
       return {
@@ -114,7 +114,17 @@ function reducer(state: PageState, action: Action): PageState {
     case 'ITEMS_ERROR':
       return { ...state, itemsLoading: false, itemsError: action.message };
     case 'SHOW_UPLOAD':
-      return { ...state, showUploadForm: true, uploadError: null };
+      // Always start from a clean state: a prior failed upload must not
+      // leave a stale progress bar or stale field values visible when the
+      // form is reopened, so a retry looks identical to a first attempt
+      // (#2014).
+      return {
+        ...state,
+        showUploadForm: true,
+        uploadError: null,
+        upload: emptyUpload,
+        uploadProgress: null,
+      };
     case 'HIDE_UPLOAD':
       return { ...state, showUploadForm: false, upload: emptyUpload, uploadProgress: null, uploadError: null };
     case 'UPLOAD_FIELD':
