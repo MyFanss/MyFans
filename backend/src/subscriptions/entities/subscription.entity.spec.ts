@@ -4,6 +4,7 @@ import {
   Subscription,
   SubscriptionStatus,
   canTransition,
+  isSubmissionExpired,
 } from './subscription.entity';
 
 describe('SubscriptionStatus', () => {
@@ -103,5 +104,59 @@ describe('Subscription entity', () => {
     sub.submitExpiresAt = new Date(Date.now() + 60_000);
 
     expect(sub.submitExpiresAt.getTime() > Date.now()).toBe(true);
+  });
+});
+
+describe('isSubmissionExpired', () => {
+  const now = new Date('2025-01-01T00:00:00Z');
+  const past = new Date('2024-12-31T23:59:59Z');
+  const future = new Date('2025-01-01T00:00:01Z');
+
+  it('returns false for CREATED even with a past deadline', () => {
+    expect(
+      isSubmissionExpired({ status: SubscriptionStatus.CREATED, submitExpiresAt: past }, now),
+    ).toBe(false);
+  });
+
+  it('returns false for SUBMITTED with a null deadline', () => {
+    expect(
+      isSubmissionExpired({ status: SubscriptionStatus.SUBMITTED, submitExpiresAt: null }, now),
+    ).toBe(false);
+  });
+
+  it('returns false for SUBMITTED with a future deadline', () => {
+    expect(
+      isSubmissionExpired({ status: SubscriptionStatus.SUBMITTED, submitExpiresAt: future }, now),
+    ).toBe(false);
+  });
+
+  it('returns true for SUBMITTED with a past deadline', () => {
+    expect(
+      isSubmissionExpired({ status: SubscriptionStatus.SUBMITTED, submitExpiresAt: past }, now),
+    ).toBe(true);
+  });
+
+  it('returns false for CONFIRMED regardless of deadline', () => {
+    expect(
+      isSubmissionExpired({ status: SubscriptionStatus.CONFIRMED, submitExpiresAt: past }, now),
+    ).toBe(false);
+  });
+
+  it('returns false for ACTIVE regardless of deadline', () => {
+    expect(
+      isSubmissionExpired({ status: SubscriptionStatus.ACTIVE, submitExpiresAt: past }, now),
+    ).toBe(false);
+  });
+
+  it('returns false for FAILED regardless of deadline', () => {
+    expect(
+      isSubmissionExpired({ status: SubscriptionStatus.FAILED, submitExpiresAt: past }, now),
+    ).toBe(false);
+  });
+
+  it('is consistent with canTransition: SUBMITTED -> FAILED is allowed', () => {
+    const sub = { status: SubscriptionStatus.SUBMITTED, submitExpiresAt: past };
+    expect(isSubmissionExpired(sub, now)).toBe(true);
+    expect(canTransition(SubscriptionStatus.SUBMITTED, SubscriptionStatus.FAILED)).toBe(true);
   });
 });
