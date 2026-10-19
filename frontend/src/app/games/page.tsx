@@ -5,9 +5,9 @@ import { apiFetch } from '@/lib/api/client';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-type GameStatus = 'PENDING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+export type GameStatus = 'PENDING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
 
-interface Game {
+export interface Game {
   id: string;
   title: string;
   description: string;
@@ -29,7 +29,7 @@ interface GameListResponse {
 
 // ── Toast ─────────────────────────────────────────────────────────────────
 
-interface Toast {
+export interface Toast {
   id: number;
   message: string;
   type: 'success' | 'error';
@@ -45,7 +45,7 @@ type PageStatus =
   | 'detail_loading'
   | 'detail';
 
-interface PageState {
+export interface PageState {
   status: PageStatus;
   games: Game[];
   activeGame: Game | null;
@@ -54,7 +54,7 @@ interface PageState {
   _toastSeq: number;
 }
 
-type Action =
+export type Action =
   | { type: 'LOAD_UNAUTH' }
   | { type: 'LOAD_SERVER_ERROR' }
   | { type: 'LOAD_SUCCESS'; games: Game[] }
@@ -66,7 +66,7 @@ type Action =
   | { type: 'MUTATE_ERROR'; message: string }
   | { type: 'DISMISS_TOAST'; id: number };
 
-function reducer(state: PageState, action: Action): PageState {
+export function reducer(state: PageState, action: Action): PageState {
   switch (action.type) {
     case 'LOAD_UNAUTH':
       return { ...state, status: 'unauth' };
@@ -109,7 +109,7 @@ function reducer(state: PageState, action: Action): PageState {
   }
 }
 
-const initialState: PageState = {
+export const initialState: PageState = {
   status: 'loading',
   games: [],
   activeGame: null,
@@ -127,12 +127,10 @@ function generateIdempotencyKey(): string {
 export default function GamesPage() {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  useEffect(() => {
-    let cancelled = false;
-
+  const loadGames = useCallback((signal?: { cancelled: boolean }) => {
     apiFetch('/api/v1/games', { method: 'GET' })
       .then(async (res) => {
-        if (cancelled) return;
+        if (signal?.cancelled) return;
         if (res.status === 401) {
           dispatch({ type: 'LOAD_UNAUTH' });
           return;
@@ -145,13 +143,21 @@ export default function GamesPage() {
         dispatch({ type: 'LOAD_SUCCESS', games: data.data ?? [] });
       })
       .catch(() => {
-        if (!cancelled) dispatch({ type: 'LOAD_SERVER_ERROR' });
+        if (!signal?.cancelled) dispatch({ type: 'LOAD_SERVER_ERROR' });
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  useEffect(() => {
+    const signal = { cancelled: false };
+    loadGames(signal);
+    return () => {
+      signal.cancelled = true;
+    };
+  }, [loadGames]);
+
+  const retryLoad = useCallback(() => {
+    loadGames();
+  }, [loadGames]);
 
   const selectGame = useCallback(async (id: string) => {
     dispatch({ type: 'SELECT_GAME', id });
@@ -254,9 +260,14 @@ export default function GamesPage() {
       )}
 
       {state.status === 'server_error' && (
-        <p role="alert">
-          We encountered an issue loading games. Please try again later.
-        </p>
+        <div>
+          <p role="alert">
+            We encountered an issue loading games. Please try again later.
+          </p>
+          <button style={styles.actionBtn} onClick={retryLoad} aria-label="Retry loading games">
+            Retry
+          </button>
+        </div>
       )}
 
       {(state.status === 'ready' ||
