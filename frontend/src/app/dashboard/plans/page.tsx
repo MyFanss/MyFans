@@ -20,7 +20,7 @@ import { apiFetch } from '@/lib/api/client';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-interface PlanForm {
+export interface PlanForm {
   title: string;
   description: string;
   asset: string;
@@ -171,7 +171,7 @@ function reducer(state: PageState, action: Action): PageState {
 
 // ── Validation ─────────────────────────────────────────────────────────────
 
-function validate(form: PlanForm): Partial<PlanForm> {
+export function validate(form: PlanForm): Partial<PlanForm> {
   const errors: Partial<PlanForm> = {};
   if (!form.title.trim()) errors.title = 'Title is required.';
   if (!form.asset.trim()) errors.asset = 'Asset is required.';
