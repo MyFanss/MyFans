@@ -27,8 +27,11 @@ export default function DiscoverPage() {
   useEffect(() => {
     let cancelled = false;
     apiFetch('/api/v1/creators?limit=24')
-      .then((r) => r.json())
-      .then((data: { data?: Creator[] }) => {
+      .then((r) => {
+        if (!r.ok) throw new Error(`Server error: ${r.status}`);
+        return r.json() as Promise<{ data?: Creator[] }>;
+      })
+      .then((data) => {
         if (!cancelled) setCreators(data.data ?? []);
       })
       .catch((err: unknown) => {
