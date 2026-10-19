@@ -44,10 +44,14 @@ export function mapWalletError(err: unknown): WalletError {
   const raw = err instanceof Error ? err.message : String(err ?? '');
   const lower = raw.toLowerCase();
 
-  if (lower.includes('not installed') || lower.includes('not available') || lower.includes('freighter')) {
+  if (lower.includes('reject') || lower.includes('denied') || lower.includes('cancel')) {
+    return new WalletError('USER_REJECTED', 'You rejected the request in Freighter.');
+  }
+
+  if (lower.includes('network') || lower.includes('passphrase')) {
     return new WalletError(
-      'FREIGHTER_MISSING',
-      'Freighter wallet was not detected. Install the Freighter extension and reload the page.',
+      'NETWORK_MISMATCH',
+      'Freighter is on a different network than this app. Switch networks in Freighter and retry.',
     );
   }
 
@@ -58,14 +62,10 @@ export function mapWalletError(err: unknown): WalletError {
     );
   }
 
-  if (lower.includes('reject') || lower.includes('denied') || lower.includes('cancel')) {
-    return new WalletError('USER_REJECTED', 'You rejected the request in Freighter.');
-  }
-
-  if (lower.includes('network') || lower.includes('passphrase')) {
+  if (lower.includes('not installed') || lower.includes('not available') || lower.includes('freighter')) {
     return new WalletError(
-      'NETWORK_MISMATCH',
-      'Freighter is on a different network than this app. Switch networks in Freighter and retry.',
+      'FREIGHTER_MISSING',
+      'Freighter wallet was not detected. Install the Freighter extension and reload the page.',
     );
   }
 

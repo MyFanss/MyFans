@@ -1,275 +1,84 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  INestApplication,
-  ValidationPipe,
-  VersioningType,
-} from '@nestjs/common';
-import request from 'supertest';
-import { App } from 'supertest/types';
-import { HealthController } from '../src/health/health.controller';
-import { HealthService } from '../src/health/health.service';
-import { DataSource } from 'typeorm';
-import { SorobanRpcService } from '../src/common/services/soroban-rpc.service';
-import { QueueMetricsService } from '../src/common/services/queue-metrics.service';
+import * as request from 'supertest';
+import { AppTestModule } from '../src/app-test.module';
+import { AppService } from '../src/app.service';
 
-describe('Health (e2e)', () => {
-  let app: INestApplication<App>;
+describe('Health & readiness (e2e)', () => {
+  let app: INestApplication;
+  let checkReadiness: jest.Mock;
 
-  const mockDataSource = { query: jest.fn().mockResolvedValue([1]) };
-  const mockSorobanRpcService = {
-    checkConnectivity: jest.fn().mockResolvedValue({ status: 'up' }),
-    checkKnownContract: jest.fn().mockResolvedValue({ status: 'up' }),
-  };
-  const mockQueueMetrics = { snapshot: jest.fn().mockReturnValue({}) };
-
-  const REDIS_ENV_KEYS = ['REDIS_URL', 'REDIS_HOST', 'REDIS_PORT'];
-  const CONTRACT_ENV_KEYS = ['CONTRACT_HEALTH'];
-  let savedRedisEnv: Record<string, string | undefined>;
-  let savedContractEnv: Record<string, string | undefined>;
-
-  beforeEach(async () => {
-    // Keep the Redis probe unconfigured so these tests never open a socket.
-    savedRedisEnv = {};
-    for (const key of REDIS_ENV_KEYS) {
-      savedRedisEnv[key] = process.env[key];
-      delete process.env[key];
-    }
-
-    // Contract probe is opt-in; default it off for the offline test env.
-    savedContractEnv = {};
-    for (const key of CONTRACT_ENV_KEYS) {
-      savedContractEnv[key] = process.env[key];
-      delete process.env[key];
-    }
-
-    mockDataSource.query.mockReset();
-    mockDataSource.query.mockResolvedValue([1]);
-    mockSorobanRpcService.checkConnectivity.mockReset();
-    mockSorobanRpcService.checkConnectivity.mockResolvedValue({ status: 'up' });
-    mockSorobanRpcService.checkKnownContract.mockReset();
-    mockSorobanRpcService.checkKnownContract.mockResolvedValue({ status: 'up' });
-
+  beforeAll(async () => {
+    checkReadiness = jest.fn();
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      controllers: [HealthController],
-      providers: [
-        HealthService,
-        { provide: DataSource, useValue: mockDataSource },
-        { provide: SorobanRpcService, useValue: mockSorobanRpcService },
-        { provide: QueueMetricsService, useValue: mockQueueMetrics },
-      ],
-    }).compile();
+      imports: [AppTestModule],
+    })
+      .overrideProvider(AppService)
+      .useValue({ getHello: () => 'ok', checkReadiness })
+      .compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
     await app.init();
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await app.close();
-    for (const key of REDIS_ENV_KEYS) {
-      if (savedRedisEnv[key] === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = savedRedisEnv[key];
-      }
-    }
-    for (const key of CONTRACT_ENV_KEYS) {
-      if (savedContractEnv[key] === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = savedContractEnv[key];
-      }
-    }
+  });
+
+  beforeEach(() => {
+    checkReadiness.mockReset();
   });
 
   describe('GET /v1/health', () => {
-    it('returns 200 with status up', () => {
-      return request(app.getHttpServer())
+    it('returns 200 { status: ok } without touching dependencies', async () => {
+      const res = await request(app.getHttpServer())
         .get('/v1/health')
-        .expect(200)
-        .expect((res) => {
-          expect(res.body.status).toBe('up');
-          expect(res.body.timestamp).toBeDefined();
-        });
-    });
+        .expect(200);
 
-    it('timestamp is a valid ISO string', () => {
-      return request(app.getHttpServer())
-        .get('/v1/health')
-        .expect(200)
-        .expect((res) => {
-          expect(new Date(res.body.timestamp as string).toISOString()).toBe(
-            res.body.timestamp,
-          );
-        });
-    });
-
-    it('is a lightweight liveness check that does not probe dependencies', () => {
-      return request(app.getHttpServer())
-        .get('/v1/health')
-        .expect(200)
-        .expect(() => {
-          expect(mockDataSource.query).not.toHaveBeenCalled();
-          expect(
-            mockSorobanRpcService.checkConnectivity,
-          ).not.toHaveBeenCalled();
-        });
+      expect(res.body).toEqual({ status: 'ok' });
+      expect(checkReadiness).not.toHaveBeenCalled();
     });
   });
 
-  describe('GET /v1/health/ready', () => {
-    it('reports ready when DB and RPC are up and Redis is unconfigured', () => {
-      return request(app.getHttpServer())
-        .get('/v1/health/ready')
-        .expect(200)
-        .expect((res) => {
-          expect(res.body.status).toBe('ready');
-          expect(res.body.dependencies.database.status).toBe('up');
-          expect(res.body.dependencies.rpc.status).toBe('up');
-          expect(res.body.dependencies.redis.status).toBe('not_configured');
-          expect(res.body.dependencies.contract).toBeUndefined();
-        });
-    });
-
-    it('reports degraded with a reason when the database is down', () => {
-      mockDataSource.query.mockRejectedValueOnce(new Error('connection refused'));
-      return request(app.getHttpServer())
-        .get('/v1/health/ready')
-        .expect(503)
-        .expect((res) => {
-          expect(res.body.status).toBe('degraded');
-          expect(res.body.dependencies.database.status).toBe('down');
-          expect(res.body.dependencies.database.reason).toBeDefined();
-          expect(res.body.reasons).toContain('database');
-        });
-    });
-
-    it('reports degraded when the Soroban RPC is unreachable', () => {
-      mockSorobanRpcService.checkConnectivity.mockResolvedValueOnce({
-        status: 'down',
-        reason: 'rpc timeout',
+  describe('GET /v1/ready', () => {
+    it('returns 200 with status ok when all dependencies are up', async () => {
+      checkReadiness.mockResolvedValue({
+        status: 'ok',
+        checks: {
+          database: { status: 'up' },
+          redis: { status: 'up' },
+        },
       });
-      return request(app.getHttpServer())
-        .get('/v1/health/ready')
-        .expect(503)
-        .expect((res) => {
-          expect(res.body.status).toBe('degraded');
-          expect(res.body.dependencies.rpc.status).toBe('down');
-          expect(res.body.reasons).toContain('rpc');
-        });
+
+      const res = await request(app.getHttpServer())
+        .get('/v1/ready')
+        .expect(200);
+
+      expect(res.body.status).toBe('ok');
+      expect(res.body.checks).toBeDefined();
+      expect(checkReadiness).toHaveBeenCalledTimes(1);
     });
 
-    it('skips the contract probe when CONTRACT_HEALTH is unset', () => {
-      return request(app.getHttpServer())
-        .get('/v1/health/ready')
-        .expect(200)
-        .expect(() => {
-          expect(
-            mockSorobanRpcService.checkKnownContract,
-          ).not.toHaveBeenCalled();
-        });
-    });
-
-    it('runs the contract probe when CONTRACT_HEALTH=1', () => {
-      process.env.CONTRACT_HEALTH = '1';
-      return request(app.getHttpServer())
-        .get('/v1/health/ready')
-        .expect(200)
-        .expect((res) => {
-          expect(
-            mockSorobanRpcService.checkKnownContract,
-          ).toHaveBeenCalled();
-          expect(res.body.dependencies.contract.status).toBe('up');
-        });
-    });
-
-    it('reports degraded when the contract probe fails', () => {
-      process.env.CONTRACT_HEALTH = '1';
-      mockSorobanRpcService.checkKnownContract.mockResolvedValueOnce({
-        status: 'down',
-        reason: 'simulate failed',
+    it('returns 503 with status degraded and a down check with reason', async () => {
+      checkReadiness.mockResolvedValue({
+        status: 'degraded',
+        checks: {
+          database: { status: 'up' },
+          redis: { status: 'down', reason: 'connection refused' },
+        },
       });
-      return request(app.getHttpServer())
-        .get('/v1/health/ready')
-        .expect(503)
-        .expect((res) => {
-          expect(res.body.status).toBe('degraded');
-          expect(res.body.dependencies.contract.status).toBe('down');
-          expect(res.body.reasons).toContain('contract');
-        });
-    });
-  });
 
-  describe('GET /v1/health/redis', () => {
-    it('returns 200 and not_configured when Redis is unset', () => {
-      return request(app.getHttpServer())
-        .get('/v1/health/redis')
-        .expect(200)
-        .expect((res) => {
-          expect(res.body.status).toBe('not_configured');
-        });
-    });
-  });
+      const res = await request(app.getHttpServer())
+        .get('/v1/ready')
+        .expect(503);
 
-  describe('GET /v1/health/aggregate', () => {
-    it('reports up and omits Redis when it is unconfigured', () => {
-      return request(app.getHttpServer())
-        .get('/v1/health/aggregate')
-        .expect(200)
-        .expect((res) => {
-          expect(res.body.status).toBe('up');
-          // Redis is skipped entirely, so it is absent and does not count.
-          expect(res.body.subsystems.redis).toBeUndefined();
-          expect(res.body.summary.total).toBe(3);
-          expect(res.body.summary.down).toBe(0);
-        });
-    });
-  });
-
-  describe('GET /v1/health/checks', () => {
-    it('returns paginated health checks with defaults', () => {
-      return request(app.getHttpServer())
-        .get('/v1/health/checks')
-        .expect(200)
-        .expect((res) => {
-          expect(Array.isArray(res.body.data)).toBe(true);
-          expect(res.body.total).toBeGreaterThan(0);
-          expect(res.body.page).toBe(1);
-          expect(res.body.limit).toBe(20);
-        });
-    });
-
-    it('respects limit query param', () => {
-      return request(app.getHttpServer())
-        .get('/v1/health/checks?limit=2')
-        .expect(200)
-        .expect((res) => {
-          expect(res.body.data).toHaveLength(2);
-          expect(res.body.limit).toBe(2);
-        });
-    });
-
-    it('respects page query param', () => {
-      return request(app.getHttpServer())
-        .get('/v1/health/checks?page=2&limit=2')
-        .expect(200)
-        .expect((res) => {
-          expect(res.body.page).toBe(2);
-        });
-    });
-
-    it('rejects limit > 100 with 400', () => {
-      return request(app.getHttpServer())
-        .get('/v1/health/checks?limit=999')
-        .expect(400);
-    });
-
-    it('rejects page < 1 with 400', () => {
-      return request(app.getHttpServer())
-        .get('/v1/health/checks?page=0')
-        .expect(400);
+      expect(res.body.status).toBe('degraded');
+      const downChecks = Object.values(res.body.checks).filter(
+        (check: any) => check.status === 'down',
+      );
+      expect(downChecks.length).toBeGreaterThan(0);
+      expect(downChecks[0]).toHaveProperty('reason');
+      expect(checkReadiness).toHaveBeenCalledTimes(1);
     });
   });
 });

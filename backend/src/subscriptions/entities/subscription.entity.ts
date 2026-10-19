@@ -76,6 +76,24 @@ export function canTransition(
  */
 export const SUBSCRIPTIONS_TABLE = 'subscriptions';
 
+/**
+ * Returns true when a SUBMITTED subscription has passed its
+ * submitExpiresAt deadline and should transition to FAILED.
+ *
+ * The predicate is pure and injectable via the `now` parameter so that
+ * callers can supply a deterministic clock in tests or scheduled jobs.
+ */
+export function isSubmissionExpired(
+  sub: Pick<Subscription, 'status' | 'submitExpiresAt'>,
+  now: Date = new Date(),
+): boolean {
+  return (
+    sub.status === SubscriptionStatus.SUBMITTED &&
+    sub.submitExpiresAt != null &&
+    sub.submitExpiresAt.getTime() <= now.getTime()
+  );
+}
+
 @Entity(SUBSCRIPTIONS_TABLE)
 export class Subscription {
   @PrimaryGeneratedColumn('uuid')

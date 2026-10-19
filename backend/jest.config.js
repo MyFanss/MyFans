@@ -2,7 +2,7 @@
 module.exports = {
   moduleFileExtensions: ['ts', 'js', 'json'],
   rootDir: '.',
-  roots: ['<rootDir>/src'],
+  roots: ['<rootDir>/src', '<rootDir>/test-setup.spec.ts'],
   testRegex: '.*\\.spec\\.ts$',
   testPathIgnorePatterns: ['\\.e2e\\.spec\\.ts$'],
   transform: {

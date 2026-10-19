@@ -81,7 +81,7 @@ export function useNetworkGuard(options: UseNetworkGuardOptions = {}): NetworkGu
     try {
       const resolved = normalizeNetwork(await resolveActual());
       setActual(resolved);
-      setUnreachable(resolved === 'unknown');
+      setUnreachable(false);
     } catch {
       // RPC unreachable or wallet error: fail closed.
       setActual('unknown');

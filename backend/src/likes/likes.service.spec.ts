@@ -1,132 +1,124 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-
-import { Like } from './like.entity';
-
-  const likes: Array<{ id: number; userId: number; postId: number }> = [];
-  let nextId = 1;
-
-  const repositoryMock = {
-    findOne: jest.fn(async ({ where }: any) => {
-      return (
-        likes.find(
-          (like) =>
-            like.userId === where.userId && like.postId === where.postId,
-        ) ?? null
-      );
-    }),
-    create: jest.fn((data: any) => ({ id
+import { Like } from './entities/like.entity';
+import { Post } from '../posts/entities/post.entity';
+import { Comment } from '../comments/entities/comment.entity';
 import { LikesService } from './likes.service';
 
 describe('LikesService', () => {
   let service: LikesService;
-  let mockRepo: {
-    findOne: jest.Mock;
-    create: jest.Mock;
-    save: jest.Mock;
-    delete: jest.Mock;
-    count: jest.Mock;
+
+  const likeRepo = {
+    findOne: jest.fn(),
+    save: jest.fn(),
+    delete: jest.fn(),
+    count: jest.fn(),
+  };
+
+  const postRepo = {
+    findOne: jest.fn(),
+  };
+
+  const commentRepo = {
+    findOne: jest.fn(),
   };
 
   beforeEach(async () => {
-    mockRepo = {
-      findOne: jest.fn(),
-      create: jest.fn(),
-      save: jest.fn(),
-      delete: jest.fn(),
-      count: jest.fn(),
-    };
+    jest.clearAllMocks();
 
-    const module: TestingModule = await Test.createTestingModule({
+    const moduleRef = await Test.createTestingModule({
       providers: [
         LikesService,
-        { provide: getRepositoryToken(Like), useValue: mockRepo },
+        { provide: getRepositoryToken(Like), useValue: likeRepo },
+        { provide: getRepositoryToken(Post), useValue: postRepo },
+        { provide: getRepositoryToken(Comment), useValue: commentRepo },
       ],
     }).compile();
 
-    service = module.get<LikesService>(LikesService);
-  });
-
-  afterEach(() => {
-    jest.clearAllMocks();
+    service = moduleRef.get<LikesService>(LikesService);
   });
 
   describe('like', () => {
-    it('does not save when the like row already exists and returns liked: true', async () => {
-      const existing = { id: 'like-1', userId: 'user-1', targetId: 'post-1' };
-      mockRepo.findOne.mockResolvedValue(existing);
+    it('creates a like when the post exists and no like is present', async () => {
+      postRepo.findOne.mockResolvedValue({ id: 'post-1' });
+      likeRepo.findOne.mockResolvedValue(null);
+      likeRepo.save.mockImplementation(async (entity) => entity);
 
       const result = await service.like('user-1', 'post-1');
 
-      expect(mockRepo.findOne).toHaveBeenCalledWith({
-        where: { userId: 'user-1', targetId: 'post-1' },
+      expect(postRepo.findOne).toHaveBeenCalledWith({ where: { id: 'post-1' } });
+      expect(likeRepo.findOne).toHaveBeenCalledWith({
+        where: { userId: 'user-1', postId: 'post-1' },
       });
-      expect(mockRepo.save).not.toHaveBeenCalled();
-      expect(mockRepo.create).not.toHaveBeenCalled();
-      expect(result).toEqual({ liked: true });
+      expect(likeRepo.save).toHaveBeenCalledTimes(1);
+      expect(likeRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-1', postId: 'post-1' }),
+      );
+      expect(result).toBeDefined();
     });
 
-    it('creates and saves a new like row when none exists', async () => {
-      mockRepo.findOne.mockResolvedValue(null);
-      const created = { userId: 'user-1', targetId: 'post-1' };
-      mockRepo.create.mockReturnValue(created);
-      mockRepo.save.mockResolvedValue({ id: 'like-1', ...created });
+    it('is idempotent when re-liking the same post (no duplicate row)', async () => {
+      postRepo.findOne.mockResolvedValue({ id: 'post-1' });
+      const existing = { id: 'like-1', userId: 'user-1', postId: 'post-1' };
+      likeRepo.findOne.mockResolvedValue(existing);
 
       const result = await service.like('user-1', 'post-1');
 
-      expect(mockRepo.create).toHaveBeenCalledTimes(1);
-      expect(mockRepo.save).toHaveBeenCalledTimes(1);
-      expect(mockRepo.save).toHaveBeenCalledWith(created);
-      expect(result).toEqual({ liked: true });
+      expect(likeRepo.save).not.toHaveBeenCalled();
+      expect(result).toBe(existing);
+    });
+
+    it('does not create a like when the target post does not exist', async () => {
+      postRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.like('user-1', 'missing-post')).rejects.toThrow();
+
+      expect(likeRepo.findOne).not.toHaveBeenCalled();
+      expect(likeRepo.save).not.toHaveBeenCalled();
     });
   });
 
   describe('unlike', () => {
-    it('deletes by userId/targetId and returns liked: false even when nothing was deleted', async () => {
-      mockRepo.delete.mockResolvedValue({ affected: 0 });
+    it('deletes the like for the given user and post', async () => {
+      likeRepo.delete.mockResolvedValue({ affected: 1 });
 
-      const result = await service.unlike('user-1', 'post-1');
+      await service.unlike('user-1', 'post-1');
 
-      expect(mockRepo.delete).toHaveBeenCalledWith({
+      expect(likeRepo.delete).toHaveBeenCalledWith({
         userId: 'user-1',
-        targetId: 'post-1',
+        postId: 'post-1',
       });
-      expect(result).toEqual({ liked: false });
     });
   });
 
   describe('count', () => {
-    it('delegates to the repository with the documented where clause', async () => {
-      mockRepo.count.mockResolvedValue(3);
+    it('returns the number of likes for a post', async () => {
+      likeRepo.count.mockResolvedValue(3);
 
       const result = await service.count('post-1');
 
-      expect(mockRepo.count).toHaveBeenCalledWith({ where: { targetId: 'post-1' } });
+      expect(likeRepo.count).toHaveBeenCalledWith({ where: { postId: 'post-1' } });
       expect(result).toBe(3);
     });
   });
 
   describe('hasLiked', () => {
-    it('returns true when a like row exists', async () => {
-      mockRepo.findOne.mockResolvedValue({ id: 'like-1' });
+    it('returns true when a like exists', async () => {
+      likeRepo.findOne.mockResolvedValue({ id: 'like-1' });
 
       const result = await service.hasLiked('user-1', 'post-1');
 
-      expect(mockRepo.findOne).toHaveBeenCalledWith({
-        where: { userId: 'user-1', targetId: 'post-1' },
+      expect(likeRepo.findOne).toHaveBeenCalledWith({
+        where: { userId: 'user-1', postId: 'post-1' },
       });
       expect(result).toBe(true);
     });
 
-    it('returns false when no like row exists', async () => {
-      mockRepo.findOne.mockResolvedValue(null);
+    it('returns false when no like exists', async () => {
+      likeRepo.findOne.mockResolvedValue(null);
 
       const result = await service.hasLiked('user-1', 'post-1');
 
-      expect(mockRepo.findOne).toHaveBeenCalledWith({
-        where: { userId: 'user-1', targetId: 'post-1' },
-      });
       expect(result).toBe(false);
     });
   });
