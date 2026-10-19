@@ -12,6 +12,9 @@ export const MAX_SOCIAL_LINK_URL_LENGTH = 2048;
 /** Maximum length of the platform/label identifier. */
 export const MAX_SOCIAL_LINK_PLATFORM_LENGTH = 64;
 
+/** Maximum number of social links a single user may have. */
+export const MAX_SOCIAL_LINKS_PER_USER = 10;
+
 export interface SocialLink {
   id: string;
   userId: string;
@@ -131,6 +134,10 @@ export class SocialLinksService {
   create(userId: string, input: CreateSocialLinkInput): SocialLink {
     const platform = sanitizePlatform(input?.platform);
     const url = sanitizeSocialLinkUrl(input?.url);
+
+    if (this.list(userId).length >= MAX_SOCIAL_LINKS_PER_USER) {
+      throw new BadRequestException('too many social links');
+    }
 
     const now = new Date();
     const link: SocialLink = {
