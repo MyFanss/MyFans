@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useReducer, useCallback } from 'react';
+import { useEffect, useReducer, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/api/client';
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ type Action =
   | { type: 'ACCESS_RESOLVED'; hasAccess: boolean }
   | { type: 'LIKE_OPTIMISTIC' }
   | { type: 'LIKE_COMMIT' }
-  | { type: 'LIKE_ROLLBACK'; previousCount: number }
+  | { type: 'LIKE_ROLLBACK' }
   | { type: 'LIKE_ERROR_DISMISS' }
   | { type: 'COMMENTS_LOADED'; comments: Comment[] }
   | { type: 'COMMENT_DRAFT'; value: string }
@@ -101,7 +101,17 @@ function reducer(state: PageState, action: Action): PageState {
     case 'LIKE_COMMIT':
       return { ...state, liking: false };
     case 'LIKE_ROLLBACK':
-      return { ...state, liking: false, likeCount: action.previousCount, likeError: 'Failed to like. Please try again.' };
+      // Undo only this call's own optimistic +1, relative to whatever
+      // likeCount is *now* — never overwrite with a baseline captured
+      // before the request started. A baseline-overwrite would clobber a
+      // newer count if content reloaded (or another update landed) while
+      // this request was in flight (#2013).
+      return {
+        ...state,
+        liking: false,
+        likeCount: Math.max(0, state.likeCount - 1),
+        likeError: 'Failed to like. Please try again.',
+      };
     case 'LIKE_ERROR_DISMISS':
       return { ...state, likeError: null };
     case 'COMMENTS_LOADED':
@@ -139,8 +149,14 @@ const initialState: PageState = {
   commentError: null,
 };
 
+// Issue #2011: a Date.now()+Math.random() key is guessable and, more
+// importantly, is regenerated on every call, so a retry (or a double-click)
+// can never be deduplicated by the backend. crypto.randomUUID() gives a
+// cryptographically-unique value; stability across retries is handled by
+// the caller (see `idempotencyKeyRef` in `submitComment`), which only calls
+// this once per draft rather than once per attempt.
 function generateIdempotencyKey(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return crypto.randomUUID();
 }
 
 // ── Page component ────────────────────────────────────────────────────────
@@ -148,6 +164,12 @@ function generateIdempotencyKey(): string {
 export default function ContentPage({ params }: { params: { id: string } }) {
   const { id } = params;
   const [state, dispatch] = useReducer(reducer, initialState);
+  // Issue #2011: the idempotency key for the comment currently being
+  // composed. Kept in a ref (not reducer state) since it is pure
+  // bookkeeping that should never itself trigger a re-render. Generated
+  // lazily on first submit of a given draft and reused for every retry of
+  // that *same* draft; a new/edited draft gets a new key.
+  const commentIdempotencyRef = useRef<{ key: string; draft: string } | null>(null);
 
   // 1. Load content metadata
   useEffect(() => {
@@ -227,10 +249,14 @@ export default function ContentPage({ params }: { params: { id: string } }) {
     };
   }, [id, state.isUnlocked, state.accessResolved]);
 
-  // Like handler — optimistic update with rollback
+  // Like handler — optimistic update with rollback.
+  // Guarded by `state.liking` so a second click while a request is already
+  // in flight is a no-op (#2013): the check runs first, before any
+  // dispatch, and `handleLike`'s closure is rebound on every render where
+  // `state.liking` changes, so the very next render after the optimistic
+  // dispatch already sees `liking: true`.
   const handleLike = useCallback(async () => {
     if (state.liking || !state.isUnlocked) return;
-    const prev = state.likeCount;
     dispatch({ type: 'LIKE_OPTIMISTIC' });
 
     try {
@@ -239,31 +265,44 @@ export default function ContentPage({ params }: { params: { id: string } }) {
         idempotencyKey: generateIdempotencyKey(),
       });
       if (!res.ok) {
-        dispatch({ type: 'LIKE_ROLLBACK', previousCount: prev });
+        dispatch({ type: 'LIKE_ROLLBACK' });
         return;
       }
       dispatch({ type: 'LIKE_COMMIT' });
     } catch {
-      dispatch({ type: 'LIKE_ROLLBACK', previousCount: prev });
+      dispatch({ type: 'LIKE_ROLLBACK' });
     }
-  }, [id, state.liking, state.isUnlocked, state.likeCount]);
+  }, [id, state.liking, state.isUnlocked]);
 
-  // Comment submit
+  // Comment submit (#2011: idempotency key is stable per draft, not
+  // regenerated on every call, so a retry after a network error — or a
+  // double-submit of the same draft — reuses the same key and the backend
+  // can deduplicate the comment).
   const submitComment = useCallback(async () => {
-    if (!state.commentDraft.trim() || state.submittingComment) return;
+    const draft = state.commentDraft.trim();
+    if (!draft || state.submittingComment) return;
+
+    if (!commentIdempotencyRef.current || commentIdempotencyRef.current.draft !== draft) {
+      commentIdempotencyRef.current = { key: generateIdempotencyKey(), draft };
+    }
+    const idempotencyKey = commentIdempotencyRef.current.key;
+
     dispatch({ type: 'COMMENT_SUBMITTING' });
 
     try {
       const res = await apiFetch(`/api/v1/content/${id}/comments`, {
         method: 'POST',
-        idempotencyKey: generateIdempotencyKey(),
-        body: JSON.stringify({ body: state.commentDraft.trim() }),
+        idempotencyKey,
+        body: JSON.stringify({ body: draft }),
       });
       if (!res.ok) {
         dispatch({ type: 'COMMENT_ERROR', message: 'Failed to post comment. Please try again.' });
         return;
       }
       const comment = (await res.json()) as Comment;
+      // Clear the key only on success so the *next* draft gets a fresh one;
+      // on error it stays put for the retry above to reuse.
+      commentIdempotencyRef.current = null;
       dispatch({ type: 'COMMENT_DONE', comment });
     } catch {
       dispatch({ type: 'COMMENT_ERROR', message: 'Network error. Could not post comment.' });
