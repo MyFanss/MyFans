@@ -1,14 +1,102 @@
-/**
- * Unit tests for useNetworkGuard — focuses on the poll interval protection
- * that prevents overlapping in-flight `resolveActual` calls (issue #1991).
- */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useNetworkGuard } from './useNetworkGuard';
 
 describe('useNetworkGuard', () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('fails closed when no resolver is configured', () => {
+    const { result } = renderHook(() => useNetworkGuard({ pollIntervalMs: 0 }));
+
+    expect(result.current.expected).toBe('testnet');
+    expect(result.current.actual).toBe('unknown');
+    expect(result.current.mismatch).toBe(true);
+    expect(result.current.unreachable).toBe(true);
+    expect(result.current.blocked).toBe(true);
+    expect(result.current.reason).toBe('Network unreachable — mutating calls are blocked.');
+    expect(() => result.current.assertCanMutate()).toThrow(
+      'Network unreachable — mutating calls are blocked.',
+    );
+  });
+
+  it('covers matching network (testnet / testnet) as unblocked', async () => {
+    const resolveActual = vi.fn().mockResolvedValue('testnet');
+    const { result } = renderHook(() =>
+      useNetworkGuard({ expected: 'testnet', resolveActual, pollIntervalMs: 0 }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.actual).toBe('testnet');
+    });
+
+    expect(result.current.expected).toBe('testnet');
+    expect(result.current.mismatch).toBe(false);
+    expect(result.current.unreachable).toBe(false);
+    expect(result.current.blocked).toBe(false);
+    expect(result.current.reason).toBeNull();
+    expect(() => result.current.assertCanMutate()).not.toThrow();
+  });
+
+  it('covers mismatched network (testnet / mainnet) as blocked with mismatch reason', async () => {
+    const resolveActual = vi.fn().mockResolvedValue('mainnet');
+    const { result } = renderHook(() =>
+      useNetworkGuard({ expected: 'testnet', resolveActual, pollIntervalMs: 0 }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.actual).toBe('mainnet');
+    });
+
+    expect(result.current.expected).toBe('testnet');
+    expect(result.current.mismatch).toBe(true);
+    expect(result.current.unreachable).toBe(false);
+    expect(result.current.blocked).toBe(true);
+    expect(result.current.reason).toBe('Network mismatch: expected testnet, connected to mainnet.');
+    expect(() => result.current.assertCanMutate()).toThrow(
+      'Network mismatch: expected testnet, connected to mainnet.',
+    );
+  });
+
+  it('covers unknown network (testnet / unknown) as blocked with unknown-network reason', async () => {
+    const resolveActual = vi.fn().mockResolvedValue('unknown');
+    const { result } = renderHook(() =>
+      useNetworkGuard({ expected: 'testnet', resolveActual, pollIntervalMs: 0 }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.actual).toBe('unknown');
+    });
+
+    expect(result.current.expected).toBe('testnet');
+    expect(result.current.mismatch).toBe(true);
+    expect(result.current.unreachable).toBe(false);
+    expect(result.current.blocked).toBe(true);
+    expect(result.current.reason).toBe('Unknown network — mutating calls are blocked.');
+    expect(() => result.current.assertCanMutate()).toThrow(
+      'Unknown network — mutating calls are blocked.',
+    );
+  });
+
+  it('covers rejected resolveActual as blocked with unreachable reason', async () => {
+    const resolveActual = vi.fn().mockRejectedValue(new Error('RPC failure'));
+    const { result } = renderHook(() =>
+      useNetworkGuard({ expected: 'testnet', resolveActual, pollIntervalMs: 0 }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.unreachable).toBe(true);
+    });
+
+    expect(result.current.expected).toBe('testnet');
+    expect(result.current.actual).toBe('unknown');
+    expect(result.current.mismatch).toBe(true);
+    expect(result.current.blocked).toBe(true);
+    expect(result.current.reason).toBe('Network unreachable — mutating calls are blocked.');
+    expect(() => result.current.assertCanMutate()).toThrow(
+      'Network unreachable — mutating calls are blocked.',
+    );
   });
 
   it('skips interval ticks while resolveActual is in flight and resumes once it settles', async () => {
@@ -56,34 +144,6 @@ describe('useNetworkGuard', () => {
     unmount();
   });
 
-  it('keeps assertCanMutate failing closed when blocked and passing when the network matches', async () => {
-    vi.useFakeTimers();
-
-    let resolveDeferred: (network: string) => void = () => {};
-    const resolveActual = vi.fn(
-      () =>
-        new Promise<string>((resolve) => {
-          resolveDeferred = resolve;
-        }),
-    );
-
-    const { result, unmount } = renderHook(() =>
-      useNetworkGuard({ resolveActual, pollIntervalMs: 5000 }),
-    );
-
-    // Fail closed while the actual network is unknown.
-    expect(() => result.current.assertCanMutate()).toThrow(/blocked/i);
-
-    await act(async () => {
-      resolveDeferred('testnet');
-    });
-
-    // Matching network: mutations are allowed.
-    expect(() => result.current.assertCanMutate()).not.toThrow();
-
-    unmount();
-  });
-
   it('does not poll again after unmount (cancelled behaviour preserved)', async () => {
     vi.useFakeTimers();
 
@@ -102,14 +162,5 @@ describe('useNetworkGuard', () => {
     });
 
     expect(resolveActual).toHaveBeenCalledTimes(1);
-  });
-
-  it('fails closed when no resolver is configured', async () => {
-    const { result } = renderHook(() => useNetworkGuard());
-
-    expect(result.current.actual).toBe('unknown');
-    expect(result.current.unreachable).toBe(true);
-    expect(result.current.blocked).toBe(true);
-    expect(() => result.current.assertCanMutate()).toThrow(/blocked/i);
   });
 });
