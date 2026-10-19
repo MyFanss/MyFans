@@ -28,14 +28,14 @@ import { apiFetch } from '@/lib/api/client';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-interface Balance {
+export interface Balance {
   asset: string;
   available: string;
   pending: string;
   currency: string;
 }
 
-interface EarningsHistoryEntry {
+export interface EarningsHistoryEntry {
   id: string;
   amount: string;
   asset: string;
@@ -62,9 +62,9 @@ interface PrepareWithdrawResponse {
   estimatedFee?: string;
 }
 
-type WithdrawStep = 'idle' | 'preparing' | 'signing' | 'confirming' | 'done';
+export type WithdrawStep = 'idle' | 'preparing' | 'signing' | 'confirming' | 'done';
 
-interface PageState {
+export interface PageState {
   // Balances
   balances: Balance[];
   balancesLoading: boolean;
@@ -89,7 +89,7 @@ interface PageState {
   unauthorized: boolean;
 }
 
-type Action =
+export type Action =
   | { type: 'BALANCES_LOADED'; balances: Balance[] }
   | { type: 'BALANCES_ERROR'; message: string }
   | { type: 'HISTORY_LOADED'; entries: EarningsHistoryEntry[]; cursor: string | null; append: boolean }
@@ -104,7 +104,7 @@ type Action =
   | { type: 'WITHDRAW_RESET' }
   | { type: 'UNAUTHORIZED' };
 
-const initialState: PageState = {
+export const initialState: PageState = {
   balances: [],
   balancesLoading: true,
   balancesError: null,
@@ -122,7 +122,7 @@ const initialState: PageState = {
   unauthorized: false,
 };
 
-function reducer(state: PageState, action: Action): PageState {
+export function reducer(state: PageState, action: Action): PageState {
   switch (action.type) {
     case 'BALANCES_LOADED':
       return { ...state, balancesLoading: false, balancesError: null, balances: action.balances };
