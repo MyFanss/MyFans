@@ -1,11 +1,62 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
   SocialLinksService,
   MAX_SOCIAL_LINKS_PER_USER,
   MAX_SOCIAL_LINK_URL_LENGTH,
   MAX_SOCIAL_LINK_PLATFORM_LENGTH,
+  sanitizeSocialLinkUrl,
 } from './social-links.service';
+
+describe('sanitizeSocialLinkUrl', () => {
+  it('rejects a javascript: scheme', () => {
+    expect(() => sanitizeSocialLinkUrl('javascript:alert(1)')).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('rejects a data: scheme', () => {
+    expect(() =>
+      sanitizeSocialLinkUrl('data:text/html,<script>alert(1)</script>'),
+    ).toThrow(BadRequestException);
+  });
+
+  it('rejects an http: scheme', () => {
+    expect(() => sanitizeSocialLinkUrl('http://example.com')).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('rejects a malformed URL', () => {
+    expect(() => sanitizeSocialLinkUrl('not a url')).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('rejects an empty string', () => {
+    expect(() => sanitizeSocialLinkUrl('')).toThrow(BadRequestException);
+  });
+
+  it('rejects a whitespace-only string', () => {
+    expect(() => sanitizeSocialLinkUrl('   ')).toThrow(BadRequestException);
+  });
+
+  it('rejects a URL longer than the maximum length', () => {
+    const longUrl = 'https://x.com/' + 'a'.repeat(MAX_SOCIAL_LINK_URL_LENGTH);
+    expect(() => sanitizeSocialLinkUrl(longUrl)).toThrow(BadRequestException);
+  });
+
+  it('rejects a URL with no hostname', () => {
+    expect(() => sanitizeSocialLinkUrl('https:///path')).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('normalizes a valid https URL (trims and parses)', () => {
+    const result = sanitizeSocialLinkUrl('  https://example.com/path  ');
+    expect(result).toBe('https://example.com/path');
+  });
+});
 
 describe('SocialLinksService', () => {
   let service: SocialLinksService;
@@ -169,7 +220,12 @@ describe('SocialLinksService', () => {
         platform: 'github',
         url: 'https://github.com/example',
       });
-      expect(() => service.findOne('user-b', created.id)).toThrow(/not found/i);
+      expect(() => service.findOne('user-b', created.id)).toThrow(
+        NotFoundException,
+      );
+      // The link must still exist for the owner
+      expect(service.list('user-a')).toHaveLength(1);
+      expect(service.findOne('user-a', created.id)).toEqual(created);
     });
   });
 
@@ -213,6 +269,55 @@ describe('SocialLinksService', () => {
         service.update('user-1', 'nonexistent', { platform: 'x' }),
       ).toThrow(/not found/i);
     });
+
+    it('throws NotFoundException when a different user tries to update the link and leaves it unchanged', () => {
+      const created = service.create('user-owner', {
+        platform: 'github',
+        url: 'https://github.com/example',
+      });
+
+      expect(() =>
+        service.update('user-other', created.id, {
+          platform: 'hacked',
+        }),
+      ).toThrow(NotFoundException);
+
+      // The link must still exist and be unchanged for the owner
+      const stillThere = service.findOne('user-owner', created.id);
+      expect(stillThere.platform).toBe('github');
+      expect(stillThere.url).toBe('https://github.com/example');
+    });
+
+    it('omitted platform or url keeps the previous value and refreshes updatedAt', () => {
+      const created = service.create('user-1', {
+        platform: 'github',
+        url: 'https://github.com/example',
+      });
+
+      const originalUpdatedAt = created.updatedAt;
+
+      // Wait a tick so updatedAt will differ if refreshed
+      const updated = service.update('user-1', created.id, {
+        platform: 'twitter',
+      });
+
+      expect(updated.platform).toBe('twitter');
+      expect(updated.url).toBe('https://github.com/example');
+      expect(updated.updatedAt.getTime()).toBeGreaterThan(
+        originalUpdatedAt.getTime(),
+      );
+
+      // Omit url too — both fields preserved/updated correctly
+      const updatedAgain = service.update('user-1', created.id, {
+        url: 'https://twitter.com/new-example',
+      });
+
+      expect(updatedAgain.platform).toBe('twitter');
+      expect(updatedAgain.url).toBe('https://twitter.com/new-example');
+      expect(updatedAgain.updatedAt.getTime()).toBeGreaterThan(
+        updated.updatedAt.getTime(),
+      );
+    });
   });
 
   describe('remove', () => {
@@ -249,7 +354,24 @@ describe('SocialLinksService', () => {
     });
 
     it('throws when the link does not exist', () => {
-      expect(() => service.remove('user-1', 'nonexistent')).toThrow(/not found/i);
+      expect(() => service.remove('user-1', 'nonexistent')).toThrow(
+        /not found/i,
+      );
+    });
+
+    it('throws NotFoundException when a different user tries to remove the link and leaves it in place', () => {
+      const created = service.create('user-owner', {
+        platform: 'github',
+        url: 'https://github.com/example',
+      });
+
+      expect(() =>
+        service.remove('user-other', created.id),
+      ).toThrow(NotFoundException);
+
+      // The link must still exist for the owner
+      expect(service.list('user-owner')).toHaveLength(1);
+      expect(service.findOne('user-owner', created.id)).toEqual(created);
     });
   });
 });

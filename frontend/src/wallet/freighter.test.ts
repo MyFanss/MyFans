@@ -18,7 +18,31 @@ describe('freighter.ts', () => {
     expect(mapWalletError('user rejected').code).toBe('USER_REJECTED');
     expect(mapWalletError('network mismatch').code).toBe('NETWORK_MISMATCH');
     expect(mapWalletError('unknown error').code).toBe('SIGN_FAILED');
-    expect(mapWalletError('freighter reject').code).toBe('FREIGHTER_MISSING'); // ordering check
+    expect(mapWalletError('freighter reject').code).toBe('USER_REJECTED'); // ordering check
+  });
+
+  it('mapWalletError classifies USER_REJECTED before FREIGHTER_MISSING', () => {
+    expect(mapWalletError('freighter reject').code).toBe('USER_REJECTED');
+    expect(mapWalletError('freighter denied').code).toBe('USER_REJECTED');
+    expect(mapWalletError('freighter cancel').code).toBe('USER_REJECTED');
+    expect(mapWalletError('user rejected freighter').code).toBe('USER_REJECTED');
+  });
+
+  it('mapWalletError classifies NETWORK_MISMATCH before FREIGHTER_MISSING', () => {
+    expect(mapWalletError('freighter network').code).toBe('NETWORK_MISMATCH');
+    expect(mapWalletError('freighter passphrase').code).toBe('NETWORK_MISMATCH');
+    expect(mapWalletError('network mismatch freighter').code).toBe('NETWORK_MISMATCH');
+  });
+
+  it('mapWalletError classifies FREIGHTER_MISSING for missing-extension phrases only', () => {
+    expect(mapWalletError('not installed').code).toBe('FREIGHTER_MISSING');
+    expect(mapWalletError('not available').code).toBe('FREIGHTER_MISSING');
+    expect(mapWalletError('freighter').code).toBe('FREIGHTER_MISSING');
+  });
+
+  it('mapWalletError preserves POPUP_BLOCKED and SIGN_FAILED fallbacks', () => {
+    expect(mapWalletError('popup blocked').code).toBe('POPUP_BLOCKED');
+    expect(mapWalletError('some other error').code).toBe('SIGN_FAILED');
   });
 
   it('connectFreighter handles failure paths', async () => {
