@@ -30,6 +30,11 @@ describe('SUBSCRIPTION_TRANSITIONS', () => {
       [SubscriptionStatus.ACTIVE]: [],
     });
   });
+
+  it('ACTIVE and FAILED have no outgoing transitions', () => {
+    expect(SUBSCRIPTION_TRANSITIONS[SubscriptionStatus.ACTIVE]).toEqual([]);
+    expect(SUBSCRIPTION_TRANSITIONS[SubscriptionStatus.FAILED]).toEqual([]);
+  });
 });
 
 describe('canTransition', () => {
@@ -62,6 +67,15 @@ describe('canTransition', () => {
   it('rejects backward transitions', () => {
     expect(canTransition(SubscriptionStatus.SUBMITTED, SubscriptionStatus.CREATED)).toBe(false);
     expect(canTransition(SubscriptionStatus.CONFIRMED, SubscriptionStatus.SUBMITTED)).toBe(false);
+  });
+
+  it('every legal edge returns true and every other pair returns false', () => {
+    for (const from of Object.values(SubscriptionStatus)) {
+      for (const to of Object.values(SubscriptionStatus)) {
+        const expected = from === to || SUBSCRIPTION_TRANSITIONS[from].includes(to);
+        expect(canTransition(from, to)).toBe(expected);
+      }
+    }
   });
 });
 
