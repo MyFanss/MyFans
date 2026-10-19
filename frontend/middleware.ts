@@ -59,6 +59,22 @@ function isPublicAsset(pathname: string): boolean {
   return PUBLIC_ASSET_EXTENSIONS.some((ext) => pathname.endsWith(ext));
 }
 
+// ── Token shape check ──────────────────────────────────────────────────────
+
+/**
+ * Minimal structural check for a JWT: exactly three non-empty dot-separated
+ * segments (header.payload.signature).  Full signature verification cannot run
+ * in Edge middleware without a backend call; the backend/RouteGuard performs
+ * authoritative verification.  This catches obviously malformed tokens early.
+ */
+export function isStructurallyValidJwt(token: string): boolean {
+  if (!token) {
+    return false;
+  }
+  const parts = token.split('.');
+  return parts.length === 3 && parts.every((part) => part.length > 0);
+}
+
 // ── Middleware ─────────────────────────────────────────────────────────────
 
 export function middleware(request: NextRequest) {
@@ -108,12 +124,11 @@ export function middleware(request: NextRequest) {
     return response;
   }
 
-  // Expired JWT detection: a minimal structural check (three dot-separated
-  // segments).  Full signature verification cannot run in Edge middleware
-  // without a backend call; the backend/RouteGuard performs authoritative
-  // verification.  This catches obviously malformed tokens early.
-  const parts = authToken.split('.');
-  if (parts.length !== 3) {
+  // Expired JWT detection: reject tokens that are not three non-empty
+  // dot-separated segments.  Full signature verification cannot run in Edge
+  // middleware without a backend call; the backend/RouteGuard performs
+  // authoritative verification.  This catches obviously malformed tokens early.
+  if (!isStructurallyValidJwt(authToken)) {
     const signInUrl = new URL('/auth/sign-in', request.url);
     signInUrl.searchParams.set('returnUrl', pathname);
     signInUrl.searchParams.set('reason', 'invalid_token');
