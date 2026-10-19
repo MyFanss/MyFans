@@ -66,13 +66,16 @@ export default function SignInPage() {
 
       const { token } = (await res.json()) as { token: string };
       setAuthToken(token);
-      await refreshUser();
 
-      // Navigate to returnUrl or role home.
-      const me = await (await fetch('/api/v1/users/me', { credentials: 'same-origin' })).json() as { is_creator?: boolean };
+      // Navigate to returnUrl or role home, using the user the context
+      // refresh just fetched -- no second /users/me request needed.
+      const refreshedUser = await refreshUser();
+      if (!refreshedUser) {
+        throw new Error('Could not load your account after signing in.');
+      }
       const destination = isSafeReturnUrl(returnUrl)
         ? returnUrl
-        : me.is_creator
+        : refreshedUser.is_creator
           ? '/dashboard'
           : '/discover';
       router.replace(destination);

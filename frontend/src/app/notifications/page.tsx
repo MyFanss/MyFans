@@ -222,8 +222,14 @@ export default function NotificationsPage() {
     try {
       await markAllNotificationsRead();
       dispatch({ type: 'MARK_ALL_READ' });
-    } catch {
-      // Non-fatal.
+    } catch (err) {
+      // Surface the failure: items must stay as-is (no MARK_ALL_READ
+      // dispatched) and the user must see that the action didn't take.
+      dispatch({
+        type: 'LOAD_ERROR',
+        error:
+          err instanceof Error ? err.message : 'Failed to mark all as read.',
+      });
     } finally {
       setMarkingAll(false);
     }
@@ -271,11 +277,19 @@ export default function NotificationsPage() {
         </p>
       )}
 
-      {/* Error */}
+      {/* Error (distinct from the empty state: a failed fetch must never
+          render the same as a genuinely empty inbox) */}
       {!state.loading && state.error && (
-        <p className="notifications-page__error" role="alert">
-          {state.error}
-        </p>
+        <div className="notifications-page__error" role="alert">
+          <p>{state.error}</p>
+          <button
+            type="button"
+            className="notifications-page__retry"
+            onClick={() => void load(state.filter)}
+          >
+            Retry
+          </button>
+        </div>
       )}
 
       {/* Empty state */}
