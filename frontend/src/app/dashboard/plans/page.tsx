@@ -20,7 +20,7 @@ import { apiFetch } from '@/lib/api/client';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-interface PlanForm {
+export interface PlanForm {
   title: string;
   description: string;
   asset: string;
@@ -28,7 +28,7 @@ interface PlanForm {
   intervalDays: string;
 }
 
-interface PlanMeta {
+export interface PlanMeta {
   planId: string;
   creator: string;
   asset: string;
@@ -40,7 +40,7 @@ interface PlanMeta {
   updatedAt: string;
 }
 
-type WizardStep =
+export type WizardStep =
   | 'form'
   | 'review'
   | 'signing'
@@ -48,7 +48,7 @@ type WizardStep =
   | 'done'
   | 'metadata_retry';
 
-interface PageState {
+export interface PageState {
   step: WizardStep;
   form: PlanForm;
   formErrors: Partial<PlanForm>;
@@ -62,7 +62,7 @@ interface PageState {
   metadataError: string | null;
 }
 
-type Action =
+export type Action =
   | { type: 'FIELD'; field: keyof PlanForm; value: string }
   | { type: 'VALIDATE'; errors: Partial<PlanForm> }
   | { type: 'GO_REVIEW' }
@@ -86,7 +86,7 @@ const EMPTY_FORM: PlanForm = {
   intervalDays: '30',
 };
 
-const initialState: PageState = {
+export const initialState: PageState = {
   step: 'form',
   form: EMPTY_FORM,
   formErrors: {},
@@ -98,7 +98,7 @@ const initialState: PageState = {
   metadataError: null,
 };
 
-function reducer(state: PageState, action: Action): PageState {
+export function reducer(state: PageState, action: Action): PageState {
   switch (action.type) {
     case 'FIELD':
       return {
@@ -126,11 +126,6 @@ function reducer(state: PageState, action: Action): PageState {
       return { ...state, step: 'review', globalError: action.message };
     case 'POSTING_METADATA':
       return { ...state, metadataError: null };
-    case 'METADATA_DONE':
-      return {
-        ...state,
-        step: 'done',
-        plans: [action.plan, ...state.plans],
     case 'METADATA_DONE': {
       // Replace an existing entry with the same planId instead of always
       // prepending, so a retried POST never renders a duplicate row.
@@ -171,7 +166,7 @@ function reducer(state: PageState, action: Action): PageState {
 
 // ── Validation ─────────────────────────────────────────────────────────────
 
-function validate(form: PlanForm): Partial<PlanForm> {
+export function validate(form: PlanForm): Partial<PlanForm> {
   const errors: Partial<PlanForm> = {};
   if (!form.title.trim()) errors.title = 'Title is required.';
   if (!form.asset.trim()) errors.asset = 'Asset is required.';
@@ -321,17 +316,6 @@ export default function DashboardPlansPage() {
               ? err.message
               : 'Network error saving metadata. You can retry below.',
         });
-        if (!res.ok) {
-          throw new Error(`Metadata save failed (${res.status}).`);
-        }
-        const plan = (await res.json()) as PlanMeta;
-        if (!mountedRef.current) return;
-        dispatch({ type: 'METADATA_DONE', plan });
-      } catch (err) {
-        if (!mountedRef.current) return;
-        const msg =
-          err instanceof Error ? err.message : 'Metadata save failed.';
-        dispatch({ type: 'METADATA_ERROR', message: msg });
       }
     },
     [state.form],
@@ -452,210 +436,6 @@ export default function DashboardPlansPage() {
                   <p style={s.planDesc}>{plan.description}</p>
                 )}
                 <code style={s.planId}>plan_id: {plan.planId}</code>
-    <div className="mx-auto max-w-2xl p-6">
-      <h1 className="mb-4 text-2xl font-semibold">Create a plan</h1>
-
-      {state.globalError && (
-        <div role="alert" className="mb-4 rounded bg-red-50 p-3 text-red-700">
-          {state.globalError}
-        </div>
-      )}
-
-      {state.step === 'form' && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleReview();
-          }}
-          className="space-y-4"
-        >
-          <div>
-            <label htmlFor="title" className="block text-sm font-medium">
-              Title
-            </label>
-            <input
-              id="title"
-              value={state.form.title}
-              onChange={(e) =>
-                dispatch({ type: 'FIELD', field: 'title', value: e.target.value })
-              }
-              className="mt-1 w-full rounded border p-2"
-            />
-            {state.formErrors.title && (
-              <p className="mt-1 text-sm text-red-600">{state.formErrors.title}</p>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium">
-              Description
-            </label>
-            <textarea
-              id="description"
-              value={state.form.description}
-              onChange={(e) =>
-                dispatch({
-                  type: 'FIELD',
-                  field: 'description',
-                  value: e.target.value,
-                })
-              }
-              className="mt-1 w-full rounded border p-2"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="asset" className="block text-sm font-medium">
-              Asset
-            </label>
-            <input
-              id="asset"
-              value={state.form.asset}
-              onChange={(e) =>
-                dispatch({ type: 'FIELD', field: 'asset', value: e.target.value })
-              }
-              className="mt-1 w-full rounded border p-2"
-            />
-            {state.formErrors.asset && (
-              <p className="mt-1 text-sm text-red-600">{state.formErrors.asset}</p>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="amount" className="block text-sm font-medium">
-              Amount
-            </label>
-            <input
-              id="amount"
-              value={state.form.amount}
-              onChange={(e) =>
-                dispatch({ type: 'FIELD', field: 'amount', value: e.target.value })
-              }
-              className="mt-1 w-full rounded border p-2"
-            />
-            {state.formErrors.amount && (
-              <p className="mt-1 text-sm text-red-600">{state.formErrors.amount}</p>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="intervalDays" className="block text-sm font-medium">
-              Interval (days)
-            </label>
-            <input
-              id="intervalDays"
-              value={state.form.intervalDays}
-              onChange={(e) =>
-                dispatch({
-                  type: 'FIELD',
-                  field: 'intervalDays',
-                  value: e.target.value,
-                })
-              }
-              className="mt-1 w-full rounded border p-2"
-            />
-            {state.formErrors.intervalDays && (
-              <p className="mt-1 text-sm text-red-600">
-                {state.formErrors.intervalDays}
-              </p>
-            )}
-          </div>
-
-          <button
-            type="submit"
-            className="rounded bg-blue-600 px-4 py-2 text-white"
-          >
-            Review
-          </button>
-        </form>
-      )}
-
-      {state.step === 'review' && (
-        <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            Review the details below, then sign with Freighter.
-          </p>
-          <dl className="rounded border p-4">
-            <dt className="text-sm text-gray-500">Asset</dt>
-            <dd className="mb-2 font-medium">{state.form.asset}</dd>
-            <dt className="text-sm text-gray-500">Amount</dt>
-            <dd className="mb-2 font-medium">{state.form.amount}</dd>
-            <dt className="text-sm text-gray-500">Interval</dt>
-            <dd className="font-medium">{state.form.intervalDays} days</dd>
-          </dl>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => dispatch({ type: 'GO_FORM' })}
-              className="rounded border px-4 py-2"
-            >
-              Back
-            </button>
-            <button
-              type="button"
-              onClick={handleSign}
-              className="rounded bg-blue-600 px-4 py-2 text-white"
-            >
-              Sign with Freighter
-            </button>
-          </div>
-        </div>
-      )}
-
-      {state.step === 'signing' && (
-        <p className="text-sm text-gray-600">Waiting for signature…</p>
-      )}
-
-      {state.step === 'posting_metadata' && (
-        <p className="text-sm text-gray-600">Saving plan metadata…</p>
-      )}
-
-      {state.step === 'metadata_retry' && (
-        <div className="space-y-4">
-          <div role="alert" className="rounded bg-yellow-50 p-3 text-yellow-800">
-            The plan was created on-chain, but saving its metadata failed.
-            {state.metadataError ? ` ${state.metadataError}` : ''}
-          </div>
-          <p className="text-sm text-gray-600">
-            On-chain plan id: <code>{state.onChainPlanId}</code>
-          </p>
-          <button
-            type="button"
-            onClick={handleRetryMetadata}
-            className="rounded bg-blue-600 px-4 py-2 text-white"
-          >
-            Save metadata
-          </button>
-        </div>
-      )}
-
-      {state.step === 'done' && (
-        <div className="space-y-4">
-          <p className="text-sm text-green-700">Plan created successfully.</p>
-          <button
-            type="button"
-            onClick={() => dispatch({ type: 'GO_FORM' })}
-            className="rounded border px-4 py-2"
-          >
-            Create another
-          </button>
-        </div>
-      )}
-
-      <section className="mt-8">
-        <h2 className="mb-2 text-lg font-medium">Your plans</h2>
-        {state.plansLoading ? (
-          <p className="text-sm text-gray-500">Loading…</p>
-        ) : state.plans.length === 0 ? (
-          <p className="text-sm text-gray-500">No plans yet.</p>
-        ) : (
-          <ul className="space-y-2">
-            {state.plans.map((plan) => (
-              <li key={plan.planId} className="rounded border p-3">
-                <p className="font-medium">{plan.title ?? plan.planId}</p>
-                <p className="text-sm text-gray-500">
-                  {plan.amount} {plan.asset} every {plan.interval}
-                </p>
               </li>
             ))}
           </ul>
@@ -1063,6 +843,3 @@ const s = {
   planId: { fontSize: '0.7rem', color: '#555' },
   emptyText: { color: '#666', fontSize: '0.875rem' },
 } as const;
-    </div>
-  );
-}
