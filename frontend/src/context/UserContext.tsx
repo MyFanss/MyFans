@@ -1,3 +1,12 @@
+/**
+ * UserContext — global authenticated user state.
+ *
+ * Provides the current user record (or null when unauthenticated) and a
+ * `refreshUser` helper so any component can trigger a re-fetch after an
+ * onboarding step or profile update.
+ *
+ * Refs: #1828 (role persistence), ADR-001-role-model.md
+ */
 'use client';
 
 import {
@@ -68,5 +77,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 }
 
 export function useUser(): UserContextValue {
-  return useContext(UserContext);
+  const ctx = useContext(UserContext);
+  if (!ctx) throw new Error('useUser must be used within UserProvider');
+  return ctx;
 }
