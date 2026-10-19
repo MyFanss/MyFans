@@ -1,17 +1,3 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-/**
- * UserContext — global authenticated user state.
- *
- * Provides the current user record (or null when unauthenticated) and a
- * `refreshUser` helper so any component can trigger a re-fetch after an
- * onboarding step or profile update.
- *
- * Refs: #1828 (role persistence), ADR-001-role-model.md
- */
 'use client';
 
 import {
@@ -24,21 +10,32 @@ import {
 } from 'react';
 import { fetchMe, type User } from '@/lib/users-api';
 
+/**
+ * UserContext — global authenticated user state.
+ *
+ * Provides the current user record (or null when unauthenticated) and a
+ * `refreshUser` helper so any component can trigger a re-fetch after an
+ * onboarding step or profile update.
+ *
+ * Refs: #1828 (role persistence), ADR-001-role-model.md
+ */
 interface UserContextValue {
   user: User | null;
   loading: boolean;
-  refreshUser: () => Promise<void>;
-}
-
-const UserContext = createContext<UserContextValue | undefined>(undefined);
-  /** Re-fetch /users/me and update the context. */
-  refreshUser: () => Promise<void>;
+  /**
+   * Re-fetch /users/me, update the context, and resolve with the fresh
+   * user record (or `null` on failure/unauthenticated) so callers that
+   * need the just-refreshed value — e.g. to pick a post-auth redirect
+   * destination — don't have to issue a second /users/me request of
+   * their own.
+   */
+  refreshUser: () => Promise<User | null>;
 }
 
 const UserContext = createContext<UserContextValue>({
   user: null,
   loading: true,
-  refreshUser: async () => {},
+  refreshUser: async () => null,
 });
 
 export function UserProvider({ children }: { children: ReactNode }) {
@@ -48,19 +45,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const refreshUser = useCallback(async () => {
     setLoading(true);
     try {
-      const u = await fetchMe();
-      setUser(u);
       const me = await fetchMe();
       setUser(me);
+      return me;
     } catch {
       setUser(null);
+      return null;
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    refreshUser();
     void refreshUser();
   }, [refreshUser]);
 
@@ -72,8 +68,5 @@ export function UserProvider({ children }: { children: ReactNode }) {
 }
 
 export function useUser(): UserContextValue {
-  const ctx = useContext(UserContext);
-  if (!ctx) throw new Error('useUser must be used within UserProvider');
-  return ctx;
   return useContext(UserContext);
 }
