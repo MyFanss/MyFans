@@ -2,6 +2,7 @@
 
 import { useEffect, useReducer, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/api/client';
+import { useUser } from '@/context/UserContext';
 
 // ── Typed models ──────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ export type PageState =
       messages: Message[];
       threadLoading: boolean;
       sending: boolean;
+      sendError: string | null;
     };
 
 export type Action =
@@ -68,7 +70,7 @@ export type Action =
   | { type: 'MESSAGES_LOADED'; messages: Message[] }
   | { type: 'SENDING' }
   | { type: 'SEND_DONE'; message: Message }
-  | { type: 'SEND_FAIL' };
+  | { type: 'SEND_FAIL'; message: string };
 
 export function reducer(state: PageState, action: Action): PageState {
   switch (action.type) {
@@ -84,6 +86,7 @@ export function reducer(state: PageState, action: Action): PageState {
         messages: [],
         threadLoading: false,
         sending: false,
+        sendError: null,
       };
     case 'SELECT_CONVERSATION':
       if (state.status !== 'ready') return state;
@@ -93,13 +96,18 @@ export function reducer(state: PageState, action: Action): PageState {
       return { ...state, messages: action.messages, threadLoading: false };
     case 'SENDING':
       if (state.status !== 'ready') return state;
-      return { ...state, sending: true };
+      return { ...state, sending: true, sendError: null };
     case 'SEND_DONE':
       if (state.status !== 'ready') return state;
-      return { ...state, sending: false, messages: [...state.messages, action.message] };
+      return {
+        ...state,
+        sending: false,
+        sendError: null,
+        messages: [...state.messages, action.message],
+      };
     case 'SEND_FAIL':
       if (state.status !== 'ready') return state;
-      return { ...state, sending: false };
+      return { ...state, sending: false, sendError: action.message };
     default:
       return state;
   }
@@ -121,8 +129,13 @@ function escapeText(raw: string): string {
     .replace(/'/g, '&#x27;');
 }
 
-function getOtherParticipant(conv: Conversation, _currentUserId?: string): Participant {
-  // Without a session, default to participant2 as the "other" party.
+export function getOtherParticipant(conv: Conversation, currentUserId?: string): Participant {
+  // When the signed-in user is participant2, the "other" party is
+  // participant1; otherwise (including when no session is available) fall
+  // back to the existing participant2 default (#1999).
+  if (currentUserId && conv.participant2Id === currentUserId) {
+    return conv.participant1;
+  }
   return conv.participant2;
 }
 
@@ -135,6 +148,7 @@ function generateIdempotencyKey(): string {
 export default function MessagesPage() {
   const [state, dispatch] = useReducer(reducer, { status: 'loading' } as PageState);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { user } = useUser();
 
   // Load conversations on mount
   useEffect(() => {
@@ -190,7 +204,8 @@ export default function MessagesPage() {
     if (!content) return;
 
     dispatch({ type: 'SENDING' });
-    inputRef.current.value = '';
+    // Do NOT clear the composer yet (#2001): the text must survive a failed
+    // send so the user doesn't lose what they typed.
 
     try {
       const res = await apiFetch(`/api/v1/conversations/${state.activeId}/messages`, {
@@ -200,13 +215,14 @@ export default function MessagesPage() {
       });
 
       if (!res.ok) {
-        dispatch({ type: 'SEND_FAIL' });
+        dispatch({ type: 'SEND_FAIL', message: `Failed to send message (${res.status}). Please try again.` });
         return;
       }
       const msg = (await res.json()) as Message;
       dispatch({ type: 'SEND_DONE', message: msg });
+      if (inputRef.current) inputRef.current.value = '';
     } catch {
-      dispatch({ type: 'SEND_FAIL' });
+      dispatch({ type: 'SEND_FAIL', message: 'Network error. Message was not sent.' });
     }
   }, [state]);
 
@@ -249,7 +265,7 @@ export default function MessagesPage() {
           )}
           <ul style={styles.convList}>
             {state.conversations.map((conv) => {
-              const other = getOtherParticipant(conv);
+              const other = getOtherParticipant(conv, user?.id);
               return (
                 <li key={conv.id}>
                   <button
@@ -280,7 +296,7 @@ export default function MessagesPage() {
           ) : (
             <>
               <header style={styles.threadHeader}>
-                <strong>{getOtherParticipant(activeConv).displayName}</strong>
+                <strong>{getOtherParticipant(activeConv, user?.id).displayName}</strong>
               </header>
 
               <div style={styles.messageList} role="log" aria-live="polite">
@@ -300,6 +316,12 @@ export default function MessagesPage() {
                     </div>
                   ))}
               </div>
+
+              {state.sendError && (
+                <p role="alert" style={styles.sendError}>
+                  {state.sendError}
+                </p>
+              )}
 
               <div style={styles.composer}>
                 <input
@@ -376,6 +398,15 @@ const styles = {
     wordBreak: 'break-word' as const,
   },
   messageTime: { fontSize: '0.7rem', color: '#666', marginTop: '2px' },
+  sendError: {
+    padding: '0.5rem 0.75rem',
+    borderRadius: '6px',
+    background: '#3b1a1a',
+    color: '#f87171',
+    fontSize: '0.85rem',
+    border: '1px solid #7f1d1d',
+    marginTop: '0.5rem',
+  },
   composer: { display: 'flex', gap: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid #333' },
   input: {
     flex: 1,

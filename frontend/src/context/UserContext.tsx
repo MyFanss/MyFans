@@ -1,8 +1,3 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
 /**
  * UserContext — global authenticated user state.
  *
@@ -27,19 +22,11 @@ import { fetchMe, type User } from '@/lib/users-api';
 interface UserContextValue {
   user: User | null;
   loading: boolean;
-  refreshUser: () => Promise<void>;
-}
-
-const UserContext = createContext<UserContextValue | undefined>(undefined);
   /** Re-fetch /users/me and update the context. */
   refreshUser: () => Promise<void>;
 }
 
-const UserContext = createContext<UserContextValue>({
-  user: null,
-  loading: true,
-  refreshUser: async () => {},
-});
+const UserContext = createContext<UserContextValue | undefined>(undefined);
 
 export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -48,8 +35,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const refreshUser = useCallback(async () => {
     setLoading(true);
     try {
-      const u = await fetchMe();
-      setUser(u);
       const me = await fetchMe();
       setUser(me);
     } catch {
@@ -60,7 +45,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    refreshUser();
     void refreshUser();
   }, [refreshUser]);
 
@@ -75,5 +59,4 @@ export function useUser(): UserContextValue {
   const ctx = useContext(UserContext);
   if (!ctx) throw new Error('useUser must be used within UserProvider');
   return ctx;
-  return useContext(UserContext);
 }

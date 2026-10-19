@@ -105,6 +105,10 @@ export default function FavoritesPage() {
 
   const toggle = useCallback(
     async (id: string) => {
+      // Guard against double-submits: ignore further toggles for this id
+      // while a request for it is already in flight (#2003).
+      if (state.pending.has(id)) return;
+
       const wasFavorited = state.ids.includes(id);
       dispatch({ type: 'TOGGLE_OPTIMISTIC', id });
 
@@ -123,7 +127,7 @@ export default function FavoritesPage() {
         dispatch({ type: 'TOGGLE_ROLLBACK', id, restore: wasFavorited });
       }
     },
-    [state.ids],
+    [state.ids, state.pending],
   );
 
   // ── Render states ─────────────────────────────────────────────────────
@@ -175,6 +179,7 @@ export default function FavoritesPage() {
                 <button
                   onClick={() => toggle(id)}
                   disabled={state.pending.has(id)}
+                  aria-busy={state.pending.has(id)}
                   aria-label={`Remove ${id} from favorites`}
                   style={styles.removeBtn}
                 >

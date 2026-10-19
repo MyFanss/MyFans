@@ -16,7 +16,7 @@
  */
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { persistRole, type RoleIntent } from '@/lib/users-api';
 import { useUser } from '@/context/UserContext';
@@ -45,9 +45,14 @@ export default function OnboardingPage() {
   const [selected, setSelected] = useState<RoleIntent | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // In-flight latch, set synchronously so a fast double-click (or Enter plus
+  // click) in the same tick can't both pass the `disabled` check before
+  // `saving` state has re-rendered and fire two persistRole calls (#2004).
+  const inFlightRef = useRef(false);
 
   async function handleContinue() {
-    if (!selected) return;
+    if (!selected || inFlightRef.current) return;
+    inFlightRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -59,6 +64,7 @@ export default function OnboardingPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save role. Please try again.');
     } finally {
+      inFlightRef.current = false;
       setSaving(false);
     }
   }
