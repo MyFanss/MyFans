@@ -1,20 +1,29 @@
 import { ConflictException } from '@nestjs/common';
-import { createHash } from 'crypto';
+import {
+  CheckoutController,
+  IdempotencyRecord,
+  IdempotencyStore,
+} from './checkout.controller';
 
 /**
  * Unit tests for the checkout money-path confirm endpoint idempotency contract.
  *
- * The controller keeps its idempotency store as a module-level singleton, so we
- * reset the module registry and re-import the controller before every test to
- * guarantee no state leaks between cases.
+ * The controller receives its IdempotencyStore via constructor injection, so we
+ * pass a fake store per test to keep state isolated and assert store usage.
  */
-
-type CheckoutControllerModule = typeof import('./checkout.controller');
 
 const MAX_BODY_BYTES = 1024 * 1024;
 
-function sha256(value: string): string {
-  return createHash('sha256').update(value).digest('hex');
+class FakeIdempotencyStore implements IdempotencyStore {
+  readonly records = new Map<string, IdempotencyRecord>();
+
+  async get(key: string): Promise<IdempotencyRecord | undefined> {
+    return this.records.get(key);
+  }
+
+  async set(key: string, record: IdempotencyRecord): Promise<void> {
+    this.records.set(key, record);
+  }
 }
 
 function makeHeaders(idempotencyKey?: string): any {
@@ -28,14 +37,12 @@ function makeReq(): any {
 }
 
 describe('CheckoutController idempotency', () => {
-  let mod: CheckoutControllerModule;
-  let controller: InstanceType<CheckoutControllerModule['CheckoutController']>;
+  let store: FakeIdempotencyStore;
+  let controller: CheckoutController;
 
   beforeEach(() => {
-    jest.resetModules();
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    mod = require('./checkout.controller');
-    controller = new mod.CheckoutController();
+    store = new FakeIdempotencyStore();
+    controller = new CheckoutController(store);
   });
 
   it('processes a first confirm with a valid key and body and stores a record', async () => {
@@ -46,6 +53,7 @@ describe('CheckoutController idempotency', () => {
 
     expect(response).toBeDefined();
     expect(response).toMatchObject({ status: 'processed' });
+    expect(store.records.has(key)).toBe(true);
   });
 
   it('replays the cached response for the same key and identical body without reprocessing', async () => {
@@ -86,12 +94,5 @@ describe('CheckoutController idempotency', () => {
     await expect(
       controller.confirm(makeHeaders('key-oversized'), oversized, makeReq()),
     ).rejects.toBeInstanceOf(ConflictException);
-  });
-
-  it('hashes the body with sha256 for the stored record', () => {
-    const body = { amount: 42, currency: 'USD' };
-    const serialized = JSON.stringify(body);
-
-    expect(sha256(serialized)).toHaveLength(64);
   });
 });
