@@ -101,6 +101,10 @@ impl TreasuryContract {
             .ok_or(TreasuryError::NotInitialized)?;
         admin.require_auth();
 
+        if Self::is_paused(env.clone()) {
+            return Err(TreasuryError::Paused);
+        }
+
         if amount <= 0 {
             return Err(TreasuryError::InvalidAmount);
         }
@@ -281,6 +285,90 @@ mod test {
         let res = client.try_deposit(&payer, &-50);
         assert_eq!(res, Err(Ok(TreasuryError::InvalidAmount)));
         assert_eq!(client.balance(&payer), 0);
+    }
+
+    #[test]
+    fn pause_guard_blocks_deposit_and_withdraw() {
+        let (env, client, admin) = setup();
+        let payer = Address::generate(&env);
+
+        // Fund the payer's balance before pausing so a withdraw attempt has
+        // something to work with.
+        env.mock_auths(&[MockAuth {
+            address: &payer,
+            invoke: &MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "deposit",
+                args: (payer.clone(), 100i128).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        client.deposit(&payer, &100);
+        assert_eq!(client.balance(&payer), 100);
+
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "set_paused",
+                args: (true,).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        client.set_paused(&true);
+        assert!(client.is_paused());
+
+        // Deposit is blocked while paused.
+        env.mock_auths(&[MockAuth {
+            address: &payer,
+            invoke: &MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "deposit",
+                args: (payer.clone(), 50i128).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        let deposit_res = client.try_deposit(&payer, &50);
+        assert_eq!(deposit_res, Err(Ok(TreasuryError::Paused)));
+        assert_eq!(client.balance(&payer), 100);
+
+        // Withdraw is blocked while paused, even for the admin.
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "withdraw",
+                args: (payer.clone(), 50i128).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        let withdraw_res = client.try_withdraw(&payer, &50);
+        assert_eq!(withdraw_res, Err(Ok(TreasuryError::Paused)));
+        assert_eq!(client.balance(&payer), 100);
+
+        // Unpausing restores normal behavior for both operations.
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "set_paused",
+                args: (false,).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        client.set_paused(&false);
+
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "withdraw",
+                args: (payer.clone(), 50i128).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        client.withdraw(&payer, &50);
+        assert_eq!(client.balance(&payer), 50);
     }
 
     #[test]
