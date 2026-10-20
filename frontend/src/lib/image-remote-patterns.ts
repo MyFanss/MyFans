@@ -9,8 +9,10 @@ import type { RemotePattern } from 'next/dist/shared/lib/image-config';
 export function getRemoteImagePatterns(): RemotePattern[] {
   return [
     {
+      // Scoped to a single subdomain level (e.g. `<cid>.ipfs.io`) so this
+      // does not also match arbitrary nested hosts under ipfs.io.
       protocol: 'https',
-      hostname: '**.ipfs.io',
+      hostname: '*.ipfs.io',
     },
     {
       protocol: 'https',
