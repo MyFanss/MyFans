@@ -25,6 +25,137 @@ function workflow({ name = 'CI', branches = null, paths = false, jobs = {} } = {
   return parseWorkflow(lines.join('\n'));
 }
 
+test('parseWorkflow extracts and unquotes a job name', () => {
+  const wf = parseWorkflow(
+    [
+      'name: CI',
+      'on:',
+      '  pull_request:',
+      '    branches: [main]',
+      'jobs:',
+      '  lint:',
+      '    name: "Frontend — eslint"',
+    ].join('\n'),
+  );
+  assert.equal(wf.jobs.lint.name, 'Frontend — eslint');
+});
+
+test('parseWorkflow sets the if flag for a job-level if:', () => {
+  const wf = parseWorkflow(
+    [
+      'name: CI',
+      'on:',
+      '  pull_request:',
+      '    branches: [main]',
+      'jobs:',
+      '  lint:',
+      '    name: Lint',
+      "    if: github.event_name == 'pull_request'",
+    ].join('\n'),
+  );
+  assert.equal(wf.jobs.lint.if, true);
+});
+
+test('parseWorkflow sets continueOnError for job-level continue-on-error', () => {
+  const wf = parseWorkflow(
+    [
+      'name: CI',
+      'on:',
+      '  pull_request:',
+      '    branches: [main]',
+      'jobs:',
+      '  lint:',
+      '    name: Lint',
+      '    continue-on-error: true',
+    ].join('\n'),
+  );
+  assert.equal(wf.jobs.lint.continueOnError, true);
+});
+
+test('parseWorkflow sets continueOnError for step-level continue-on-error', () => {
+  const wf = parseWorkflow(
+    [
+      'name: CI',
+      'on:',
+      '  pull_request:',
+      '    branches: [main]',
+      'jobs:',
+      '  lint:',
+      '    name: Lint',
+      '    steps:',
+      '      - name: Run',
+      '        run: echo hi',
+      '        continue-on-error: true',
+    ].join('\n'),
+  );
+  assert.equal(wf.jobs.lint.continueOnError, true);
+});
+
+test('parseWorkflow sets paths for a paths filter under pull_request', () => {
+  const wf = parseWorkflow(
+    [
+      'name: CI',
+      'on:',
+      '  pull_request:',
+      '    branches: [main]',
+      '    paths:',
+      '      - "src/**"',
+      'jobs:',
+      '  lint:',
+      '    name: Lint',
+    ].join('\n'),
+  );
+  assert.equal(wf.paths, true);
+});
+
+test('parseWorkflow sets paths for a paths-ignore filter under pull_request', () => {
+  const wf = parseWorkflow(
+    [
+      'name: CI',
+      'on:',
+      '  pull_request:',
+      '    branches: [main]',
+      '    paths-ignore:',
+      '      - "docs/**"',
+      'jobs:',
+      '  lint:',
+      '    name: Lint',
+    ].join('\n'),
+  );
+  assert.equal(wf.paths, true);
+});
+
+test('parseWorkflow handles inline on: [pull_request]', () => {
+  const wf = parseWorkflow(
+    [
+      'name: CI',
+      'on: [pull_request]',
+      'jobs:',
+      '  lint:',
+      '    name: Lint',
+    ].join('\n'),
+  );
+  assert.ok(wf.triggers.has('pull_request'));
+});
+
+test('parseWorkflow handles block on: with a branches list', () => {
+  const wf = parseWorkflow(
+    [
+      'name: CI',
+      'on:',
+      '  pull_request:',
+      '    branches:',
+      '      - main',
+      '      - release/**',
+      'jobs:',
+      '  lint:',
+      '    name: Lint',
+    ].join('\n'),
+  );
+  assert.ok(wf.triggers.has('pull_request'));
+  assert.deepEqual(wf.triggers.get('pull_request').branches, ['main', 'release/**']);
+});
+
 test('branchMatches supports exact, wildcard, and double-wildcard patterns', () => {
   assert.equal(branchMatches('main', 'main'), true);
   assert.equal(branchMatches('main', 'dev'), false);
