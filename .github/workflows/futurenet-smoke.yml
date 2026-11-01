@@ -67,10 +67,10 @@ jobs:
       ready: ${{ steps.validate.outputs.ready }}
       is_release: ${{ steps.context.outputs.is_release }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -165,7 +165,7 @@ jobs:
 
       - name: Upload contract ID report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: futurenet-contract-id-report
           path: smoke-artifacts/contract-id-report.json
@@ -194,7 +194,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Install stellar-cli (soroban-cli) at a pinned version
       - name: Install stellar-cli
@@ -293,7 +293,7 @@ jobs:
 
       - name: Upload smoke logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: futurenet-smoke-logs
           path: smoke-logs/*.log

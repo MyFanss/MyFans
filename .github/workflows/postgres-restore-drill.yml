@@ -53,7 +53,7 @@ jobs:
       PGPASSWORD: postgres
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Postgres client tools
         run: |
