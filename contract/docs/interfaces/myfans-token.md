@@ -20,6 +20,22 @@ written, leaving the contract uninitialized.
 This cap keeps amounts representable and prevents wallets and the frontend
 from formatting nonsense prices.
 
+## Events
+
+`mint`, `burn`, and `transfer` each publish exactly one event on success, next
+to the balance write. Failed calls (for example an insufficient balance or a
+missing authorization) emit nothing. All topics fit `symbol_short` (at most
+nine characters).
+
+| Operation | Topics | Data |
+| --- | --- | --- |
+| `mint(to, amount)` | `("mint", to)` | `amount` |
+| `burn(from, amount)` | `("burn", from)` | `amount` |
+| `transfer(from, to, amount)` | `("transfer", from, to)` | `amount` |
+
+An indexer can reconstruct supply and transfers from these events without
+scanning storage.
+
 ## Errors
 
 | Error | Meaning |
