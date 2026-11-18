@@ -213,6 +213,17 @@ pub fn split_fee(amount: i128, fee_bps: u32) -> (i128, i128) {
     (fee, amount - fee)
 }
 
+/// Validate `fee_bps` against `MAX_FEE_BPS` before any payment is split.
+///
+/// Returns `FeeTooHigh` when the configured fee exceeds the cap so callers can
+/// reject the payment before any token transfer occurs.
+pub fn validate_fee_bps(fee_bps: u32) -> Result<(), SubscriptionError> {
+    if fee_bps > MAX_FEE_BPS {
+        return Err(SubscriptionError::FeeTooHigh);
+    }
+    Ok(())
+}
+
 /// Checked ledger addition used by renew/extend.
 ///
 /// Returns `LedgerOverflow` instead of wrapping when the new expiry would
