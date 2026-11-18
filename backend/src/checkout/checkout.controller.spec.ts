@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotImplementedException } from '@nestjs/common';
 import {
   CheckoutController,
   IdempotencyRecord,
@@ -45,35 +45,30 @@ describe('CheckoutController idempotency', () => {
     controller = new CheckoutController(store);
   });
 
-  it('processes a first confirm with a valid key and body and stores a record', async () => {
+  it('does not return a body without a verified transaction as confirmed', async () => {
     const body = { amount: 100, currency: 'USD' };
-    const key = 'key-first';
+    const key = 'key-unverified';
 
-    const response = await controller.confirm(makeHeaders(key), body, makeReq());
+    await expect(
+      controller.confirm(makeHeaders(key), body, makeReq()),
+    ).rejects.toBeInstanceOf(NotImplementedException);
 
-    expect(response).toBeDefined();
-    expect(response).toMatchObject({ status: 'processed' });
-    expect(store.records.has(key)).toBe(true);
+    // Fail closed: no confirmed response may be cached for an unverified body.
+    expect(store.records.has(key)).toBe(false);
   });
 
-  it('replays the cached response for the same key and identical body without reprocessing', async () => {
+  it('does not cache an unverified success for a repeated key', async () => {
     const body = { amount: 250, currency: 'EUR' };
     const key = 'key-replay';
 
-    const first = await controller.confirm(makeHeaders(key), body, makeReq());
-    const second = await controller.confirm(makeHeaders(key), body, makeReq());
-
-    expect(second).toEqual(first);
-  });
-
-  it('throws ConflictException when the same key is reused with a different body', async () => {
-    const key = 'key-conflict';
-
-    await controller.confirm(makeHeaders(key), { amount: 10 }, makeReq());
-
     await expect(
-      controller.confirm(makeHeaders(key), { amount: 20 }, makeReq()),
-    ).rejects.toBeInstanceOf(ConflictException);
+      controller.confirm(makeHeaders(key), body, makeReq()),
+    ).rejects.toBeInstanceOf(NotImplementedException);
+    await expect(
+      controller.confirm(makeHeaders(key), body, makeReq()),
+    ).rejects.toBeInstanceOf(NotImplementedException);
+
+    expect(store.records.has(key)).toBe(false);
   });
 
   it('throws ConflictException when the Idempotency-Key header is missing', async () => {

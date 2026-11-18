@@ -169,6 +169,88 @@ describe('AnalyticsService', () => {
     });
   });
 
+  describe('MRR snapshot windowing', () => {
+    const creatorId = 'creator-1';
+    const periodStart = new Date('2026-01-01T00:00:00.000Z');
+    const periodEnd = new Date('2026-02-01T00:00:00.000Z');
+
+    it('counts a subscribe before the window as active but not as a new subscription', () => {
+      service.record({
+        name: ANALYTICS_EVENTS.SUBSCRIBE,
+        creatorId,
+        subscriberRef: 'sub-1',
+        amountCents: 1000,
+        occurredAt: '2025-12-15T00:00:00.000Z',
+      });
+
+      const snapshot = service.getMrrSnapshot(creatorId, creatorId, periodStart, periodEnd);
+
+      expect(snapshot.activeSubscriptions).toBe(1);
+      expect(snapshot.mrrCents).toBe(1000);
+      expect(snapshot.newSubscriptions).toBe(0);
+    });
+
+    it('removes a subscriber whose cancel falls inside the window', () => {
+      service.record({
+        name: ANALYTICS_EVENTS.SUBSCRIBE,
+        creatorId,
+        subscriberRef: 'sub-1',
+        amountCents: 1000,
+        occurredAt: '2025-12-15T00:00:00.000Z',
+      });
+      service.record({
+        name: ANALYTICS_EVENTS.CANCEL,
+        creatorId,
+        subscriberRef: 'sub-1',
+        amountCents: 1000,
+        occurredAt: '2026-01-10T00:00:00.000Z',
+      });
+
+      const snapshot = service.getMrrSnapshot(creatorId, creatorId, periodStart, periodEnd);
+
+      expect(snapshot.activeSubscriptions).toBe(0);
+      expect(snapshot.mrrCents).toBe(0);
+      expect(snapshot.cancellations).toBe(1);
+    });
+
+    it('does not let an unmatched cancel zero out another subscriber', () => {
+      service.record({
+        name: ANALYTICS_EVENTS.SUBSCRIBE,
+        creatorId,
+        subscriberRef: 'sub-1',
+        amountCents: 1000,
+        occurredAt: '2025-12-15T00:00:00.000Z',
+      });
+      service.record({
+        name: ANALYTICS_EVENTS.CANCEL,
+        creatorId,
+        subscriberRef: 'ghost',
+        amountCents: 1000,
+        occurredAt: '2026-01-10T00:00:00.000Z',
+      });
+
+      const snapshot = service.getMrrSnapshot(creatorId, creatorId, periodStart, periodEnd);
+
+      expect(snapshot.activeSubscriptions).toBe(1);
+      expect(snapshot.mrrCents).toBe(1000);
+    });
+
+    it('ignores events after periodEnd', () => {
+      service.record({
+        name: ANALYTICS_EVENTS.SUBSCRIBE,
+        creatorId,
+        subscriberRef: 'sub-1',
+        amountCents: 1000,
+        occurredAt: '2026-02-05T00:00:00.000Z',
+      });
+
+      const snapshot = service.getMrrSnapshot(creatorId, creatorId, periodStart, periodEnd);
+
+      expect(snapshot.activeSubscriptions).toBe(0);
+      expect(snapshot.mrrCents).toBe(0);
+    });
+  });
+
   it('routes recorded events through the injected sink', () => {
     service.record({
       name: 'subscribe',

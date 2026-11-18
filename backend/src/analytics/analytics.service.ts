@@ -181,6 +181,12 @@ export class AnalyticsService {
    * `requesterId` must equal `creatorId` — aggregates are creator-only.
    * The window is [periodStart, periodEnd); callers pass explicit UTC bounds
    * so timezone boundaries are handled by the caller, not guessed here.
+   *
+   * Active subscriptions and MRR are derived from each subscriber's latest
+   * event at or before `periodEnd`: a subscriber is active when that latest
+   * event is a subscribe, and contributes its current plan amount. Events
+   * after `periodEnd` are ignored, and an unmatched cancel for an unknown
+   * subscriber never affects another subscriber's revenue.
    */
   getMrrSnapshot(
     creatorId: string,
@@ -195,33 +201,52 @@ export class AnalyticsService {
     const startMs = periodStart.getTime();
     const endMs = periodEnd.getTime();
 
-    let mrrCents = 0;
-    let activeSubscriptions = 0;
     let newSubscriptions = 0;
     let cancelledSubscriptions = 0;
     let uploads = 0;
 
+    // Latest subscription event per subscriber, considering only events at or
+    // before `periodEnd`. Keyed by subscriberRef; events without a ref cannot
+    // be attributed to a subscriber and are ignored for active/MRR totals.
+    const latestBySubscriber = new Map<string, AnalyticsEvent>();
+
     for (const event of this.eventSink.list()) {
       if (event.creatorId !== creatorId) continue;
       const at = Date.parse(event.occurredAt);
-      const inWindow = at >= startMs && at < endMs;
+      if (Number.isNaN(at) || at >= endMs) continue;
+      const inWindow = at >= startMs;
 
       switch (event.name) {
         case ANALYTICS_EVENTS.SUBSCRIBE:
-          activeSubscriptions += 1;
-          mrrCents += event.amountCents ?? 0;
           if (inWindow) newSubscriptions += 1;
+          if (event.subscriberRef) {
+            const prev = latestBySubscriber.get(event.subscriberRef);
+            if (!prev || Date.parse(prev.occurredAt) <= at) {
+              latestBySubscriber.set(event.subscriberRef, event);
+            }
+          }
           break;
         case ANALYTICS_EVENTS.CANCEL:
-          // Refunds/cancels reduce active count and MRR.
-          activeSubscriptions = Math.max(0, activeSubscriptions - 1);
-          mrrCents = Math.max(0, mrrCents - (event.amountCents ?? 0));
           if (inWindow) cancelledSubscriptions += 1;
+          if (event.subscriberRef) {
+            const prev = latestBySubscriber.get(event.subscriberRef);
+            if (!prev || Date.parse(prev.occurredAt) <= at) {
+              latestBySubscriber.set(event.subscriberRef, event);
+            }
+          }
           break;
         case ANALYTICS_EVENTS.UPLOAD:
           if (inWindow) uploads += 1;
           break;
       }
+    }
+
+    let mrrCents = 0;
+    let activeSubscriptions = 0;
+    for (const latest of latestBySubscriber.values()) {
+      if (latest.name !== ANALYTICS_EVENTS.SUBSCRIBE) continue;
+      activeSubscriptions += 1;
+      mrrCents += latest.amountCents ?? 0;
     }
 
     return {
@@ -249,36 +274,14 @@ export class AnalyticsService {
     periodStart: Date,
     periodEnd: Date,
   ): DashboardSummary {
-    const snapshot = this.getMrrSnapshot(
-      creatorId,
-      requesterId,
-      periodStart,
-      periodEnd,
-    );
-
-    const isEmpty =
-      snapshot.activeSubscriptions === 0 &&
-      snapshot.newSubscriptions === 0 &&
-      snapshot.cancelledSubscriptions === 0 &&
-      snapshot.uploads === 0;
-
-    return { ...snapshot, isEmpty };
-  }
-
-  /**
-   * Privacy-safe export of raw events for a creator.
-   *
-   * Raw subscriber identifiers (which may be emails) are stripped by default;
-   * only the opaque `subscriberRef` is retained. Pass `includePii: true` only
-   * for an explicit, audited export path.
-   */
-  exportEvents(creatorId: string, requesterId: string, includePii = false): AnalyticsEvent[] {
-    if (requesterId !== creatorId) {
-      throw new ForbiddenException('Analytics export is creator-only');
-    }
-    return this.eventSink
-      .list()
-      .filter((event) => event.creatorId === creatorId)
-      .map((event) => (includePii ? { ...event } : { ...event, subscriberRef: undefined }));
+    const snapshot = this.getMrrSnapshot(creatorId, requesterId, periodStart, periodEnd);
+    return {
+      ...snapshot,
+      isEmpty:
+        snapshot.activeSubscriptions === 0 &&
+        snapshot.newSubscriptions === 0 &&
+        snapshot.cancelledSubscriptions === 0 &&
+        snapshot.uploads === 0,
+    };
   }
 }

@@ -1,9 +1,11 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { ForbiddenException } from '@nestjs/common';
 import { Like } from './entities/like.entity';
 import { Post } from '../posts/entities/post.entity';
 import { Comment } from '../comments/entities/comment.entity';
 import { LikesService } from './likes.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 describe('LikesService', () => {
   let service: LikesService;
@@ -23,6 +25,10 @@ describe('LikesService', () => {
     findOne: jest.fn(),
   };
 
+  const subscriptionsService = {
+    checkSubscription: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -32,6 +38,7 @@ describe('LikesService', () => {
         { provide: getRepositoryToken(Like), useValue: likeRepo },
         { provide: getRepositoryToken(Post), useValue: postRepo },
         { provide: getRepositoryToken(Comment), useValue: commentRepo },
+        { provide: SubscriptionsService, useValue: subscriptionsService },
       ],
     }).compile();
 
@@ -75,6 +82,59 @@ describe('LikesService', () => {
 
       expect(likeRepo.findOne).not.toHaveBeenCalled();
       expect(likeRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('allows liking ungated content without a subscription', async () => {
+      postRepo.findOne.mockResolvedValue({
+        id: 'post-1',
+        creatorId: 'creator-b',
+        isGated: false,
+      });
+      likeRepo.findOne.mockResolvedValue(null);
+      likeRepo.save.mockImplementation(async (entity) => entity);
+
+      await service.like('fan-1', 'post-1');
+
+      expect(subscriptionsService.checkSubscription).not.toHaveBeenCalled();
+      expect(likeRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects liking a gated post when subscribed only to another creator', async () => {
+      postRepo.findOne.mockResolvedValue({
+        id: 'post-b',
+        creatorId: 'creator-b',
+        isGated: true,
+      });
+      subscriptionsService.checkSubscription.mockResolvedValue(false);
+
+      await expect(service.like('fan-1', 'post-b')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+
+      expect(subscriptionsService.checkSubscription).toHaveBeenCalledWith(
+        'fan-1',
+        'creator-b',
+      );
+      expect(likeRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('allows liking a gated post when subscribed to its creator', async () => {
+      postRepo.findOne.mockResolvedValue({
+        id: 'post-b',
+        creatorId: 'creator-b',
+        isGated: true,
+      });
+      subscriptionsService.checkSubscription.mockResolvedValue(true);
+      likeRepo.findOne.mockResolvedValue(null);
+      likeRepo.save.mockImplementation(async (entity) => entity);
+
+      await service.like('fan-1', 'post-b');
+
+      expect(subscriptionsService.checkSubscription).toHaveBeenCalledWith(
+        'fan-1',
+        'creator-b',
+      );
+      expect(likeRepo.save).toHaveBeenCalledTimes(1);
     });
   });
 
