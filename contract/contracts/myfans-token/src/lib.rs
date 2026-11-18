@@ -126,6 +126,10 @@ impl MyFansToken {
             return Err(TokenError::InvalidAmount);
         }
 
+        if from == to {
+            return Err(TokenError::InvalidAmount);
+        }
+
         let from_balance = Self::balance(env.clone(), from.clone());
         let new_from = from_balance
             .checked_sub(amount)
@@ -247,6 +251,25 @@ mod test {
     }
 
     #[test]
+    fn test_self_transfer_is_rejected_and_balance_unchanged() {
+        let env = Env::default();
+        let (client, _admin) = setup(&env);
+        let alice = Address::generate(&env);
+
+        client.mint(&alice, &100);
+        assert_eq!(client.balance(&alice), 100);
+        assert_eq!(client.total_supply(), 100);
+
+        assert_eq!(
+            client.try_transfer(&alice, &alice, &40),
+            Err(Ok(TokenError::InvalidAmount))
+        );
+
+        assert_eq!(client.balance(&alice), 100);
+        assert_eq!(client.total_supply(), 100);
+    }
+
+    #[test]
     fn test_mint_non_positive_amount_is_invalid() {
         let env = Env::default();
         let (client, _admin) = setup(&env);
@@ -269,29 +292,6 @@ mod test {
         client.mint(&alice, &100);
 
         assert_eq!(
-            client.try_transfer(&alice, &bob, &101),
-            Err(Ok(TokenError::InsufficientBalance))
-        );
+            client
 
-        assert_eq!(client.balance(&alice), 100);
-        assert_eq!(client.balance(&bob), 0);
-    }
-
-    #[test]
-    fn test_allowance_expiry_boundary() {
-        let env = Env::default();
-        let (client, _admin) = setup(&env);
-        let alice = Address::generate(&env);
-        let spender = Address::generate(&env);
-
-        let expiry = env.ledger().sequence();
-        client.approve(&alice, &spender, &500, &expiry);
-
-        // At the expiry ledger the allowance is still spendable.
-        assert_eq!(client.allowance(&alice, &spender), 500);
-
-        // One ledger past the expiry it is no longer spendable.
-        env.ledger().set_sequence_number(expiry + 1);
-        assert_eq!(client.allowance(&alice, &spender), 0);
-    }
-}
+/* … truncated 844 chars — edit only what you need near the top … */
