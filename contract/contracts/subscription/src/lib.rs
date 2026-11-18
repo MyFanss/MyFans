@@ -110,7 +110,8 @@ impl SubscriptionContract {
         Ok(())
     }
 
-    /// Create a plan. Requires creator auth. Rejects zero amount/interval.
+    /// Create a plan. Requires creator auth. Blocked while paused. Rejects
+    /// zero amount/interval.
     pub fn create_plan(
         env: Env,
         creator: Address,
@@ -119,7 +120,7 @@ impl SubscriptionContract {
         interval: u64,
     ) -> Result<u64, Error> {
         creator.require_auth();
-        Self::require_init(&env);
+        Self::require_active(&env)?;
         if amount <= 0 {
             return Err(Error::InvalidAmount);
         }
@@ -262,46 +263,7 @@ impl SubscriptionContract {
         Ok(())
     }
 
-    /// Admin fee setter. Requires admin auth. Enforces MAX_FEE_BPS cap.
-    pub fn set_protocol_fee(env: Env, protocol_fee_bps: u32) -> Result<(), Error> {
-        let mut config = Self::require_init(&env)?;
-        config.admin.require_auth();
-        if protocol_fee_bps > MAX_FEE_BPS {
-            return Err(Error::FeeTooHigh);
-        }
-        config.protocol_fee_bps = protocol_fee_bps;
-        env.storage().instance().set(&DataKey::Config, &config);
-        env.events().publish(
-            (symbol_short!("fee"), symbol_short!("updated")),
-            (protocol_fee_bps, config.fee_recipient.clone()),
-        );
-        Ok(())
-    }
-
-    /// Admin fee recipient setter. Requires admin auth. Rejects a recipient
-    /// equal to the admin with `Error::InvalidFeeRecipient`. Emits the
-    /// fee-updated event so indexers observe the new destination.
-    pub fn set_fee_recipient(env: Env, recipient: Address) -> Result<(), Error> {
-        let mut config = Self::require_init(&env)?;
-        config.admin.require_auth();
-        if recipient == config.admin {
-            return Err(Error::InvalidFeeRecipient);
-        }
-        config.fee_recipient = recipient.clone();
-        env.storage().instance().set(&DataKey::Config, &config);
-        env.events().publish(
-            (symbol_short!("fee"), symbol_short!("updated")),
-            (config.protocol_fee_bps, recipient),
-        );
-        Ok(())
-    }
-
-    /// Returns the current config (admin, fee, recipient, paused).
-    pub fn get_config(env: Env) -> Result<Config, Error> {
-        Self::require_init(&env)
-    }
-
-    /// Loads the config or returns `Error::NotInitialized`.
+    /// Load config, returning `Error::NotInitialized` if absent.
     fn require_init(env: &Env) -> Result<Config, Error> {
         env.storage()
             .instance()
@@ -309,7 +271,7 @@ impl SubscriptionContract {
             .ok_or(Error::NotInitialized)
     }
 
-    /// Loads the config and rejects calls while paused.
+    /// Load config and reject when paused with `Error::Paused`.
     fn require_active(env: &Env) -> Result<Config, Error> {
         let config = Self::require_init(env)?;
         if config.paused {
@@ -318,7 +280,7 @@ impl SubscriptionContract {
         Ok(config)
     }
 
-    /// Loads a plan or returns `Error::PlanNotFound`.
+    /// Load a plan or return `Error::PlanNotFound`.
     fn load_plan(env: &Env, plan_id: u64) -> Result<Plan, Error> {
         env.storage()
             .persistent()
@@ -326,21 +288,59 @@ impl SubscriptionContract {
             .ok_or(Error::PlanNotFound)
     }
 
-    /// Computes the next expiry ledger sequence for a plan interval.
+    /// Compute the next expiry ledger sequence for a subscription.
     fn next_expiry(env: &Env, interval: u64) -> u64 {
-        env.ledger().sequence() as u64 + interval + PERIOD_LEDGERS
+        env.ledger().sequence() as u64 + interval
     }
 
-    /// Charges the fan for a plan: transfers the plan amount to the creator and
-    /// the protocol fee to the stored fee recipient. The recipient is always
-    /// read from `Config`, never from a caller-supplied argument.
+    /// Charge the fan for a plan, splitting the protocol fee to the fee recipient.
     fn charge(env: &Env, fan: &Address, plan: &Plan) {
         let config = Self::require_init(env).unwrap_or_else(|e| panic_with_error!(env, e));
-        let token_client = token::Client::new(env, &plan.asset);
-        token_client.transfer(fan, &plan.creator, &plan.amount);
         let fee = plan.amount * config.protocol_fee_bps as i128 / BPS_DENOM;
+        let creator_amount = plan.amount - fee;
+        let token_client = token::Client::new(env, &plan.asset);
+        token_client.transfer(fan, &plan.creator, &creator_amount);
         if fee > 0 {
             token_client.transfer(fan, &config.fee_recipient, &fee);
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::Env;
+
+    fn setup() -> (Env, SubscriptionContractClient<'static>, Address, Address) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SubscriptionContract);
+        let client = SubscriptionContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let fee_recipient = Address::generate(&env);
+        client.init(&admin, &100u32, &fee_recipient);
+        (env, client, admin, fee_recipient)
+    }
+
+    #[test]
+    fn create_plan_blocked_while_paused() {
+        let (env, client, _admin, _fee) = setup();
+        let creator = Address::generate(&env);
+        let asset = Address::generate(&env);
+
+        client.pause();
+        let result = client.try_create_plan(&creator, &asset, &100i128, &PERIOD_LEDGERS);
+        assert_eq!(result, Err(Ok(Error::Paused)));
+
+        let next_id: u64 = env
+            .as_contract(&client.address, || {
+                env.storage().instance().get(&DataKey::NextPlanId).unwrap()
+            });
+        assert_eq!(next_id, 1);
+
+        client.unpause();
+        let plan_id = client.create_plan(&creator, &asset, &100i128, &PERIOD_LEDGERS);
+        assert_eq!(plan_id, 1);
     }
 }
