@@ -67,11 +67,16 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
 - While paused, all mutating entrypoints (`subscribe`, `renew`,
   `extend_subscription`, `cancel`) revert and leave storage unchanged.
 
-### `set_protocol_fee_bps(bps: u32)`
+### `set_protocol_fee_bps(bps: u32) -> Result<(), Error>`
 
 - Auth: `admin` must authorize the call.
-- Reverts when `bps > MAX_FEE_BPS`. `10000` is never accepted.
-- Unauthorized calls leave storage unchanged.
+- Returns `Error::FeeTooHigh` when `bps > MAX_FEE_BPS`. `10000` is never
+  accepted. A rejected rate leaves the previous rate in place and emits no
+  event.
+- On success, writes the new rate and emits exactly one `fee set` event (see
+  the event schema below) carrying the new basis points and the current fee
+  recipient.
+- Unauthorized calls leave storage unchanged and emit no event.
 
 ## Fee invariant
 
@@ -98,7 +103,7 @@ list. The committed fixture in
 | cancelled | `("sub", "cancelled")` | `(fan, creator, plan_id, effective_ledger)` |
 | paused | `("admin", "paused")` | `()` |
 | unpaused | `("admin", "unpaused")` | `()` |
-| fee set | `("admin", "fee")` | `(protocol_fee_bps)` |
+| fee set | `("admin", "fee")` | `(protocol_fee_bps, fee_recipient)` |
 
 ## Auth summary
 
