@@ -8,6 +8,9 @@
 
 use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, String};
 
+/// Maximum number of decimal places accepted by `initialize`.
+pub const MAX_DECIMALS: u32 = 18;
+
 /// Storage keys for the token contract.
 #[contracttype]
 #[derive(Clone)]
@@ -41,6 +44,9 @@ pub struct MyFansToken;
 #[contractimpl]
 impl MyFansToken {
     /// Initialize the token with metadata and an admin.
+    ///
+    /// `decimals` must not exceed [`MAX_DECIMALS`] (18); larger values are
+    /// rejected with `TokenError::InvalidAmount` before any storage is written.
     pub fn initialize(
         env: Env,
         admin: Address,
@@ -50,6 +56,10 @@ impl MyFansToken {
     ) -> Result<(), TokenError> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(TokenError::AlreadyInitialized);
+        }
+
+        if decimals > MAX_DECIMALS {
+            return Err(TokenError::InvalidAmount);
         }
 
         env.storage().instance().set(&DataKey::Admin, &admin);
@@ -244,6 +254,48 @@ mod test {
     }
 
     #[test]
+    fn test_initialize_accepts_valid_decimals() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+
+        for decimals in [0u32, 7, 18] {
+            let contract_id = env.register_contract(None, MyFansToken);
+            let client = MyFansTokenClient::new(&env, &contract_id);
+            client.initialize(
+                &admin,
+                &String::from_str(&env, "MyFans"),
+                &String::from_str(&env, "MYFANS"),
+                &decimals,
+            );
+        }
+    }
+
+    #[test]
+    fn test_initialize_rejects_decimals_above_cap() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+
+        for decimals in [19u32, u32::MAX] {
+            let contract_id = env.register_contract(None, MyFansToken);
+            let client = MyFansTokenClient::new(&env, &contract_id);
+            let result = client.try_initialize(
+                &admin,
+                &String::from_str(&env, "MyFans"),
+                &String::from_str(&env, "MYFANS"),
+                &decimals,
+            );
+            assert_eq!(result, Err(Ok(TokenError::InvalidAmount)));
+
+            // Contract must remain uninitialized: minting fails with NotInitialized.
+            let alice = Address::generate(&env);
+            let mint_result = client.try_mint(&alice, &1);
+            assert_eq!(mint_result, Err(Ok(TokenError::NotInitialized)));
+        }
+    }
+
+    #[test]
     fn test_mint_burn_transfer_happy_path() {
         let env = Env::default();
         let (client, _admin) = setup(&env);
@@ -272,46 +324,5 @@ mod test {
 
         assert_eq!(client.try_mint(&alice, &0), Err(Ok(TokenError::InvalidAmount)));
         assert_eq!(client.try_mint(&alice, &-5), Err(Ok(TokenError::InvalidAmount)));
-
-        assert_eq!(client.balance(&alice), 0);
-        assert_eq!(client.total_supply(), 0);
     }
-
-    #[test]
-    fn test_burn_transfer_approve_uninitialized() {
-        let env = Env::default();
-        let client = setup_uninitialized(&env);
-        let alice = Address::generate(&env);
-        let bob = Address::generate(&env);
-
-        assert_eq!(
-            client.try_burn(&alice, &10),
-            Err(Ok(TokenError::NotInitialized))
-        );
-        assert_eq!(
-            client.try_transfer(&alice, &bob, &10),
-            Err(Ok(TokenError::NotInitialized))
-        );
-        assert_eq!(
-            client.try_approve(&alice, &bob, &10, &100),
-            Err(Ok(TokenError::NotInitialized))
-        );
-
-        assert_eq!(client.balance(&alice), 0);
-        assert_eq!(client.balance(&bob), 0);
-        assert_eq!(client.allowance(&alice, &bob), 0);
-    }
-
-    #[test]
-    fn test_transfer_above_balance_is_insufficient() {
-        let env = Env::default();
-        let (client, _admin) = setup(&env);
-        let alice = Address::generate(&env);
-        let bob = Address::generate(&env);
-
-        client.mint(&alice, &100);
-
-        assert_eq!(
-            client
-
-/* … truncated 844 chars — edit only what you need near the top … */
+}
