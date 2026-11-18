@@ -114,7 +114,20 @@ impl MyFansToken {
     pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
         from.require_auth();
 
+        if amount <= 0 {
+            panic!("InvalidAmount");
+        }
+
         let from_bal = Self::balance(env.clone(), from.clone());
+        if from_bal < amount {
+            panic!("InsufficientBalance");
+        }
+
+        // Self-transfers are a no-op: the balance is unchanged.
+        if from == to {
+            return;
+        }
+
         env.storage()
             .persistent()
             .set(&DataKey::Balance(from), &(from_bal - amount));
@@ -127,6 +140,19 @@ impl MyFansToken {
 
     pub fn approve(env: Env, from: Address, spender: Address, amount: i128) {
         from.require_auth();
+
+        if amount < 0 {
+            panic!("InvalidAmount");
+        }
+
+        // An approval of 0 clears the allowance.
+        if amount == 0 {
+            env.storage()
+                .persistent()
+                .remove(&DataKey::Allowance(from, spender));
+            return;
+        }
+
         env.storage()
             .persistent()
             .set(&DataKey::Allowance(from, spender), &amount);
@@ -135,13 +161,31 @@ impl MyFansToken {
     pub fn transfer_from(env: Env, spender: Address, from: Address, to: Address, amount: i128) {
         spender.require_auth();
 
+        if amount <= 0 {
+            panic!("InvalidAmount");
+        }
+
         let allowed = Self::allowance(env.clone(), from.clone(), spender.clone());
+        if allowed < amount {
+            panic!("InsufficientAllowance");
+        }
+
+        let from_bal = Self::balance(env.clone(), from.clone());
+        if from_bal < amount {
+            panic!("InsufficientBalance");
+        }
+
+        // Decrement the allowance in the same call.
         env.storage().persistent().set(
             &DataKey::Allowance(from.clone(), spender),
             &(allowed - amount),
         );
 
-        let from_bal = Self::balance(env.clone(), from.clone());
+        // Self-transfers are a no-op: the balance is unchanged.
+        if from == to {
+            return;
+        }
+
         env.storage()
             .persistent()
             .set(&DataKey::Balance(from), &(from_bal - amount));
@@ -163,6 +207,15 @@ mod test {
         let contract_id = env.register_contract(None, MyFansToken);
         let client = MyFansTokenClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
+        (env, client, admin)
+    }
+
+    fn setup_initialized() -> (Env, MyFansTokenClient<'static>, Address) {
+        let (env, client, admin) = setup();
+        env.mock_all_auths();
+        let name = String::from_str(&env, "MyFans");
+        let symbol = String::from_str(&env, "MF");
+        client.initialize(&admin, &name, &symbol, &7);
         (env, client, admin)
     }
 
@@ -195,5 +248,74 @@ mod test {
 
         let result = client.try_initialize(&admin, &name, &symbol, &7);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn transfer_from_happy_path_decrements_allowance() {
+        let (env, client, admin) = setup_initialized();
+        let from = Address::generate(&env);
+        let spender = Address::generate(&env);
+        let to = Address::generate(&env);
+
+        client.mint(&from, &100);
+        client.approve(&from, &spender, &60);
+
+        client.transfer_from(&spender, &from, &to, &40);
+
+        assert_eq!(client.balance(&from), 60);
+        assert_eq!(client.balance(&to), 40);
+        assert_eq!(client.allowance(&from, &spender), 20);
+        let _ = admin;
+    }
+
+    #[test]
+    fn transfer_from_rejects_expired_allowance() {
+        let (env, client, _admin) = setup_initialized();
+        let from = Address::generate(&env);
+        let spender = Address::generate(&env);
+        let to = Address::generate(&env);
+
+        client.mint(&from, &100);
+        client.approve(&from, &spender, &50);
+
+        // Advance the ledger past the allowance expiration.
+        env.ledger().set_sequence_number(env.ledger().sequence() + 1_000_000);
+
+        let result = client.try_transfer_from(&spender, &from, &to, &10);
+        assert!(result.is_err());
+        assert_eq!(client.balance(&from), 100);
+        assert_eq!(client.balance(&to), 0);
+    }
+
+    #[test]
+    fn transfer_from_rejects_insufficient_allowance() {
+        let (env, client, _admin) = setup_initialized();
+        let from = Address::generate(&env);
+        let spender = Address::generate(&env);
+        let to = Address::generate(&env);
+
+        client.mint(&from, &100);
+        client.approve(&from, &spender, &10);
+
+        let result = client.try_transfer_from(&spender, &from, &to, &20);
+        assert!(result.is_err());
+        assert_eq!(client.balance(&from), 100);
+        assert_eq!(client.balance(&to), 0);
+        assert_eq!(client.allowance(&from, &spender), 10);
+    }
+
+    #[test]
+    fn transfer_from_rejects_missing_allowance() {
+        let (env, client, _admin) = setup_initialized();
+        let from = Address::generate(&env);
+        let spender = Address::generate(&env);
+        let to = Address::generate(&env);
+
+        client.mint(&from, &100);
+
+        let result = client.try_transfer_from(&spender, &from, &to, &10);
+        assert!(result.is_err());
+        assert_eq!(client.balance(&from), 100);
+        assert_eq!(client.balance(&to), 0);
     }
 }
