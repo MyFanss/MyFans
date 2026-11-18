@@ -33,6 +33,7 @@ pub enum Error {
     TrustlineMissing = 14,
     AllowanceMissing = 15,
     UnsupportedAsset = 16,
+    InvalidFeeRecipient = 17,
 }
 
 #[contracttype]
@@ -79,6 +80,9 @@ pub struct SubscriptionContract;
 #[contractimpl]
 impl SubscriptionContract {
     /// Initialize the contract. Requires admin auth. Returns an error on double-init.
+    /// The `fee_recipient` must be a non-empty address distinct from the admin;
+    /// otherwise `Error::InvalidFeeRecipient` is returned and storage is left
+    /// uninitialized.
     pub fn init(
         env: Env,
         admin: Address,
@@ -91,6 +95,9 @@ impl SubscriptionContract {
         }
         if protocol_fee_bps > MAX_FEE_BPS {
             return Err(Error::FeeTooHigh);
+        }
+        if fee_recipient == admin {
+            return Err(Error::InvalidFeeRecipient);
         }
         let config = Config {
             admin,
@@ -264,10 +271,37 @@ impl SubscriptionContract {
         }
         config.protocol_fee_bps = protocol_fee_bps;
         env.storage().instance().set(&DataKey::Config, &config);
+        env.events().publish(
+            (symbol_short!("fee"), symbol_short!("updated")),
+            (protocol_fee_bps, config.fee_recipient.clone()),
+        );
         Ok(())
     }
 
-    /// Load the config, returning `NotInitialized` if the contract is not set up.
+    /// Admin fee recipient setter. Requires admin auth. Rejects a recipient
+    /// equal to the admin with `Error::InvalidFeeRecipient`. Emits the
+    /// fee-updated event so indexers observe the new destination.
+    pub fn set_fee_recipient(env: Env, recipient: Address) -> Result<(), Error> {
+        let mut config = Self::require_init(&env)?;
+        config.admin.require_auth();
+        if recipient == config.admin {
+            return Err(Error::InvalidFeeRecipient);
+        }
+        config.fee_recipient = recipient.clone();
+        env.storage().instance().set(&DataKey::Config, &config);
+        env.events().publish(
+            (symbol_short!("fee"), symbol_short!("updated")),
+            (config.protocol_fee_bps, recipient),
+        );
+        Ok(())
+    }
+
+    /// Returns the current config (admin, fee, recipient, paused).
+    pub fn get_config(env: Env) -> Result<Config, Error> {
+        Self::require_init(&env)
+    }
+
+    /// Loads the config or returns `Error::NotInitialized`.
     fn require_init(env: &Env) -> Result<Config, Error> {
         env.storage()
             .instance()
@@ -275,16 +309,16 @@ impl SubscriptionContract {
             .ok_or(Error::NotInitialized)
     }
 
-    /// Ensure the contract is not paused, returning `Paused` otherwise.
-    fn require_active(env: &Env) -> Result<(), Error> {
+    /// Loads the config and rejects calls while paused.
+    fn require_active(env: &Env) -> Result<Config, Error> {
         let config = Self::require_init(env)?;
         if config.paused {
             return Err(Error::Paused);
         }
-        Ok(())
+        Ok(config)
     }
 
-    /// Load a plan, returning `PlanNotFound` if it does not exist.
+    /// Loads a plan or returns `Error::PlanNotFound`.
     fn load_plan(env: &Env, plan_id: u64) -> Result<Plan, Error> {
         env.storage()
             .persistent()
@@ -292,20 +326,21 @@ impl SubscriptionContract {
             .ok_or(Error::PlanNotFound)
     }
 
-    /// Compute the next expiry ledger sequence for a plan interval.
+    /// Computes the next expiry ledger sequence for a plan interval.
     fn next_expiry(env: &Env, interval: u64) -> u64 {
-        env.ledger().sequence() as u64 + interval
+        env.ledger().sequence() as u64 + interval + PERIOD_LEDGERS
     }
 
-    /// Charge the fan for a plan, transferring the plan amount to the creator
-    /// and the protocol fee to the fee recipient.
+    /// Charges the fan for a plan: transfers the plan amount to the creator and
+    /// the protocol fee to the stored fee recipient. The recipient is always
+    /// read from `Config`, never from a caller-supplied argument.
     fn charge(env: &Env, fan: &Address, plan: &Plan) {
         let config = Self::require_init(env).unwrap_or_else(|e| panic_with_error!(env, e));
-        let client = token::Client::new(env, &plan.asset);
-        client.transfer(fan, &plan.creator, &plan.amount);
+        let token_client = token::Client::new(env, &plan.asset);
+        token_client.transfer(fan, &plan.creator, &plan.amount);
         let fee = plan.amount * config.protocol_fee_bps as i128 / BPS_DENOM;
         if fee > 0 {
-            client.transfer(fan, &config.fee_recipient, &fee);
+            token_client.transfer(fan, &config.fee_recipient, &fee);
         }
     }
 }

@@ -16,7 +16,9 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
 - Auth: `admin` must authorize the call.
 - Sets the contract admin, the protocol fee in basis points, and the treasury
   recipient used for the protocol fee split.
-- `fee_recipient` MUST be the treasury contract id.
+- `fee_recipient` MUST be the treasury contract id. It MUST NOT be empty and
+  MUST NOT equal `admin`; an empty or unauthorized recipient is rejected with
+  `Error::InvalidFeeRecipient` and `DataKey::Config` is not written.
 - Reverts on double-init. A failed (unauthorized) init leaves the contract
   uninitialized.
 - `protocol_fee_bps` MUST be `<= MAX_FEE_BPS` (see below).
@@ -70,10 +72,20 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
 - Reverts when `bps > MAX_FEE_BPS`. `10000` is never accepted.
 - Unauthorized calls leave storage unchanged.
 
+### `set_fee_recipient(recipient: Address)`
+
+- Auth: `admin` must authorize the call.
+- Replaces the stored treasury recipient used by the fee split.
+- Rejects an empty or unauthorized recipient (equal to `admin`) with
+  `Error::InvalidFeeRecipient`, leaving storage unchanged.
+- Emits the fee-updated event `("admin", "fee")`.
+- Unauthorized calls leave storage unchanged.
+
 ## Fee invariant
 
 `MAX_FEE_BPS = 1000`. The protocol fee can never exceed the cap; the fee split
-is enforced on every payment path.
+is enforced on every payment path. The fee split always pays the stored fee
+recipient; the recipient is never taken from a caller-supplied argument.
 
 ## Storage keys
 
@@ -103,7 +115,8 @@ See `contract/AUTH_MATRIX.md` for the authoritative valid/invalid examples.
 
 - `create_plan`: creator signs.
 - `subscribe` / `renew` / `extend_subscription` / `cancel`: fan signs.
-- `init` / `pause` / `unpause` / `set_protocol_fee_bps`: admin signs.
+- `init` / `pause` / `unpause` / `set_protocol_fee_bps` / `set_fee_recipient`:
+  admin signs.
 - Negative auth tests MUST NOT use `mock_all_auths`.
 
 ## Out of scope
