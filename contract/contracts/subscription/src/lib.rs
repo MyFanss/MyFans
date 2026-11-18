@@ -256,6 +256,94 @@ impl SubscriptionContract {
         let mut config = Self::require_init(&env);
         config.admin.require_auth();
         if protocol_fee_bps > MAX_FEE_BPS {
-            panic_with_error
+            panic_with_error!(&env, Error::FeeTooHigh);
+        }
+        config.protocol_fee_bps = protocol_fee_bps;
+        env.storage().instance().set(&DataKey::Config, &config);
+    }
 
-/* … truncated 3376 chars — edit only what you need near the top … */
+    /// Read the current config.
+    pub fn get_config(env: Env) -> Config {
+        Self::require_init(&env)
+    }
+
+    // ---- internal helpers ----
+
+    fn require_init(env: &Env) -> Config {
+        env.storage()
+            .instance()
+            .get(&DataKey::Config)
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
+    }
+
+    fn require_active(env: &Env) {
+        let config = Self::require_init(env);
+        if config.paused {
+            panic_with_error!(env, Error::Paused);
+        }
+    }
+
+    fn load_plan(env: &Env, plan_id: u64) -> Plan {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Plan(plan_id))
+            .unwrap_or_else(|| panic_with_error!(env, Error::PlanNotFound))
+    }
+
+    fn next_expiry(env: &Env, interval: u64) -> u64 {
+        let now = env.ledger().sequence() as u64;
+        now.saturating_add(interval).saturating_add(PERIOD_LEDGERS)
+    }
+
+    fn charge(env: &Env, fan: &Address, plan: &Plan) {
+        let client = token::Client::new(env, &plan.asset);
+        client.transfer(fan, &plan.creator, &plan.amount);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::testutils::{Address as _, Ledger as _};
+    use soroban_sdk::token::{StellarAssetClient, TokenClient};
+
+    fn setup() -> (Env, SubscriptionContractClient<'static>, Address, Address) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SubscriptionContract);
+        let client = SubscriptionContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let fee_recipient = Address::generate(&env);
+        client.init(&admin, &100u32, &fee_recipient);
+        (env, client, admin, fee_recipient)
+    }
+
+    #[test]
+    fn pause_blocks_subscribe_and_leaves_no_subscription_record() {
+        let (env, client, _admin, _fee_recipient) = setup();
+
+        let creator = Address::generate(&env);
+        let fan = Address::generate(&env);
+
+        // Set up a token that the plan will use as its asset.
+        let token_id = env.register_stellar_asset_contract_v2(creator.clone()).address();
+        let token_admin = StellarAssetClient::new(&env, &token_id);
+        let token = TokenClient::new(&env, &token_id);
+        token_admin.mint(&fan, &1_000i128);
+
+        let plan_id = client.create_plan(&creator, &token_id, &100i128, &86_400u64);
+
+        // Pause the contract, then attempt to subscribe with the matching asset.
+        client.pause();
+
+        let result = client.try_subscribe(&fan, &plan_id, &token_id);
+        assert_eq!(result, Err(Ok(Error::Paused)));
+
+        // No subscription record should have been written for the fan.
+        let sub_key = DataKey::Sub(fan.clone(), creator.clone());
+        assert!(!env.storage().persistent().has(&sub_key));
+
+        // The fan balance must be unchanged since the charge never ran.
+        assert_eq!(token.balance(&fan), 1_000i128);
+    }
+}
