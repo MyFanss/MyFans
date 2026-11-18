@@ -3,10 +3,8 @@ import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { AppController } from './app.controller';
-import { AppService } from './app.service';
 // Canonical auth/users stack. Historical duplicate stacks were removed.
 import { AuthModule } from './auth-module/auth.module';
-import { UsersModule } from './users/users.module';
 import { OpenAPIController } from './common/openapi-publish.controller';
 import { ThrottlerGuard } from './common/guards/throttler.guard';
 import { JwtAuthGuard } from './auth-module/guards/jwt-auth.guard';
@@ -15,32 +13,18 @@ import { LoggingModule } from './common/logging.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
 import { MetricsMiddleware } from './common/middleware/metrics.middleware';
-import { CreatorsModule } from './creators/creators.module';
 import { PlansModule } from './plans/plans.module';
-import { EventsModule } from './events/events.module';
-import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
-import { NotificationsModule } from './notifications/notifications.module';
-import { SubscriptionsModule } from './subscriptions/subscriptions.module';
-import { ModerationModule } from './moderation/moderation.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { IdempotencyMiddleware } from './idempotency/idempotency.middleware';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
-import { ReferralModule } from './referral/referral.module';
 import { CsrfModule } from './csrf/csrf.module';
 import { SocialLinksModule } from './social-link/social-links.module';
 import { AnalyticsModule } from './analytics/analytics.module';
-import { EarningsModule } from './earnings/earnings.module';
-import { FavoritesModule } from './favorites/favorites.module';
-import { FeedModule } from './feed/feed.module';
-import { CommentsModule } from './comments/comments.module';
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
 import { CorrelationExceptionFilter } from './common/filters/correlation-exception.filter';
 import { RequestContextService } from './common/services/request-context.service';
-import { ContentModule } from './content/content.module';
 import { NetworkConfigModule } from './config/network-config.module';
-import { PostsModule } from './posts/posts.module';
-import { WebhookModule } from './webhook/webhook.module';
 
 /**
  * Routes where idempotency protection is enforced.
@@ -154,32 +138,16 @@ if (isProduction && corsCredentials && corsOrigins.includes('*')) {
     LoggingModule,
     MetricsModule,
     AuthModule,
-    UsersModule,
-    CreatorsModule,
     PlansModule,
-    EventsModule,
-    SubscriptionsModule,
-    NotificationsModule,
-    HealthModule,
-    ModerationModule,
     IdempotencyModule,
     FeatureFlagsModule,
-    ReferralModule,
     CsrfModule,
     SocialLinksModule,
     AnalyticsModule,
-    EarningsModule,
-    FavoritesModule,
-    FeedModule,
-    CommentsModule,
-    ContentModule,
     NetworkConfigModule,
-    PostsModule,
-    WebhookModule,
   ],
   controllers: [AppController, OpenAPIController],
   providers: [
-    AppService,
     RequestContextService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
@@ -193,8 +161,10 @@ export class AppModule {
       .apply(CorrelationIdMiddleware, LoggingMiddleware, MetricsMiddleware)
       .forRoutes('*');
 
-    consumer.apply(CsrfMiddleware).forRoutes(...CSRF_ROUTES);
+    consumer
+      .apply(IdempotencyMiddleware)
+      .forRoutes(...IDEMPOTENCY_ROUTES);
 
-    consumer.apply(IdempotencyMiddleware).forRoutes(...IDEMPOTENCY_ROUTES);
+    consumer.apply(CsrfMiddleware).forRoutes(...CSRF_ROUTES);
   }
 }

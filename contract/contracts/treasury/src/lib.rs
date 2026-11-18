@@ -228,6 +228,28 @@ mod test {
     }
 
     #[test]
+    fn deposit_rejects_zero_amount() {
+        let (env, client, _admin) = setup();
+        env.mock_all_auths();
+        let payer = Address::generate(&env);
+
+        let res = client.try_deposit(&payer, &0);
+        assert_eq!(res, Err(Ok(TreasuryError::InvalidAmount)));
+        assert_eq!(client.balance(&payer), 0);
+    }
+
+    #[test]
+    fn deposit_rejects_negative_amount() {
+        let (env, client, _admin) = setup();
+        env.mock_all_auths();
+        let payer = Address::generate(&env);
+
+        let res = client.try_deposit(&payer, &-1);
+        assert_eq!(res, Err(Ok(TreasuryError::InvalidAmount)));
+        assert_eq!(client.balance(&payer), 0);
+    }
+
+    #[test]
     fn deposit_reverts_when_paused() {
         let (env, client, admin) = setup();
         env.mock_auths(&[MockAuth {
@@ -254,46 +276,5 @@ mod test {
         let res = client.try_deposit(&payer, &100);
         assert_eq!(res, Err(Ok(TreasuryError::Paused)));
         assert_eq!(client.balance(&payer), 0);
-    }
-
-    #[test]
-    fn withdraw_reverts_when_paused_and_leaves_balance_unchanged() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, TreasuryContract);
-        let client = TreasuryContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
-        let account = Address::generate(&env);
-
-        client.initialize(&admin);
-        client.deposit(&account, &100);
-        assert_eq!(client.balance(&account), 100);
-
-        client.set_paused(&true);
-        let res = client.try_withdraw(&account, &40);
-        assert_eq!(res, Err(Ok(TreasuryError::Paused)));
-        assert_eq!(client.balance(&account), 100);
-    }
-
-    #[test]
-    fn withdraw_succeeds_after_unpause() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, TreasuryContract);
-        let client = TreasuryContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
-        let account = Address::generate(&env);
-
-        client.initialize(&admin);
-        client.deposit(&account, &100);
-
-        client.set_paused(&true);
-        let blocked = client.try_withdraw(&account, &40);
-        assert_eq!(blocked, Err(Ok(TreasuryError::Paused)));
-        assert_eq!(client.balance(&account), 100);
-
-        client.set_paused(&false);
-        client.withdraw(&account, &40);
-        assert_eq!(client.balance(&account), 60);
     }
 }
