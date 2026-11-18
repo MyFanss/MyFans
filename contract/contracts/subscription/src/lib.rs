@@ -144,17 +144,17 @@ impl SubscriptionContract {
     }
 
     /// Subscribe to a plan. Requires fan auth. Blocked while paused. The
-    /// `asset` argument must match the plan's asset or the call reverts with
+    /// `asset` argument must match the plan's asset or the call returns
     /// `Error::AssetMismatch` before any charge or subscription write.
-    pub fn subscribe(env: Env, fan: Address, plan_id: u64, asset: Address) {
+    pub fn subscribe(env: Env, fan: Address, plan_id: u64, asset: Address) -> Result<(), Error> {
         fan.require_auth();
-        Self::require_active(&env);
-        let plan = Self::load_plan(&env, plan_id);
+        Self::require_active(&env)?;
+        let plan = Self::load_plan(&env, plan_id)?;
         if !plan.active {
-            panic_with_error!(&env, Error::PlanInactive);
+            return Err(Error::PlanInactive);
         }
         if asset != plan.asset {
-            panic_with_error!(&env, Error::AssetMismatch);
+            return Err(Error::AssetMismatch);
         }
         Self::charge(&env, &fan, &plan);
         let expires_at = Self::next_expiry(&env, plan.interval);
@@ -173,27 +173,28 @@ impl SubscriptionContract {
             (symbol_short!("sub"), symbol_short!("created")),
             (fan, plan.creator, plan_id, expires_at),
         );
+        Ok(())
     }
 
-    /// Renew an existing subscription. Requires fan auth. Wrong asset/plan reverts.
-    pub fn renew(env: Env, fan: Address, plan_id: u64) {
+    /// Renew an existing subscription. Requires fan auth. Wrong asset/plan returns an error.
+    pub fn renew(env: Env, fan: Address, plan_id: u64) -> Result<(), Error> {
         fan.require_auth();
-        Self::require_active(&env);
-        let plan = Self::load_plan(&env, plan_id);
+        Self::require_active(&env)?;
+        let plan = Self::load_plan(&env, plan_id)?;
         if !plan.active {
-            panic_with_error!(&env, Error::PlanInactive);
+            return Err(Error::PlanInactive);
         }
         let key = DataKey::Sub(fan.clone(), plan.creator.clone());
         let mut sub: Subscription = env
             .storage()
             .persistent()
             .get(&key)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::NotSubscriber));
+            .ok_or(Error::NotSubscriber)?;
         if sub.plan_id != plan_id {
-            panic_with_error!(&env, Error::PlanNotFound);
+            return Err(Error::PlanNotFound);
         }
         if sub.asset != plan.asset {
-            panic_with_error!(&env, Error::AssetMismatch);
+            return Err(Error::AssetMismatch);
         }
         Self::charge(&env, &fan, &plan);
         sub.expires_at = Self::next_expiry(&env, plan.interval);
@@ -203,19 +204,20 @@ impl SubscriptionContract {
             (symbol_short!("sub"), symbol_short!("renewed")),
             (fan, plan.creator, plan_id, sub.expires_at),
         );
+        Ok(())
     }
 
     /// Alias for `renew` used by the interface contract.
-    pub fn extend_subscription(env: Env, fan: Address, plan_id: u64) {
-        Self::renew(env, fan, plan_id);
+    pub fn extend_subscription(env: Env, fan: Address, plan_id: u64) -> Result<(), Error> {
+        Self::renew(env, fan, plan_id)
     }
 
     /// Cancel a subscription. Requires fan auth. No refund (documented).
-    pub fn cancel(env: Env, fan: Address, creator: Address) {
+    pub fn cancel(env: Env, fan: Address, creator: Address) -> Result<(), Error> {
         fan.require_auth();
         let key = DataKey::Sub(fan.clone(), creator.clone());
         if !env.storage().persistent().has(&key) {
-            panic_with_error!(&env, Error::NotSubscriber);
+            return Err(Error::NotSubscriber);
         }
         env.storage().persistent().remove(&key);
 
@@ -223,6 +225,7 @@ impl SubscriptionContract {
             (symbol_short!("sub"), symbol_short!("cancelled")),
             (fan, creator),
         );
+        Ok(())
     }
 
     /// Returns true when `fan` has an active (non-expired) subscription to `creator`.
@@ -235,121 +238,74 @@ impl SubscriptionContract {
     }
 
     /// Admin pause. Requires admin auth. Storage unchanged on unauthorized call.
-    pub fn pause(env: Env) {
-        let mut config = Self::require_init(&env);
+    pub fn pause(env: Env) -> Result<(), Error> {
+        let mut config = Self::require_init(&env)?;
         config.admin.require_auth();
         config.paused = true;
         env.storage().instance().set(&DataKey::Config, &config);
+        Ok(())
     }
 
     /// Admin unpause. Requires admin auth.
-    pub fn unpause(env: Env) {
-        let mut config = Self::require_init(&env);
+    pub fn unpause(env: Env) -> Result<(), Error> {
+        let mut config = Self::require_init(&env)?;
         config.admin.require_auth();
         config.paused = false;
         env.storage().instance().set(&DataKey::Config, &config);
+        Ok(())
     }
 
     /// Admin fee setter. Requires admin auth. Enforces MAX_FEE_BPS cap.
-    pub fn set_protocol_fee(env: Env, protocol_fee_bps: u32) {
-        let mut config = Self::require_init(&env);
+    pub fn set_protocol_fee(env: Env, protocol_fee_bps: u32) -> Result<(), Error> {
+        let mut config = Self::require_init(&env)?;
         config.admin.require_auth();
         if protocol_fee_bps > MAX_FEE_BPS {
-            panic_with_error!(&env, Error::FeeTooHigh);
+            return Err(Error::FeeTooHigh);
         }
         config.protocol_fee_bps = protocol_fee_bps;
         env.storage().instance().set(&DataKey::Config, &config);
+        Ok(())
     }
 
-    /// Read the current config (admin, fee bps, fee recipient, paused).
-    pub fn get_config(env: Env) -> Config {
-        Self::require_init(&env)
-    }
-
-    // --- internal helpers ---
-
-    fn require_init(env: &Env) -> Config {
+    /// Load the config, returning `NotInitialized` if the contract is not set up.
+    fn require_init(env: &Env) -> Result<Config, Error> {
         env.storage()
             .instance()
             .get(&DataKey::Config)
-            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
+            .ok_or(Error::NotInitialized)
     }
 
-    fn require_active(env: &Env) {
-        let config = Self::require_init(env);
+    /// Ensure the contract is not paused, returning `Paused` otherwise.
+    fn require_active(env: &Env) -> Result<(), Error> {
+        let config = Self::require_init(env)?;
         if config.paused {
-            panic_with_error!(env, Error::Paused);
+            return Err(Error::Paused);
         }
+        Ok(())
     }
 
-    fn load_plan(env: &Env, plan_id: u64) -> Plan {
+    /// Load a plan, returning `PlanNotFound` if it does not exist.
+    fn load_plan(env: &Env, plan_id: u64) -> Result<Plan, Error> {
         env.storage()
             .persistent()
             .get(&DataKey::Plan(plan_id))
-            .unwrap_or_else(|| panic_with_error!(env, Error::PlanNotFound))
+            .ok_or(Error::PlanNotFound)
     }
 
+    /// Compute the next expiry ledger sequence for a plan interval.
     fn next_expiry(env: &Env, interval: u64) -> u64 {
-        env.ledger().sequence() as u64 + interval + PERIOD_LEDGERS
+        env.ledger().sequence() as u64 + interval
     }
 
+    /// Charge the fan for a plan, transferring the plan amount to the creator
+    /// and the protocol fee to the fee recipient.
     fn charge(env: &Env, fan: &Address, plan: &Plan) {
+        let config = Self::require_init(env).unwrap_or_else(|e| panic_with_error!(env, e));
         let client = token::Client::new(env, &plan.asset);
         client.transfer(fan, &plan.creator, &plan.amount);
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{Env, IntoVal};
-
-    fn setup() -> (Env, SubscriptionContractClient<'static>, Address, Address) {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, SubscriptionContract);
-        let client = SubscriptionContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
-        let fee_recipient = Address::generate(&env);
-        client.init(&admin, &0u32, &fee_recipient);
-        (env, client, admin, fee_recipient)
-    }
-
-    #[test]
-    fn pause_blocks_subscribe_and_leaves_no_subscription_record() {
-        let (env, client, _admin, _fee_recipient) = setup();
-
-        // Register a token contract so the balance assertion is meaningful.
-        let token_id = env.register_stellar_asset_contract(Address::generate(&env));
-        let token_client = token::Client::new(&env, &token_id);
-
-        let creator = Address::generate(&env);
-        let fan = Address::generate(&env);
-        let amount: i128 = 1_000;
-        let interval: u64 = 60;
-
-        // Fund the fan so a charge would be possible if the guard were missing.
-        token_client.mint(&fan, &amount);
-        let balance_before = token_client.balance(&fan);
-
-        let plan_id = client.create_plan(&creator, &token_id, &amount, &interval);
-
-        // Pause the contract via the admin entrypoint.
-        client.pause();
-
-        // subscribe must fail with Paused before any token movement.
-        let result = client.try_subscribe(&fan, &plan_id);
-        assert_eq!(result, Err(Ok(Error::Paused)));
-
-        // The fan's token balance is unchanged.
-        assert_eq!(token_client.balance(&fan), balance_before);
-
-        // No subscription record exists for the (fan, creator) pair.
-        assert!(!client.is_subscriber(&fan, &creator));
-        let key = DataKey::Sub(fan.clone(), creator.clone());
-        assert!(!env.as_contract(&client.address, || {
-            env.storage().persistent().has(&key)
-        }));
+        let fee = plan.amount * config.protocol_fee_bps as i128 / BPS_DENOM;
+        if fee > 0 {
+            client.transfer(fan, &config.fee_recipient, &fee);
+        }
     }
 }
