@@ -226,6 +226,16 @@ mod test {
     }
 
     #[test]
+    fn test_unknown_balance_is_zero() {
+        let env = Env::default();
+        let (client, _admin) = setup(&env);
+        let unknown = Address::generate(&env);
+
+        assert_eq!(client.balance(&unknown), 0);
+        assert_eq!(client.total_supply(), 0);
+    }
+
+    #[test]
     fn test_mint_burn_transfer_happy_path() {
         let env = Env::default();
         let (client, _admin) = setup(&env);
@@ -269,29 +279,6 @@ mod test {
         client.mint(&alice, &100);
 
         assert_eq!(
-            client.try_transfer(&alice, &bob, &101),
-            Err(Ok(TokenError::InsufficientBalance))
-        );
+            client
 
-        assert_eq!(client.balance(&alice), 100);
-        assert_eq!(client.balance(&bob), 0);
-    }
-
-    #[test]
-    fn test_allowance_expiry_boundary() {
-        let env = Env::default();
-        let (client, _admin) = setup(&env);
-        let alice = Address::generate(&env);
-        let spender = Address::generate(&env);
-
-        let expiry = env.ledger().sequence();
-        client.approve(&alice, &spender, &500, &expiry);
-
-        // At the expiry ledger the allowance is still spendable.
-        assert_eq!(client.allowance(&alice, &spender), 500);
-
-        // One ledger past the expiry it is no longer spendable.
-        env.ledger().set_sequence_number(expiry + 1);
-        assert_eq!(client.allowance(&alice, &spender), 0);
-    }
-}
+/* … truncated 844 chars — edit only what you need near the top … */
