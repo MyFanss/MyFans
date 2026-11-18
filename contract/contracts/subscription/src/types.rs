@@ -4,6 +4,10 @@
 //! backend poller (`TARGET_EVENTS`) and the CI fixture script
 //! `contract/scripts/check-subscription-event-fixture.test.mjs`. Do not change
 //! topic symbols or body field ordering without updating that fixture.
+//!
+//! **Warning:** `lib.rs` does not use these types yet — the compiled contract
+//! lives in `lib.rs`, so editing this file alone will not change on-chain
+//! behavior. Unifying these types with the contract is tracked in issue #2131.
 
 use soroban_sdk::{contracterror, contracttype, Address, Symbol};
 
