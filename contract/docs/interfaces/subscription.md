@@ -39,6 +39,9 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
   treasury via `deposit`; the remainder is transferred to the creator.
 - Reverts while the contract is paused, with no balance movement.
 - Reverts on unknown plan or asset mismatch.
+- Rejects self-subscription: when `fan == plan.creator` the call returns
+  `Error::SelfSubscription` before any charge, with no token movement and no
+  subscription row written. A different fan can still subscribe to that plan.
 
 ### `renew(fan: Address, creator: Address, plan_id: u32)` / `extend_subscription(...)`
 
@@ -80,6 +83,13 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
   `Error::InvalidFeeRecipient`, leaving storage unchanged.
 - Emits the fee-updated event `("admin", "fee")`.
 - Unauthorized calls leave storage unchanged.
+
+## Error codes
+
+| Error | Meaning |
+| --- | --- |
+| `Error::InvalidFeeRecipient` | Fee recipient is empty or equals `admin`. |
+| `Error::SelfSubscription` | `subscribe` called with `fan == plan.creator`; rejected before charge with no subscription stored. |
 
 ## Fee invariant
 

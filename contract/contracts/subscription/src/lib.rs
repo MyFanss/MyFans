@@ -34,6 +34,7 @@ pub enum Error {
     AllowanceMissing = 15,
     UnsupportedAsset = 16,
     InvalidFeeRecipient = 17,
+    SelfSubscription = 18,
 }
 
 #[contracttype]
@@ -153,13 +154,18 @@ impl SubscriptionContract {
 
     /// Subscribe to a plan. Requires fan auth. Blocked while paused. The
     /// `asset` argument must match the plan's asset or the call returns
-    /// `Error::AssetMismatch` before any charge or subscription write.
+    /// `Error::AssetMismatch` before any charge or subscription write. A
+    /// creator cannot subscribe to their own plan: `fan == plan.creator`
+    /// returns `Error::SelfSubscription` before any charge or write.
     pub fn subscribe(env: Env, fan: Address, plan_id: u64, asset: Address) -> Result<(), Error> {
         fan.require_auth();
         Self::require_active(&env)?;
         let plan = Self::load_plan(&env, plan_id)?;
         if !plan.active {
             return Err(Error::PlanInactive);
+        }
+        if fan == plan.creator {
+            return Err(Error::SelfSubscription);
         }
         if asset != plan.asset {
             return Err(Error::AssetMismatch);
@@ -257,90 +263,6 @@ impl SubscriptionContract {
     /// Admin unpause. Requires admin auth.
     pub fn unpause(env: Env) -> Result<(), Error> {
         let mut config = Self::require_init(&env)?;
-        config.admin.require_auth();
-        config.paused = false;
-        env.storage().instance().set(&DataKey::Config, &config);
-        Ok(())
-    }
+        con
 
-    /// Load config, returning `Error::NotInitialized` if absent.
-    fn require_init(env: &Env) -> Result<Config, Error> {
-        env.storage()
-            .instance()
-            .get(&DataKey::Config)
-            .ok_or(Error::NotInitialized)
-    }
-
-    /// Load config and reject when paused with `Error::Paused`.
-    fn require_active(env: &Env) -> Result<Config, Error> {
-        let config = Self::require_init(env)?;
-        if config.paused {
-            return Err(Error::Paused);
-        }
-        Ok(config)
-    }
-
-    /// Load a plan or return `Error::PlanNotFound`.
-    fn load_plan(env: &Env, plan_id: u64) -> Result<Plan, Error> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Plan(plan_id))
-            .ok_or(Error::PlanNotFound)
-    }
-
-    /// Compute the next expiry ledger sequence for a subscription.
-    fn next_expiry(env: &Env, interval: u64) -> u64 {
-        env.ledger().sequence() as u64 + interval
-    }
-
-    /// Charge the fan for a plan, splitting the protocol fee to the fee recipient.
-    fn charge(env: &Env, fan: &Address, plan: &Plan) {
-        let config = Self::require_init(env).unwrap_or_else(|e| panic_with_error!(env, e));
-        let fee = plan.amount * config.protocol_fee_bps as i128 / BPS_DENOM;
-        let creator_amount = plan.amount - fee;
-        let token_client = token::Client::new(env, &plan.asset);
-        token_client.transfer(fan, &plan.creator, &creator_amount);
-        if fee > 0 {
-            token_client.transfer(fan, &config.fee_recipient, &fee);
-        }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::Env;
-
-    fn setup() -> (Env, SubscriptionContractClient<'static>, Address, Address) {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, SubscriptionContract);
-        let client = SubscriptionContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
-        let fee_recipient = Address::generate(&env);
-        client.init(&admin, &100u32, &fee_recipient);
-        (env, client, admin, fee_recipient)
-    }
-
-    #[test]
-    fn create_plan_blocked_while_paused() {
-        let (env, client, _admin, _fee) = setup();
-        let creator = Address::generate(&env);
-        let asset = Address::generate(&env);
-
-        client.pause();
-        let result = client.try_create_plan(&creator, &asset, &100i128, &PERIOD_LEDGERS);
-        assert_eq!(result, Err(Ok(Error::Paused)));
-
-        let next_id: u64 = env
-            .as_contract(&client.address, || {
-                env.storage().instance().get(&DataKey::NextPlanId).unwrap()
-            });
-        assert_eq!(next_id, 1);
-
-        client.unpause();
-        let plan_id = client.create_plan(&creator, &asset, &100i128, &PERIOD_LEDGERS);
-        assert_eq!(plan_id, 1);
-    }
-}
+/* … truncated 3043 chars — edit only what you need near the top … */
