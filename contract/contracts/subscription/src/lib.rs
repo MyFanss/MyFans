@@ -15,6 +15,7 @@ use types::{split_fee, Config, DataKey, Plan, Subscription, MAX_FEE_BPS};
 #[repr(u32)]
 pub enum Error {
     AlreadySubscribed = 1,
+    Overflow = 2,
 }
 
 #[contract]
@@ -90,9 +91,11 @@ impl SubscriptionContract {
                 return Err(Error::AlreadySubscribed);
             }
         }
-        let fee = Self::charge(&env, &fan, &plan);
         let start_ledger = env.ledger().sequence();
-        let end_ledger = start_ledger + plan.interval_ledgers;
+        let end_ledger = start_ledger
+            .checked_add(plan.interval_ledgers)
+            .ok_or(Error::Overflow)?;
+        let fee = Self::charge(&env, &fan, &plan);
         let sub = Subscription {
             fan: fan.clone(),
             creator: creator.clone(),
@@ -108,7 +111,7 @@ impl SubscriptionContract {
         Ok(())
     }
 
-    pub fn renew(env: Env, fan: Address, creator: Address, plan_id: u32) {
+    pub fn renew(env: Env, fan: Address, creator: Address, plan_id: u32) -> Result<(), Error> {
         fan.require_auth();
         let plan = Self::load_plan(&env, plan_id);
         if plan.creator != creator {
@@ -119,8 +122,16 @@ impl SubscriptionContract {
             .persistent()
             .get(&DataKey::Subscription(fan.clone(), creator.clone()))
             .expect("no subscription");
+        let base = if env.ledger().sequence() > sub.end_ledger {
+            env.ledger().sequence()
+        } else {
+            sub.end_ledger
+        };
+        let new_end = base
+            .checked_add(plan.interval_ledgers)
+            .ok_or(Error::Overflow)?;
         let fee = Self::charge(&env, &fan, &plan);
-        sub.end_ledger = sub.end_ledger + plan.interval_ledgers;
+        sub.end_ledger = new_end;
         env.storage()
             .persistent()
             .set(&DataKey::Subscription(fan.clone(), creator.clone()), &sub);
@@ -128,6 +139,7 @@ impl SubscriptionContract {
             ("sub", "renewed"),
             (fan, creator, plan_id, plan.amount, fee, sub.end_ledger),
         );
+        Ok(())
     }
 
     pub fn cancel(env: Env, fan: Address, creator: Address, _plan_id: u32) {
