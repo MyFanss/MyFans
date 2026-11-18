@@ -110,6 +110,24 @@ header. Requests missing the header are rejected with **400 Bad Request** before
 the handler runs, so a retried checkout can never double-charge or
 double-fulfill.
 
+### Verified results only
+
+A checkout confirm is only a success once the submitted transaction has been
+verified against the pending checkout's plan amount and asset (via RPC). The
+handler must **never** echo the request body back as a confirmed payment:
+
+- A body without a transaction hash (or a server-built unsigned transaction id)
+  is rejected with **400 Bad Request**.
+- A transaction that does not match the pending checkout's amount/asset is
+  rejected with **400 Bad Request**.
+- Until the subscription service that performs the RPC verification exists, the
+  handler **fails closed** with **501 Not Implemented** rather than returning a
+  fabricated confirmation.
+
+Because 4xx/5xx responses are not cached (see *Failure modes* below), an
+unverified request never leaves a cached `confirmed` result behind. Only the
+verified result is stored and replayed for a repeated key with the same body.
+
 ### Body fingerprinting
 
 For money paths the stored record includes a hash of the request body
@@ -177,22 +195,6 @@ constraint (loser gets 409). No in-memory state is used.
    (method/path mismatch).
 4. Send two concurrent requests with `Idempotency-Key: test-2` → one gets
    `201`, the other gets `409`.
-5. Send `POST /v1/earnings/withdraw/prepare` with `Idempotency-Key: test-3`
-   → expect `201`; repeat → expect `201` with the same `prepareId`.
-6. Send `POST /v1/earnings/withdraw/confirm` with `Idempotency-Key: test-4`
-   → expect `201`; repeat → expect `201` with the same settlement result.
-7. Send `POST /v1/checkout/confirm` without an `Idempotency-Key` header
-   → expect `400`.
-
-## Guarded Routes
-
-The middleware guards the following money-path routes. This list is the source
-of truth that `IDEMPOTENCY_ROUTES` in `backend/src/app.module.ts` must match:
-
-| Method | Path |
-|--------|------|
-| `POST` | `/v1/checkout/confirm` |
-| `POST` | `/v1/subscriptions` |
-| `POST` | `/v1/payments` |
-| `POST` | `/v1/earnings/withdraw/prepare` |
-| `POST` | `/v1/earnings/withdraw/confirm` |
+5. Send `POST /v1/checkout/confirm` with a body that has no transaction hash →
+   expect `400` (or `501` while verification is unimplemented), never `200`
+   `confirmed`.

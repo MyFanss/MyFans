@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -6,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  NotImplementedException,
   Post,
   Req,
 } from '@nestjs/common';
@@ -114,6 +116,19 @@ function requireIdempotencyKey(key: string | undefined): string {
   return key.trim();
 }
 
+/**
+ * A verified checkout result. Only this shape may be cached and returned as a
+ * confirmed payment; it is produced after the transaction has been verified
+ * against the plan amount and asset.
+ */
+export interface VerifiedCheckoutResult {
+  status: 'confirmed';
+  transactionHash: string;
+  planId: string;
+  amount: string;
+  asset: string;
+}
+
 @Controller('checkout')
 export class CheckoutController {
   constructor(
@@ -123,6 +138,11 @@ export class CheckoutController {
 
   /**
    * Confirm a checkout / subscribe. Money path: requires Idempotency-Key.
+   *
+   * The request body is never trusted as proof of payment. Confirmation only
+   * succeeds after the transaction is verified against the plan amount and
+   * asset; until the subscription service exists this fails closed with 501
+   * and nothing is cached.
    */
   @Post('confirm')
   @HttpCode(HttpStatus.OK)
@@ -163,6 +183,8 @@ export class CheckoutController {
         return existing.response;
       }
 
+      // Verify before caching. A failure here throws and nothing is stored,
+      // so an unverified body can never be replayed as a confirmed payment.
       const response = await this.processCheckout(body);
 
       this.idempotencyStore.set(key, {
@@ -180,12 +202,27 @@ export class CheckoutController {
   }
 
   /**
-   * Placeholder for the actual checkout/subscribe fulfillment. Kept separate
-   * so idempotency wrapping stays independent of business logic.
+   * Verify the checkout against the plan amount and asset before confirming.
+   *
+   * The request body is not proof of payment. Until the subscription service
+   * (which checks the transaction hash via RPC) exists, this fails closed with
+   * 501 so no unverified body is ever returned or cached as confirmed.
    */
   private async processCheckout(
     body: Record<string, unknown>,
-  ): Promise<unknown> {
-    return { status: 'confirmed', checkout: body };
+  ): Promise<VerifiedCheckoutResult> {
+    const transactionHash = body?.transactionHash;
+    if (typeof transactionHash !== 'string' || transactionHash.trim() === '') {
+      throw new BadRequestException(
+        'A verified transaction hash is required to confirm a checkout',
+      );
+    }
+
+    // TODO(#2143): delegate to the subscription service to verify the
+    // transaction hash via RPC against the plan amount and asset, then return
+    // the verified result. Until then, fail closed instead of trusting input.
+    throw new NotImplementedException(
+      'Checkout confirmation requires transaction verification, which is not yet available',
+    );
   }
 }
