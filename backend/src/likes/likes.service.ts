@@ -70,13 +70,13 @@ export class LikesService {
   /**
    * Resolve the target through the Post then Comment repositories and reject
    * the operation when the target is subscriber-gated and the caller is not an
-   * active subscriber.
+   * active subscriber to the creator who owns the target.
    */
   private async assertTargetAccessible(userId: string, targetId: string): Promise<void> {
     const post = await this.postsRepository.findOne({ where: { id: targetId } });
     if (post) {
       if (post.isGated) {
-        await this.assertSubscriber(userId);
+        await this.assertSubscriber(userId, post.creatorId);
       }
       return;
     }
@@ -84,7 +84,7 @@ export class LikesService {
     const comment = await this.commentsRepository.findOne({ where: { id: targetId } });
     if (comment) {
       if (comment.isGated) {
-        await this.assertSubscriber(userId);
+        await this.assertSubscriber(userId, comment.creatorId);
       }
       return;
     }
@@ -92,8 +92,8 @@ export class LikesService {
     throw new NotFoundException(`Target ${targetId} not found`);
   }
 
-  private async assertSubscriber(userId: string): Promise<void> {
-    const isActive = await this.subscriptionsService.checkSubscription(userId);
+  private async assertSubscriber(userId: string, creatorId: string): Promise<void> {
+    const isActive = await this.subscriptionsService.checkSubscription(userId, creatorId);
     if (!isActive) {
       throw new ForbiddenException('An active subscription is required to like this content');
     }
