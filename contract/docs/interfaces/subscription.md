@@ -44,6 +44,9 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
 - Extends the subscription by one interval, performing the same fee split as
   `subscribe`.
 - Reverts on wrong asset or wrong plan.
+- A `plan_id` that does not match the fan's stored subscription returns
+  `Error::WrongPlan` and does not move tokens. `Error::PlanNotFound` is
+  reserved for a missing `DataKey::Plan` record.
 - Near `u64` ledger overflow the call returns a typed error and MUST NOT wrap.
 
 ### `cancel(fan: Address, creator: Address, plan_id: u32)`
