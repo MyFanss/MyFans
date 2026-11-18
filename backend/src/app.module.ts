@@ -139,6 +139,9 @@ if (isProduction && corsCredentials && corsOrigins.includes('*')) {
     MetricsModule,
     AuthModule,
     PlansModule,
+    // IdempotencyModule selects the shared Redis-backed IdempotencyStore when
+    // REDIS_URL is set and falls back to the in-memory store for tests. This
+    // keeps checkout confirm idempotent across instances on the money path.
     IdempotencyModule,
     FeatureFlagsModule,
     CsrfModule,

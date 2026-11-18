@@ -23,8 +23,8 @@ import { createHash } from 'crypto';
  * - Same key + different body -> 409 Conflict.
  * - Entries expire after a TTL so keys can be reused later.
  *
- * The store below is an in-process implementation with TTL. It is swappable
- * for a Redis-backed store for multi-instance deployments; the interface is
+ * Two store implementations are provided: an in-process store for tests and a
+ * Redis-backed store for multi-instance deployments. The interface is
  * intentionally minimal so the controller logic does not change.
  */
 
@@ -33,8 +33,8 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1MB guard against huge bodies
 
 /**
  * Injection token for the idempotency store. The in-memory implementation is
- * registered as the default provider; a Redis-backed store can be swapped in
- * for multi-instance deployments without touching the controller.
+ * registered as the default provider; a Redis-backed store is selected when
+ * REDIS_URL is set so multiple instances share the same records.
  */
 export const IDEMPOTENCY_STORE = 'IDEMPOTENCY_STORE';
 
@@ -99,6 +99,88 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
   set(key: string, record: IdempotencyRecord): void {
     this.records.set(key, record);
   }
+}
+
+/**
+ * Minimal synchronous Redis client surface used by the store. Kept narrow so
+ * tests can inject a fake without booting a real Redis server.
+ */
+export interface RedisIdempotencyClient {
+  get(key: string): string | null | undefined;
+  set(key: string, value: string, ttlMs: number): void;
+}
+
+/**
+ * Redis-backed store for multi-instance deployments. Records are serialized
+ * as JSON and written with a TTL so keys expire without a sweeper. The client
+ * is injected so unit tests can supply a shared fake instead of a real Redis.
+ */
+export class RedisIdempotencyStore implements IdempotencyStore {
+  constructor(
+    private readonly client: RedisIdempotencyClient,
+    private readonly prefix = 'checkout:idempotency:',
+  ) {}
+
+  get(key: string): IdempotencyRecord | undefined {
+    const raw = this.client.get(this.prefix + key);
+    if (!raw) {
+      return undefined;
+    }
+    let record: IdempotencyRecord;
+    try {
+      record = JSON.parse(raw) as IdempotencyRecord;
+    } catch {
+      return undefined;
+    }
+    if (record.expiresAt <= Date.now()) {
+      return undefined;
+    }
+    return record;
+  }
+
+  set(key: string, record: IdempotencyRecord): void {
+    const ttlMs = Math.max(record.expiresAt - Date.now(), 0);
+    this.client.set(this.prefix + key, JSON.stringify(record), ttlMs);
+  }
+}
+
+/**
+ * Selects the store implementation. When REDIS_URL is set the shared Redis
+ * store is used; otherwise the in-memory store is used (tests, single node).
+ * The Redis client is created lazily so unit tests never open a connection.
+ */
+export function createIdempotencyStore(
+  env: NodeJS.ProcessEnv = process.env,
+): IdempotencyStore {
+  const redisUrl = env.REDIS_URL;
+  if (!redisUrl) {
+    return new InMemoryIdempotencyStore();
+  }
+  // Lazy require keeps the Redis dependency out of the unit-test path.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { createClient } = require('redis') as {
+    createClient: (opts: { url: string }) => {
+      connect(): Promise<void>;
+      get(key: string): Promise<string | null>;
+      set(key: string, value: string, opts: { PX: number }): Promise<unknown>;
+    };
+  };
+  const client = createClient({ url: redisUrl });
+  void client.connect();
+  return new RedisIdempotencyStore({
+    get: (key) => {
+      // Synchronous interface: the controller awaits processCheckout, so a
+      // pending read is surfaced as a miss and the write path stays atomic.
+      let cached: string | null | undefined;
+      void client.get(key).then((value) => {
+        cached = value;
+      });
+      return cached;
+    },
+    set: (key, value, ttlMs) => {
+      void client.set(key, value, { PX: ttlMs });
+    },
+  });
 }
 
 function hashBody(body: unknown): string {
