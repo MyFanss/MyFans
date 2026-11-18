@@ -205,6 +205,13 @@ mod test {
     }
 
     #[test]
+    fn initialize_leaves_treasury_unpaused() {
+        let (_env, client, _admin) = setup();
+        // A fresh treasury must not be paused before anyone calls set_paused.
+        assert!(!client.is_paused());
+    }
+
+    #[test]
     fn deposit_requires_signer_auth_and_emits_event() {
         let (env, client, _admin) = setup();
         let payer = Address::generate(&env);
@@ -245,11 +252,6 @@ mod test {
     #[test]
     fn deposit_rejects_negative_amount() {
         let (env, client, _admin) = setup();
-        env.mock_all_auths();
-        let payer = Address::generate(&env);
+        env.mock_all_auths(
 
-        let res = client.try_deposit(&payer, &-1);
-        assert_eq!(res, Err(Ok(TreasuryError::InvalidAmount)));
-        assert_eq!(client.balance(&payer), 0);
-    }
-}
+/* … truncated 219 chars — edit only what you need near the top … */
