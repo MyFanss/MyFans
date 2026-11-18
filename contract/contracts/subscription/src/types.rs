@@ -56,6 +56,12 @@ pub enum SubscriptionError {
     ///
     /// Appended after the documented codes so existing numbers stay stable.
     InvalidAmount = 13,
+    /// No subscription exists for the given (fan, creator) pair.
+    ///
+    /// Returned by `cancel` when the row is missing (including a second cancel
+    /// of an already-cancelled subscription). Appended after the documented
+    /// codes so existing numbers stay stable.
+    NotSubscriber = 14,
 }
 
 /// A creator subscription plan.
@@ -85,6 +91,11 @@ pub struct Subscription {
     /// Ledger at which the current period expires.
     pub expires_at: u64,
     /// Ledger at which the subscription was cancelled, if any.
+    ///
+    /// A cancelled subscription keeps its row until `expires_at` so the fan
+    /// retains access they already paid for and support/refund lookups can
+    /// still find the record. `is_subscriber` is true while
+    /// `expires_at > sequence` regardless of this flag.
     pub cancelled_at: Option<u64>,
 }
 

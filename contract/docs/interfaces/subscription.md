@@ -49,14 +49,22 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
 ### `cancel(fan: Address, creator: Address, plan_id: u32)`
 
 - Auth: `fan` must authorize the call.
-- Cancels the subscription effective at the current ledger. No refund is issued
-  for the remainder of the period (documented behavior).
-- `is_subscriber` returns `false` after the cancel effective ledger.
+- Records the cancellation ledger (`cancelled_at`) on the subscription record
+  and keeps the row until `expires_at`. The row is NOT deleted on cancel.
+- No refund is issued for the remainder of the period and no tokens move
+  (documented behavior).
+- Access continues until the stored `expires_at`; `is_subscriber` stays `true`
+  until expiry and becomes `false` after the expiry ledger.
+- Reverts with `NotSubscriber` when no subscription row exists for
+  `(fan, creator)`.
+- Reverts while the contract is paused, leaving storage unchanged.
 
 ### `is_subscriber(fan: Address, creator: Address) -> bool`
 
 - Read-only. Returns `true` while the subscription is active at the current
-  ledger, `false` otherwise (including after cancel).
+  ledger (`expires_at > sequence`), `false` otherwise (including after the
+  stored expiry). A recorded cancellation does not end access early; access
+  ends at `expires_at`.
 
 ### `pause()` / `unpause()`
 

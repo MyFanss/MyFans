@@ -49,6 +49,7 @@ pub struct Subscription {
     pub plan_id: u64,
     pub asset: Address,
     pub expires_at: u64,
+    pub cancelled_at: Option<u64>,
 }
 
 #[contracttype]
@@ -160,6 +161,7 @@ impl SubscriptionContract {
             plan_id,
             asset: plan.asset.clone(),
             expires_at,
+            cancelled_at: None,
         };
         env.storage()
             .persistent()
@@ -193,6 +195,7 @@ impl SubscriptionContract {
         }
         Self::charge(&env, &fan, &plan);
         sub.expires_at = Self::next_expiry(&env, plan.interval);
+        sub.cancelled_at = None;
         env.storage().persistent().set(&key, &sub);
 
         env.events().publish(
@@ -206,14 +209,21 @@ impl SubscriptionContract {
         Self::renew(env, fan, plan_id);
     }
 
-    /// Cancel a subscription. Requires fan auth. No refund (documented).
+    /// Cancel a subscription. Requires fan auth. Blocked while paused. Records
+    /// `cancelled_at` at the current ledger and keeps the row until `expires_at`
+    /// so the fan retains access they already paid for. No refund, no token
+    /// movement. Cancelling a missing subscription reverts with `NotSubscriber`.
     pub fn cancel(env: Env, fan: Address, creator: Address) {
         fan.require_auth();
+        Self::require_active(&env);
         let key = DataKey::Sub(fan.clone(), creator.clone());
-        if !env.storage().persistent().has(&key) {
-            panic_with_error!(&env, Error::NotSubscriber);
-        }
-        env.storage().persistent().remove(&key);
+        let mut sub: Subscription = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotSubscriber));
+        sub.cancelled_at = Some(env.ledger().sequence() as u64);
+        env.storage().persistent().set(&key, &sub);
 
         env.events().publish(
             (symbol_short!("sub"), symbol_short!("cancelled")),
