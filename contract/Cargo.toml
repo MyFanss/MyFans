@@ -2,12 +2,8 @@
 resolver = "2"
 members = [
     "contracts/myfans-contract",
-    "contracts/content-access",
     "contracts/content-likes",
     "contracts/creator-deposits",
-    "contracts/creator-earnings",
-    "contracts/creator-registry",
-    "contracts/earnings",
     "contracts/myfans-lib",
     "contracts/myfans-token",
     "contracts/subscription",

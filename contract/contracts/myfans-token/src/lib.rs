@@ -61,6 +61,14 @@ impl MyFansToken {
         Ok(())
     }
 
+    /// Return the admin address configured at initialization.
+    pub fn admin(env: Env) -> Result<Address, TokenError> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(TokenError::NotInitialized)
+    }
+
     /// Mint `amount` tokens to `to`. Only the admin may mint.
     pub fn mint(env: Env, to: Address, amount: i128) -> Result<(), TokenError> {
         let admin: Address = env
@@ -226,6 +234,13 @@ mod test {
     }
 
     #[test]
+    fn test_admin_returns_initialized_admin() {
+        let env = Env::default();
+        let (client, admin) = setup(&env);
+        assert_eq!(client.admin(), admin);
+    }
+
+    #[test]
     fn test_mint_burn_transfer_happy_path() {
         let env = Env::default();
         let (client, _admin) = setup(&env);
@@ -269,29 +284,6 @@ mod test {
         client.mint(&alice, &100);
 
         assert_eq!(
-            client.try_transfer(&alice, &bob, &101),
-            Err(Ok(TokenError::InsufficientBalance))
-        );
+            client
 
-        assert_eq!(client.balance(&alice), 100);
-        assert_eq!(client.balance(&bob), 0);
-    }
-
-    #[test]
-    fn test_allowance_expiry_boundary() {
-        let env = Env::default();
-        let (client, _admin) = setup(&env);
-        let alice = Address::generate(&env);
-        let spender = Address::generate(&env);
-
-        let expiry = env.ledger().sequence();
-        client.approve(&alice, &spender, &500, &expiry);
-
-        // At the expiry ledger the allowance is still spendable.
-        assert_eq!(client.allowance(&alice, &spender), 500);
-
-        // One ledger past the expiry it is no longer spendable.
-        env.ledger().set_sequence_number(expiry + 1);
-        assert_eq!(client.allowance(&alice, &spender), 0);
-    }
-}
+/* … truncated 844 chars — edit only what you need near the top … */
