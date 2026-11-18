@@ -4,6 +4,8 @@ A practical guide to getting the MyFans backend API running locally, making your
 
 > **OpenAPI is the source of truth.** The committed spec at [`backend/openapi.json`](../openapi.json) is generated from the running app and drift-tested in CI. Every controller path registered in `AppModule` must either appear in the spec or be explicitly marked internal/excluded. See [OpenAPI source of truth](#13-openapi-source-of-truth) below.
 
+> **Mounted routes only.** `AppModule` only registers modules whose files exist in `backend/src`. Modules that are not implemented yet are not mounted, so their routes return `404` until the module lands and is added back to the `imports` array. See [Routes not yet mounted](#routes-not-yet-mounted) below.
+
 ---
 
 ## Table of Contents
@@ -253,88 +255,89 @@ curl -s -X POST http://localhost:3001/v1/auth/logout \
 # Logout from all sessions
 curl -s -X POST http://localhost:3001/v1/auth/logout \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"all": true}'
+  -d '{"allSessions": true}'
 ```
 
 ---
 
 ## 5. Key API areas
 
+All routes are prefixed with `/v1`. The table below lists only the areas that are **actually mounted** in `AppModule` today.
+
 | Area | Base path | Notes |
 |------|-----------|-------|
+| Health | `/v1/health` | Liveness and readiness probes (public) |
 | Auth | `/v1/auth` | Challenge/verify, refresh, logout |
-| Users | `/v1/users` | Profiles, settings |
-| Subscriptions | `/v1/subscriptions` | Creator subscription tiers |
-| Payments | `/v1/payments` | Stellar/Soroban payment intents |
-| Content | `/v1/content` | Posts, media |
-| Health | `/v1/health` | Liveness and readiness probes |
+| Plans | `/v1/plans` | Subscription plan CRUD |
+| Likes | `/v1/likes` | Post likes |
+| Analytics | `/v1/analytics` | Creator analytics |
+| Social links | `/v1/social-links` | Creator social link management |
+| Checkout | `/v1/checkout` | Checkout sessions |
+| Admin audit | `/v1/admin/audit` | Admin audit log |
+
+### Routes not yet mounted
+
+The following modules are referenced by the product but their source files are
+not yet in `backend/src`. They are **not** registered in `AppModule`, so their
+routes return `404` until the module lands and is added back to the `imports`
+array:
+
+- `UsersModule` — `/v1/users`
+- `CreatorsModule` — `/v1/creators`
+- `EventsModule` — `/v1/events`
+- `NotificationsModule` — `/v1/notifications`
+- `SubscriptionsModule` — `/v1/subscriptions`
+- `ModerationModule` — `/v1/moderation`
+- `ReferralModule` — `/v1/referrals`
+- `EarningsModule` — `/v1/earnings`
+- `PostsModule` — `/v1/posts`
+
+When one of these modules is implemented, add it to the `imports` array in
+`backend/src/app.module.ts` and move its row into the mounted table above.
 
 ---
 
 ## 6. Request and response conventions
 
-- All request and response bodies are JSON (`Content-Type: application/json`).
-- Timestamps are ISO-8601 UTC strings.
-- Monetary amounts are strings to avoid floating-point precision loss.
-- IDs are UUIDs unless otherwise noted.
-- Successful responses return the resource directly (no envelope).
-- Errors use the shared error envelope described in [Error format](#10-error-format).
+- All request bodies are JSON (`Content-Type: application/json`).
+- All responses are JSON.
+- Timestamps are ISO 8601 strings in UTC.
+- IDs are UUIDs unless documented otherwise.
+- Monetary amounts are strings representing integer stroops (1 XLM = 10,000,000 stroops).
 
 ---
 
 ## 7. Rate limiting
 
-Rate limits are enforced per IP (and per user when authenticated). Exceeding a
-limit returns `429 Too Many Requests` with a `Retry-After` header.
+Rate limits are enforced per IP address. Auth endpoints are limited to 5 requests per minute; other endpoints use the default limit configured in `backend/src/app.module.ts`.
 
-| Scope | Limit |
-|-------|-------|
-| Auth endpoints | 5 req / min / IP |
-| General API | 100 req / min / IP |
+When a limit is exceeded the API returns `429 Too Many Requests` with a `Retry-After` header.
 
 ---
 
 ## 8. CSRF protection
 
-State-changing requests from browsers must include the CSRF token issued at
-login. Non-browser clients using Bearer tokens are exempt.
+State-changing requests from browsers must include the CSRF token issued by the API. See the CSRF middleware in `backend/src` for details.
 
 ---
 
 ## 9. Idempotency
 
-Mutating endpoints accept an `Idempotency-Key` header. Replaying the same key
-returns the original response instead of re-executing the operation.
+Mutating endpoints accept an `Idempotency-Key` header. Replaying a request with the same key returns the original response instead of creating a duplicate.
 
 ---
 
 ## 10. Error format
 
-All errors are produced by the Nest exception filter and share a single
-envelope. Clients should parse this shape rather than assuming a bare string
-or a framework-specific body.
+All errors follow a consistent shape:
 
 ```json
 {
   "statusCode": 400,
-  "message": "Validation failed",
-  "code": "VALIDATION_ERROR",
-  "correlationId": "0f8fad5b-d9cb-469f-a165-70867728950e"
+  "message": "Human-readable description",
+  "error": "Bad Request"
 }
 ```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `statusCode` | `number` | HTTP status code, mirrors the response status. |
-| `message` | `string` | Human-readable, safe-to-display summary. Never contains stack traces or internal details. |
-| `code` | `string` | Stable machine-readable error code (e.g. `VALIDATION_ERROR`, `UNAUTHORIZED`). |
-| `correlationId` | `string` | Request correlation id. Surface this to users on fatal errors so support can trace the request. |
-
-### Client parsing notes
-
-- **Non-JSON bodies.** A proxy or gateway may return HTML or an empty body. Treat any body that does not parse as JSON as an unknown error and fall back to the HTTP status.
-- **Network failures.** A request that never reaches the server has no envelope. Synthesize one with a client-side code (e.g. `NETWORK_ERROR`) and no `correlationId`.
-- **Never render raw server output.** Do not display stack traces, SQL, or internal messages. Only show `message` and, on fatal errors, `correlationId`.
 
 ---
 
@@ -342,33 +345,27 @@ or a framework-specific body.
 
 ```bash
 cd backend
-npm test          # unit tests
-npm run test:e2e  # end-to-end tests
+npm test
 ```
 
 ---
 
 ## 12. Adding a new endpoint — checklist
 
-- [ ] Controller method decorated with the appropriate HTTP verb and path.
-- [ ] DTOs validated with `class-validator`.
-- [ ] `@Public()` only when the route is genuinely unauthenticated.
-- [ ] Errors thrown via the shared exception types so the filter emits the standard envelope.
-- [ ] OpenAPI spec regenerated (`npm run openapi:generate`).
-- [ ] Unit and e2e tests added.
+1. Create the controller/service/module under `backend/src`.
+2. Register the module in the `imports` array of `backend/src/app.module.ts`.
+3. Add the route to the mounted table in [Key API areas](#5-key-api-areas).
+4. Regenerate `backend/openapi.json` with `npm run openapi:generate`.
+5. Add tests.
 
 ---
 
 ## 13. OpenAPI source of truth
 
-The committed spec at [`backend/openapi.json`](../openapi.json) is generated
-from the running app and drift-tested in CI. Regenerate it whenever routes or
-schemas change.
+The committed spec at [`backend/openapi.json`](../openapi.json) is generated from the running app and drift-tested in CI. Every controller path registered in `AppModule` must either appear in the spec or be explicitly marked internal/excluded.
 
 ---
 
 ## 14. Ledger clock and skew budget
 
-The backend tolerates a bounded clock skew between the API host and the
-Stellar ledger close time. Requests signed outside the skew budget are
-rejected with `code: "CLOCK_SKEW"`.
+Soroban ledger timestamps can drift from wall-clock time. The backend applies a configurable skew budget when validating ledger-based timestamps. See `backend/src` for the current configuration.
