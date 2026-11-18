@@ -2,11 +2,20 @@
 
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, token, Address, Env};
+use soroban_sdk::{contract, contracterror, contractimpl, token, Address, Env};
 
 mod types;
 
 use types::{split_fee, Config, DataKey, Plan, Subscription, MAX_FEE_BPS};
+
+/// Typed contract errors. Discriminants are appended so existing values are
+/// never renumbered.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum Error {
+    AlreadySubscribed = 1,
+}
 
 #[contract]
 pub struct SubscriptionContract;
@@ -65,11 +74,21 @@ impl SubscriptionContract {
         plan_id
     }
 
-    pub fn subscribe(env: Env, fan: Address, creator: Address, plan_id: u32) {
+    pub fn subscribe(env: Env, fan: Address, creator: Address, plan_id: u32) -> Result<(), Error> {
         fan.require_auth();
         let plan = Self::load_plan(&env, plan_id);
         if plan.creator != creator {
             panic!("creator mismatch");
+        }
+        let key = DataKey::Subscription(fan.clone(), creator.clone());
+        if let Some(existing) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Subscription>(&key)
+        {
+            if env.ledger().sequence() < existing.end_ledger {
+                return Err(Error::AlreadySubscribed);
+            }
         }
         let fee = Self::charge(&env, &fan, &plan);
         let start_ledger = env.ledger().sequence();
@@ -81,13 +100,12 @@ impl SubscriptionContract {
             start_ledger,
             end_ledger,
         };
-        env.storage()
-            .persistent()
-            .set(&DataKey::Subscription(fan.clone(), creator.clone()), &sub);
+        env.storage().persistent().set(&key, &sub);
         env.events().publish(
             ("sub", "created"),
             (fan, creator, plan_id, plan.amount, fee, start_ledger, end_ledger),
         );
+        Ok(())
     }
 
     pub fn renew(env: Env, fan: Address, creator: Address, plan_id: u32) {

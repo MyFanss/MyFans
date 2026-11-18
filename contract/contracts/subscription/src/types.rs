@@ -77,7 +77,6 @@ pub struct Subscription {
     /// Fan that pays for the subscription.
     pub fan: Address,
     /// Creator the fan is subscribed to.
-    pub creator: Address,
     /// Ledger at which the current period expires.
     pub expires_at: u64,
     /// Ledger at which the subscription was cancelled, if any.
