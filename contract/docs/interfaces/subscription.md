@@ -21,6 +21,14 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
   uninitialized.
 - `protocol_fee_bps` MUST be `<= MAX_FEE_BPS` (see below).
 
+### `get_config() -> Result<Config, Error>`
+
+- Read-only. Returns the stored `Config` (admin, protocol fee bps, fee
+  recipient, and pause flag) after a successful `init`.
+- Returns `Error::NotInitialized` when the contract has not been initialized
+  (before `init` or after a failed init) instead of panicking, so frontends can
+  poll config safely.
+
 ### `create_plan(creator: Address, asset: Address, amount: i128, interval_ledgers: u32) -> u32`
 
 - Auth: `creator` must authorize the call.
