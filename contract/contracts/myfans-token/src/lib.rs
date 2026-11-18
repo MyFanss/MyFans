@@ -236,6 +236,17 @@ mod test {
     }
 
     #[test]
+    fn test_allowance_is_zero_when_no_approval_stored() {
+        let env = Env::default();
+        let (client, _admin) = setup(&env);
+        let owner = Address::generate(&env);
+        let spender = Address::generate(&env);
+
+        // `approve` is never called, so no allowance entry exists in storage.
+        assert_eq!(client.allowance(&owner, &spender), 0);
+    }
+
+    #[test]
     fn test_mint_burn_transfer_happy_path() {
         let env = Env::default();
         let (client, _admin) = setup(&env);
@@ -270,15 +281,6 @@ mod test {
     }
 
     #[test]
-    fn test_transfer_above_balance_is_insufficient() {
-        let env = Env::default();
-        let (client, _admin) = setup(&env);
-        let alice = Address::generate(&env);
-        let bob = Address::generate(&env);
+    fn test_tran
 
-        client.mint(&alice, &100);
-
-        assert_eq!(
-            client
-
-/* … truncated 844 chars — edit only what you need near the top … */
+/* … truncated 351 chars — edit only what you need near the top … */
