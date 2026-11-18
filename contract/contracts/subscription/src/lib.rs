@@ -9,10 +9,6 @@ use soroban_sdk::{
 const MAX_FEE_BPS: u32 = 1000;
 const BPS_DENOM: i128 = 10_000;
 
-/// Ledger sequence bump applied to the current ledger when a subscription is
-/// created or renewed. Kept well below u64::MAX to avoid overflow on extend.
-const PERIOD_LEDGERS: u64 = 17_280; // ~1 day at 5s ledgers
-
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -255,56 +251,6 @@ impl SubscriptionContract {
         let mut config = Self::require_init(&env);
         config.admin.require_auth();
         if protocol_fee_bps > MAX_FEE_BPS {
-            panic_with_error!(&env, Error::FeeTooHigh);
-        }
-        config.protocol_fee_bps = protocol_fee_bps;
-        env.storage().instance().set(&DataKey::Config, &config);
-    }
+            panic_with_error
 
-    /// Read a plan by id. Panics with `Error::PlanNotFound` when missing.
-    pub fn get_plan(env: Env, plan_id: u64) -> Plan {
-        Self::load_plan(&env, plan_id)
-    }
-
-    // --- internal helpers ---
-
-    fn require_init(env: &Env) -> Config {
-        env.storage()
-            .instance()
-            .get(&DataKey::Config)
-            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
-    }
-
-    fn require_active(env: &Env) {
-        let config = Self::require_init(env);
-        if config.paused {
-            panic_with_error!(env, Error::Paused);
-        }
-    }
-
-    fn load_plan(env: &Env, plan_id: u64) -> Plan {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Plan(plan_id))
-            .unwrap_or_else(|| panic_with_error!(env, Error::PlanNotFound))
-    }
-
-    fn next_expiry(env: &Env, interval: u64) -> u64 {
-        let _ = interval;
-        env.ledger().sequence() as u64 + PERIOD_LEDGERS
-    }
-
-    fn charge(env: &Env, fan: &Address, plan: &Plan) {
-        let config = Self::require_init(env);
-        let client = token::Client::new(env, &plan.asset);
-        let fee = plan.amount * config.protocol_fee_bps as i128 / BPS_DENOM;
-        let net = plan.amount - fee;
-        client.transfer(fan, &plan.creator, &net);
-        if fee > 0 {
-            client.transfer(fan, &config.fee_recipient, &fee);
-        }
-    }
-}
-
-#[cfg(test)]
-mod test;
+/* … truncated 1574 chars — edit only what you need near the top … */
