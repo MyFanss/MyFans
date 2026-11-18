@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol};
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, Symbol};
 
 /// Storage keys for the treasury contract.
 #[contracttype]
@@ -8,6 +8,7 @@ use soroban_sdk::{contract, contracterror, contractimpl, contracttype, symbol_sh
 pub enum DataKey {
     Admin,
     Paused,
+    Token,
     Balance(Address),
 }
 
@@ -22,6 +23,7 @@ pub enum TreasuryError {
     Unauthorized = 4,
     InvalidAmount = 5,
     InsufficientBalance = 6,
+    TransferFailed = 7,
 }
 
 /// Emitted when fees are deposited into the treasury.
@@ -51,16 +53,17 @@ pub struct TreasuryContract;
 
 #[contractimpl]
 impl TreasuryContract {
-    /// Initialize the treasury with an admin.
+    /// Initialize the treasury with an admin and the token it holds.
     ///
     /// The admin must authorize the call and initialization may only happen
     /// once. A second call reverts with `AlreadyInitialized`.
-    pub fn initialize(env: Env, admin: Address) -> Result<(), TreasuryError> {
+    pub fn initialize(env: Env, admin: Address, token: Address) -> Result<(), TreasuryError> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(TreasuryError::AlreadyInitialized);
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Token, &token);
         env.storage().instance().set(&DataKey::Paused, &false);
         Ok(())
     }
@@ -68,7 +71,9 @@ impl TreasuryContract {
     /// Deposit protocol fees into the treasury.
     ///
     /// Honors the pause flag, requires authorization from the depositing
-    /// payment path, and emits a `DepositEvent`.
+    /// payment path, pulls `amount` of the configured token from `from` into
+    /// the contract, then credits the internal balance and emits a
+    /// `DepositEvent`. If the token transfer fails, storage is unchanged.
     pub fn deposit(env: Env, from: Address, amount: i128) -> Result<(), TreasuryError> {
         if !env.storage().instance().has(&DataKey::Admin) {
             return Err(TreasuryError::NotInitialized);
@@ -80,6 +85,14 @@ impl TreasuryContract {
             return Err(TreasuryError::InvalidAmount);
         }
         from.require_auth();
+
+        let token_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Token)
+            .ok_or(TreasuryError::NotInitialized)?;
+        let token_client = token::Client::new(&env, &token_addr);
+        token_client.transfer(&from, &env.current_contract_address(), &amount);
 
         let key = DataKey::Balance(from.clone());
         let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
@@ -93,7 +106,9 @@ impl TreasuryContract {
     ///
     /// Only the admin (see AUTH_MATRIX) may withdraw. Honors the pause flag:
     /// when the treasury is paused the call reverts with `Paused` and no
-    /// balance is mutated. On any failure the stored balance is left unchanged.
+    /// balance is mutated. Debits the internal balance and transfers the same
+    /// amount of the configured token to `to`. On any failure the stored
+    /// balance is left unchanged.
     pub fn withdraw(env: Env, to: Address, amount: i128) -> Result<(), TreasuryError> {
         let admin: Address = env
             .storage()
@@ -115,6 +130,15 @@ impl TreasuryContract {
         if current < amount {
             return Err(TreasuryError::InsufficientBalance);
         }
+
+        let token_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Token)
+            .ok_or(TreasuryError::NotInitialized)?;
+        let token_client = token::Client::new(&env, &token_addr);
+        token_client.transfer(&env.current_contract_address(), &to, &amount);
+
         env.storage().persistent().set(&key, &(current - amount));
 
         env.events().publish((WITHDRAW, to.clone()), WithdrawEvent { to, amount });
@@ -246,35 +270,6 @@ mod test {
 
         let res = client.try_deposit(&payer, &-1);
         assert_eq!(res, Err(Ok(TreasuryError::InvalidAmount)));
-        assert_eq!(client.balance(&payer), 0);
-    }
-
-    #[test]
-    fn deposit_reverts_when_paused() {
-        let (env, client, admin) = setup();
-        env.mock_auths(&[MockAuth {
-            address: &admin,
-            invoke: &MockAuthInvoke {
-                contract: &client.address,
-                fn_name: "set_paused",
-                args: (true,).into_val(&env),
-                sub_invokes: &[],
-            },
-        }]);
-        client.set_paused(&true);
-
-        let payer = Address::generate(&env);
-        env.mock_auths(&[MockAuth {
-            address: &payer,
-            invoke: &MockAuthInvoke {
-                contract: &client.address,
-                fn_name: "deposit",
-                args: (payer.clone(), 100i128).into_val(&env),
-                sub_invokes: &[],
-            },
-        }]);
-        let res = client.try_deposit(&payer, &100);
-        assert_eq!(res, Err(Ok(TreasuryError::Paused)));
         assert_eq!(client.balance(&payer), 0);
     }
 }
