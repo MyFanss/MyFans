@@ -5,161 +5,151 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 
-import { PlanMetadata } from './entities/plan-metadata.entity';
+const CLASSIC_ASSET_PATTERN = /^[A-Z0-9]{2,12}$/;
+const CONTRACT_ASSET_PATTERN = /^C[A-Z0-9]{55}$/;
 
-export { PlanMetadata };
+function isValidAsset(asset: string): boolean {
+  if (typeof asset !== 'string') {
+    return false;
+  }
+  if (asset.length === 0 || /\s/.test(asset)) {
+    return false;
+  }
+  return CLASSIC_ASSET_PATTERN.test(asset) || CONTRACT_ASSET_PATTERN.test(asset);
+}
 
-export interface UpsertPlanMetadataInput {
+function normalizeAsset(asset: string): string {
+  // Contract addresses are stored unchanged; classic codes are uppercased.
+  if (CONTRACT_ASSET_PATTERN.test(asset)) {
+    return asset;
+  }
+  return asset.toUpperCase();
+}
+
+export interface PlanMetadata {
   planId: string;
   creator: string;
   asset: string;
   amount: string;
   interval: string;
-  title?: string;
-  description?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
-const ASSET_PATTERN = /^[A-Z0-9]{2,12}$/;
-const AMOUNT_PATTERN = /^\d+(\.\d+)?$/;
-const INTERVAL_PATTERN = /^[1-9]\d*(s|m|h|d|w|mo|y)$/;
+export interface CreatePlanInput {
+  planId: string;
+  creator: string;
+  asset: string;
+  amount: string;
+  interval: string;
+}
+
+export interface UpdatePlanInput {
+  creator: string;
+  asset?: string;
+  amount?: string;
+  interval?: string;
+}
 
 @Injectable()
 export class PlansService {
-  constructor(
-    @InjectRepository(PlanMetadata)
-    private readonly plans: Repository<PlanMetadata>,
-  ) {}
+  private readonly plans = new Map<string, PlanMetadata>();
 
-  /**
-   * Create metadata for an on-chain plan_id. Fails if metadata already exists
-   * for that plan_id (plan_id collision / duplicate registration).
-   */
-  async create(input: UpsertPlanMetadataInput): Promise<PlanMetadata> {
-    const planId = this.normalizePlanId(input.planId);
-    const existing = await this.plans.findOne({ where: { planId } });
-    if (existing) {
-      throw new ConflictException(`Plan metadata already exists for plan_id ${planId}`);
+  create(input: CreatePlanInput): PlanMetadata {
+    const planId = input.planId.trim();
+    const creator = input.creator.trim();
+
+    if (this.plans.has(planId)) {
+      throw new ConflictException(`Plan ${planId} already exists`);
     }
 
+    const asset = this.validateAsset(input.asset);
+    const amount = this.validateAmount(input.amount);
+    const interval = this.validateInterval(input.interval);
+
     const now = new Date().toISOString();
-    const plan = this.plans.create({
+    const plan: PlanMetadata = {
       planId,
-      creator: this.normalizeCreator(input.creator),
-      asset: this.validateAsset(input.asset),
-      amount: this.validateAmount(input.amount),
-      interval: this.validateInterval(input.interval),
-      title: input.title,
-      description: input.description,
+      creator,
+      asset,
+      amount,
+      interval,
       createdAt: now,
       updatedAt: now,
-    });
+    };
 
-    return this.plans.save(plan);
+    this.plans.set(planId, plan);
+    return plan;
   }
 
-  /**
-   * Update metadata for an existing plan_id. Only the creator that owns the
-   * plan may mutate it.
-   */
-  async update(
-    planId: string,
-    requester: string,
-    input: Partial<UpsertPlanMetadataInput>,
-  ): Promise<PlanMetadata> {
-    const existing = await this.getOwned(planId, requester);
+  update(planId: string, input: UpdatePlanInput): PlanMetadata {
+    const existing = this.plans.get(planId);
+    if (!existing) {
+      throw new NotFoundException(`Plan ${planId} not found`);
+    }
+    if (existing.creator !== input.creator) {
+      throw new ForbiddenException('Only the plan creator may update this plan');
+    }
 
     const updated: PlanMetadata = {
       ...existing,
       asset: input.asset !== undefined ? this.validateAsset(input.asset) : existing.asset,
       amount: input.amount !== undefined ? this.validateAmount(input.amount) : existing.amount,
-      interval: input.interval !== undefined ? this.validateInterval(input.interval) : existing.interval,
-      title: input.title !== undefined ? input.title : existing.title,
-      description: input.description !== undefined ? input.description : existing.description,
+      interval:
+        input.interval !== undefined ? this.validateInterval(input.interval) : existing.interval,
       updatedAt: new Date().toISOString(),
     };
 
-    return this.plans.save(updated);
+    this.plans.set(planId, updated);
+    return updated;
   }
 
-  /**
-   * Delete metadata for a plan_id. Only the creator that owns the plan may
-   * mutate it.
-   */
-  async remove(planId: string, requester: string): Promise<PlanMetadata> {
-    const existing = await this.getOwned(planId, requester);
-    await this.plans.delete({ planId: existing.planId });
-    return existing;
+  remove(planId: string, creator: string): void {
+    const existing = this.plans.get(planId);
+    if (!existing) {
+      throw new NotFoundException(`Plan ${planId} not found`);
+    }
+    if (existing.creator !== creator) {
+      throw new ForbiddenException('Only the plan creator may remove this plan');
+    }
+    this.plans.delete(planId);
   }
 
-  /**
-   * Read metadata for a plan_id. Public.
-   */
-  async findOne(planId: string): Promise<PlanMetadata> {
-    const normalized = this.normalizePlanId(planId);
-    const plan = await this.plans.findOne({ where: { planId: normalized } });
+  findOne(planId: string): PlanMetadata {
+    const plan = this.plans.get(planId);
     if (!plan) {
-      throw new NotFoundException(`No plan metadata for plan_id ${normalized}`);
+      throw new NotFoundException(`Plan ${planId} not found`);
     }
     return plan;
   }
 
-  /**
-   * List metadata for a creator. Public.
-   */
-  async listByCreator(creator: string): Promise<PlanMetadata[]> {
-    const normalized = this.normalizeCreator(creator);
-    return this.plans.find({
-      where: { creator: normalized },
-      order: { planId: 'ASC' },
-    });
-  }
-
-  private async getOwned(planId: string, requester: string): Promise<PlanMetadata> {
-    const existing = await this.findOne(planId);
-    const normalizedRequester = this.normalizeCreator(requester);
-    if (existing.creator !== normalizedRequester) {
-      throw new ForbiddenException('Only the plan creator may mutate plan metadata');
-    }
-    return existing;
-  }
-
-  private normalizePlanId(planId: string): string {
-    if (typeof planId !== 'string' || planId.trim().length === 0) {
-      throw new BadRequestException('plan_id is required');
-    }
-    return planId.trim();
-  }
-
-  private normalizeCreator(creator: string): string {
-    if (typeof creator !== 'string' || creator.trim().length === 0) {
-      throw new BadRequestException('creator is required');
-    }
-    return creator.trim();
+  listByCreator(creator: string): PlanMetadata[] {
+    return Array.from(this.plans.values())
+      .filter((plan) => plan.creator === creator)
+      .sort((a, b) => a.planId.localeCompare(b.planId));
   }
 
   private validateAsset(asset: string): string {
-    if (typeof asset !== 'string' || !ASSET_PATTERN.test(asset)) {
-      throw new BadRequestException('asset must be an uppercase asset code (2-12 chars)');
+    if (!isValidAsset(asset)) {
+      throw new BadRequestException(
+        'asset must be a classic asset code (2-12 uppercase alphanumerics) or a 56-character contract address starting with C',
+      );
     }
-    return asset;
+    return normalizeAsset(asset);
   }
 
   private validateAmount(amount: string): string {
-    if (typeof amount !== 'string' || !AMOUNT_PATTERN.test(amount)) {
-      throw new BadRequestException('amount must be a positive decimal string');
-    }
-    if (Number(amount) <= 0) {
-      throw new BadRequestException('amount must be greater than zero');
+    if (!/^\d+(\.\d+)?$/.test(amount)) {
+      throw new BadRequestException('amount must be a positive decimal number');
     }
     return amount;
   }
 
   private validateInterval(interval: string): string {
-    if (typeof interval !== 'string' || !INTERVAL_PATTERN.test(interval)) {
-      throw new BadRequestException('interval must be a duration like 30d, 1w, or 1mo');
+    const match = /^(\d+)d$/.exec(interval);
+    if (!match || Number(match[1]) <= 0) {
+      throw new BadRequestException('interval must be a positive number of days, e.g. 30d');
     }
     return interval;
   }

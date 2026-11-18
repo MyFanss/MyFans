@@ -241,95 +241,62 @@ curl -s http://localhost:3001/v1/health
 ```bash
 curl -s -X POST http://localhost:3001/v1/auth/refresh \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"refreshToken": "<REFRESH_TOKEN>"}'
-```
-
-### Logging out
-
-```bash
-# Logout from current session
-curl -s -X POST http://localhost:3001/v1/auth/logout \
   -H "Authorization: Bearer $TOKEN"
-
-# Logout from all sessions
-curl -s -X POST http://localhost:3001/v1/auth/logout \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"allSessions": true}'
 ```
 
 ---
 
 ## 5. Key API areas
 
-All routes are prefixed with `/v1`. The table below lists only the areas that are **actually mounted** in `AppModule` today.
-
 | Area | Base path | Notes |
 |------|-----------|-------|
-| Health | `/v1/health` | Liveness and readiness probes (public) |
 | Auth | `/v1/auth` | Challenge/verify, refresh, logout |
-| Plans | `/v1/plans` | Subscription plan CRUD |
-| Likes | `/v1/likes` | Post likes |
-| Analytics | `/v1/analytics` | Creator analytics |
-| Social links | `/v1/social-links` | Creator social link management |
-| Checkout | `/v1/checkout` | Checkout sessions |
-| Admin audit | `/v1/admin/audit` | Admin audit log |
+| Users | `/v1/users` | Profiles, settings |
+| Plans | `/v1/plans` | Creator subscription plans and metadata |
+| Subscriptions | `/v1/subscriptions` | Subscribe, cancel, renew |
+| Webhooks | `/v1/webhooks` | HMAC-signed provider callbacks |
 
-### Routes not yet mounted
+### Plan metadata `asset` field
 
-The following modules are referenced by the product but their source files are
-not yet in `backend/src`. They are **not** registered in `AppModule`, so their
-routes return `404` until the module lands and is added back to the `imports`
-array:
+The `asset` field on plan metadata accepts **either** of two forms:
 
-- `UsersModule` — `/v1/users`
-- `CreatorsModule` — `/v1/creators`
-- `EventsModule` — `/v1/events`
-- `NotificationsModule` — `/v1/notifications`
-- `SubscriptionsModule` — `/v1/subscriptions`
-- `ModerationModule` — `/v1/moderation`
-- `ReferralModule` — `/v1/referrals`
-- `EarningsModule` — `/v1/earnings`
-- `PostsModule` — `/v1/posts`
+1. **Classic Stellar asset code** — 2 to 12 uppercase alphanumeric characters, e.g. `USDC`. Lowercase codes are rejected; short codes are uppercased before storage.
+2. **Soroban contract address** — a 56-character string starting with `C`, e.g. `CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`. This is the identifier the subscription contract actually charges, and it is stored unchanged.
 
-When one of these modules is implemented, add it to the `imports` array in
-`backend/src/app.module.ts` and move its row into the mounted table above.
+Empty strings, URLs (e.g. `javascript:`, `http://...`), and values containing spaces are rejected. Before checkout confirms, the stored `asset` is compared against the asset the chain returns for the plan.
 
 ---
 
 ## 6. Request and response conventions
 
 - All request bodies are JSON (`Content-Type: application/json`).
-- All responses are JSON.
-- Timestamps are ISO 8601 strings in UTC.
-- IDs are UUIDs unless documented otherwise.
-- Monetary amounts are strings representing integer stroops (1 XLM = 10,000,000 stroops).
+- Timestamps are ISO 8601 UTC strings.
+- Monetary amounts are strings to avoid floating-point precision loss.
+- Pagination uses `?limit=&cursor=` query parameters.
 
 ---
 
 ## 7. Rate limiting
 
-Rate limits are enforced per IP address. Auth endpoints are limited to 5 requests per minute; other endpoints use the default limit configured in `backend/src/app.module.ts`.
-
-When a limit is exceeded the API returns `429 Too Many Requests` with a `Retry-After` header.
+Rate limits are applied per IP (and per user where authenticated). Auth endpoints are limited to 5 requests per minute per IP. Exceeding a limit returns `429 Too Many Requests` with a `Retry-After` header.
 
 ---
 
 ## 8. CSRF protection
 
-State-changing requests from browsers must include the CSRF token issued by the API. See the CSRF middleware in `backend/src` for details.
+State-changing requests from browsers must include the CSRF token issued by the API. Server-to-server calls using Bearer tokens are exempt.
 
 ---
 
 ## 9. Idempotency
 
-Mutating endpoints accept an `Idempotency-Key` header. Replaying a request with the same key returns the original response instead of creating a duplicate.
+Mutating endpoints accept an `Idempotency-Key` header. Replaying a request with the same key returns the original response instead of re-executing the operation.
 
 ---
 
 ## 10. Error format
 
-All errors follow a consistent shape:
+Errors follow a consistent shape:
 
 ```json
 {
@@ -352,11 +319,11 @@ npm test
 
 ## 12. Adding a new endpoint — checklist
 
-1. Create the controller/service/module under `backend/src`.
-2. Register the module in the `imports` array of `backend/src/app.module.ts`.
-3. Add the route to the mounted table in [Key API areas](#5-key-api-areas).
-4. Regenerate `backend/openapi.json` with `npm run openapi:generate`.
-5. Add tests.
+1. Create the controller/service in `backend/src/<area>`.
+2. Register the module in `AppModule`.
+3. Add DTOs with validation decorators.
+4. Add tests in a `.spec.ts` file.
+5. Regenerate `openapi.json` with `npm run openapi:generate`.
 
 ---
 
@@ -368,4 +335,4 @@ The committed spec at [`backend/openapi.json`](../openapi.json) is generated fro
 
 ## 14. Ledger clock and skew budget
 
-Soroban ledger timestamps can drift from wall-clock time. The backend applies a configurable skew budget when validating ledger-based timestamps. See `backend/src` for the current configuration.
+The API tolerates a bounded clock skew between the host and the Stellar ledger. Requests whose ledger timestamp falls outside the skew budget are rejected.
