@@ -87,6 +87,10 @@ Topics and body fields are frozen and consumed by the backend `TARGET_EVENTS`
 list. The committed fixture in
 `contract/scripts/check-subscription-event-fixture.test.mjs` is CI-enforced.
 
+This table is the single authoritative schema. `contracts/subscription/src/types.rs`
+mirrors these topics and field order (see `SubscriptionEvent`); `lib.rs` emits
+exactly these topics and bodies. A mismatch in either file is a bug.
+
 | Event | Topics | Body |
 | --- | --- | --- |
 | plan created | `("plan", "created")` | `(creator, plan_id, asset, amount, interval_ledgers)` |
