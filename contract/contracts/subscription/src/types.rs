@@ -52,6 +52,10 @@ pub enum SubscriptionError {
     LedgerOverflow = 11,
     /// `fee_recipient` is not the configured treasury contract id.
     InvalidFeeRecipient = 12,
+    /// Amount passed to a payment entrypoint is not positive.
+    ///
+    /// Appended after the documented codes so existing numbers stay stable.
+    InvalidAmount = 13,
 }
 
 /// A creator subscription plan.

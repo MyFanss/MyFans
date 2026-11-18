@@ -261,9 +261,9 @@ impl SubscriptionContract {
         env.storage().instance().set(&DataKey::Config, &config);
     }
 
-    /// Read the current config (admin, fee bps, fee recipient, paused).
-    pub fn get_config(env: Env) -> Config {
-        Self::require_init(&env)
+    /// Read a plan by id. Panics with `Error::PlanNotFound` when missing.
+    pub fn get_plan(env: Env, plan_id: u64) -> Plan {
+        Self::load_plan(&env, plan_id)
     }
 
     // --- internal helpers ---
@@ -290,66 +290,21 @@ impl SubscriptionContract {
     }
 
     fn next_expiry(env: &Env, interval: u64) -> u64 {
-        env.ledger().sequence() as u64 + interval + PERIOD_LEDGERS
+        let _ = interval;
+        env.ledger().sequence() as u64 + PERIOD_LEDGERS
     }
 
     fn charge(env: &Env, fan: &Address, plan: &Plan) {
+        let config = Self::require_init(env);
         let client = token::Client::new(env, &plan.asset);
-        client.transfer(fan, &plan.creator, &plan.amount);
+        let fee = plan.amount * config.protocol_fee_bps as i128 / BPS_DENOM;
+        let net = plan.amount - fee;
+        client.transfer(fan, &plan.creator, &net);
+        if fee > 0 {
+            client.transfer(fan, &config.fee_recipient, &fee);
+        }
     }
 }
 
 #[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{Env, IntoVal};
-
-    fn setup() -> (Env, SubscriptionContractClient<'static>, Address, Address) {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, SubscriptionContract);
-        let client = SubscriptionContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
-        let fee_recipient = Address::generate(&env);
-        client.init(&admin, &0u32, &fee_recipient);
-        (env, client, admin, fee_recipient)
-    }
-
-    #[test]
-    fn pause_blocks_subscribe_and_leaves_no_subscription_record() {
-        let (env, client, _admin, _fee_recipient) = setup();
-
-        // Register a token contract so the balance assertion is meaningful.
-        let token_id = env.register_stellar_asset_contract(Address::generate(&env));
-        let token_client = token::Client::new(&env, &token_id);
-
-        let creator = Address::generate(&env);
-        let fan = Address::generate(&env);
-        let amount: i128 = 1_000;
-        let interval: u64 = 60;
-
-        // Fund the fan so a charge would be possible if the guard were missing.
-        token_client.mint(&fan, &amount);
-        let balance_before = token_client.balance(&fan);
-
-        let plan_id = client.create_plan(&creator, &token_id, &amount, &interval);
-
-        // Pause the contract via the admin entrypoint.
-        client.pause();
-
-        // subscribe must fail with Paused before any token movement.
-        let result = client.try_subscribe(&fan, &plan_id);
-        assert_eq!(result, Err(Ok(Error::Paused)));
-
-        // The fan's token balance is unchanged.
-        assert_eq!(token_client.balance(&fan), balance_before);
-
-        // No subscription record exists for the (fan, creator) pair.
-        assert!(!client.is_subscriber(&fan, &creator));
-        let key = DataKey::Sub(fan.clone(), creator.clone());
-        assert!(!env.as_contract(&client.address, || {
-            env.storage().persistent().has(&key)
-        }));
-    }
-}
+mod test;
