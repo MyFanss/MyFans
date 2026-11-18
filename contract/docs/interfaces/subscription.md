@@ -63,6 +63,13 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
 - Auth: `admin` must authorize the call.
 - While paused, all mutating entrypoints (`subscribe`, `renew`,
   `extend_subscription`, `cancel`) revert and leave storage unchanged.
+- On a successful state change, `pause` emits exactly one `("admin", "paused")`
+  event and `unpause` emits exactly one `("admin", "unpaused")` event, after the
+  pause flag is written.
+- Calling `pause` while already paused (or `unpause` while already unpaused) is
+  a no-op: the flag is unchanged and no event is emitted.
+- An unauthorized call reverts, emits nothing, and leaves the pause flag
+  unchanged.
 
 ### `set_protocol_fee_bps(bps: u32)`
 
