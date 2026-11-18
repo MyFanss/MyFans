@@ -7,40 +7,19 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-/**
- * Lifecycle states for a subscription checkout.
- *
- * A subscription MUST NOT be treated as ACTIVE (i.e. grant paid access)
- * until an on-chain `subscribe` event has been observed, or a trusted
- * simulation plus payment proof has been verified. Client-supplied tx
- * hashes are never trusted on their own.
- */
+export const SUBSCRIPTIONS_TABLE = 'subscriptions';
+
 export enum SubscriptionStatus {
-  /** Checkout record created; nothing submitted on-chain yet. */
   CREATED = 'CREATED',
-  /** A tx hash was supplied by the client and is awaiting RPC verification. */
   SUBMITTED = 'SUBMITTED',
-  /** On-chain subscribe observed (or trusted simulation + payment proof). */
   CONFIRMED = 'CONFIRMED',
-  /** Terminal failure: verification failed or the submission timed out. */
-  FAILED = 'FAILED',
-  /** Paid access is granted. Only reachable from CONFIRMED. */
   ACTIVE = 'ACTIVE',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+  EXPIRED = 'EXPIRED',
 }
 
-/**
- * Allowed transitions for the checkout state machine.
- *
- * CREATED -> SUBMITTED -> CONFIRMED -> ACTIVE
- *                       \-> FAILED
- * CREATED -> FAILED (timeout / abandoned)
- *
- * ACTIVE is intentionally unreachable directly from CREATED or SUBMITTED:
- * this is the invariant that blocks early ACTIVE and unpaid access.
- */
-export const SUBSCRIPTION_TRANSITIONS: Readonly<
-  Record<SubscriptionStatus, readonly SubscriptionStatus[]>
-> = {
+export const SUBSCRIPTION_TRANSITIONS: Record<SubscriptionStatus, SubscriptionStatus[]> = {
   [SubscriptionStatus.CREATED]: [
     SubscriptionStatus.SUBMITTED,
     SubscriptionStatus.FAILED,
@@ -50,133 +29,101 @@ export const SUBSCRIPTION_TRANSITIONS: Readonly<
     SubscriptionStatus.FAILED,
   ],
   [SubscriptionStatus.CONFIRMED]: [SubscriptionStatus.ACTIVE],
+  [SubscriptionStatus.ACTIVE]: [
+    SubscriptionStatus.CANCELLED,
+    SubscriptionStatus.EXPIRED,
+  ],
   [SubscriptionStatus.FAILED]: [],
-  [SubscriptionStatus.ACTIVE]: [],
+  [SubscriptionStatus.CANCELLED]: [],
+  [SubscriptionStatus.EXPIRED]: [],
 };
 
-/**
- * Returns true when moving from `from` to `to` is a legal transition.
- * Idempotent re-confirmation (CONFIRMED -> CONFIRMED) is allowed so that
- * duplicate on-chain events or user refreshes do not error.
- */
-export function canTransition(
-  from: SubscriptionStatus,
-  to: SubscriptionStatus,
-): boolean {
+export function canTransition(from: SubscriptionStatus, to: SubscriptionStatus): boolean {
   if (from === to) {
     return true;
   }
-  return SUBSCRIPTION_TRANSITIONS[from]?.includes(to) ?? false;
+  return SUBSCRIPTION_TRANSITIONS[from].includes(to);
+}
+
+export function isSubmissionExpired(
+  sub: { status: SubscriptionStatus; submitExpiresAt: Date | null },
+  now: Date = new Date(),
+): boolean {
+  if (sub.status !== SubscriptionStatus.SUBMITTED) {
+    return false;
+  }
+  if (!sub.submitExpiresAt) {
+    return false;
+  }
+  return sub.submitExpiresAt.getTime() < now.getTime();
 }
 
 /**
- * Table name for the subscription entity. Exported so the migration and
- * the migration integration test can reference the same source of truth
- * instead of duplicating the literal.
+ * A subscription grants paid access only while it is ACTIVE and its contract
+ * expiry (expiresAt) is still in the future. Expired rows are not access.
  */
-export const SUBSCRIPTIONS_TABLE = 'subscriptions';
-
-/**
- * Returns true when a SUBMITTED subscription has passed its
- * submitExpiresAt deadline and should transition to FAILED.
- *
- * The predicate is pure and injectable via the `now` parameter so that
- * callers can supply a deterministic clock in tests or scheduled jobs.
- */
-export function isSubmissionExpired(
-  sub: Pick<Subscription, 'status' | 'submitExpiresAt'>,
+export function hasActiveAccess(
+  sub: { status: SubscriptionStatus; expiresAt: Date | null },
   now: Date = new Date(),
 ): boolean {
-  return (
-    sub.status === SubscriptionStatus.SUBMITTED &&
-    sub.submitExpiresAt != null &&
-    sub.submitExpiresAt.getTime() <= now.getTime()
-  );
+  if (sub.status !== SubscriptionStatus.ACTIVE) {
+    return false;
+  }
+  if (!sub.expiresAt) {
+    return false;
+  }
+  return sub.expiresAt.getTime() > now.getTime();
 }
 
 @Entity(SUBSCRIPTIONS_TABLE)
+@Index(['userId'])
+@Index(['status'])
 export class Subscription {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Index()
-  @Column({ type: 'varchar', length: 128 })
+  @Column({ type: 'uuid' })
   userId: string;
 
-  @Index()
-  @Column({ type: 'varchar', length: 128 })
+  @Column({ type: 'uuid' })
   planId: string;
 
-  @Index()
-  @Column({
-    type: 'varchar',
-    length: 32,
-    default: SubscriptionStatus.CREATED,
-  })
+  @Column({ type: 'varchar', default: SubscriptionStatus.CREATED })
   status: SubscriptionStatus;
 
-  /**
-   * Client-supplied transaction hash. Untrusted until verified via RPC
-   * against the expected invoke args.
-   */
-  @Index()
-  @Column({ type: 'varchar', length: 128, nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   txHash: string | null;
 
-  /**
-   * Set only after the tx hash has been verified against the expected
-   * invoke args via RPC. Never set from client-only claims.
-   */
   @Column({ type: 'timestamptz', nullable: true })
   verifiedAt: Date | null;
 
-  /**
-   * Set when the on-chain subscribe event (or trusted simulation plus
-   * payment proof) has been observed. This is the gate for ACTIVE.
-   */
   @Column({ type: 'timestamptz', nullable: true })
   confirmedAt: Date | null;
 
-  /**
-   * Set when the subscription becomes ACTIVE (paid access granted).
-   */
   @Column({ type: 'timestamptz', nullable: true })
   activatedAt: Date | null;
 
-  /**
-   * Set when the record transitions to FAILED (verification failure or
-   * timeout). Used by the poller to expire stale SUBMITTED records.
-   */
   @Column({ type: 'timestamptz', nullable: true })
   failedAt: Date | null;
 
-  /**
-   * Deadline for a SUBMITTED record to be confirmed. The poller moves
-   * records past this deadline to FAILED.
-   */
   @Column({ type: 'timestamptz', nullable: true })
   submitExpiresAt: Date | null;
 
-  /**
-   * Referral code that was applied at checkout, if any. Captured on the
-   * first subscription only; the ReferralModule uses this to attribute
-   * rewards exactly once per referred user (see REFERRAL_REWARDS.md).
-   */
-  @Index()
-  @Column({ type: 'varchar', length: 64, nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
+  expiresAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  cancelledAt: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
   referralCode: string | null;
 
-  /**
-   * Set when a referral reward has been attributed for this subscription.
-   * Acts as the single-winner guard: attribution is idempotent and only
-   * the first subscription of a referred user can ever set this.
-   */
   @Column({ type: 'timestamptz', nullable: true })
   referralAttributedAt: Date | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 }
