@@ -94,6 +94,7 @@ impl MyFansToken {
 
     /// Burn `amount` tokens from `from`.
     pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), TokenError> {
+        Self::require_initialized(&env)?;
         from.require_auth();
 
         if amount <= 0 {
@@ -120,6 +121,7 @@ impl MyFansToken {
 
     /// Transfer `amount` tokens from `from` to `to`.
     pub fn transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), TokenError> {
+        Self::require_initialized(&env)?;
         from.require_auth();
 
         if amount <= 0 {
@@ -169,6 +171,7 @@ impl MyFansToken {
         amount: i128,
         expiration_ledger: u32,
     ) -> Result<(), TokenError> {
+        Self::require_initialized(&env)?;
         from.require_auth();
 
         if amount < 0 {
@@ -203,6 +206,15 @@ impl MyFansToken {
             None => 0,
         }
     }
+
+    /// Return `NotInitialized` when the token has not been initialized.
+    fn require_initialized(env: &Env) -> Result<(), TokenError> {
+        if env.storage().instance().has(&DataKey::Admin) {
+            Ok(())
+        } else {
+            Err(TokenError::NotInitialized)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -223,6 +235,12 @@ mod test {
             &7,
         );
         (client, admin)
+    }
+
+    fn setup_uninitialized(env: &Env) -> MyFansTokenClient {
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, MyFansToken);
+        MyFansTokenClient::new(env, &contract_id)
     }
 
     #[test]
@@ -260,6 +278,31 @@ mod test {
     }
 
     #[test]
+    fn test_burn_transfer_approve_uninitialized() {
+        let env = Env::default();
+        let client = setup_uninitialized(&env);
+        let alice = Address::generate(&env);
+        let bob = Address::generate(&env);
+
+        assert_eq!(
+            client.try_burn(&alice, &10),
+            Err(Ok(TokenError::NotInitialized))
+        );
+        assert_eq!(
+            client.try_transfer(&alice, &bob, &10),
+            Err(Ok(TokenError::NotInitialized))
+        );
+        assert_eq!(
+            client.try_approve(&alice, &bob, &10, &100),
+            Err(Ok(TokenError::NotInitialized))
+        );
+
+        assert_eq!(client.balance(&alice), 0);
+        assert_eq!(client.balance(&bob), 0);
+        assert_eq!(client.allowance(&alice, &bob), 0);
+    }
+
+    #[test]
     fn test_transfer_above_balance_is_insufficient() {
         let env = Env::default();
         let (client, _admin) = setup(&env);
@@ -269,29 +312,6 @@ mod test {
         client.mint(&alice, &100);
 
         assert_eq!(
-            client.try_transfer(&alice, &bob, &101),
-            Err(Ok(TokenError::InsufficientBalance))
-        );
+            client
 
-        assert_eq!(client.balance(&alice), 100);
-        assert_eq!(client.balance(&bob), 0);
-    }
-
-    #[test]
-    fn test_allowance_expiry_boundary() {
-        let env = Env::default();
-        let (client, _admin) = setup(&env);
-        let alice = Address::generate(&env);
-        let spender = Address::generate(&env);
-
-        let expiry = env.ledger().sequence();
-        client.approve(&alice, &spender, &500, &expiry);
-
-        // At the expiry ledger the allowance is still spendable.
-        assert_eq!(client.allowance(&alice, &spender), 500);
-
-        // One ledger past the expiry it is no longer spendable.
-        env.ledger().set_sequence_number(expiry + 1);
-        assert_eq!(client.allowance(&alice, &spender), 0);
-    }
-}
+/* … truncated 844 chars — edit only what you need near the top … */
