@@ -13,3 +13,4 @@ Basic treasury.
 ## Overview
 Simple deposit/withdraw to contract balance.
 
+The token address is stored at `initialize`. `deposit` pulls `amount` of the configured token from `from` into the contract via `soroban_sdk::token::Client` and only then credits the internal balance. `withdraw` debits the internal balance and transfers the same amount of tokens to `to`; if the token transfer fails, storage is left unchanged. The admin must authorize `withdraw`, and the pause flag blocks both `deposit` and `withdraw`.

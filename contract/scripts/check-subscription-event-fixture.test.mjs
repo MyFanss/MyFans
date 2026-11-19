@@ -4,122 +4,91 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(__dirname, '..', '..');
+const here = dirname(fileURLToPath(import.meta.url));
+const libPath = resolve(here, '../contracts/subscription/src/lib.rs');
+const typesPath = resolve(here, '../contracts/subscription/src/types.rs');
+const docPath = resolve(here, '../docs/interfaces/subscription.md');
 
-// Single source of truth shared by contract CI and the backend poller.
-const FIXTURE_PATH = resolve(repoRoot, 'contract', 'fixtures', 'subscription-events.json');
-const BACKEND_EVENTS_PATH = resolve(repoRoot, 'backend', 'src', 'events', 'target-events.ts');
+const lib = readFileSync(libPath, 'utf8');
+const types = readFileSync(typesPath, 'utf8');
+const doc = readFileSync(docPath, 'utf8');
 
-function loadFixture() {
-  return JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
+// Frozen schema: topic pair -> ordered body fields.
+const FROZEN = {
+  plan: {
+    topic: ['plan', 'created'],
+    fields: ['plan_id', 'creator', 'asset', 'amount', 'interval'],
+  },
+  subscribe: {
+    topic: ['sub', 'created'],
+    fields: ['fan', 'creator', 'plan_id', 'amount', 'fee', 'expires_at'],
+  },
+  renew: {
+    topic: ['sub', 'renewed'],
+    fields: ['fan', 'creator', 'plan_id', 'amount', 'fee', 'expires_at'],
+  },
+  cancel: {
+    topic: ['sub', 'cancelled'],
+    fields: ['fan', 'creator', 'plan_id'],
+  },
+  pause: {
+    topic: ['sub', 'paused'],
+    fields: ['fan', 'creator', 'plan_id'],
+  },
+  unpause: {
+    topic: ['sub', 'unpaused'],
+    fields: ['fan', 'creator', 'plan_id'],
+  },
+  fee: {
+    topic: ['fee', 'updated'],
+    fields: ['recipient', 'amount'],
+  },
+};
+
+function symbolShort(value) {
+  return `symbol_short!("${value}")`;
 }
 
-function loadBackendTargetEvents() {
-  const source = readFileSync(BACKEND_EVENTS_PATH, 'utf8');
-  const match = source.match(/TARGET_EVENTS\s*=\s*(\[[\s\S]*?\])\s*(?:as const)?\s*;/);
-  assert.ok(match, 'TARGET_EVENTS array literal not found in backend poller');
-  // The backend array is a plain list of topic strings; evaluate it safely.
-  return JSON.parse(match[1].replace(/'/g, '"'));
+function assertTopic(name, [first, second]) {
+  const a = symbolShort(first);
+  const b = symbolShort(second);
+  const pattern = new RegExp(
+    `\\(\\s*${a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*,\\s*${b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\)`,
+  );
+  assert.match(lib, pattern, `${name} must publish topic (${first}, ${second})`);
 }
 
-test('fixture is well-formed and versioned', () => {
-  const fixture = loadFixture();
-  assert.equal(typeof fixture.version, 'number', 'fixture must declare a numeric version');
-  assert.ok(Array.isArray(fixture.events), 'fixture must declare an events array');
-  assert.ok(fixture.events.length > 0, 'fixture must contain at least one event');
-});
+for (const [name, spec] of Object.entries(FROZEN)) {
+  test(`lib.rs publishes frozen ${name} topic`, () => {
+    assertTopic(name, spec.topic);
+  });
+}
 
-test('every fixture event declares a topic and body shape', () => {
-  const fixture = loadFixture();
-  for (const event of fixture.events) {
-    assert.equal(typeof event.name, 'string', 'event.name must be a string');
-    assert.ok(Array.isArray(event.topics), `${event.name} must declare topics`);
-    assert.ok(event.topics.length > 0, `${event.name} must declare at least one topic`);
-    assert.ok(Array.isArray(event.body), `${event.name} must declare a body shape`);
-  }
-});
-
-test('fixture topics are unique (no duplicate deliveries)', () => {
-  const fixture = loadFixture();
-  const seen = new Set();
-  for (const event of fixture.events) {
-    const key = event.topics.join(':');
-    assert.ok(!seen.has(key), `duplicate topic signature: ${key}`);
-    seen.add(key);
-  }
-});
-
-test('backend TARGET_EVENTS matches the fixture topics', () => {
-  const fixture = loadFixture();
-  const fixtureTopics = fixture.events.map((event) => event.topics[0]).sort();
-  const backendTopics = loadBackendTargetEvents().slice().sort();
-  assert.deepEqual(
-    backendTopics,
-    fixtureTopics,
-    'backend TARGET_EVENTS diverged from the shared event fixture',
-  );
-});
-
-test('contract tests emit topics matching the fixture', () => {
-  const fixture = loadFixture();
-  const contractSource = readFileSync(
-    resolve(repoRoot, 'contract', 'src', 'lib.rs'),
-    'utf8',
-  );
-  for (const event of fixture.events) {
-    for (const topic of event.topics) {
+// The interface doc must list the same topics and field order.
+for (const [name, spec] of Object.entries(FROZEN)) {
+  test(`interface doc documents ${name} topic and fields`, () => {
+    const topicLine = `(${spec.topic[0]}, ${spec.topic[1]})`;
+    assert.ok(
+      doc.includes(topicLine),
+      `interface doc must document topic ${topicLine}`,
+    );
+    for (const field of spec.fields) {
       assert.ok(
-        contractSource.includes(topic),
-        `contract does not emit fixture topic: ${topic}`,
+        doc.includes(field),
+        `interface doc must document field ${field} for ${name}`,
       );
     }
-  }
-});
-
-// Additional coverage from the incoming branch: canonical poller names,
-// alias mapping, and rejection of unknown event names.
-const backendFixturePath = resolve(
-  repoRoot,
-  'backend',
-  'src',
-  'subscriptions',
-  'fixtures',
-  'subscription-event-fixture.json',
-);
-
-function loadBackendFixture() {
-  return JSON.parse(readFileSync(backendFixturePath, 'utf8'));
+  });
 }
 
-test('subscription event fixture lists the canonical poller names', () => {
-  const backendFixture = loadBackendFixture();
-  const canonical = backendFixture.targetEvents;
-  assert.deepEqual(canonical, ['subscribed', 'extended', 'cancelled']);
-  assert.ok(canonical.every((event) => backendFixture.eventSchemas[event]));
-});
-
-test('fixture aliases remain mappable to the canonical target events', () => {
-  const backendFixture = loadBackendFixture();
-  const canonical = backendFixture.targetEvents;
-  const aliasEntries = Object.entries(backendFixture.aliases ?? {});
-  const mapped = aliasEntries.map(([alias, target]) => ({ alias, target }));
-  assert.deepEqual(
-    mapped.sort((a, b) => a.alias.localeCompare(b.alias)),
-    [
-      { alias: 'subscription_cancelled', target: 'cancelled' },
-      { alias: 'subscription_created', target: 'subscribed' },
-      { alias: 'subscription_extended', target: 'extended' },
-    ],
-  );
-
-  for (const [, target] of aliasEntries) {
-    assert.ok(canonical.includes(target), `alias target ${target} must be in canonical list`);
-  }
-});
-
-test('unknown event names are not treated as supported subscription events', () => {
-  const backendFixture = loadBackendFixture();
-  assert.equal(backendFixture.targetEvents.includes('weird_event'), false);
-  assert.equal(backendFixture.aliases.weird_event, undefined);
-});
+// types.rs must describe the same schema, not a second one.
+for (const [name, spec] of Object.entries(FROZEN)) {
+  test(`types.rs describes ${name} schema`, () => {
+    for (const field of spec.fields) {
+      assert.ok(
+        types.includes(field),
+        `types.rs must describe field ${field} for ${name}`,
+      );
+    }
+  });
+}

@@ -4,6 +4,20 @@
 //! backend poller (`TARGET_EVENTS`) and the CI fixture script
 //! `contract/scripts/check-subscription-event-fixture.test.mjs`. Do not change
 //! topic symbols or body field ordering without updating that fixture.
+//!
+//! Shared types, storage keys, and event schema for the subscription contract.
+//!
+//! The event topic + body schema defined here is frozen and consumed by the
+//! backend poller (`TARGET_EVENTS`) and the CI fixture script
+//! `contract/scripts/check-subscription-event-fixture.test.mjs`. Do not change
+//! topic symbols or body field ordering without updating that fixture.
+//!
+//! `contract/docs/interfaces/subscription.md` is the authoritative schema; the
+//! topics and body structs below mirror it exactly.
+//!
+//! **Warning:** `lib.rs` does not use these types yet — the compiled contract
+//! lives in `lib.rs`, so editing this file alone will not change on-chain
+//! behavior. Unifying these types with the contract is tracked in issue #2131.
 
 use soroban_sdk::{contracterror, contracttype, Address, Symbol};
 
@@ -52,6 +66,16 @@ pub enum SubscriptionError {
     LedgerOverflow = 11,
     /// `fee_recipient` is not the configured treasury contract id.
     InvalidFeeRecipient = 12,
+    /// Amount passed to a payment entrypoint is not positive.
+    ///
+    /// Appended after the documented codes so existing numbers stay stable.
+    InvalidAmount = 13,
+    /// No subscription exists for the given (fan, creator) pair.
+    ///
+    /// Returned by `cancel` when the row is missing (including a second cancel
+    /// of an already-cancelled subscription). Appended after the documented
+    /// codes so existing numbers stay stable.
+    NotSubscriber = 14,
 }
 
 /// A creator subscription plan.
@@ -77,17 +101,22 @@ pub struct Subscription {
     /// Fan that pays for the subscription.
     pub fan: Address,
     /// Creator the fan is subscribed to.
-    pub creator: Address,
     /// Ledger at which the current period expires.
     pub expires_at: u64,
     /// Ledger at which the subscription was cancelled, if any.
+    ///
+    /// A cancelled subscription keeps its row until `expires_at` so the fan
+    /// retains access they already paid for and support/refund lookups can
+    /// still find the record. `is_subscriber` is true while
+    /// `expires_at > sequence` regardless of this flag.
     pub cancelled_at: Option<u64>,
 }
 
 /// Frozen event topic symbols.
 ///
 /// These symbols are the contract's public event interface. The backend poller
-/// filters on them and the CI fixture asserts they stay stable.
+/// filters on them and the CI fixture asserts they stay stable. They mirror
+/// `contract/docs/interfaces/subscription.md`.
 pub mod topics {
     use soroban_sdk::{symbol_short, Symbol};
 
@@ -98,12 +127,12 @@ pub mod topics {
 
     /// Emitted by `create_plan`.
     pub fn plan_created() -> Symbol {
-        symbol_short!("plan_crt")
+        symbol_short!("plan")
     }
 
     /// Emitted by `subscribe`.
     pub fn subscribed() -> Symbol {
-        symbol_short!("subscr")
+        symbol_short!("sub")
     }
 
     /// Emitted by `renew` / `extend_subscription`.
@@ -118,12 +147,12 @@ pub mod topics {
 
     /// Emitted by `pause` / `unpause`.
     pub fn paused() -> Symbol {
-        symbol_short!("paused")
+        symbol_short!("pause")
     }
 
     /// Emitted by the admin fee setter.
     pub fn fee_updated() -> Symbol {
-        symbol_short!("fee_upd")
+        symbol_short!("fee")
     }
 }
 
@@ -135,6 +164,7 @@ pub mod topics {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PlanCreatedEvent {
+    pub plan_id: u64,
     pub creator: Address,
     pub asset: Address,
     pub amount: i128,
@@ -146,6 +176,7 @@ pub struct PlanCreatedEvent {
 pub struct SubscribedEvent {
     pub fan: Address,
     pub creator: Address,
+    pub plan_id: u64,
     pub amount: i128,
     pub fee: i128,
     pub expires_at: u64,
@@ -156,6 +187,7 @@ pub struct SubscribedEvent {
 pub struct RenewedEvent {
     pub fan: Address,
     pub creator: Address,
+    pub plan_id: u64,
     pub amount: i128,
     pub fee: i128,
     pub expires_at: u64,
@@ -166,6 +198,7 @@ pub struct RenewedEvent {
 pub struct CancelledEvent {
     pub fan: Address,
     pub creator: Address,
+    pub plan_id: u64,
     pub cancelled_at: u64,
 }
 
@@ -211,6 +244,17 @@ pub enum DataKey {
 pub fn split_fee(amount: i128, fee_bps: u32) -> (i128, i128) {
     let fee = amount * (fee_bps as i128) / (BPS_DENOMINATOR as i128);
     (fee, amount - fee)
+}
+
+/// Validate `fee_bps` against `MAX_FEE_BPS` before any payment is split.
+///
+/// Returns `FeeTooHigh` when the configured fee exceeds the cap so callers can
+/// reject the payment before any token transfer occurs.
+pub fn validate_fee_bps(fee_bps: u32) -> Result<(), SubscriptionError> {
+    if fee_bps > MAX_FEE_BPS {
+        return Err(SubscriptionError::FeeTooHigh);
+    }
+    Ok(())
 }
 
 /// Checked ledger addition used by renew/extend.
