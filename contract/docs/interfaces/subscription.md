@@ -21,6 +21,14 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
   uninitialized.
 - `protocol_fee_bps` MUST be `<= MAX_FEE_BPS` (see below).
 
+### `get_config() -> Result<Config, Error>`
+
+- Read-only. Returns the stored `Config` (admin, protocol fee bps, fee
+  recipient, and pause flag) after a successful `init`.
+- Returns `Error::NotInitialized` when the contract has not been initialized
+  (before `init` or after a failed init) instead of panicking, so frontends can
+  poll config safely.
+
 ### `create_plan(creator: Address, asset: Address, amount: i128, interval_ledgers: u32) -> u64`
 
 - Auth: `creator` must authorize the call.
@@ -47,6 +55,9 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
 - Extends the subscription by one interval, performing the same fee split as
   `subscribe`.
 - Reverts on wrong asset or wrong plan.
+- A `plan_id` that does not match the fan's stored subscription returns
+  `Error::WrongPlan` and does not move tokens. `Error::PlanNotFound` is
+  reserved for a missing `DataKey::Plan` record.
 - Near `u64` ledger overflow the call returns a typed error and MUST NOT wrap.
 
 ### `cancel(fan: Address, creator: Address, plan_id: u64)`
@@ -67,11 +78,16 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
 - While paused, all mutating entrypoints (`subscribe`, `renew`,
   `extend_subscription`, `cancel`) revert and leave storage unchanged.
 
-### `set_protocol_fee_bps(bps: u32)`
+### `set_protocol_fee_bps(bps: u32) -> Result<(), Error>`
 
 - Auth: `admin` must authorize the call.
-- Reverts when `bps > MAX_FEE_BPS`. `10000` is never accepted.
-- Unauthorized calls leave storage unchanged.
+- Returns `Error::FeeTooHigh` when `bps > MAX_FEE_BPS`. `10000` is never
+  accepted. A rejected rate leaves the previous rate in place and emits no
+  event.
+- On success, writes the new rate and emits exactly one `fee set` event (see
+  the event schema below) carrying the new basis points and the current fee
+  recipient.
+- Unauthorized calls leave storage unchanged and emit no event.
 
 ## Fee invariant
 
@@ -102,7 +118,7 @@ exactly these topics and bodies. A mismatch in either file is a bug.
 | cancelled | `("sub", "cancelled")` | `(fan, creator, plan_id, effective_ledger)` |
 | paused | `("admin", "paused")` | `()` |
 | unpaused | `("admin", "unpaused")` | `()` |
-| fee set | `("admin", "fee")` | `(protocol_fee_bps)` |
+| fee set | `("admin", "fee")` | `(protocol_fee_bps, fee_recipient)` |
 
 ## Auth summary
 

@@ -33,6 +33,7 @@ pub enum Error {
     TrustlineMissing = 14,
     AllowanceMissing = 15,
     UnsupportedAsset = 16,
+    WrongPlan = 17,
 }
 
 #[contracttype]
@@ -194,7 +195,7 @@ impl SubscriptionContract {
             .get(&key)
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotSubscriber));
         if sub.plan_id != plan_id {
-            panic_with_error!(&env, Error::PlanNotFound);
+            panic_with_error!(&env, Error::WrongPlan);
         }
         if sub.asset != plan.asset {
             panic_with_error!(&env, Error::AssetMismatch);
@@ -257,6 +258,9 @@ impl SubscriptionContract {
     }
 
     /// Admin fee setter. Requires admin auth. Enforces MAX_FEE_BPS cap.
+    /// Returns `Error::FeeTooHigh` (emitting nothing) when the rate exceeds the
+    /// cap. On success, writes the new rate and emits a `FeeUpdatedEvent` with
+    /// the new basis points and the current
     pub fn set_protocol_fee(env: Env, protocol_fee_bps: u32) {
         let mut config = Self::require_init(&env);
         config.admin.require_auth();
