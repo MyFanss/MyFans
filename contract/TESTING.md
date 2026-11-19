@@ -68,8 +68,10 @@ cargo test -p test-consumer
 ### Run a specific test
 ```bash
 cd contract
-cargo test test_transfer
+cargo test -p myfans-token test_mint_burn_transfer_happy_path
 ```
+
+`cargo test` filters by substring match on test names, so any unique fragment of a test name works.
 
 ### Run tests with output
 ```bash

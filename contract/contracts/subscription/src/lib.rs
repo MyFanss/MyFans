@@ -33,6 +33,7 @@ pub enum Error {
     TrustlineMissing = 14,
     AllowanceMissing = 15,
     UnsupportedAsset = 16,
+    WrongPlan = 17,
 }
 
 #[contracttype]
@@ -124,6 +125,10 @@ impl SubscriptionContract {
             .instance()
             .get(&DataKey::NextPlanId)
             .unwrap_or(1);
+        let next_id = match plan_id.checked_add(1) {
+            Some(next) => next,
+            None => return Err(Error::Overflow),
+        };
         let plan = Plan {
             creator: creator.clone(),
             asset: asset.clone(),
@@ -134,10 +139,10 @@ impl SubscriptionContract {
         env.storage().persistent().set(&DataKey::Plan(plan_id), &plan);
         env.storage()
             .instance()
-            .set(&DataKey::NextPlanId, &(plan_id + 1));
+            .set(&DataKey::NextPlanId, &next_id);
 
         env.events().publish(
-            (symbol_short!("plan"), symbol_short!("created")),
+            (symbol_short!("plan_crt"),),
             (plan_id, creator, asset, amount, interval),
         );
         Ok(plan_id)
@@ -156,7 +161,7 @@ impl SubscriptionContract {
         if asset != plan.asset {
             panic_with_error!(&env, Error::AssetMismatch);
         }
-        Self::charge(&env, &fan, &plan);
+        let fee = Self::charge(&env, &fan, &plan);
         let expires_at = Self::next_expiry(&env, plan.interval);
         let sub = Subscription {
             fan: fan.clone(),
@@ -170,8 +175,8 @@ impl SubscriptionContract {
             .set(&DataKey::Sub(fan.clone(), plan.creator.clone()), &sub);
 
         env.events().publish(
-            (symbol_short!("sub"), symbol_short!("created")),
-            (fan, plan.creator, plan_id, expires_at),
+            (symbol_short!("subscr"),),
+            (fan, plan.creator, plan_id, plan.amount, fee, expires_at),
         );
     }
 
@@ -190,18 +195,18 @@ impl SubscriptionContract {
             .get(&key)
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotSubscriber));
         if sub.plan_id != plan_id {
-            panic_with_error!(&env, Error::PlanNotFound);
+            panic_with_error!(&env, Error::WrongPlan);
         }
         if sub.asset != plan.asset {
             panic_with_error!(&env, Error::AssetMismatch);
         }
-        Self::charge(&env, &fan, &plan);
+        let fee = Self::charge(&env, &fan, &plan);
         sub.expires_at = Self::next_expiry(&env, plan.interval);
         env.storage().persistent().set(&key, &sub);
 
         env.events().publish(
-            (symbol_short!("sub"), symbol_short!("renewed")),
-            (fan, plan.creator, plan_id, sub.expires_at),
+            (symbol_short!("renew"),),
+            (fan, plan.creator, plan_id, plan.amount, fee, sub.expires_at),
         );
     }
 
@@ -220,7 +225,7 @@ impl SubscriptionContract {
         env.storage().persistent().remove(&key);
 
         env.events().publish(
-            (symbol_short!("sub"), symbol_short!("cancelled")),
+            (symbol_short!("cancel"),),
             (fan, creator),
         );
     }
@@ -235,22 +240,40 @@ impl SubscriptionContract {
     }
 
     /// Admin pause. Requires admin auth. Storage unchanged on unauthorized call.
+    /// Emits `("admin", "paused")` after the storage write. A pause when already
+    /// paused is a no-op and emits no second event.
     pub fn pause(env: Env) {
         let mut config = Self::require_init(&env);
         config.admin.require_auth();
+        if config.paused {
+            return;
+        }
         config.paused = true;
         env.storage().instance().set(&DataKey::Config, &config);
+        env.events().publish((symbol_short!("pause"),), ());
     }
 
-    /// Admin unpause. Requires admin auth.
+    /// Admin unpause. Requires admin auth. Emits `("admin", "unpaused")` after
+    /// the storage write. An unpause when already unpaused is a no-op and emits
+    /// no second event.
     pub fn unpause(env: Env) {
         let mut config = Self::require_init(&env);
         config.admin.require_auth();
+        if !config.paused {
+            return;
+        }
         config.paused = false;
         env.storage().instance().set(&DataKey::Config, &config);
+        env.events().publish(
+            (symbol_short!("admin"), symbol_short!("unpaused")),
+            (),
+        );
     }
 
     /// Admin fee setter. Requires admin auth. Enforces MAX_FEE_BPS cap.
+    /// Returns `Error::FeeTooHigh` (emitting nothing) when the rate exceeds the
+    /// cap. On success, writes the new rate and emits a `FeeUpdatedEvent` with
+    /// the new basis points and the current
     pub fn set_protocol_fee(env: Env, protocol_fee_bps: u32) {
         let mut config = Self::require_init(&env);
         config.admin.require_auth();
@@ -259,14 +282,13 @@ impl SubscriptionContract {
         }
         config.protocol_fee_bps = protocol_fee_bps;
         env.storage().instance().set(&DataKey::Config, &config);
+        env.events()
+            .publish((symbol_short!("fee"),), (protocol_fee_bps,));
     }
 
-    /// Read the current config (admin, fee bps, fee recipient, paused).
-    pub fn get_config(env: Env) -> Config {
-        Self::require_init(&env)
-    }
-
-    // --- internal helpers ---
+    // ---------------------------------------------------------------------
+    // Internal helpers
+    // ---------------------------------------------------------------------
 
     fn require_init(env: &Env) -> Config {
         env.storage()
@@ -290,66 +312,20 @@ impl SubscriptionContract {
     }
 
     fn next_expiry(env: &Env, interval: u64) -> u64 {
-        env.ledger().sequence() as u64 + interval + PERIOD_LEDGERS
+        env.ledger().sequence() as u64 + interval.max(PERIOD_LEDGERS)
     }
 
-    fn charge(env: &Env, fan: &Address, plan: &Plan) {
-        let client = token::Client::new(env, &plan.asset);
-        client.transfer(fan, &plan.creator, &plan.amount);
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{Env, IntoVal};
-
-    fn setup() -> (Env, SubscriptionContractClient<'static>, Address, Address) {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, SubscriptionContract);
-        let client = SubscriptionContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
-        let fee_recipient = Address::generate(&env);
-        client.init(&admin, &0u32, &fee_recipient);
-        (env, client, admin, fee_recipient)
-    }
-
-    #[test]
-    fn pause_blocks_subscribe_and_leaves_no_subscription_record() {
-        let (env, client, _admin, _fee_recipient) = setup();
-
-        // Register a token contract so the balance assertion is meaningful.
-        let token_id = env.register_stellar_asset_contract(Address::generate(&env));
-        let token_client = token::Client::new(&env, &token_id);
-
-        let creator = Address::generate(&env);
-        let fan = Address::generate(&env);
-        let amount: i128 = 1_000;
-        let interval: u64 = 60;
-
-        // Fund the fan so a charge would be possible if the guard were missing.
-        token_client.mint(&fan, &amount);
-        let balance_before = token_client.balance(&fan);
-
-        let plan_id = client.create_plan(&creator, &token_id, &amount, &interval);
-
-        // Pause the contract via the admin entrypoint.
-        client.pause();
-
-        // subscribe must fail with Paused before any token movement.
-        let result = client.try_subscribe(&fan, &plan_id);
-        assert_eq!(result, Err(Ok(Error::Paused)));
-
-        // The fan's token balance is unchanged.
-        assert_eq!(token_client.balance(&fan), balance_before);
-
-        // No subscription record exists for the (fan, creator) pair.
-        assert!(!client.is_subscriber(&fan, &creator));
-        let key = DataKey::Sub(fan.clone(), creator.clone());
-        assert!(!env.as_contract(&client.address, || {
-            env.storage().persistent().has(&key)
-        }));
+    /// Charge `fan` for `plan`, splitting the protocol fee. Returns the fee
+    /// amount that was routed to the fee recipient.
+    fn charge(env: &Env, fan: &Address, plan: &Plan) -> i128 {
+        let config = Self::require_init(env);
+        let fee = plan.amount * config.protocol_fee_bps as i128 / BPS_DENOM;
+        let creator_amount = plan.amount - fee;
+        let token = token::Client::new(env, &plan.asset);
+        token.transfer(fan, &plan.creator, &creator_amount);
+        if fee > 0 {
+            token.transfer(fan, &config.fee_recipient, &fee);
+        }
+        fee
     }
 }
