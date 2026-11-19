@@ -163,6 +163,10 @@ impl MyFansToken {
             return Err(TokenError::InvalidAmount);
         }
 
+        if from == to {
+            return Err(TokenError::InvalidAmount);
+        }
+
         let from_balance = Self::balance(env.clone(), from.clone());
         let new_from = from_balance
             .checked_sub(amount)
@@ -530,6 +534,25 @@ mod test {
         assert_eq!(TokenError::InsufficientBalance as u32, 5);
         assert_eq!(TokenError::Overflow as u32, 6);
         assert_eq!(TokenError::Underflow as u32, 7);
+    }
+
+    #[test]
+    fn test_self_transfer_is_rejected_and_balance_unchanged() {
+        let env = Env::default();
+        let (client, _admin) = setup(&env);
+        let alice = Address::generate(&env);
+
+        client.mint(&alice, &100);
+        assert_eq!(client.balance(&alice), 100);
+        assert_eq!(client.total_supply(), 100);
+
+        assert_eq!(
+            client.try_transfer(&alice, &alice, &40),
+            Err(Ok(TokenError::InvalidAmount))
+        );
+
+        assert_eq!(client.balance(&alice), 100);
+        assert_eq!(client.total_supply(), 100);
     }
 
     #[test]

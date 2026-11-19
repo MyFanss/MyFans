@@ -43,9 +43,14 @@ token; the contract never holds funds.
 
 ### `subscribe(fan: Address, creator: Address, plan_id: u64)`
 
-Requires `fan` auth. Blocked while the contract is paused. The `asset` argument
-must match the plan's asset or the call reverts with `AssetMismatch` before any
-charge or subscription write.
+- Auth: `fan` must authorize the call.
+- Blocked while the contract is paused.
+- The `asset` argument must match the plan's asset or the call reverts with `AssetMismatch` before any charge or subscription write.
+- Transfers `amount` of the plan asset from `fan`.
+- Splits the payment: `protocol_fee_bps` of the amount is routed to the treasury via `deposit`; the remainder is transferred to the creator.
+- Sets `expires_at` to the current ledger plus exactly one plan `interval`. No extra padding ledgers are added on top of the interval.
+- Reverts while the contract is paused, with no balance movement.
+- Reverts on unknown plan or asset mismatch.
 
 ### `renew(fan, plan_id)` / `extend_subscription(fan, plan_id
 
@@ -56,11 +61,17 @@ charge or subscription write.
 - Auth: `fan` must authorize the call.
 - Extends the subscription by one interval, performing the same fee split as
   `subscribe`.
+- The new `expires_at` is `max(current ledger, stored expires_at) + interval`.
+  Renewing before expiry preserves the unused time already paid for; renewing
+  after expiry starts a fresh period from the current ledger. Only the plan
+  `interval` is added — no extra padding ledgers.
 - Reverts on wrong asset or wrong plan.
 - A `plan_id` that does not match the fan's stored subscription returns
   `Error::WrongPlan` and does not move tokens. `Error::PlanNotFound` is
   reserved for a missing `DataKey::Plan` record.
-- Near `u64` ledger overflow the call returns a typed error and MUST NOT wrap.
+- Near `u64` ledger overflow the call returns a typed error (`Error::Overflow`)
+  and MUST NOT wrap. The expiry math is computed before any token transfer, so
+  an overflowing renew moves no tokens.
 
 ### `cancel(fan: Address, creator: Address, plan_id: u64)`
 
