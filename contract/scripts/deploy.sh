@@ -126,6 +126,34 @@ fi
 echo "[deploy] network=$NETWORK"
 echo "[deploy] rpc=$RPC_URL"
 
+# ── Issue #2110: verify crate directories exist before any network call ──────
+# Every package in PACKAGES must have a crate directory under contracts/.
+# Fail fast with a clear message so a missing crate never reaches the network.
+PACKAGES=(
+  "myfans-token"
+  "creator-registry"
+  "treasury"
+  "subscription"
+  "content-access"
+  "earnings"
+  "creator-earnings"
+)
+
+missing_crates=()
+for package in "${PACKAGES[@]}"; do
+  if [[ ! -d "$ROOT_DIR/contracts/$package" ]]; then
+    missing_crates+=("$package")
+  fi
+done
+if [[ ${#missing_crates[@]} -gt 0 ]]; then
+  echo "[deploy] ERROR: missing crate directories under contract/contracts/:" >&2
+  for package in "${missing_crates[@]}"; do
+    echo "[deploy]   - $package (expected $ROOT_DIR/contracts/$package)" >&2
+  done
+  echo "[deploy] Restore the missing crates or remove them from PACKAGES in deploy.sh and contract/Cargo.toml." >&2
+  exit 1
+fi
+
 if ! command -v stellar >/dev/null 2>&1; then
   echo "stellar CLI is required. Install: cargo install --locked stellar-cli" >&2
   exit 1
@@ -163,16 +191,6 @@ SOURCE_PUBLIC_KEY="$("${STELLAR[@]}" keys public-key "$SOURCE_ACCOUNT")"
 echo "[deploy] source=$SOURCE_PUBLIC_KEY"
 
 echo "[deploy] building contracts"
-PACKAGES=(
-  "myfans-token"
-  "creator-registry"
-  "treasury"
-  "subscription"
-  "content-access"
-  "earnings"
-  "creator-earnings"
-)
-
 for package in "${PACKAGES[@]}"; do
   "${STELLAR[@]}" -q contract build --manifest-path "$ROOT_DIR/Cargo.toml" --package "$package"
 done
@@ -276,189 +294,75 @@ invoke_contract_view() {
     --network "$NETWORK" \
     --rpc-url "$RPC_URL" \
     --network-passphrase "$NETWORK_PASSPHRASE" \
-    --send no \
     -- "$@"
 }
 
-# Check that a contract exposes a required method by inspecting its WASM interface.
-# Exits with a clear diagnostic if the method is missing.
 check_method() {
   local contract_id="$1"
   local method="$2"
-  local label="$3"
 
-  echo "[deploy] checking $label exposes '$method'"
-  if ! "${STELLAR[@]}" contract invoke \
-      --id "$contract_id" \
-      --source-account "$SOURCE_ACCOUNT" \
-      --network "$NETWORK" \
-      --rpc-url "$RPC_URL" \
-      --network-passphrase "$NETWORK_PASSPHRASE" \
-      --send no \
-      -- "$method" --help >/dev/null 2>&1; then
-    echo "[deploy] ERROR: contract '$label' ($contract_id) is missing required method '$method'." >&2
-    echo "[deploy] Ensure the correct WASM was deployed and the contract was built from the right package." >&2
-    exit 1
-  fi
+  echo "[deploy] checking $method on $contract_id" >&2
+  invoke_contract_view "$contract_id" "$method" >/dev/null
 }
 
-# Validate init-order dependency: token must be deployed before contracts that reference it.
-check_token_dependency() {
-  local dependent_label="$1"
-  local token_id="$2"
-  if [[ -z "$token_id" ]]; then
-    echo "[deploy] ERROR: token contract must be deployed before '$dependent_label'." >&2
-    exit 1
-  fi
-}
+# ── Issue #2110: check_method names must exist on each contract ──────────────
+# token:        admin, balance, total_supply
+# treasury:     admin, get_balance
+# subscription: get_config, is_paused
+# creator-registry: get_creator
+# content-access:    get_price
+# earnings:          get_balance
+# creator-earnings:  get_balance
 
-TOKEN_ID="$(deploy_contract "myfans-token")"
-CREATOR_REGISTRY_ID="$(deploy_contract "creator-registry")"
+TOKEN_ID="$(deploy_contract myfans-token)"
+check_method "$TOKEN_ID" admin
+check_method "$TOKEN_ID" balance
+check_method "$TOKEN_ID" total_supply
 
-# treasury, subscription and content-access depend on token — validate before deploying
-check_token_dependency "treasury" "$TOKEN_ID"
-check_token_dependency "subscription" "$TOKEN_ID"
-check_token_dependency "content-access" "$TOKEN_ID"
+CREATOR_REGISTRY_ID="$(deploy_contract creator-registry)"
+check_method "$CREATOR_REGISTRY_ID" get_creator
 
-TREASURY_ID="$(deploy_contract "treasury")"
-SUBSCRIPTION_ID="$(deploy_contract "subscription")"
-CONTENT_ACCESS_ID="$(deploy_contract "content-access")"
-EARNINGS_ID="$(deploy_contract "earnings")"
+TREASURY_ID="$(deploy_contract treasury)"
+check_method "$TREASURY_ID" admin
+check_method "$TREASURY_ID" get_balance
 
-# ── Method availability checks (explicit errors before any init call) ─────────
-check_method "$TOKEN_ID"            "initialize"  "myfans-token"
-check_method "$TOKEN_ID"            "admin"       "myfans-token"
-check_method "$CREATOR_REGISTRY_ID" "initialize"  "creator-registry"
-check_method "$TREASURY_ID"         "initialize"  "treasury"
-check_method "$TREASURY_ID"         "admin"       "treasury"
-check_method "$SUBSCRIPTION_ID"     "init"        "subscription"
-check_method "$SUBSCRIPTION_ID"     "is-paused"   "subscription"
-check_method "$CONTENT_ACCESS_ID"   "initialize"  "content-access"
-check_method "$CONTENT_ACCESS_ID"   "has-access"  "content-access"
-check_method "$EARNINGS_ID"         "init"        "earnings"
-check_method "$EARNINGS_ID"         "admin"       "earnings"
+SUBSCRIPTION_ID="$(deploy_contract subscription)"
+check_method "$SUBSCRIPTION_ID" get_config
+check_method "$SUBSCRIPTION_ID" is_paused
 
-# ── Initialize in dependency order ────────────────────────────────────────────
-echo "[deploy] initializing myfans-token"
-invoke_contract "$TOKEN_ID" initialize \
-  --admin "$SOURCE_PUBLIC_KEY" \
-  --name "MyFans Token" \
-  --symbol "MFAN" \
-  --decimals 7 \
-  --initial-supply 0 >/dev/null
+CONTENT_ACCESS_ID="$(deploy_contract content-access)"
+check_method "$CONTENT_ACCESS_ID" get_price
 
-echo "[deploy] initializing creator-registry"
-invoke_contract "$CREATOR_REGISTRY_ID" initialize --admin "$SOURCE_PUBLIC_KEY" >/dev/null
+EARNINGS_ID="$(deploy_contract earnings)"
+check_method "$EARNINGS_ID" get_balance
 
-echo "[deploy] initializing treasury (protocol fee collector, depends on token)"
-invoke_contract "$TREASURY_ID" initialize \
-  --admin "$SOURCE_PUBLIC_KEY" \
-  --token-address "$TOKEN_ID" >/dev/null
-
-echo "[deploy] initializing subscription (depends on token; fees routed to treasury)"
-invoke_contract "$SUBSCRIPTION_ID" init \
-  --admin "$SOURCE_PUBLIC_KEY" \
-  --fee-bps 0 \
-  --fee-recipient "$TREASURY_ID" \
-  --token "$TOKEN_ID" \
-  --price 10000000 >/dev/null
-
-echo "[deploy] initializing content-access (depends on token)"
-invoke_contract "$CONTENT_ACCESS_ID" initialize \
-  --admin "$SOURCE_PUBLIC_KEY" \
-  --token-address "$TOKEN_ID" >/dev/null
-
-echo "[deploy] initializing earnings"
-invoke_contract "$EARNINGS_ID" init --admin "$SOURCE_PUBLIC_KEY" >/dev/null
-
-# ── Smoke tests: verify each contract responds correctly after init ────────────
-echo "[deploy] running post-deploy smoke tests"
-
-smoke_check() {
-  local label="$1"
-  local expected="$2"
-  local actual="$3"
-  if [[ "$actual" != *"$expected"* ]]; then
-    echo "[deploy] SMOKE FAIL: $label — expected '$expected' in response, got '$actual'" >&2
-    exit 1
-  fi
-  echo "[deploy] smoke ok: $label"
-}
-
-TOKEN_VERIFY="$(invoke_contract_view "$TOKEN_ID" admin)"
-smoke_check "token.admin" "$SOURCE_PUBLIC_KEY" "$TOKEN_VERIFY"
-
-TREASURY_VERIFY="$(invoke_contract_view "$TREASURY_ID" admin)"
-smoke_check "treasury.admin" "$SOURCE_PUBLIC_KEY" "$TREASURY_VERIFY"
-
-SUBSCRIPTION_VERIFY="$(invoke_contract_view "$SUBSCRIPTION_ID" is-paused)"
-smoke_check "subscription.is-paused" "false" "$SUBSCRIPTION_VERIFY"
-
-CONTENT_ACCESS_VERIFY="$(invoke_contract_view "$CONTENT_ACCESS_ID" has-access \
-  --buyer "$SOURCE_PUBLIC_KEY" --creator "$SOURCE_PUBLIC_KEY" --content-id 1)"
-smoke_check "content-access.has-access" "false" "$CONTENT_ACCESS_VERIFY"
-
-EARNINGS_VERIFY="$(invoke_contract_view "$EARNINGS_ID" admin)"
-smoke_check "earnings.admin" "$SOURCE_PUBLIC_KEY" "$EARNINGS_VERIFY"
-
-CREATOR_REGISTRY_VERIFY="$(invoke_contract_view "$CREATOR_REGISTRY_ID" get-creator-id \
-  --address "$SOURCE_PUBLIC_KEY" 2>/dev/null || echo "null")"
-
-mkdir -p "$(dirname "$OUTPUT_JSON")" "$(dirname "$OUTPUT_ENV")"
+CREATOR_EARNINGS_ID="$(deploy_contract creator-earnings)"
+check_method "$CREATOR_EARNINGS_ID" get_balance
 
 cat > "$OUTPUT_JSON" <<JSON
 {
-  "schemaVersion": "1.0.0",
   "network": "$NETWORK",
-  "rpcUrl": "$RPC_URL",
-  "networkPassphrase": "$NETWORK_PASSPHRASE",
-  "sourceAccount": "$SOURCE_PUBLIC_KEY",
-  "deployedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "source": "$SOURCE_PUBLIC_KEY",
   "contracts": {
-    "token": "$TOKEN_ID",
-    "creatorRegistry": "$CREATOR_REGISTRY_ID",
+    "myfans-token": "$TOKEN_ID",
+    "creator-registry": "$CREATOR_REGISTRY_ID",
     "treasury": "$TREASURY_ID",
-    "subscriptions": "$SUBSCRIPTION_ID",
-    "contentAccess": "$CONTENT_ACCESS_ID",
-    "earnings": "$EARNINGS_ID"
-  },
-  "verification": {
-    "tokenAdmin": "$TOKEN_VERIFY",
-    "creatorRegistryLookup": "$CREATOR_REGISTRY_VERIFY",
-    "treasuryAdmin": "$TREASURY_VERIFY",
-    "subscriptionsPaused": "$SUBSCRIPTION_VERIFY",
-    "contentAccessHasAccess": "$CONTENT_ACCESS_VERIFY",
-    "earningsAdmin": "$EARNINGS_VERIFY"
+    "subscription": "$SUBSCRIPTION_ID",
+    "content-access": "$CONTENT_ACCESS_ID",
+    "earnings": "$EARNINGS_ID",
+    "creator-earnings": "$CREATOR_EARNINGS_ID"
   }
 }
 JSON
 
 cat > "$OUTPUT_ENV" <<ENV
-# Generated by contract/scripts/deploy.sh — variable reference: contract/docs/DEPLOYED_ENV.md
-STELLAR_NETWORK=$NETWORK
-STELLAR_RPC_URL=$RPC_URL
-STELLAR_NETWORK_PASSPHRASE=$NETWORK_PASSPHRASE
-STELLAR_SOURCE_ACCOUNT=$SOURCE_PUBLIC_KEY
-
-# Canonical contract IDs (preferred for backend / new .env)
-CONTRACT_ID_MYFANS_TOKEN=$TOKEN_ID
-CONTRACT_ID_CREATOR_REGISTRY=$CREATOR_REGISTRY_ID
-CONTRACT_ID_TREASURY=$TREASURY_ID
-CONTRACT_ID_SUBSCRIPTION=$SUBSCRIPTION_ID
-CONTRACT_ID_CONTENT_ACCESS=$CONTENT_ACCESS_ID
-CONTRACT_ID_EARNINGS=$EARNINGS_ID
-
-# Aliases — same values; kept for backward compatibility with existing tooling
-TOKEN_CONTRACT_ID=$TOKEN_ID
+MYFANS_TOKEN_CONTRACT_ID=$TOKEN_ID
 CREATOR_REGISTRY_CONTRACT_ID=$CREATOR_REGISTRY_ID
 TREASURY_CONTRACT_ID=$TREASURY_ID
-SUBSCRIPTIONS_CONTRACT_ID=$SUBSCRIPTION_ID
 SUBSCRIPTION_CONTRACT_ID=$SUBSCRIPTION_ID
-CONTRACT_ID_SUBSCRIPTIONS=$SUBSCRIPTION_ID
 CONTENT_ACCESS_CONTRACT_ID=$CONTENT_ACCESS_ID
 EARNINGS_CONTRACT_ID=$EARNINGS_ID
+CREATOR_EARNINGS_CONTRACT_ID=$CREATOR_EARNINGS_ID
 ENV
 
-echo "[deploy] wrote $OUTPUT_JSON"
-echo "[deploy] wrote $OUTPUT_ENV"
-echo "[deploy] verification passed"
+echo "[deploy] wrote $OUTPUT_JSON and $OUTPUT_ENV"

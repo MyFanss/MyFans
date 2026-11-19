@@ -25,19 +25,21 @@ The contracts below are deployed by `contract/scripts/deploy.sh`, so their legac
 
 ### `subscription`
 
-| Canonical meaning | Current `DataKey` variant | Notes |
-| --- | --- | --- |
-| admin | `Admin` | Already canonical. |
-| protocol fee bps | `FeeBps` | Already canonical. |
-| fee recipient | `FeeRecipient` | Already canonical. |
-| plan count | `PlanCount` | Already canonical. |
-| plan record | `Plan(u32)` | Already canonical. |
-| subscription record | `Sub(Address, Address)` | Legacy variant retained; canonical name is `subscription`. |
-| creator subscription count | `CreatorSubscriptionCount(Address)` | Already canonical. |
-| accepted token | `AcceptedToken(Address)` | Already canonical. |
-| default token address | `Token` | Legacy generic name retained. Prefer `...TokenAddress` for new contracts when the value is specifically an address. |
-| default price | `Price` | Already canonical in contract context. |
-| paused flag | `Paused` | Already canonical. |
+The `subscription` crate has a single source of truth for its storage schema: `contract/contracts/subscription/src/types.rs`. `lib.rs` imports `DataKey`, `Plan`, `Subscription`, and `SubscriptionError` from that module, so the keys below are exactly the keys the compiled contract writes.
+
+| Canonical meaning | `DataKey` variant | Storage | Notes |
+| --- | --- | --- | --- |
+| admin | `Admin` | Instance | Already canonical. |
+| protocol fee bps | `ProtocolFeeBps` | Instance | Already canonical. |
+| fee recipient | `FeeRecipient` | Instance | Already canonical. |
+| plan count | `PlanCount` | Instance | Already canonical. |
+| plan record | `Plan(Address, u64)` | Persistent | Keyed by creator address and creator-scoped plan id. |
+| subscription record | `Subscription(Address, Address)` | Persistent | Keyed by `(subscriber, creator)`. |
+| creator subscription count | `CreatorSubscriptionCount(Address)` | Persistent | Already canonical. |
+| accepted token | `AcceptedToken(Address)` | Persistent | Already canonical. |
+| default token address | `Token` | Instance | Legacy generic name retained. Prefer `...TokenAddress` for new contracts when the value is specifically an address. |
+| default price | `Price` | Instance | Already canonical in contract context. |
+| paused flag | `Paused` | Instance | Already canonical. |
 
 ### `creator-registry`
 
