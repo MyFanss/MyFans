@@ -19,7 +19,7 @@ import { IdempotencyModule } from './idempotency/idempotency.module';
 import { IdempotencyMiddleware } from './idempotency/idempotency.middleware';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { CsrfModule } from './csrf/csrf.module';
-import { SocialLinksModule } from './social-link/social-links.module';
+import { SocialLinksModule } from './social-links/social-links.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
 import { CorrelationExceptionFilter } from './common/filters/correlation-exception.filter';
@@ -145,6 +145,10 @@ if (isProduction && corsCredentials && corsOrigins.includes('*')) {
     SocialLinksModule,
     AnalyticsModule,
     NetworkConfigModule,
+    // WebhookModule is intentionally not imported yet: the webhook middleware
+    // implementation (backend/src/webhooks/webhook.middleware.ts) does not
+    // exist. Re-add `WebhookModule` from './webhooks/webhook.module' once it
+    // lands.
   ],
   controllers: [AppController, OpenAPIController],
   providers: [
