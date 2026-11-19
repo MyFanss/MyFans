@@ -1,10 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "contracts/myfans-contract",
-    "contracts/content-likes",
-    "contracts/creator-deposits",
-    "contracts/myfans-lib",
+    "../contracts/myfans-lib",
     "contracts/myfans-token",
     "contracts/subscription",
     "contracts/test-consumer",

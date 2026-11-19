@@ -4,6 +4,9 @@
 //! backend poller (`TARGET_EVENTS`) and the CI fixture script
 //! `contract/scripts/check-subscription-event-fixture.test.mjs`. Do not change
 //! topic symbols or body field ordering without updating that fixture.
+//!
+//! `contract/docs/interfaces/subscription.md` is the authoritative schema; the
+//! topics and body structs below mirror it exactly.
 
 use soroban_sdk::{contracterror, contracttype, Address, Symbol};
 
@@ -87,7 +90,6 @@ pub struct Subscription {
     /// Fan that pays for the subscription.
     pub fan: Address,
     /// Creator the fan is subscribed to.
-    pub creator: Address,
     /// Ledger at which the current period expires.
     pub expires_at: u64,
     /// Ledger at which the subscription was cancelled, if any.
@@ -102,7 +104,8 @@ pub struct Subscription {
 /// Frozen event topic symbols.
 ///
 /// These symbols are the contract's public event interface. The backend poller
-/// filters on them and the CI fixture asserts they stay stable.
+/// filters on them and the CI fixture asserts they stay stable. They mirror
+/// `contract/docs/interfaces/subscription.md`.
 pub mod topics {
     use soroban_sdk::{symbol_short, Symbol};
 
@@ -113,12 +116,12 @@ pub mod topics {
 
     /// Emitted by `create_plan`.
     pub fn plan_created() -> Symbol {
-        symbol_short!("plan_crt")
+        symbol_short!("plan")
     }
 
     /// Emitted by `subscribe`.
     pub fn subscribed() -> Symbol {
-        symbol_short!("subscr")
+        symbol_short!("sub")
     }
 
     /// Emitted by `renew` / `extend_subscription`.
@@ -133,12 +136,12 @@ pub mod topics {
 
     /// Emitted by `pause` / `unpause`.
     pub fn paused() -> Symbol {
-        symbol_short!("paused")
+        symbol_short!("pause")
     }
 
     /// Emitted by the admin fee setter.
     pub fn fee_updated() -> Symbol {
-        symbol_short!("fee_upd")
+        symbol_short!("fee")
     }
 }
 
@@ -150,6 +153,7 @@ pub mod topics {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PlanCreatedEvent {
+    pub plan_id: u64,
     pub creator: Address,
     pub asset: Address,
     pub amount: i128,
@@ -161,6 +165,7 @@ pub struct PlanCreatedEvent {
 pub struct SubscribedEvent {
     pub fan: Address,
     pub creator: Address,
+    pub plan_id: u64,
     pub amount: i128,
     pub fee: i128,
     pub expires_at: u64,
@@ -171,6 +176,7 @@ pub struct SubscribedEvent {
 pub struct RenewedEvent {
     pub fan: Address,
     pub creator: Address,
+    pub plan_id: u64,
     pub amount: i128,
     pub fee: i128,
     pub expires_at: u64,
@@ -181,6 +187,7 @@ pub struct RenewedEvent {
 pub struct CancelledEvent {
     pub fan: Address,
     pub creator: Address,
+    pub plan_id: u64,
     pub cancelled_at: u64,
 }
 

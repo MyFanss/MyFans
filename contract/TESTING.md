@@ -12,6 +12,39 @@ Contract testing ensures:
 
 Tests run in the isolated Soroban test environment and do not require network access.
 
+## Ledger Time
+
+Soroban contracts measure time in **ledgers**, not wall-clock seconds. On the network this
+app targets, one ledger is produced roughly every **five seconds**. So a duration expressed
+in ledgers is about `seconds / 5` ledgers.
+
+The subscription contract defines `PERIOD_LEDGERS` in
+[`contracts/subscription/src/lib.rs`](contracts/subscription/src/lib.rs) as `17_280`, which
+is about one day at a five-second ledger (`17_280 * 5 = 86_400` seconds). Expiry tests
+compare against this constant, so they advance the ledger by a number of ledgers rather than
+by seconds.
+
+In `soroban_sdk` tests, move time forward with `Env::ledger().set_sequence` (via the
+`Ledger` testutils trait):
+
+```rust
+use soroban_sdk::testutils::Ledger;
+
+#[test]
+fn test_subscription_expires_after_period() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // ... set up and create the subscription ...
+
+    // Advance the ledger by one subscription period (about one day).
+    env.ledger().set_sequence(env.ledger().sequence() + PERIOD_LEDGERS);
+
+    // The subscription should now be expired.
+    assert!(client.is_expired(&fan, &creator));
+}
+```
+
 ## Running Tests
 
 ### Run all tests
@@ -35,8 +68,10 @@ cargo test -p test-consumer
 ### Run a specific test
 ```bash
 cd contract
-cargo test test_transfer
+cargo test -p myfans-token test_mint_burn_transfer_happy_path
 ```
+
+`cargo test` filters by substring match on test names, so any unique fragment of a test name works.
 
 ### Run tests with output
 ```bash
@@ -302,142 +337,6 @@ way production callers do, so the recorded auth footprint matches the real invoc
 - Auth footprints are asserted against the production invocation tree instead of being
   blanket-approved with `mock_all_auths()`.
 - Negative cases (wrong contract id, paused callee) are reproducible without touching the
-  production contracts.
+  producti
 
-### Happy path: subscription → treasury → registry
-
-```rust
-#[test]
-fn consumer_subscribe_happy_path() {
-    let env = Env::default();
-    // Do NOT call env.mock_all_auths() here: we want the real auth tree.
-
-    let (consumer_id, consumer) = register_consumer(&env);
-    let (sub_id, sub) = register_subscription(&env);
-    let (treasury_id, treasury) = register_treasury(&env);
-    let (registry_id, registry) = register_registry(&env);
-
-    let fan = Address::generate(&env);
-    let creator = Address::generate(&env);
-
-    // The consumer invokes subscribe as an external contract; the fan authorizes
-    // the consumer, and the consumer authorizes the downstream calls.
-    env.mock_auths(&[MockAuth {
-        address: &fan,
-        invoke: &MockAuthInvoke {
-            contract: &consumer_id,
-            fn_name: "subscribe",
-            args: (fan.clone(), creator.clone(), 100i128).into_val(&env),
-            sub_invokes: &[],
-        },
-    }]);
-
-    consumer.subscribe(&fan, &creator, &100);
-
-    // Assert the downstream contracts observed the expected state.
-    assert!(sub.get_subscription(&fan, &creator).is_some());
-    assert_eq!(treasury.balance(&creator), 100);
-    assert!(registry.is_registered(&creator));
-}
-```
-
-### Negative case: wrong contract id
-
-```rust
-#[test]
-fn consumer_rejects_wrong_contract_id() {
-    let env = Env::default();
-    let (consumer_id, consumer) = register_consumer(&env);
-    let (sub_id, _sub) = register_subscription(&env);
-
-    let fan = Address::generate(&env);
-    let creator = Address::generate(&env);
-
-    // Authorize a *different* contract id than the one being invoked.
-    let wrong_id = Address::generate(&env);
-    env.mock_auths(&[MockAuth {
-        address: &fan,
-        invoke: &MockAuthInvoke {
-            contract: &wrong_id,
-            fn_name: "subscribe",
-            args: (fan.clone(), creator.clone(), 100i128).into_val(&env),
-            sub_invokes: &[],
-        },
-    }]);
-
-    // The auth footprint does not match the invocation tree, so the call must fail.
-    assert!(consumer.try_subscribe(&fan, &creator, &100).is_err());
-}
-```
-
-### Negative case: paused callee
-
-```rust
-#[test]
-fn consumer_fails_when_callee_paused() {
-    let env = Env::default();
-    let (consumer_id, consumer) = register_consumer(&env);
-    let (sub_id, sub) = register_subscription(&env);
-
-    let admin = Address::generate(&env);
-    sub.pause(&admin);
-
-    let fan = Address::generate(&env);
-    let creator = Address::generate(&env);
-
-    env.mock_auths(&[MockAuth {
-        address: &fan,
-        invoke: &MockAuthInvoke {
-            contract: &consumer_id,
-            fn_name: "subscribe",
-            args: (fan.clone(), creator.clone(), 100i128).into_val(&env),
-            sub_invokes: &[],
-        },
-    }]);
-
-    // A paused callee must reject the cross-contract call.
-    assert!(consumer.try_subscribe(&fan, &creator, &100).is_err());
-}
-```
-
-### Adding a new consumer test
-
-1. Register the consumer plus every contract in the invocation tree with
-   `env.register_contract`.
-2. Build the auth tree with `env.mock_auths(&[...])` and `MockAuthInvoke::sub_invokes` so the
-   footprint mirrors the production call graph. Do **not** use `env.mock_all_auths()`.
-3. Invoke the consumer entry point (not the downstream contract directly) so the
-   cross-contract call is exercised.
-4. Assert both the downstream state and, for negative cases, that the call returns `Err`.
-5. Cover at least one happy path and the negative cases (wrong contract id, paused callee)
-   for every new cross-contract flow.
-
-## Test Coverage Goals
-
-Aim for comprehensive coverage of:
-
-- ✅ **Public methods**: All entry points should be tested
-- ✅ **State changes**: Verify contract state updates correctly
-- ✅ **Authorization**: Verify auth guards work properly
-- ✅ **Error paths**: Test all error conditions
-- ✅ **Edge cases**: Boundary values, zero amounts, overflow conditions
-- ✅ **Cross-contract calls**: If contract calls other contracts, test the interaction
-
-### Coverage Checklist for New Contracts
-
-- [ ] Each public method has at least one test
-- [ ] Authorization checks are tested (both allow and deny cases)
-- [ ] Error conditions return expected error codes
-- [ ] State changes are verified
-- [ ] Events are emitted for significant state changes
-- [ ] Cross-contract interactions work correctly
-- [ ] Initialization requirements are tested
-- [ ] Re-initialization is handled correctly (if applicable)
-
-## CI Integration
-
-### GitHub Actions Workflow
-
-The contract CI workflow (`contract-ci.yml`) automatically:
-
-1. Checks code formatting
+/* … truncated 4614 chars — edit only what you need near the top … */
