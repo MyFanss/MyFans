@@ -277,7 +277,35 @@ mod test {
     }
 
     #[test]
-    fn test_initialize_accepts_valid_decimals() {
+    fn test_token_error_discriminants_are_pinned() {
+        // ABI pin: these numbers are part of the contract's public interface.
+        // Adding or reordering variants would break every client, so assert
+        // each discriminant explicitly. This test does not touch balances.
+        assert_eq!(TokenError::AlreadyInitialized as u32, 1);
+        assert_eq!(TokenError::NotInitialized as u32, 2);
+        assert_eq!(TokenError::Unauthorized as u32, 3);
+        assert_eq!(TokenError::InvalidAmount as u32, 4);
+        assert_eq!(TokenError::InsufficientBalance as u32, 5);
+        assert_eq!(TokenError::Overflow as u32, 6);
+        assert_eq!(TokenError::Underflow as u32, 7);
+    }
+
+    #[test]
+    fn test_mint_non_positive_amount_is_invalid() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+
+        for decimals in [0u32, 7, 18] {
+            let contract_id = env.register_contract(None, MyFansToken);
+            let client = MyFansTokenClient::new(&env, &contract_id);
+            client.initialize(
+                &admin,
+                &String::from_str(&env, "MyFans"),
+                &String::from_str(&env, "MYFANS"),
+                &decimals,
+            );
+        }
         let env = Env::default();
         env.mock_all_auths();
         let admin = Address::generate(&env);
