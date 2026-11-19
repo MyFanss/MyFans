@@ -240,21 +240,34 @@ impl SubscriptionContract {
     }
 
     /// Admin pause. Requires admin auth. Storage unchanged on unauthorized call.
+    /// Emits `("admin", "paused")` after the storage write. A pause when already
+    /// paused is a no-op and emits no second event.
     pub fn pause(env: Env) {
         let mut config = Self::require_init(&env);
         config.admin.require_auth();
+        if config.paused {
+            return;
+        }
         config.paused = true;
         env.storage().instance().set(&DataKey::Config, &config);
         env.events().publish((symbol_short!("pause"),), ());
     }
 
-    /// Admin unpause. Requires admin auth.
+    /// Admin unpause. Requires admin auth. Emits `("admin", "unpaused")` after
+    /// the storage write. An unpause when already unpaused is a no-op and emits
+    /// no second event.
     pub fn unpause(env: Env) {
         let mut config = Self::require_init(&env);
         config.admin.require_auth();
+        if !config.paused {
+            return;
+        }
         config.paused = false;
         env.storage().instance().set(&DataKey::Config, &config);
-        env.events().publish((symbol_short!("unpause"),), ());
+        env.events().publish(
+            (symbol_short!("admin"), symbol_short!("unpaused")),
+            (),
+        );
     }
 
     /// Admin fee setter. Requires admin auth. Enforces MAX_FEE_BPS cap.

@@ -16,16 +16,16 @@ For step-by-step deploy, verification, and rollback procedures see [`docs/CONTRA
 
 See comprehensive method docs (args, auth, examples, events): [docs/interfaces/](docs/interfaces/)
 
-## Contracts deployed by script
+## Workspace members
+
+The workspace root is `contract/Cargo.toml`. Only crates that exist in the tree are members:
 
 1. `myfans-token`
-2. `creator-registry`
-3. `treasury` (protocol fee collector — wired as the subscription `fee-recipient`)
-4. `subscription`
-5. `content-access`
-6. `earnings`
+2. `treasury`
+3. `subscription`
+4. `myfans-lib` (shared library, located at the repository root `contracts/myfans-lib`)
 
-The deploy script applies this order to keep initialization/dependency flow deterministic.
+Crates such as `creator-registry`, `content-access`, and `earnings` are not yet in the tree and are not workspace members until they are added.
 
 ## Workspace layout and versions
 
