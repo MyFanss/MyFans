@@ -5,8 +5,19 @@
 //! `contract/scripts/check-subscription-event-fixture.test.mjs`. Do not change
 //! topic symbols or body field ordering without updating that fixture.
 //!
+//! Shared types, storage keys, and event schema for the subscription contract.
+//!
+//! The event topic + body schema defined here is frozen and consumed by the
+//! backend poller (`TARGET_EVENTS`) and the CI fixture script
+//! `contract/scripts/check-subscription-event-fixture.test.mjs`. Do not change
+//! topic symbols or body field ordering without updating that fixture.
+//!
 //! `contract/docs/interfaces/subscription.md` is the authoritative schema; the
 //! topics and body structs below mirror it exactly.
+//!
+//! **Warning:** `lib.rs` does not use these types yet — the compiled contract
+//! lives in `lib.rs`, so editing this file alone will not change on-chain
+//! behavior. Unifying these types with the contract is tracked in issue #2131.
 
 use soroban_sdk::{contracterror, contracttype, Address, Symbol};
 

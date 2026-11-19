@@ -145,7 +145,11 @@ impl TreasuryContract {
         Ok(())
     }
 
-    /// Pause or unpause deposits. Admin only.
+    /// Pause or unpause treasury operations. Admin only.
+    ///
+    /// When paused, both `deposit` and `withdraw` revert with `Paused`; the
+    /// flag is checked via `is_paused` in each. The caller must be the admin,
+    /// who must authorize the call.
     pub fn set_paused(env: Env, paused: bool) -> Result<(), TreasuryError> {
         let admin: Address = env
             .storage()
@@ -238,6 +242,13 @@ mod test {
     }
 
     #[test]
+    fn initialize_leaves_treasury_unpaused() {
+        let (_env, client, _admin) = setup();
+        // A fresh treasury must not be paused before anyone calls set_paused.
+        assert!(!client.is_paused());
+    }
+
+    #[test]
     fn deposit_requires_signer_auth_and_emits_event() {
         let (env, client, _admin) = setup();
         let payer = Address::generate(&env);
@@ -278,8 +289,7 @@ mod test {
     #[test]
     fn deposit_rejects_negative_amount() {
         let (env, client, _admin) = setup();
-        env.mock_all_auths();
-        let payer = Address::generate(&env);
+        env.mock_all_auths(
 
         let res = client.try_deposit(&payer, &-1);
         assert_eq!(res, Err(Ok(TreasuryError::InvalidAmount)));

@@ -1,25 +1,26 @@
-# Subscription Contract Interface
+# Subscription Interface
 
-Workspace member: `contracts/subscription` (declared in `contract/Cargo.toml`).
+## Overview
 
-This document is the frozen interface contract for the on-chain subscription
-lifecycle. The indexer, checkout confirmation, and frontend Soroban invoke
-builders MUST interoperate against the entrypoints, storage keys, and event
-schema described here. Any change to a topic or body field is a breaking change
-and requires a coordinated update of the backend `TARGET_EVENTS` list and the
-committed event fixture (`contract/scripts/check-subscription-event-fixture.test.mjs`).
+The subscription contract lets a creator publish a recurring payment plan and lets
+fans subscribe, renew, and cancel against it. Charges are settled in a SEP-41
+token; the contract never holds funds.
 
-## Entrypoints
+## Events
 
-### `init(admin: Address, protocol_fee_bps: u32, fee_recipient: Address)`
+| Topic 1 | Topic 2     | Data                                        | Emitted by       |
+|---------|-------------|---------------------------------------------|------------------|
+| `plan`  | `created`   | `(plan_id, creator, asset, amount, interval)` | `create_plan`  |
+| `sub`   | `created`   | `(fan, creator, plan_id, expires_at)`       | `subscribe`      |
+| `sub`   | `renewed`   | `(fan, creator, plan_id, expires_at)`       | `renew`          |
+| `sub`   | `cancelled` | `(fan, creator)`                            | `cancel`         |
 
-- Auth: `admin` must authorize the call.
-- Sets the contract admin, the protocol fee in basis points, and the treasury
-  recipient used for the protocol fee split.
-- `fee_recipient` MUST be the treasury contract id.
-- Reverts on double-init. A failed (unauthorized) init leaves the contract
-  uninitialized.
-- `protocol_fee_bps` MUST be `<= MAX_FEE_BPS` (see below).
+> **Topic symbol limit.** Event topic symbols are created with
+> `symbol_short!` and are limited to **at most nine characters**. The contract
+> currently emits exactly these symbols: `plan` / `created`, `sub` / `created`,
+> `sub` / `renewed`, and `sub` / `cancelled`. Do not lengthen a symbol past nine
+> characters (it will fail to compile) and do not introduce a second, longer
+> symbol for the same event — indexers only recognize the symbols listed above.
 
 ### `get_config() -> Result<Config, Error>`
 
@@ -42,12 +43,13 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
 
 ### `subscribe(fan: Address, creator: Address, plan_id: u64)`
 
-- Auth: `fan` must authorize the call.
-- Transfers `amount` of the plan asset from `fan`.
-- Splits the payment: `protocol_fee_bps` of the amount is routed to the
-  treasury via `deposit`; the remainder is transferred to the creator.
-- Reverts while the contract is paused, with no balance movement.
-- Reverts on unknown plan or asset mismatch.
+Requires `fan` auth. Blocked while the contract is paused. The `asset` argument
+must match the plan's asset or the call reverts with `AssetMismatch` before any
+charge or subscription write.
+
+### `renew(fan, plan_id)` / `extend_subscription(fan, plan_id
+
+### `create_plan(creator, asset, amount, interval) -> u64`
 
 ### `renew(fan: Address, creator: Address, plan_id: u64)` / `extend_subscription(...)`
 
@@ -73,7 +75,15 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
   `(fan, creator)`.
 - Reverts while the contract is paused, leaving storage unchanged.
 
-### `is_subscriber(fan: Address, creator: Address) -> bool`
+Requires `fan` auth. Reverts with `NotSubscriber` when no subscription exists,
+`PlanNotFound` on a plan mismatch, and `AssetMismatch` when the stored asset no
+longer matches the plan.
+
+### `cancel(fan, creator)`
+
+Requires `fan` auth. Removes the subscription. No refund is issued.
+
+### `is_subscriber(fan, creator) -> bool`
 
 - Read-only. Returns `true` while the subscription is active at the current
   ledger (`expires_at > sequence`), `false` otherwise (including after the
