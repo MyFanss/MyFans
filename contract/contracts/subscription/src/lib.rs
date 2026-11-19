@@ -124,6 +124,10 @@ impl SubscriptionContract {
             .instance()
             .get(&DataKey::NextPlanId)
             .unwrap_or(1);
+        let next_id = match plan_id.checked_add(1) {
+            Some(next) => next,
+            None => return Err(Error::Overflow),
+        };
         let plan = Plan {
             creator: creator.clone(),
             asset: asset.clone(),
@@ -134,7 +138,7 @@ impl SubscriptionContract {
         env.storage().persistent().set(&DataKey::Plan(plan_id), &plan);
         env.storage()
             .instance()
-            .set(&DataKey::NextPlanId, &(plan_id + 1));
+            .set(&DataKey::NextPlanId, &next_id);
 
         env.events().publish(
             (symbol_short!("plan_crt"),),

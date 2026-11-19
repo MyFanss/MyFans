@@ -21,15 +21,18 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
   uninitialized.
 - `protocol_fee_bps` MUST be `<= MAX_FEE_BPS` (see below).
 
-### `create_plan(creator: Address, asset: Address, amount: i128, interval_ledgers: u32) -> u32`
+### `create_plan(creator: Address, asset: Address, amount: i128, interval_ledgers: u32) -> u64`
 
 - Auth: `creator` must authorize the call.
 - Creates a subscription plan owned by `creator` and returns its plan id.
+- Plan ids are `u64` and are allocated from `DataKey::NextPlanId`. The counter
+  is incremented with `checked_add`; on overflow the call returns
+  `Error::Overflow`, does not write the plan, and leaves `NextPlanId` unchanged.
 - Rejects `amount == 0` and `interval_ledgers == 0`.
 - The creator payout address is taken from plan storage; client-supplied payout
   addresses are never trusted.
 
-### `subscribe(fan: Address, creator: Address, plan_id: u32)`
+### `subscribe(fan: Address, creator: Address, plan_id: u64)`
 
 - Auth: `fan` must authorize the call.
 - Transfers `amount` of the plan asset from `fan`.
@@ -38,7 +41,7 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
 - Reverts while the contract is paused, with no balance movement.
 - Reverts on unknown plan or asset mismatch.
 
-### `renew(fan: Address, creator: Address, plan_id: u32)` / `extend_subscription(...)`
+### `renew(fan: Address, creator: Address, plan_id: u64)` / `extend_subscription(...)`
 
 - Auth: `fan` must authorize the call.
 - Extends the subscription by one interval, performing the same fee split as
@@ -46,7 +49,7 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
 - Reverts on wrong asset or wrong plan.
 - Near `u64` ledger overflow the call returns a typed error and MUST NOT wrap.
 
-### `cancel(fan: Address, creator: Address, plan_id: u32)`
+### `cancel(fan: Address, creator: Address, plan_id: u64)`
 
 - Auth: `fan` must authorize the call.
 - Cancels the subscription effective at the current ledger. No refund is issued

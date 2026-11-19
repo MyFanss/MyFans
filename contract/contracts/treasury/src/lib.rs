@@ -197,6 +197,19 @@ mod test {
     }
 
     #[test]
+    fn error_discriminants_are_stable() {
+        // The numeric codes are part of the ABI: the backend maps them to
+        // user-facing errors. Inserting a variant in the middle would silently
+        // change the code for `Paused` or `InsufficientBalance`.
+        assert_eq!(TreasuryError::AlreadyInitialized as u32, 1);
+        assert_eq!(TreasuryError::NotInitialized as u32, 2);
+        assert_eq!(TreasuryError::Paused as u32, 3);
+        assert_eq!(TreasuryError::Unauthorized as u32, 4);
+        assert_eq!(TreasuryError::InvalidAmount as u32, 5);
+        assert_eq!(TreasuryError::InsufficientBalance as u32, 6);
+    }
+
+    #[test]
     fn initialize_requires_admin_auth() {
         let env = Env::default();
         let contract_id = env.register_contract(None, TreasuryContract);
