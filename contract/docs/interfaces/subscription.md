@@ -21,15 +21,26 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
   uninitialized.
 - `protocol_fee_bps` MUST be `<= MAX_FEE_BPS` (see below).
 
-### `create_plan(creator: Address, asset: Address, amount: i128, interval_ledgers: u32) -> u32`
+### `get_config() -> Result<Config, Error>`
+
+- Read-only. Returns the stored `Config` (admin, protocol fee bps, fee
+  recipient, and pause flag) after a successful `init`.
+- Returns `Error::NotInitialized` when the contract has not been initialized
+  (before `init` or after a failed init) instead of panicking, so frontends can
+  poll config safely.
+
+### `create_plan(creator: Address, asset: Address, amount: i128, interval_ledgers: u32) -> u64`
 
 - Auth: `creator` must authorize the call.
 - Creates a subscription plan owned by `creator` and returns its plan id.
+- Plan ids are `u64` and are allocated from `DataKey::NextPlanId`. The counter
+  is incremented with `checked_add`; on overflow the call returns
+  `Error::Overflow`, does not write the plan, and leaves `NextPlanId` unchanged.
 - Rejects `amount == 0` and `interval_ledgers == 0`.
 - The creator payout address is taken from plan storage; client-supplied payout
   addresses are never trusted.
 
-### `subscribe(fan: Address, creator: Address, plan_id: u32)`
+### `subscribe(fan: Address, creator: Address, plan_id: u64)`
 
 - Auth: `fan` must authorize the call.
 - Transfers `amount` of the plan asset from `fan`.
@@ -38,15 +49,18 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
 - Reverts while the contract is paused, with no balance movement.
 - Reverts on unknown plan or asset mismatch.
 
-### `renew(fan: Address, creator: Address, plan_id: u32)` / `extend_subscription(...)`
+### `renew(fan: Address, creator: Address, plan_id: u64)` / `extend_subscription(...)`
 
 - Auth: `fan` must authorize the call.
 - Extends the subscription by one interval, performing the same fee split as
   `subscribe`.
 - Reverts on wrong asset or wrong plan.
+- A `plan_id` that does not match the fan's stored subscription returns
+  `Error::WrongPlan` and does not move tokens. `Error::PlanNotFound` is
+  reserved for a missing `DataKey::Plan` record.
 - Near `u64` ledger overflow the call returns a typed error and MUST NOT wrap.
 
-### `cancel(fan: Address, creator: Address, plan_id: u32)`
+### `cancel(fan: Address, creator: Address, plan_id: u64)`
 
 - Auth: `fan` must authorize the call.
 - Cancels the subscription effective at the current ledger. No refund is issued
@@ -71,11 +85,16 @@ committed event fixture (`contract/scripts/check-subscription-event-fixture.test
 - An unauthorized call reverts, emits nothing, and leaves the pause flag
   unchanged.
 
-### `set_protocol_fee_bps(bps: u32)`
+### `set_protocol_fee_bps(bps: u32) -> Result<(), Error>`
 
 - Auth: `admin` must authorize the call.
-- Reverts when `bps > MAX_FEE_BPS`. `10000` is never accepted.
-- Unauthorized calls leave storage unchanged.
+- Returns `Error::FeeTooHigh` when `bps > MAX_FEE_BPS`. `10000` is never
+  accepted. A rejected rate leaves the previous rate in place and emits no
+  event.
+- On success, writes the new rate and emits exactly one `fee set` event (see
+  the event schema below) carrying the new basis points and the current fee
+  recipient.
+- Unauthorized calls leave storage unchanged and emit no event.
 
 ## Fee invariant
 
@@ -94,6 +113,10 @@ Topics and body fields are frozen and consumed by the backend `TARGET_EVENTS`
 list. The committed fixture in
 `contract/scripts/check-subscription-event-fixture.test.mjs` is CI-enforced.
 
+This table is the single authoritative schema. `contracts/subscription/src/types.rs`
+mirrors these topics and field order (see `SubscriptionEvent`); `lib.rs` emits
+exactly these topics and bodies. A mismatch in either file is a bug.
+
 | Event | Topics | Body |
 | --- | --- | --- |
 | plan created | `("plan", "created")` | `(creator, plan_id, asset, amount, interval_ledgers)` |
@@ -102,7 +125,7 @@ list. The committed fixture in
 | cancelled | `("sub", "cancelled")` | `(fan, creator, plan_id, effective_ledger)` |
 | paused | `("admin", "paused")` | `()` |
 | unpaused | `("admin", "unpaused")` | `()` |
-| fee set | `("admin", "fee")` | `(protocol_fee_bps)` |
+| fee set | `("admin", "fee")` | `(protocol_fee_bps, fee_recipient)` |
 
 ## Auth summary
 
