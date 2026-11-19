@@ -22,6 +22,16 @@ token; the contract never holds funds.
 > characters (it will fail to compile) and do not introduce a second, longer
 > symbol for the same event — indexers only recognize the symbols listed above.
 
+- Auth: `admin` must authorize the call.
+- Sets the contract admin, the protocol fee in basis points, and the treasury
+  recipient used for the protocol fee split.
+- `fee_recipient` MUST be the treasury contract id. It MUST NOT be empty and
+  MUST NOT equal `admin`; an empty or unauthorized recipient is rejected with
+  `Error::InvalidFeeRecipient` and `DataKey::Config` is not written.
+- Reverts on double-init. A failed (unauthorized) init leaves the contract
+  uninitialized.
+- `protocol_fee_bps` MUST be `<= MAX_FEE_BPS` (see below).
+
 ### `get_config() -> Result<Config, Error>`
 
 - Read-only. Returns the stored `Config` (admin, protocol fee bps, fee
@@ -51,6 +61,9 @@ token; the contract never holds funds.
 - Sets `expires_at` to the current ledger plus exactly one plan `interval`. No extra padding ledgers are added on top of the interval.
 - Reverts while the contract is paused, with no balance movement.
 - Reverts on unknown plan or asset mismatch.
+- Rejects self-subscription: when `fan == plan.creator` the call returns
+  `Error::SelfSubscription` before any charge, with no token movement and no
+  subscription row written. A different fan can still subscribe to that plan.
 
 ### `renew(fan, plan_id)` / `extend_subscription(fan, plan_id
 
@@ -125,10 +138,27 @@ Requires `fan` auth. Removes the subscription. No refund is issued.
   recipient.
 - Unauthorized calls leave storage unchanged and emit no event.
 
+### `set_fee_recipient(recipient: Address)`
+
+- Auth: `admin` must authorize the call.
+- Replaces the stored treasury recipient used by the fee split.
+- Rejects an empty or unauthorized recipient (equal to `admin`) with
+  `Error::InvalidFeeRecipient`, leaving storage unchanged.
+- Emits the fee-updated event `("admin", "fee")`.
+- Unauthorized calls leave storage unchanged.
+
+## Error codes
+
+| Error | Meaning |
+| --- | --- |
+| `Error::InvalidFeeRecipient` | Fee recipient is empty or equals `admin`. |
+| `Error::SelfSubscription` | `subscribe` called with `fan == plan.creator`; rejected before charge with no subscription stored. |
+
 ## Fee invariant
 
 `MAX_FEE_BPS = 1000`. The protocol fee can never exceed the cap; the fee split
-is enforced on every payment path.
+is enforced on every payment path. The fee split always pays the stored fee
+recipient; the recipient is never taken from a caller-supplied argument.
 
 ## Storage keys
 
@@ -162,7 +192,8 @@ See `contract/AUTH_MATRIX.md` for the authoritative valid/invalid examples.
 
 - `create_plan`: creator signs.
 - `subscribe` / `renew` / `extend_subscription` / `cancel`: fan signs.
-- `init` / `pause` / `unpause` / `set_protocol_fee_bps`: admin signs.
+- `init` / `pause` / `unpause` / `set_protocol_fee_bps` / `set_fee_recipient`:
+  admin signs.
 - Negative auth tests MUST NOT use `mock_all_auths`.
 
 ## Out of scope
