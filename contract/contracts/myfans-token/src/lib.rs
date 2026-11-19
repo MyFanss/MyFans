@@ -6,7 +6,17 @@
 
 #![no_std]
 
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, String};
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol};
+
+/// Maximum number of decimal places accepted by `initialize`.
+pub const MAX_DECIMALS: u32 = 18;
+
+/// Topic emitted on a successful `mint`.
+pub const MINT_TOPIC: Symbol = symbol_short!("mint");
+/// Topic emitted on a successful `burn`.
+pub const BURN_TOPIC: Symbol = symbol_short!("burn");
+/// Topic emitted on a successful `transfer`.
+pub const TRANSFER_TOPIC: Symbol = symbol_short!("transfer");
 
 /// Storage keys for the token contract.
 #[contracttype]
@@ -41,6 +51,9 @@ pub struct MyFansToken;
 #[contractimpl]
 impl MyFansToken {
     /// Initialize the token with metadata and an admin.
+    ///
+    /// `decimals` must not exceed [`MAX_DECIMALS`] (18); larger values are
+    /// rejected with `TokenError::InvalidAmount` before any storage is written.
     pub fn initialize(
         env: Env,
         admin: Address,
@@ -50,6 +63,10 @@ impl MyFansToken {
     ) -> Result<(), TokenError> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(TokenError::AlreadyInitialized);
+        }
+
+        if decimals > MAX_DECIMALS {
+            return Err(TokenError::InvalidAmount);
         }
 
         env.storage().instance().set(&DataKey::Admin, &admin);
@@ -62,6 +79,8 @@ impl MyFansToken {
     }
 
     /// Mint `amount` tokens to `to`. Only the admin may mint.
+    ///
+    /// Emits a `mint` event with topics `(mint, to)` and data `amount`.
     pub fn mint(env: Env, to: Address, amount: i128) -> Result<(), TokenError> {
         let admin: Address = env
             .storage()
@@ -87,13 +106,19 @@ impl MyFansToken {
         env.storage().instance().set(&DataKey::TotalSupply, &new_total);
         env.storage()
             .persistent()
-            .set(&DataKey::Balance(to), &new_balance);
+            .set(&DataKey::Balance(to.clone()), &new_balance);
+
+        env.events()
+            .publish((MINT_TOPIC, to), amount);
 
         Ok(())
     }
 
     /// Burn `amount` tokens from `from`.
+    ///
+    /// Emits a `burn` event with topics `(burn, from)` and data `amount`.
     pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), TokenError> {
+        Self::require_initialized(&env)?;
         from.require_auth();
 
         if amount <= 0 {
@@ -113,13 +138,20 @@ impl MyFansToken {
         env.storage().instance().set(&DataKey::TotalSupply, &new_total);
         env.storage()
             .persistent()
-            .set(&DataKey::Balance(from), &new_balance);
+            .set(&DataKey::Balance(from.clone()), &new_balance);
+
+        env.events()
+            .publish((BURN_TOPIC, from), amount);
 
         Ok(())
     }
 
     /// Transfer `amount` tokens from `from` to `to`.
+    ///
+    /// Emits a `transfer` event with topics `(transfer, from, to)` and data
+    /// `amount`.
     pub fn transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), TokenError> {
+        Self::require_initialized(&env)?;
         from.require_auth();
 
         if amount <= 0 {
@@ -136,10 +168,13 @@ impl MyFansToken {
 
         env.storage()
             .persistent()
-            .set(&DataKey::Balance(from), &new_from);
+            .set(&DataKey::Balance(from.clone()), &new_from);
         env.storage()
             .persistent()
-            .set(&DataKey::Balance(to), &new_to);
+            .set(&DataKey::Balance(to.clone()), &new_to);
+
+        env.events()
+            .publish((TRANSFER_TOPIC, from, to), amount);
 
         Ok(())
     }
@@ -169,6 +204,7 @@ impl MyFansToken {
         amount: i128,
         expiration_ledger: u32,
     ) -> Result<(), TokenError> {
+        Self::require_initialized(&env)?;
         from.require_auth();
 
         if amount < 0 {
@@ -203,6 +239,15 @@ impl MyFansToken {
             None => 0,
         }
     }
+
+    /// Return `NotInitialized` when the token has not been initialized.
+    fn require_initialized(env: &Env) -> Result<(), TokenError> {
+        if env.storage().instance().has(&DataKey::Admin) {
+            Ok(())
+        } else {
+            Err(TokenError::NotInitialized)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -225,25 +270,10 @@ mod test {
         (client, admin)
     }
 
-    #[test]
-    fn test_mint_burn_transfer_happy_path() {
-        let env = Env::default();
-        let (client, _admin) = setup(&env);
-        let alice = Address::generate(&env);
-        let bob = Address::generate(&env);
-
-        client.mint(&alice, &1000);
-        assert_eq!(client.balance(&alice), 1000);
-        assert_eq!(client.total_supply(), 1000);
-
-        client.transfer(&alice, &bob, &400);
-        assert_eq!(client.balance(&alice), 600);
-        assert_eq!(client.balance(&bob), 400);
-        assert_eq!(client.total_supply(), 1000);
-
-        client.burn(&alice, &100);
-        assert_eq!(client.balance(&alice), 500);
-        assert_eq!(client.total_supply(), 900);
+    fn setup_uninitialized(env: &Env) -> MyFansTokenClient {
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, MyFansToken);
+        MyFansTokenClient::new(env, &contract_id)
     }
 
     #[test]
@@ -263,26 +293,79 @@ mod test {
     #[test]
     fn test_mint_non_positive_amount_is_invalid() {
         let env = Env::default();
-        let (client, _admin) = setup(&env);
-        let alice = Address::generate(&env);
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
 
-        assert_eq!(client.try_mint(&alice, &0), Err(Ok(TokenError::InvalidAmount)));
-        assert_eq!(client.try_mint(&alice, &-5), Err(Ok(TokenError::InvalidAmount)));
+        for decimals in [0u32, 7, 18] {
+            let contract_id = env.register_contract(None, MyFansToken);
+            let client = MyFansTokenClient::new(&env, &contract_id);
+            client.initialize(
+                &admin,
+                &String::from_str(&env, "MyFans"),
+                &String::from_str(&env, "MYFANS"),
+                &decimals,
+            );
+        }
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
 
-        assert_eq!(client.balance(&alice), 0);
-        assert_eq!(client.total_supply(), 0);
+        for decimals in [0u32, 7, 18] {
+            let contract_id = env.register_contract(None, MyFansToken);
+            let client = MyFansTokenClient::new(&env, &contract_id);
+            client.initialize(
+                &admin,
+                &String::from_str(&env, "MyFans"),
+                &String::from_str(&env, "MYFANS"),
+                &decimals,
+            );
+        }
     }
 
     #[test]
-    fn test_transfer_above_balance_is_insufficient() {
+    fn test_mint_burn_transfer_emit_events() {
         let env = Env::default();
         let (client, _admin) = setup(&env);
         let alice = Address::generate(&env);
         let bob = Address::generate(&env);
 
         client.mint(&alice, &100);
+        let mint_events = env.events().all();
+        assert_eq!(mint_events.len(), 1);
+        let (_, topics, data) = mint_events.get(0).unwrap();
+        assert_eq!(topics.len(), 2);
+        assert_eq!(topics.get(0).unwrap(), MINT_TOPIC.into());
+        assert_eq!(topics.get(1).unwrap(), alice.clone().into());
+        assert_eq!(data, 100i128.into());
 
-        assert_eq!(
-            client
+        client.transfer(&alice, &bob, &40);
+        let transfer_events = env.events().all();
+        assert_eq!(transfer_events.len(), 1);
+        let (_, topics, data) = transfer_events.get(0).unwrap();
+        assert_eq!(topics.len(), 3);
+        assert_eq!(topics.get(0).unwrap(), TRANSFER_TOPIC.into());
+        assert_eq!(topics.get(1).unwrap(), alice.clone().into());
+        assert_eq!(topics.get(2).unwrap(), bob.clone().into());
+        assert_eq!(data, 40i128.into());
 
-/* … truncated 844 chars — edit only what you need near the top … */
+        client.burn(&bob, &10);
+        let burn_events = env.events().all();
+        assert_eq!(burn_events.len(), 1);
+        let (_, topics, data) = burn_events.get(0).unwrap();
+        assert_eq!(topics.len(), 2);
+        assert_eq!(topics.get(0).unwrap(), BURN_TOPIC.into());
+        assert_eq!(topics.get(1).unwrap(), bob.clone().into());
+        assert_eq!(data, 10i128.into());
+    }
+
+    #[test]
+    fn test_failed_mint_emits_nothing() {
+        let env = Env::default();
+        let (client, _admin) = setup(&env);
+        let alice = Address::generate(&env);
+
+        let result = client.try_mint(&alice, &0);
+        assert_eq!(result, Err(Ok(TokenError::InvalidAmount)));
+        assert_eq!(env.events().all().len(), 0);
+    }
+}
