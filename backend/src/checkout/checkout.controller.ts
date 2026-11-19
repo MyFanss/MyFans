@@ -58,14 +58,21 @@ function startSpan(name: string): Span {
     return { end: () => undefined, setAttribute: () => undefined };
   }
   const startedAt = Date.now();
+  const attributes: Record<string, string> = {};
   return {
     end: () => {
       // eslint-disable-next-line no-console
       console.debug(
-        JSON.stringify({ span: name, durationMs: Date.now() - startedAt }),
+        JSON.stringify({
+          span: name,
+          durationMs: Date.now() - startedAt,
+          attributes,
+        }),
       );
     },
-    setAttribute: () => undefined,
+    setAttribute: (key, value) => {
+      attributes[key] = value;
+    },
   };
 }
 
