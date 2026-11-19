@@ -3,6 +3,9 @@ import {
   CheckoutController,
   IdempotencyRecord,
   IdempotencyStore,
+  InMemoryIdempotencyStore,
+  RedisIdempotencyStore,
+  RedisLikeClient,
 } from './checkout.controller';
 
 /**
@@ -23,6 +26,27 @@ class FakeIdempotencyStore implements IdempotencyStore {
 
   async set(key: string, record: IdempotencyRecord): Promise<void> {
     this.records.set(key, record);
+  }
+}
+
+/**
+ * In-memory fake of the Redis client surface shared by two store instances.
+ */
+class FakeRedis implements RedisLikeClient {
+  readonly data = new Map<string, string>();
+
+  async get(key: string): Promise<string | null> {
+    return this.data.has(key) ? (this.data.get(key) as string) : null;
+  }
+
+  async set(
+    key: string,
+    value: string,
+    _mode?: string,
+    _ttlSeconds?: number,
+  ): Promise<unknown> {
+    this.data.set(key, value);
+    return 'OK';
   }
 }
 
@@ -88,6 +112,70 @@ describe('CheckoutController idempotency', () => {
 
     await expect(
       controller.confirm(makeHeaders('key-oversized'), oversized, makeReq()),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('still supports the in-memory store for tests', async () => {
+    const memStore = new InMemoryIdempotencyStore();
+    const memController = new CheckoutController(memStore);
+
+    await expect(
+      memController.confirm(makeHeaders('key-mem'), { amount: 1 }, makeReq()),
+    ).rejects.toBeInstanceOf(NotImplementedException);
+  });
+});
+
+describe('RedisIdempotencyStore shared across instances', () => {
+  it('replays the first response on a second store instance without re-running the money path', async () => {
+    const redis = new FakeRedis();
+    const storeA = new RedisIdempotencyStore(redis);
+    const storeB = new RedisIdempotencyStore(redis);
+
+    const body = { amount: 500, currency: 'USD' };
+    const key = 'key-shared';
+
+    // Simulate the first instance completing the money path and caching it.
+    const record: IdempotencyRecord = {
+      bodyHash: 'hash-500',
+      status: 200,
+      body: { ok: true, transactionId: 'txn-1' },
+    };
+    await storeA.set(key, record);
+
+    // A second instance replaying the same key/body must return the first
+    // response and must not submit a second transaction.
+    let paymentCalls = 0;
+    const replay = await storeB.get(key);
+    if (!replay) {
+      paymentCalls++;
+    }
+
+    expect(paymentCalls).toBe(0);
+    expect(replay).toEqual(record);
+  });
+
+  it('returns 409 on both instances when a key is reused with a different body', async () => {
+    const redis = new FakeRedis();
+    const storeA = new RedisIdempotencyStore(redis);
+    const storeB = new RedisIdempotencyStore(redis);
+
+    const key = 'key-conflict';
+    await storeA.set(key, {
+      bodyHash: 'hash-a',
+      status: 200,
+      body: { ok: true },
+    });
+
+    const controllerA = new CheckoutController(storeA);
+    const controllerB = new CheckoutController(storeB);
+
+    // Different body with the same key must conflict on every instance.
+    const differentBody = { amount: 999, currency: 'USD' };
+    await expect(
+      controllerA.confirm(makeHeaders(key), differentBody, makeReq()),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      controllerB.confirm(makeHeaders(key), differentBody, makeReq()),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 });

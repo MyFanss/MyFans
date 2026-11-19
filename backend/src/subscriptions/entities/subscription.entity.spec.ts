@@ -4,13 +4,22 @@ import {
   Subscription,
   SubscriptionStatus,
   canTransition,
+  hasActiveAccess,
   isSubmissionExpired,
 } from './subscription.entity';
 
 describe('SubscriptionStatus', () => {
   it('pins the documented lifecycle states', () => {
     expect(Object.values(SubscriptionStatus).sort()).toEqual(
-      ['ACTIVE', 'CONFIRMED', 'CREATED', 'FAILED', 'SUBMITTED'].sort(),
+      [
+        'ACTIVE',
+        'CANCELLED',
+        'CONFIRMED',
+        'CREATED',
+        'EXPIRED',
+        'FAILED',
+        'SUBMITTED',
+      ].sort(),
     );
   });
 });
@@ -27,14 +36,27 @@ describe('SUBSCRIPTION_TRANSITIONS', () => {
         SubscriptionStatus.FAILED,
       ],
       [SubscriptionStatus.CONFIRMED]: [SubscriptionStatus.ACTIVE],
+      [SubscriptionStatus.ACTIVE]: [
+        SubscriptionStatus.CANCELLED,
+        SubscriptionStatus.EXPIRED,
+      ],
       [SubscriptionStatus.FAILED]: [],
-      [SubscriptionStatus.ACTIVE]: [],
+      [SubscriptionStatus.CANCELLED]: [],
+      [SubscriptionStatus.EXPIRED]: [],
     });
   });
 
-  it('ACTIVE and FAILED have no outgoing transitions', () => {
-    expect(SUBSCRIPTION_TRANSITIONS[SubscriptionStatus.ACTIVE]).toEqual([]);
+  it('ACTIVE can leave to CANCELLED or EXPIRED', () => {
+    expect(SUBSCRIPTION_TRANSITIONS[SubscriptionStatus.ACTIVE]).toEqual([
+      SubscriptionStatus.CANCELLED,
+      SubscriptionStatus.EXPIRED,
+    ]);
+  });
+
+  it('FAILED, CANCELLED and EXPIRED are terminal', () => {
     expect(SUBSCRIPTION_TRANSITIONS[SubscriptionStatus.FAILED]).toEqual([]);
+    expect(SUBSCRIPTION_TRANSITIONS[SubscriptionStatus.CANCELLED]).toEqual([]);
+    expect(SUBSCRIPTION_TRANSITIONS[SubscriptionStatus.EXPIRED]).toEqual([]);
   });
 });
 
@@ -45,6 +67,11 @@ describe('canTransition', () => {
     expect(canTransition(SubscriptionStatus.SUBMITTED, SubscriptionStatus.CONFIRMED)).toBe(true);
     expect(canTransition(SubscriptionStatus.SUBMITTED, SubscriptionStatus.FAILED)).toBe(true);
     expect(canTransition(SubscriptionStatus.CONFIRMED, SubscriptionStatus.ACTIVE)).toBe(true);
+  });
+
+  it('allows ACTIVE -> CANCELLED and ACTIVE -> EXPIRED', () => {
+    expect(canTransition(SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELLED)).toBe(true);
+    expect(canTransition(SubscriptionStatus.ACTIVE, SubscriptionStatus.EXPIRED)).toBe(true);
   });
 
   it('is idempotent for every status (same -> same is always allowed)', () => {
@@ -63,6 +90,8 @@ describe('canTransition', () => {
     expect(canTransition(SubscriptionStatus.FAILED, SubscriptionStatus.SUBMITTED)).toBe(false);
     expect(canTransition(SubscriptionStatus.ACTIVE, SubscriptionStatus.CREATED)).toBe(false);
     expect(canTransition(SubscriptionStatus.ACTIVE, SubscriptionStatus.CONFIRMED)).toBe(false);
+    expect(canTransition(SubscriptionStatus.CANCELLED, SubscriptionStatus.ACTIVE)).toBe(false);
+    expect(canTransition(SubscriptionStatus.EXPIRED, SubscriptionStatus.ACTIVE)).toBe(false);
   });
 
   it('rejects backward transitions', () => {
@@ -76,6 +105,33 @@ describe('canTransition', () => {
         const expected = from === to || SUBSCRIPTION_TRANSITIONS[from].includes(to);
         expect(canTransition(from, to)).toBe(expected);
       }
+    }
+  });
+});
+
+describe('hasActiveAccess', () => {
+  const now = new Date('2025-01-01T00:00:00Z');
+  const past = new Date('2024-12-31T23:59:59Z');
+  const future = new Date('2025-01-01T00:00:01Z');
+
+  it('grants access for ACTIVE with a future expiry', () => {
+    expect(hasActiveAccess({ status: SubscriptionStatus.ACTIVE, expiresAt: future }, now)).toBe(true);
+  });
+
+  it('denies access for ACTIVE with a past expiry', () => {
+    expect(hasActiveAccess({ status: SubscriptionStatus.ACTIVE, expiresAt: past }, now)).toBe(false);
+  });
+
+  it('denies access for ACTIVE with a null expiry', () => {
+    expect(hasActiveAccess({ status: SubscriptionStatus.ACTIVE, expiresAt: null }, now)).toBe(false);
+  });
+
+  it('denies access for non-ACTIVE statuses even with a future expiry', () => {
+    for (const status of Object.values(SubscriptionStatus)) {
+      if (status === SubscriptionStatus.ACTIVE) {
+        continue;
+      }
+      expect(hasActiveAccess({ status, expiresAt: future }, now)).toBe(false);
     }
   });
 });
@@ -94,6 +150,8 @@ describe('Subscription entity', () => {
       sub.activatedAt = null;
       sub.failedAt = null;
       sub.submitExpiresAt = null;
+      sub.expiresAt = null;
+      sub.cancelledAt = null;
       sub.referralCode = null;
       sub.referralAttributedAt = null;
       sub.createdAt = new Date();

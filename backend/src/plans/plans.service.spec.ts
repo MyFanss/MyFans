@@ -64,6 +64,8 @@ describe('PlansService', () => {
     interval: '30d',
   };
 
+  const contractAsset = 'C' + 'A'.repeat(55);
+
   describe('create', () => {
     it('returns metadata with createdAt === updatedAt and normalizes padded planId/creator', () => {
       const plan = service.create({
@@ -83,8 +85,37 @@ describe('PlansService', () => {
       expect(() => service.create(basePlan)).toThrow(ConflictException);
     });
 
-    it('throws BadRequestException for an invalid asset', () => {
-      expect(() => service.create({ ...basePlan, asset: 'usd' })).toThrow(BadRequestException);
+    it('accepts a classic asset code and uppercases it', () => {
+      const plan = service.create({ ...basePlan, asset: 'USDC' });
+
+      expect(plan.asset).toBe('USDC');
+    });
+
+    it('accepts a 56-character contract address and stores it unchanged', () => {
+      const plan = service.create({ ...basePlan, asset: contractAsset });
+
+      expect(plan.asset).toBe(contractAsset);
+    });
+
+    it('throws BadRequestException for a lowercase asset code', () => {
+      expect(() => service.create({ ...basePlan, asset: 'usdc' })).toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException for an empty asset', () => {
+      expect(() => service.create({ ...basePlan, asset: '' })).toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException for a URL asset', () => {
+      expect(() => service.create({ ...basePlan, asset: 'javascript:alert(1)' })).toThrow(
+        BadRequestException,
+      );
+      expect(() => service.create({ ...basePlan, asset: 'http://example.com' })).toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('throws BadRequestException for an asset containing spaces', () => {
+      expect(() => service.create({ ...basePlan, asset: 'US DC' })).toThrow(BadRequestException);
     });
 
     it('throws BadRequestException for an invalid amount', () => {
