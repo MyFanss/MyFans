@@ -2,18 +2,28 @@
 
 Comprehensive documentation for all public contract methods, including arguments, authorization requirements, runnable `soroban contract invoke` examples (local network), and expected events.
 
-## Available Interfaces
-- [MyFans Main (contract/src/lib.rs)](myfans-main.md)
+## Interfaces With Crates Present Today
+
+These documents describe crates that exist in `contract/contracts/` and can be built now.
+
+- [MyFans Token](myfans-token.md) — [`contracts/myfans-token/src/lib.rs`](../../contracts/myfans-token/src/lib.rs)
+- [Treasury Contracts](treasury-contracts.md) — [`contracts/treasury/src/lib.rs`](../../contracts/treasury/src/lib.rs)
+- [Treasury src](treasury-src.md) — [`contracts/treasury/src/lib.rs`](../../contracts/treasury/src/lib.rs)
+- [Subscription](subscription.md) — [`contracts/subscription/src/lib.rs`](../../contracts/subscription/src/lib.rs)
+
+## Interfaces With Crates Not Yet Present
+
+These documents describe crates that are not in `contract/contracts/` yet, so they cannot be built today. They are kept for reference until the code lands.
+
 - [Content Access](content-access.md)
 - [Creator Deposits](creator-deposits.md)
 - [Content Likes](content-likes.md)
 - [Creator Registry](creator-registry.md)
 - [Creator Earnings](creator-earnings.md)
 - [Earnings](earnings.md)
-- [Subscription](subscription.md)
-- [MyFans Token](myfans-token.md)
-- [Treasury Contracts](treasury-contracts.md)
-- [Treasury src](treasury-src.md)
+
+## Other Interfaces
+- [MyFans Main (contract/src/lib.rs)](myfans-main.md)
 
 **All public contract methods documented with args, auth, examples, events. Examples runnable via `--dry-run`.**
 

@@ -12,6 +12,39 @@ Contract testing ensures:
 
 Tests run in the isolated Soroban test environment and do not require network access.
 
+## Ledger Time
+
+Soroban contracts measure time in **ledgers**, not wall-clock seconds. On the network this
+app targets, one ledger is produced roughly every **five seconds**. So a duration expressed
+in ledgers is about `seconds / 5` ledgers.
+
+The subscription contract defines `PERIOD_LEDGERS` in
+[`contracts/subscription/src/lib.rs`](contracts/subscription/src/lib.rs) as `17_280`, which
+is about one day at a five-second ledger (`17_280 * 5 = 86_400` seconds). Expiry tests
+compare against this constant, so they advance the ledger by a number of ledgers rather than
+by seconds.
+
+In `soroban_sdk` tests, move time forward with `Env::ledger().set_sequence` (via the
+`Ledger` testutils trait):
+
+```rust
+use soroban_sdk::testutils::Ledger;
+
+#[test]
+fn test_subscription_expires_after_period() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // ... set up and create the subscription ...
+
+    // Advance the ledger by one subscription period (about one day).
+    env.ledger().set_sequence(env.ledger().sequence() + PERIOD_LEDGERS);
+
+    // The subscription should now be expired.
+    assert!(client.is_expired(&fan, &creator));
+}
+```
+
 ## Running Tests
 
 ### Run all tests

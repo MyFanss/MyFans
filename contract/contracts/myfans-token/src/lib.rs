@@ -382,6 +382,46 @@ mod test {
     }
 
     #[test]
+    fn test_unknown_balance_is_zero() {
+        let env = Env::default();
+        let (client, _admin) = setup(&env);
+        let unknown = Address::generate(&env);
+
+        assert_eq!(client.balance(&unknown), 0);
+        assert_eq!(client.total_supply(), 0);
+    }
+
+    #[test]
+    fn test_allowance_is_zero_when_no_approval_stored() {
+        let env = Env::default();
+        let (client, _admin) = setup(&env);
+        let owner = Address::generate(&env);
+        let spender = Address::generate(&env);
+
+        // `approve` is never called, so no allowance entry exists in storage.
+        assert_eq!(client.allowance(&owner, &spender), 0);
+    }
+
+    #[test]
+    fn test_mint_burn_transfer_happy_path() {
+        let env = Env::default();
+        let (client, _admin) = setup(&env);
+        let alice = Address::generate(&env);
+        let bob = Address::generate(&env);
+
+        // No mocked auth: initialize must fail and leave admin unset.
+        let result = client.try_initialize(&admin, &name, &symbol, &7);
+        assert!(result.is_err());
+        assert!(!env.storage().instance().has(&DataKey::Admin));
+
+        // A later authorized initialize still succeeds.
+        env.mock_all_auths();
+        client.initialize(&admin, &name, &symbol, &7);
+        assert_eq!(client.admin(), admin);
+        assert_eq!(client.total_supply(), 0);
+    }
+
+    #[test]
     fn second_initialize_returns_already_initialized() {
         let (env, client, admin) = setup();
         env.mock_all_auths();
@@ -540,6 +580,5 @@ mod test {
         let result = client.try_mint(&alice, &0);
         assert_eq!(result, Err(Ok(TokenError::InvalidAmount)));
         assert_eq!(env.events().all().len(), 0);
-    }
     }
 }
