@@ -75,6 +75,14 @@ impl MyFansToken {
         env.storage().instance().get(&DataKey::Symbol).unwrap()
     }
 
+    /// Return the admin address configured at initialization.
+    pub fn admin(env: Env) -> Result<Address, TokenError> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(TokenError::NotInitialized)
+    }
+
     /// Mint `amount` tokens to `to`. Only the admin may mint.
     ///
     /// Emits a `mint` event with topics `(mint, to)` and data `amount`.
@@ -400,6 +408,13 @@ mod test {
 
         // `approve` is never called, so no allowance entry exists in storage.
         assert_eq!(client.allowance(&owner, &spender), 0);
+    }
+
+    #[test]
+    fn test_admin_returns_initialized_admin() {
+        let env = Env::default();
+        let (client, admin) = setup(&env);
+        assert_eq!(client.admin(), admin);
     }
 
     #[test]
