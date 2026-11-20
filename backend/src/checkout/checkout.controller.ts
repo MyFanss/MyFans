@@ -104,6 +104,14 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
   }
 
   set(key: string, record: IdempotencyRecord): void {
+    // Sweep on write so keys that are never retried are still reclaimed.
+    // shortcut: full O(n) scan per write, fine for single-node volumes; use Redis TTL store beyond that.
+    const now = Date.now();
+    for (const [existingKey, existing] of this.records) {
+      if (existing.expiresAt <= now) {
+        this.records.delete(existingKey);
+      }
+    }
     this.records.set(key, record);
   }
 }
