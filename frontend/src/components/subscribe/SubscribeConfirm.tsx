@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { fetchPlan, buildSubscribeTx, signAndSubmit } from '../../services/subscribe';
-import { getActiveNetwork } from '../../config/network';
+import { getActiveNetwork, normalizeNetwork } from '../../config/network';
 import { checkNetworkGuard } from '../../lib/stellar/networkGuard';
 import type { Plan, SubscribeTxArgs } from '../../types/subscribe';
 
@@ -89,7 +89,7 @@ export default function SubscribeConfirm() {
   // constant) via the shared guard utility, so a plan settling on a
   // different network than the app default is neither blocked incorrectly
   // nor allowed to sign under a mismatched network (#2010).
-  const networkGuard = plan ? checkNetworkGuard(plan.network, network) : null;
+  const networkGuard = plan ? checkNetworkGuard(normalizeNetwork(plan.network), network) : null;
   const networkMismatch = networkGuard !== null && !networkGuard.ok;
   const argsMismatch =
     displayed !== null && txArgs !== null && !matchesTxArgs(displayed, txArgs);

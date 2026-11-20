@@ -1,5 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { SocialLink } from './entities/social-link.entity';
 import {
   SocialLinksService,
   MAX_SOCIAL_LINKS_PER_USER,
@@ -56,322 +58,349 @@ describe('sanitizeSocialLinkUrl', () => {
     const result = sanitizeSocialLinkUrl('  https://example.com/path  ');
     expect(result).toBe('https://example.com/path');
   });
+
+  it('accepts a valid https URL and returns a string starting with https://', () => {
+    expect(sanitizeSocialLinkUrl('https://example.com/a')).toMatch(
+      /^https:\/\//,
+    );
+  });
 });
 
 describe('SocialLinksService', () => {
   let service: SocialLinksService;
 
+  const socialLinkRepository = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    count: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+    delete: jest.fn(),
+  };
+
+  const makeLink = (overrides: Partial<SocialLink> = {}): SocialLink =>
+    ({
+      id: 'link-1',
+      userId: 'user-1',
+      platform: 'github',
+      url: 'https://github.com/example',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+      ...overrides,
+    }) as SocialLink;
+
   beforeEach(async () => {
+    jest.clearAllMocks();
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [SocialLinksService],
+      providers: [
+        SocialLinksService,
+        {
+          provide: getRepositoryToken(SocialLink),
+          useValue: socialLinkRepository,
+        },
+      ],
     }).compile();
 
     service = module.get<SocialLinksService>(SocialLinksService);
   });
 
   describe('create', () => {
-    it('creates a link and returns it', () => {
-      const link = service.create('user-1', {
-        platform: 'github',
-        url: 'https://github.com/example',
-      });
-
-      expect(link).toMatchObject({
+    it('creates a link and returns it', async () => {
+      const saved = makeLink();
+      socialLinkRepository.count.mockResolvedValue(0);
+      socialLinkRepository.create.mockReturnValue({
         userId: 'user-1',
         platform: 'github',
         url: 'https://github.com/example',
       });
-      expect(link.id).toBeDefined();
-      expect(link.createdAt).toBeInstanceOf(Date);
-      expect(link.updatedAt).toBeInstanceOf(Date);
+      socialLinkRepository.save.mockResolvedValue(saved);
+
+      const link = await service.create('user-1', {
+        platform: 'github',
+        url: 'https://github.com/example',
+      });
+
+      expect(socialLinkRepository.count).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+      });
+      expect(socialLinkRepository.create).toHaveBeenCalledWith({
+        userId: 'user-1',
+        platform: 'github',
+        url: 'https://github.com/example',
+      });
+      expect(socialLinkRepository.save).toHaveBeenCalledTimes(1);
+      expect(link).toEqual(saved);
     });
 
-    it('rejects an empty platform', () => {
-      expect(() =>
+    it('rejects an empty platform', async () => {
+      await expect(
         service.create('user-1', { platform: '', url: 'https://example.com' }),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
+
+      expect(socialLinkRepository.count).not.toHaveBeenCalled();
+      expect(socialLinkRepository.save).not.toHaveBeenCalled();
     });
 
-    it('rejects a malformed URL', () => {
-      expect(() =>
+    it('rejects a malformed URL', async () => {
+      await expect(
         service.create('user-1', { platform: 'x', url: 'not-a-url' }),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
+
+      expect(socialLinkRepository.count).not.toHaveBeenCalled();
     });
 
-    it('rejects a non-https URL', () => {
-      expect(() =>
+    it('rejects a non-https URL', async () => {
+      await expect(
         service.create('user-1', { platform: 'x', url: 'http://example.com' }),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
+
+      expect(socialLinkRepository.count).not.toHaveBeenCalled();
     });
 
-    it('rejects an overlong URL', () => {
+    it('rejects an overlong URL', async () => {
       const longUrl = 'https://x.com/' + 'a'.repeat(MAX_SOCIAL_LINK_URL_LENGTH);
-      expect(() =>
+      await expect(
         service.create('user-1', { platform: 'x', url: longUrl }),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
+
+      expect(socialLinkRepository.count).not.toHaveBeenCalled();
     });
 
-    it('rejects an overlong platform', () => {
+    it('rejects an overlong platform', async () => {
       const longPlatform = 'a'.repeat(MAX_SOCIAL_LINK_PLATFORM_LENGTH + 1);
-      expect(() =>
-        service.create('user-1', { platform: longPlatform, url: 'https://example.com' }),
-      ).toThrow(BadRequestException);
+      await expect(
+        service.create('user-1', {
+          platform: longPlatform,
+          url: 'https://example.com',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(socialLinkRepository.count).not.toHaveBeenCalled();
     });
 
     describe('per-user cap', () => {
-      it(`allows creating exactly ${MAX_SOCIAL_LINKS_PER_USER} links for a user`, () => {
-        for (let i = 0; i < MAX_SOCIAL_LINKS_PER_USER; i++) {
-          const link = service.create('user-cap', {
-            platform: `platform-${i}`,
-            url: `https://example.com/${i}`,
-          });
-          expect(link).toBeDefined();
-        }
+      it(`rejects the create when the user already has ${MAX_SOCIAL_LINKS_PER_USER} links`, async () => {
+        socialLinkRepository.count.mockResolvedValue(MAX_SOCIAL_LINKS_PER_USER);
+
+        await expect(
+          service.create('user-1', {
+            platform: 'github',
+            url: 'https://github.com/example',
+          }),
+        ).rejects.toThrow('too many social links');
+
+        expect(socialLinkRepository.count).toHaveBeenCalledWith({
+          where: { userId: 'user-1' },
+        });
+        expect(socialLinkRepository.save).not.toHaveBeenCalled();
       });
 
-      it(`throws BadRequestException when exceeding ${MAX_SOCIAL_LINKS_PER_USER} links`, () => {
-        // Create up to the cap
-        for (let i = 0; i < MAX_SOCIAL_LINKS_PER_USER; i++) {
-          service.create('user-over', {
-            platform: `platform-${i}`,
-            url: `https://example.com/${i}`,
-          });
-        }
-
-        // The N+1th create should throw
-        expect(() =>
-          service.create('user-over', {
-            platform: 'extra',
-            url: 'https://example.com/extra',
-          }),
-        ).toThrow(BadRequestException);
-
-        expect(() =>
-          service.create('user-over', {
-            platform: 'extra',
-            url: 'https://example.com/extra',
-          }),
-        ).toThrow('too many social links');
-      });
-
-      it('allows a different user to create links independently of the cap on the first user', () => {
-        for (let i = 0; i < MAX_SOCIAL_LINKS_PER_USER; i++) {
-          service.create('user-a', {
-            platform: `platform-${i}`,
-            url: `https://example.com/${i}`,
-          });
-        }
-
-        // Second user should still be able to create links
-        const link = service.create('user-b', {
+      it(`does not reject because of the cap when the user has ${MAX_SOCIAL_LINKS_PER_USER - 1} links`, async () => {
+        const saved = makeLink();
+        socialLinkRepository.count.mockResolvedValue(
+          MAX_SOCIAL_LINKS_PER_USER - 1,
+        );
+        socialLinkRepository.create.mockReturnValue({
+          userId: 'user-1',
           platform: 'github',
           url: 'https://github.com/example',
         });
-        expect(link).toBeDefined();
+        socialLinkRepository.save.mockResolvedValue(saved);
+
+        const link = await service.create('user-1', {
+          platform: 'github',
+          url: 'https://github.com/example',
+        });
+
+        expect(socialLinkRepository.count).toHaveBeenCalledWith({
+          where: { userId: 'user-1' },
+        });
+        expect(socialLinkRepository.save).toHaveBeenCalledTimes(1);
+        expect(link).toEqual(saved);
       });
     });
   });
 
   describe('list', () => {
-    it('returns an empty array when the user has no links', () => {
-      expect(service.list('no-links')).toEqual([]);
+    it('returns an empty array when the user has no links', async () => {
+      socialLinkRepository.find.mockResolvedValue([]);
+
+      const links = await service.list('no-links');
+
+      expect(links).toEqual([]);
+      expect(socialLinkRepository.find).toHaveBeenCalledWith({
+        where: { userId: 'no-links' },
+        order: { createdAt: 'ASC' },
+      });
     });
 
-    it('returns only the links belonging to the requested user', () => {
-      service.create('user-a', {
-        platform: 'a1',
-        url: 'https://a1.example.com',
-      });
-      service.create('user-b', {
-        platform: 'b1',
-        url: 'https://b1.example.com',
-      });
-      service.create('user-a', {
-        platform: 'a2',
-        url: 'https://a2.example.com',
-      });
+    it('returns only the links belonging to the requested user', async () => {
+      socialLinkRepository.find.mockResolvedValue([
+        makeLink({ id: 'link-a', userId: 'user-a' }),
+        makeLink({ id: 'link-b', userId: 'user-a' }),
+      ]);
 
-      const linksA = service.list('user-a');
-      expect(linksA).toHaveLength(2);
-      expect(linksA.every((l) => l.userId === 'user-a')).toBe(true);
+      const links = await service.list('user-a');
 
-      const linksB = service.list('user-b');
-      expect(linksB).toHaveLength(1);
-      expect(linksB[0].userId).toBe('user-b');
+      expect(links).toHaveLength(2);
+      expect(socialLinkRepository.find).toHaveBeenCalledWith({
+        where: { userId: 'user-a' },
+        order: { createdAt: 'ASC' },
+      });
     });
   });
 
   describe('findOne', () => {
-    it('returns the link by id', () => {
-      const created = service.create('user-1', {
-        platform: 'github',
-        url: 'https://github.com/example',
+    it('returns the link by id', async () => {
+      const link = makeLink();
+      socialLinkRepository.findOne.mockResolvedValue(link);
+
+      const found = await service.findOne('user-1', 'link-1');
+
+      expect(found).toEqual(link);
+      expect(socialLinkRepository.findOne).toHaveBeenCalledWith({
+        where: { id: 'link-1', userId: 'user-1' },
       });
-      const found = service.findOne('user-1', created.id);
-      expect(found).toEqual(created);
     });
 
-    it('throws NotFoundException for a non-existent id', () => {
-      expect(() => service.findOne('user-1', 'nonexistent')).toThrow(/not found/i);
-    });
+    it('throws NotFoundException for a non-existent id', async () => {
+      socialLinkRepository.findOne.mockResolvedValue(null);
 
-    it('throws NotFoundException when the link belongs to another user', () => {
-      const created = service.create('user-a', {
-        platform: 'github',
-        url: 'https://github.com/example',
-      });
-      expect(() => service.findOne('user-b', created.id)).toThrow(
+      await expect(service.findOne('user-1', 'nonexistent')).rejects.toThrow(
         NotFoundException,
       );
-      // The link must still exist for the owner
-      expect(service.list('user-a')).toHaveLength(1);
-      expect(service.findOne('user-a', created.id)).toEqual(created);
+    });
+
+    it('throws NotFoundException when the link belongs to another user', async () => {
+      socialLinkRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.findOne('user-b', 'link-a')).rejects.toThrow(
+        NotFoundException,
+      );
+
+      expect(socialLinkRepository.findOne).toHaveBeenCalledWith({
+        where: { id: 'link-a', userId: 'user-b' },
+      });
     });
   });
 
   describe('update', () => {
-    it('updates the platform and url of an existing link', () => {
-      const created = service.create('user-1', {
-        platform: 'github',
-        url: 'https://github.com/example',
+    it('updates the platform and url of an existing link', async () => {
+      const existing = makeLink();
+      const updated = makeLink({
+        platform: 'twitter',
+        url: 'https://twitter.com/example',
       });
+      socialLinkRepository.findOne.mockResolvedValue(existing);
+      socialLinkRepository.save.mockResolvedValue(updated);
 
-      const updated = service.update('user-1', created.id, {
+      const result = await service.update('user-1', 'link-1', {
         platform: 'twitter',
         url: 'https://twitter.com/example',
       });
 
-      expect(updated.platform).toBe('twitter');
-      expect(updated.url).toBe('https://twitter.com/example');
-      expect(updated.createdAt).toEqual(created.createdAt);
+      expect(result).toEqual(updated);
+      expect(socialLinkRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          platform: 'twitter',
+          url: 'https://twitter.com/example',
+        }),
+      );
     });
 
-    it('is unaffected by the per-user cap (update does not check count)', () => {
-      // Fill the cap
-      for (let i = 0; i < MAX_SOCIAL_LINKS_PER_USER; i++) {
-        service.create('user-upd', {
-          platform: `platform-${i}`,
-          url: `https://example.com/${i}`,
-        });
-      }
+    it('is unaffected by the per-user cap (update does not check count)', async () => {
+      const existing = makeLink();
+      socialLinkRepository.findOne.mockResolvedValue(existing);
+      socialLinkRepository.save.mockResolvedValue(
+        makeLink({ url: 'https://updated.example.com' }),
+      );
 
-      // update the first link — should succeed even though cap is reached
-      const links = service.list('user-upd');
-      const firstId = links[0].id;
-      const updated = service.update('user-upd', firstId, {
+      const result = await service.update('user-1', 'link-1', {
         url: 'https://updated.example.com',
       });
-      expect(updated.url).toBe('https://updated.example.com');
+
+      expect(result.url).toBe('https://updated.example.com');
+      expect(socialLinkRepository.count).not.toHaveBeenCalled();
     });
 
-    it('throws when the link does not exist', () => {
-      expect(() =>
+    it('throws when the link does not exist', async () => {
+      socialLinkRepository.findOne.mockResolvedValue(null);
+
+      await expect(
         service.update('user-1', 'nonexistent', { platform: 'x' }),
-      ).toThrow(/not found/i);
+      ).rejects.toThrow(NotFoundException);
     });
 
-    it('throws NotFoundException when a different user tries to update the link and leaves it unchanged', () => {
-      const created = service.create('user-owner', {
-        platform: 'github',
-        url: 'https://github.com/example',
-      });
+    it('throws NotFoundException when a different user tries to update the link and leaves it unchanged', async () => {
+      socialLinkRepository.findOne.mockResolvedValue(null);
 
-      expect(() =>
-        service.update('user-other', created.id, {
-          platform: 'hacked',
-        }),
-      ).toThrow(NotFoundException);
+      await expect(
+        service.update('user-other', 'link-1', { platform: 'hacked' }),
+      ).rejects.toThrow(NotFoundException);
 
-      // The link must still exist and be unchanged for the owner
-      const stillThere = service.findOne('user-owner', created.id);
-      expect(stillThere.platform).toBe('github');
-      expect(stillThere.url).toBe('https://github.com/example');
+      expect(socialLinkRepository.save).not.toHaveBeenCalled();
     });
 
-    it('omitted platform or url keeps the previous value and refreshes updatedAt', () => {
-      const created = service.create('user-1', {
-        platform: 'github',
-        url: 'https://github.com/example',
-      });
+    it('omitted platform or url keeps the previous value', async () => {
+      const existing = makeLink();
+      socialLinkRepository.findOne.mockResolvedValue(existing);
+      socialLinkRepository.save.mockImplementation(async (entity) => entity);
 
-      const originalUpdatedAt = created.updatedAt;
-
-      // Wait a tick so updatedAt will differ if refreshed
-      const updated = service.update('user-1', created.id, {
+      const updated = await service.update('user-1', 'link-1', {
         platform: 'twitter',
       });
 
       expect(updated.platform).toBe('twitter');
       expect(updated.url).toBe('https://github.com/example');
-      expect(updated.updatedAt.getTime()).toBeGreaterThan(
-        originalUpdatedAt.getTime(),
-      );
 
-      // Omit url too — both fields preserved/updated correctly
-      const updatedAgain = service.update('user-1', created.id, {
+      const updatedAgain = await service.update('user-1', 'link-1', {
         url: 'https://twitter.com/new-example',
       });
 
       expect(updatedAgain.platform).toBe('twitter');
       expect(updatedAgain.url).toBe('https://twitter.com/new-example');
-      expect(updatedAgain.updatedAt.getTime()).toBeGreaterThan(
-        updated.updatedAt.getTime(),
-      );
     });
   });
 
   describe('remove', () => {
-    it('removes an existing link', () => {
-      const created = service.create('user-1', {
-        platform: 'github',
-        url: 'https://github.com/example',
-      });
+    it('removes an existing link', async () => {
+      socialLinkRepository.findOne.mockResolvedValue(makeLink());
+      socialLinkRepository.delete.mockResolvedValue({ affected: 1 });
 
-      service.remove('user-1', created.id);
-      expect(service.list('user-1')).toHaveLength(0);
+      await service.remove('user-1', 'link-1');
+
+      expect(socialLinkRepository.delete).toHaveBeenCalledWith({
+        id: 'link-1',
+        userId: 'user-1',
+      });
     });
 
-    it('is unaffected by the per-user cap', () => {
-      for (let i = 0; i < MAX_SOCIAL_LINKS_PER_USER; i++) {
-        service.create('user-rm', {
-          platform: `platform-${i}`,
-          url: `https://example.com/${i}`,
-        });
-      }
+    it('is unaffected by the per-user cap', async () => {
+      socialLinkRepository.findOne.mockResolvedValue(makeLink());
+      socialLinkRepository.delete.mockResolvedValue({ affected: 1 });
 
-      const links = service.list('user-rm');
-      expect(links).toHaveLength(MAX_SOCIAL_LINKS_PER_USER);
+      await service.remove('user-1', 'link-1');
 
-      service.remove('user-rm', links[0].id);
-      expect(service.list('user-rm')).toHaveLength(MAX_SOCIAL_LINKS_PER_USER - 1);
-
-      // After removal we should be able to create again
-      const newLink = service.create('user-rm', {
-        platform: 'new',
-        url: 'https://new.example.com',
-      });
-      expect(newLink).toBeDefined();
+      expect(socialLinkRepository.count).not.toHaveBeenCalled();
     });
 
-    it('throws when the link does not exist', () => {
-      expect(() => service.remove('user-1', 'nonexistent')).toThrow(
-        /not found/i,
+    it('throws when the link does not exist', async () => {
+      socialLinkRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.remove('user-1', 'nonexistent')).rejects.toThrow(
+        NotFoundException,
       );
     });
 
-    it('throws NotFoundException when a different user tries to remove the link and leaves it in place', () => {
-      const created = service.create('user-owner', {
-        platform: 'github',
-        url: 'https://github.com/example',
-      });
+    it('throws NotFoundException when a different user tries to remove the link and leaves it in place', async () => {
+      socialLinkRepository.findOne.mockResolvedValue(null);
 
-      expect(() =>
-        service.remove('user-other', created.id),
-      ).toThrow(NotFoundException);
+      await expect(service.remove('user-other', 'link-1')).rejects.toThrow(
+        NotFoundException,
+      );
 
-      // The link must still exist for the owner
-      expect(service.list('user-owner')).toHaveLength(1);
-      expect(service.findOne('user-owner', created.id)).toEqual(created);
+      expect(socialLinkRepository.delete).not.toHaveBeenCalled();
     });
   });
 });

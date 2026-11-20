@@ -47,9 +47,9 @@ Soroban contract-invocation transactions (never empty Horizon placeholders):
 
 | Builder | Contract method | Args (in order) |
 |---|---|---|
-| `buildSubscriptionTx` | `subscribe` | `subscriber`, `plan_id` |
-| `buildExtendSubscriptionTx` | `extend` | `subscriber`, `plan_id`, `extra_cycles` |
-| `buildCancelTx` | `cancel` | `subscriber`, `plan_id`, `reason` |
+| `buildSubscriptionTx` | `subscribe` | `fan` (address), `plan_id` (u64), `asset` (address) |
+| `buildExtendSubscriptionTx` | `extend_subscription` | `fan` (address), `plan_id` (u64) |
+| `buildCancelTx` | `cancel` | `fan` (address), `creator` (address) |
 
 Each builder takes a `networkPassphrase` parameter and uses it when
 constructing the transaction so the network is explicit at build time.
