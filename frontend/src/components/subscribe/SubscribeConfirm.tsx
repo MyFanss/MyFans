@@ -1,15 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { fetchPlan, buildSubscribeTx, signAndSubmit } from '../../services/subscribe';
+import { useParams, useRouter } from 'next/navigation';
+import { fetchPlan, type Plan } from '../../lib/plans';
 import { getActiveNetwork } from '../../config/network';
 import { checkNetworkGuard } from '../../lib/stellar/networkGuard';
-import type { Plan, SubscribeTxArgs } from '../../types/subscribe';
+import { buildSubscriptionTx, DEFAULT_NETWORK_PASSPHRASE } from '../../lib/stellar';
+import { connectFreighter, signSubscribeTransaction } from '../../wallet/freighter';
 
 interface DisplayedParams {
   asset: string;
   amount: string;
   interval: string;
   network: string;
+}
+
+interface SubscribeTxArgs extends DisplayedParams {
+  /** Amount in stroops, the unit the subscription contract takes. */
+  amountStroops: string;
+  /** Billing interval in seconds. */
+  intervalSeconds: number;
 }
 
 function toDisplayed(plan: Plan, network: string): DisplayedParams {
@@ -30,9 +38,22 @@ function matchesTxArgs(displayed: DisplayedParams, args: SubscribeTxArgs): boole
   );
 }
 
+/** Plans store intervals as whole days, e.g. '30d' (see dashboard/plans). */
+function buildSubscribeTx(plan: Plan, network: string): SubscribeTxArgs {
+  const days = /^(\d+)d$/.exec(plan.interval);
+  if (!days) throw new Error(`Unsupported billing interval: ${plan.interval}`);
+  const stroops = Math.round(Number(plan.amount) * 1e7);
+  if (!(stroops > 0)) throw new Error(`Invalid plan amount: ${plan.amount}`);
+  return {
+    ...toDisplayed(plan, network),
+    amountStroops: String(stroops),
+    intervalSeconds: Number(days[1]) * 86400,
+  };
+}
+
 export default function SubscribeConfirm() {
   const { planId } = useParams<{ planId: string }>();
-  const navigate = useNavigate();
+  const router = useRouter();
 
   const [plan, setPlan] = useState<Plan | null>(null);
   const [txArgs, setTxArgs] = useState<SubscribeTxArgs | null>(null);
@@ -60,7 +81,7 @@ export default function SubscribeConfirm() {
         setError('This plan is no longer available.');
         return;
       }
-      const args = await buildSubscribeTx(freshPlan, network);
+      const args = buildSubscribeTx(freshPlan, network);
       if (!mounted.current) return;
       setPlan(freshPlan);
       setTxArgs(args);
@@ -98,12 +119,24 @@ export default function SubscribeConfirm() {
     !networkMismatch && !argsMismatch;
 
   const handleSign = useCallback(async () => {
-    if (!canSign || !txArgs) return;
+    if (!canSign || !txArgs || !plan) return;
     setSubmitting(true);
     setError(null);
     try {
-      await signAndSubmit(txArgs);
-      navigate('/subscriptions');
+      const subscriber = await connectFreighter();
+      const passphrase =
+        process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ?? DEFAULT_NETWORK_PASSPHRASE;
+      const xdr = buildSubscriptionTx({
+        sourceAccount: subscriber,
+        contractId: process.env.NEXT_PUBLIC_SUBSCRIPTION_CONTRACT_ID ?? '',
+        networkPassphrase: passphrase,
+        merchant: plan.creator,
+        amount: txArgs.amountStroops,
+        interval: txArgs.intervalSeconds,
+        asset: txArgs.asset,
+      });
+      await signSubscribeTransaction(xdr, passphrase);
+      router.push('/subscriptions');
     } catch (e) {
       if (!mounted.current) return;
       setError(e instanceof Error ? e.message : 'Signing failed.');
@@ -112,7 +145,7 @@ export default function SubscribeConfirm() {
     } finally {
       if (mounted.current) setSubmitting(false);
     }
-  }, [canSign, txArgs, navigate, load]);
+  }, [canSign, txArgs, plan, router, load]);
 
   if (loading) {
     return <div className="subscribe-confirm">Loading plan…</div>;
