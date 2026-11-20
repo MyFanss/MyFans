@@ -56,6 +56,12 @@ describe('sanitizeSocialLinkUrl', () => {
     const result = sanitizeSocialLinkUrl('  https://example.com/path  ');
     expect(result).toBe('https://example.com/path');
   });
+
+  it('accepts a valid https URL and returns a string starting with https://', () => {
+    expect(sanitizeSocialLinkUrl('https://example.com/a')).toMatch(
+      /^https:\/\//,
+    );
+  });
 });
 
 describe('SocialLinksService', () => {
