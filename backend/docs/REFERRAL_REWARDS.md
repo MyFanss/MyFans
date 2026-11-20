@@ -1,5 +1,11 @@
 # Referral Rewards
 
+> **Status: not implemented.** This is a planned design. The tree has no
+> `ReferralModule`, no referral controller, service, or tables, and no code
+> writes `referralAttributedAt` or `referralCode`. The subscription entity
+> carries no referral columns until this feature is scheduled. The endpoints,
+> tables, env vars, and flag below do not exist yet.
+
 Per-user referral codes with **subscription-driven attribution**. A code owner
 earns a reward only when someone they referred completes their **first**
 subscription. The on-chain referral contract is explicitly out of scope — all

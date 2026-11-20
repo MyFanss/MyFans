@@ -115,12 +115,6 @@ export class Subscription {
   @Column({ type: 'timestamptz', nullable: true })
   cancelledAt: Date | null;
 
-  @Column({ type: 'varchar', nullable: true })
-  referralCode: string | null;
-
-  @Column({ type: 'timestamptz', nullable: true })
-  referralAttributedAt: Date | null;
-
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

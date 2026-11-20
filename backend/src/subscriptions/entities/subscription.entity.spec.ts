@@ -152,8 +152,6 @@ describe('Subscription entity', () => {
       sub.submitExpiresAt = null;
       sub.expiresAt = null;
       sub.cancelledAt = null;
-      sub.referralCode = null;
-      sub.referralAttributedAt = null;
       sub.createdAt = new Date();
       sub.updatedAt = new Date();
       return sub;
