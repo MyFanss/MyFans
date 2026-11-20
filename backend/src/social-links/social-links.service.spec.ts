@@ -9,6 +9,7 @@ import {
   MAX_SOCIAL_LINK_PLATFORM_LENGTH,
   sanitizeSocialLinkUrl,
 } from './social-links.service';
+import { SocialLink } from './entities/social-link.entity';
 
 describe('sanitizeSocialLinkUrl', () => {
   it('rejects a javascript: scheme', () => {
@@ -63,6 +64,56 @@ describe('sanitizeSocialLinkUrl', () => {
     expect(sanitizeSocialLinkUrl('https://example.com/a')).toMatch(
       /^https:\/\//,
     );
+  });
+});
+
+describe('SocialLinksService platform length cap', () => {
+  let service: SocialLinksService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SocialLinksService,
+        {
+          provide: getRepositoryToken(SocialLink),
+          useValue: {
+            count: jest.fn().mockResolvedValue(0),
+            create: jest.fn((entity) => entity),
+            save: jest.fn(async (entity) => entity),
+          },
+        },
+      ],
+    }).compile();
+
+    service = module.get<SocialLinksService>(SocialLinksService);
+  });
+
+  it('accepts a platform of exactly the maximum length', async () => {
+    const platform = 'a'.repeat(MAX_SOCIAL_LINK_PLATFORM_LENGTH);
+
+    await expect(
+      service.create('user-1', { platform, url: 'https://example.com' }),
+    ).resolves.toMatchObject({ platform });
+  });
+
+  it('rejects a platform one character over the maximum length', async () => {
+    const platform = 'a'.repeat(MAX_SOCIAL_LINK_PLATFORM_LENGTH + 1);
+
+    await expect(
+      service.create('user-1', { platform, url: 'https://example.com' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects an empty platform', async () => {
+    await expect(
+      service.create('user-1', { platform: '', url: 'https://example.com' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects a whitespace-only platform', async () => {
+    await expect(
+      service.create('user-1', { platform: '   ', url: 'https://example.com' }),
+    ).rejects.toThrow(BadRequestException);
   });
 });
 
