@@ -265,6 +265,29 @@ The `asset` field on plan metadata accepts **either** of two forms:
 
 Empty strings, URLs (e.g. `javascript:`, `http://...`), and values containing spaces are rejected. Before checkout confirms, the stored `asset` is compared against the asset the chain returns for the plan.
 
+### Plan metadata `interval` field
+
+The `interval` field on plan metadata stores a **raw ledger count** (a positive
+integer), which is directly comparable to the `u64` `interval` the subscription
+contract stores. A zero interval is rejected.
+
+For convenience the write API also accepts a compact **day label** such as `30d`,
+which is converted to ledgers using the five-second ledger assumption
+(`LEDGERS_PER_DAY = 17_280`, matching the contract's `PERIOD_LEDGERS`):
+`30d` becomes `518400`. The converted ledger count — not the label — is what is
+stored.
+
+Every plan also returns an `intervalLabel` derived from the stored ledgers:
+day-aligned counts render as the compact `Nd` form (e.g. `30d`), while any other
+count is marked explicitly as `N ledgers` so it can never be mistaken for a
+month-length plan.
+
+**Temporary rule (no chain lookup yet):** the metadata service does not yet read
+the plan back from the chain, so it cannot reject a metadata update whose ledger
+count differs from the on-chain plan. Until chain lookup lands, callers must set
+`interval` to the exact ledger count used by `create_plan` on-chain; the derived
+label is authoritative only for display.
+
 ---
 
 ## 6. Request and response conventions
