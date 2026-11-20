@@ -4,6 +4,13 @@ Checkout confirm (and other money-path routes) accept an `Idempotency-Key`
 header. The server records the first response for a key and replays it for
 subsequent requests with the same key and body.
 
+> **Warning: the default store is in memory.** Unless `REDIS_URL` is set, the
+> checkout controller uses `InMemoryIdempotencyStore`, which is process-local. A
+> restart drops every key, so a retry after a deploy or crash runs as a new
+> request. A second instance will not see the first instance's keys, so the
+> same key can execute once per instance. Until the shared store is wired in,
+> running more than one instance is unsafe for payments.
+
 ## Store selection
 
 The controller depends on the `IDEMPOTENCY_STORE` token, which resolves to one
