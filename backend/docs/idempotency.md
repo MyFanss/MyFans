@@ -143,6 +143,10 @@ tightens the replay rules:
 
 A `409` body is `{ "statusCode": 409, "error": "Conflict", "message": "Idempotency-Key already used with a different request body" }`.
 
+A body whose serialized JSON exceeds 1 MiB is rejected with **413 Payload Too Large**
+before any key lookup. This is a size limit, not a key conflict, so clients should not
+retry with the same key.
+
 ### Storage backend
 
 Records are stored in **Redis** when `REDIS_URL` is configured, so replay works
