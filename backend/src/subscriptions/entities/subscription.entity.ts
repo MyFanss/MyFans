@@ -55,7 +55,7 @@ export function isSubmissionExpired(
   if (!sub.submitExpiresAt) {
     return false;
   }
-  return sub.submitExpiresAt.getTime() < now.getTime();
+  return sub.submitExpiresAt.getTime() <= now.getTime();
 }
 
 /**
