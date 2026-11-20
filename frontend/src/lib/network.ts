@@ -8,19 +8,17 @@
 
 export type { NetworkGuardResult } from './stellar/networkGuard';
 import { checkNetworkGuard } from './stellar/networkGuard';
+import { getActiveNetwork, normalizeNetwork } from '../config/network';
 
 /**
  * Guard a plan network string against the app's configured network.
  *
- * The configured network is read from NEXT_PUBLIC_STELLAR_NETWORK (defaults to
- * TESTNET). Returns a NetworkGuardResult so callers can surface reason strings.
+ * Both sides are normalized via config/network first, so TESTNET/testnet and
+ * mainnet/public compare equal. Returns a NetworkGuardResult so callers can
+ * surface reason strings.
  */
 export function NETWORK_GUARD(
   planNetwork: string | null | undefined,
 ): import('./stellar/networkGuard').NetworkGuardResult {
-  const configured =
-    typeof process !== 'undefined'
-      ? (process.env.NEXT_PUBLIC_STELLAR_NETWORK ?? 'TESTNET')
-      : 'TESTNET';
-  return checkNetworkGuard(planNetwork, configured);
+  return checkNetworkGuard(normalizeNetwork(planNetwork), getActiveNetwork());
 }

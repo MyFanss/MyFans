@@ -46,9 +46,11 @@ session.
 
 ### Enabling
 
-1. Set the WalletConnect feature flag to on (see `frontend/docs/FEATURE_FLAGS.md`).
-2. Provide a WalletConnect **project id** via the `WALLETCONNECT_PROJECT_ID`
-   environment variable. The project id is required whenever the flag is on.
+1. Set the WalletConnect feature flag to on by setting
+   `NEXT_PUBLIC_ENABLE_WALLETCONNECT=true` (see `frontend/docs/FEATURE_FLAGS.md`).
+2. Provide a WalletConnect **project id** via the
+   `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` environment variable. The project id
+   is required whenever the flag is on.
 3. Allow the WalletConnect relay origins in the Content-Security-Policy
    `connect-src` directive (see `frontend/docs/CSP.md`).
 
@@ -67,7 +69,7 @@ never signs on the user's behalf.
 ### Staging checklist
 
 - [ ] Feature flag on in staging only.
-- [ ] `WALLETCONNECT_PROJECT_ID` set in staging env.
+- [ ] `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` set in staging env.
 - [ ] CSP `connect-src` includes the WalletConnect relay origins.
 - [ ] Flag off in production (Coming soon shown).
 
