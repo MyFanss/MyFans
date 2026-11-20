@@ -193,7 +193,7 @@ function hashBody(body: unknown): string {
 
 function requireIdempotencyKey(key: string | undefined): string {
   if (!key || key.trim().length === 0) {
-    throw new ConflictException('Idempotency-Key header is required');
+    throw new BadRequestException('Idempotency-Key header is required');
   }
   return key.trim();
 }

@@ -1,4 +1,4 @@
-import { ConflictException, NotImplementedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotImplementedException } from '@nestjs/common';
 import {
   CheckoutController,
   IdempotencyRecord,
@@ -95,16 +95,16 @@ describe('CheckoutController idempotency', () => {
     expect(store.records.has(key)).toBe(false);
   });
 
-  it('throws ConflictException when the Idempotency-Key header is missing', async () => {
+  it('throws BadRequestException when the Idempotency-Key header is missing', async () => {
     await expect(
       controller.confirm(makeHeaders(undefined), { amount: 5 }, makeReq()),
-    ).rejects.toBeInstanceOf(ConflictException);
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('throws ConflictException when the Idempotency-Key header is whitespace-only', async () => {
+  it('throws BadRequestException when the Idempotency-Key header is whitespace-only', async () => {
     await expect(
       controller.confirm(makeHeaders('   '), { amount: 5 }, makeReq()),
-    ).rejects.toBeInstanceOf(ConflictException);
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('throws ConflictException when the body exceeds MAX_BODY_BYTES', async () => {
