@@ -292,6 +292,26 @@ State-changing requests from browsers must include the CSRF token issued by the 
 
 Mutating endpoints accept an `Idempotency-Key` header. Replaying a request with the same key returns the original response instead of re-executing the operation.
 
+### Sending `Idempotency-Key` on checkout confirm
+
+`POST /v1/checkout/confirm` **requires** the `Idempotency-Key` header. Use a unique value per checkout attempt (for example, a UUID), and reuse it only when retrying the same request.
+
+```bash
+curl -s -X POST http://localhost:3001/v1/checkout/confirm \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: 5f0c2b1e-9d3a-4c7b-8e2f-1a2b3c4d5e6f" \
+  -d '{"planId": "plan_example_123"}'
+```
+
+| Outcome | When it happens | Response |
+|---------|-----------------|----------|
+| Replay | Same key, same body, after the first request finished | Original response is returned |
+| Conflict | Same key, different body, or the first request is still in flight | `409 Conflict` |
+| Missing header | No `Idempotency-Key` sent | `400 Bad Request` |
+
+For the detailed rules (key scoping, TTL, storage backends, and failure modes), see [`IDEMPOTENCY.md`](./IDEMPOTENCY.md).
+
 ---
 
 ## 10. Error format
