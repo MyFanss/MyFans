@@ -140,7 +140,7 @@ export class PlansService {
   }
 
   private validateAmount(amount: string): string {
-    if (!/^\d+(\.\d+)?$/.test(amount)) {
+    if (!/^\d+(\.\d+)?$/.test(amount) || Number(amount) <= 0) {
       throw new BadRequestException('amount must be a positive decimal number');
     }
     return amount;
