@@ -42,14 +42,20 @@ export interface AnalyticsEvent {
 export interface AnalyticsEventSink {
   append(event: AnalyticsEvent): void;
   list(): AnalyticsEvent[];
+  /** Count of events for `creatorId` that the sink discarded; 0 means full history. */
+  droppedCount(creatorId: string): number;
 }
 
 /**
  * Default in-memory sink. Retains at most `maxSize` events, evicting the
  * oldest first so a long-running process cannot grow without bound.
+ *
+ * Not a source of billing numbers: once anything is evicted, aggregates
+ * computed from `list()` are incomplete and are flagged `truncated`.
  */
 export class InMemoryAnalyticsEventSink implements AnalyticsEventSink {
   private readonly events: AnalyticsEvent[] = [];
+  private readonly dropped = new Map<string, number>();
 
   constructor(private readonly maxSize: number = InMemoryAnalyticsEventSink.resolveMaxSize()) {}
 
@@ -61,12 +67,19 @@ export class InMemoryAnalyticsEventSink implements AnalyticsEventSink {
   append(event: AnalyticsEvent): void {
     this.events.push(event);
     if (this.events.length > this.maxSize) {
-      this.events.splice(0, this.events.length - this.maxSize);
+      const evicted = this.events.splice(0, this.events.length - this.maxSize);
+      for (const e of evicted) {
+        this.dropped.set(e.creatorId, (this.dropped.get(e.creatorId) ?? 0) + 1);
+      }
     }
   }
 
   list(): AnalyticsEvent[] {
     return [...this.events];
+  }
+
+  droppedCount(creatorId: string): number {
+    return this.dropped.get(creatorId) ?? 0;
   }
 }
 
@@ -90,6 +103,8 @@ export interface MrrSnapshot {
   periodStart: string;
   /** Exclusive end of the aggregation window (ISO-8601). */
   periodEnd: string;
+  /** True when the sink evicted events for this creator, so totals may be under-reported. */
+  truncated: boolean;
 }
 
 /**
@@ -258,6 +273,7 @@ export class AnalyticsService {
       uploads,
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),
+      truncated: this.eventSink.droppedCount(creatorId) > 0,
     };
   }
 

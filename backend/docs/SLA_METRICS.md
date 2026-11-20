@@ -38,6 +38,19 @@ Checkout is instrumented with the RED pattern (Rate, Errors, Duration).
 | `webhook_deliveries_total` | counter | `status` | Webhook delivery attempts, partitioned by outcome. |
 | `webhook_failures_total` | counter | `reason` | Webhook delivery failures, partitioned by a bounded reason code. |
 
+## Analytics MRR snapshot
+
+The creator dashboard MRR comes from `AnalyticsService.getMrrSnapshot`, which
+reads the injected `AnalyticsEventSink`. The default `InMemoryAnalyticsEventSink`
+is bounded (default 10,000 events, `ANALYTICS_EVENT_SINK_MAX_SIZE` to override)
+and evicts the oldest events first. It is **not a source of billing numbers**.
+
+- Each snapshot carries `truncated`. It is `true` when the sink has evicted
+  events for that creator, so totals may omit older subscribes. It is `false`
+  when nothing was dropped.
+- Treat `truncated: true` as incomplete. Compute revenue from the durable store
+  until a durable sink is wired in.
+
 ## Cardinality safety
 
 Labels MUST be bounded. Do **not** use raw public keys, account IDs, request
