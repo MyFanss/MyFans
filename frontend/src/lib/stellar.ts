@@ -55,32 +55,26 @@ export interface SubscriptionTxParams {
   timeoutSeconds?: number;
 }
 
-/** Parameters for building a new subscription. */
+/** Parameters for building a new subscription (`subscribe(fan, plan_id, asset)`). */
 export interface BuildSubscriptionTxParams extends SubscriptionTxParams {
   /** Subscriber address (defaults to sourceAccount). */
   subscriber?: string;
-  /** Merchant / recipient address. */
-  merchant: string;
-  /** Amount in stroops (as a string to avoid precision loss). */
-  amount: string;
-  /** Subscription interval in seconds. */
-  interval: number;
-  /** Asset contract id or 'native'. */
-  asset?: string;
+  /** On-chain plan id (u64). */
+  planId: number;
+  /** Asset contract address; must match the plan's asset. */
+  asset: string;
 }
 
-/** Parameters for extending (renewing) an existing subscription. */
+/** Parameters for extending a subscription (`extend_subscription(fan, plan_id)`). */
 export interface BuildExtendSubscriptionTxParams extends SubscriptionTxParams {
-  /** Subscription id to extend. */
-  subscriptionId: string;
-  /** Additional amount in stroops. */
-  amount: string;
+  /** On-chain plan id (u64). */
+  planId: number;
 }
 
-/** Parameters for cancelling an existing subscription. */
+/** Parameters for cancelling a subscription (`cancel(fan, creator)`). */
 export interface BuildCancelTxParams extends SubscriptionTxParams {
-  /** Subscription id to cancel. */
-  subscriptionId: string;
+  /** Creator address whose subscription is cancelled. */
+  creator: string;
 }
 
 function assertNonEmpty(value: string | undefined, name: string): string {
@@ -119,49 +113,45 @@ function buildInvokeTx(
  */
 export function buildSubscriptionTx(params: BuildSubscriptionTxParams): string {
   const subscriber = params.subscriber ?? params.sourceAccount;
-  const merchant = assertNonEmpty(params.merchant, 'merchant');
-  const amount = assertNonEmpty(params.amount, 'amount');
-  if (params.interval === undefined || params.interval === null) {
-    throw new Error('Missing required argument: interval');
-  }
+  const asset = assertNonEmpty(params.asset, 'asset');
 
   const args = [
     nativeToScVal(subscriber, { type: 'address' }),
-    nativeToScVal(merchant, { type: 'address' }),
-    nativeToScVal(amount, { type: 'i128' }),
-    nativeToScVal(params.interval, { type: 'u64' }),
-    nativeToScVal(params.asset ?? 'native', { type: 'string' }),
+    nativeToScVal(params.planId, { type: 'u64' }),
+    nativeToScVal(asset, { type: 'address' }),
   ];
 
   return buildInvokeTx(params, 'subscribe', args);
 }
 
 /**
- * Build a subscription-renewal transaction invoking `extend` on the
- * subscription contract. Returns the unsigned transaction XDR.
+ * Build a subscription-renewal transaction invoking `extend_subscription` on
+ * the subscription contract. The fan is the source account. Returns the
+ * unsigned transaction XDR.
  */
 export function buildExtendSubscriptionTx(
   params: BuildExtendSubscriptionTxParams,
 ): string {
-  const subscriptionId = assertNonEmpty(params.subscriptionId, 'subscriptionId');
-  const amount = assertNonEmpty(params.amount, 'amount');
-
   const args = [
-    nativeToScVal(subscriptionId, { type: 'string' }),
-    nativeToScVal(amount, { type: 'i128' }),
+    nativeToScVal(params.sourceAccount, { type: 'address' }),
+    nativeToScVal(params.planId, { type: 'u64' }),
   ];
 
-  return buildInvokeTx(params, 'extend', args);
+  return buildInvokeTx(params, 'extend_subscription', args);
 }
 
 /**
  * Build a subscription-cancellation transaction invoking `cancel` on the
- * subscription contract. Returns the unsigned transaction XDR.
+ * subscription contract. The fan is the source account. Returns the unsigned
+ * transaction XDR.
  */
 export function buildCancelTx(params: BuildCancelTxParams): string {
-  const subscriptionId = assertNonEmpty(params.subscriptionId, 'subscriptionId');
+  const creator = assertNonEmpty(params.creator, 'creator');
 
-  const args = [nativeToScVal(subscriptionId, { type: 'string' })];
+  const args = [
+    nativeToScVal(params.sourceAccount, { type: 'address' }),
+    nativeToScVal(creator, { type: 'address' }),
+  ];
 
   return buildInvokeTx(params, 'cancel', args);
 }

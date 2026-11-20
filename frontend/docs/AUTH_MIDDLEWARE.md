@@ -36,7 +36,7 @@ redirected to `/auth/sign-in?returnUrl=<original-pathname>`.
 
 | Prefix           | Notes                               |
 |------------------|-------------------------------------|
-| `/dashboard`     | Creator-only (RouteGuard enforces)  |
+| `/dashboard`     | Creator-only (middleware checks `/v1/users/me`; fans → `/discover`) |
 | `/settings`      | All authenticated users             |
 | `/messages`      | All authenticated users             |
 | `/earnings`      | All authenticated users             |

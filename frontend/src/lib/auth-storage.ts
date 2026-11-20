@@ -46,4 +46,8 @@ export async function clearAuthToken(): Promise<void> {
   } catch {
     // Network failure: the cookie stays until the next successful sign-out.
   }
+  // Expire the cookie immediately. Reuse the same `Secure` suffix as
+  // setAuthToken so we clear the cookie that was actually written on https.
+  const secure = isSecureContext() ? '; Secure' : '';
+  document.cookie = `${AUTH_TOKEN_KEY}=; path=/; SameSite=Strict; expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0${secure}`;
 }
