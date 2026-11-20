@@ -145,7 +145,7 @@ export class AnalyticsService {
    */
   record(event: AnalyticsEvent): void {
     if (!event.creatorId) {
-      throw new ForbiddenException('creatorId is required for analytics events');
+      throw new BadRequestException('creatorId is required for analytics events');
     }
     if (event.occurredAt !== undefined && Number.isNaN(Date.parse(event.occurredAt))) {
       throw new BadRequestException(

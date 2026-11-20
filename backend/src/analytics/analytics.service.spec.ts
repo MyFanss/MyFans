@@ -50,7 +50,7 @@ describe('AnalyticsService', () => {
   });
 
   describe('record()', () => {
-    it('throws ForbiddenException when creatorId is falsy', () => {
+    it('throws BadRequestException when creatorId is falsy', () => {
       expect(() =>
         service.record({
           name: 'subscribe',
@@ -59,10 +59,10 @@ describe('AnalyticsService', () => {
           amountCents: 500,
           occurredAt: new Date().toISOString(),
         }),
-      ).toThrow(ForbiddenException);
+      ).toThrow(BadRequestException);
     });
 
-    it('throws ForbiddenException when creatorId is undefined', () => {
+    it('throws BadRequestException when creatorId is undefined', () => {
       expect(() =>
         service.record({
           name: 'subscribe',
@@ -71,7 +71,7 @@ describe('AnalyticsService', () => {
           amountCents: 500,
           occurredAt: new Date().toISOString(),
         }),
-      ).toThrow(ForbiddenException);
+      ).toThrow(BadRequestException);
     });
 
     it('defaults occurredAt to the current time when omitted', () => {
