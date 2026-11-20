@@ -57,9 +57,12 @@ export class PlansService {
   private readonly plans = new Map<string, PlanMetadata>();
 
   create(input: CreatePlanInput): PlanMetadata {
-    const planId = input.planId.trim();
+    const planId = input.planId?.trim() ?? '';
     const creator = input.creator.trim();
 
+    if (!planId) {
+      throw new BadRequestException('planId must not be blank');
+    }
     if (this.plans.has(planId)) {
       throw new ConflictException(`Plan ${planId} already exists`);
     }
