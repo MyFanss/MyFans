@@ -6,12 +6,12 @@
 3. ✅ Enhance RolesGuard (uses new enum); JWT extracts role
 4. ✅ Protected admin endpoints with guards
 5. ✅ Global guards + @Public() decorator for compatibility
-4. 🔄 Update JwtStrategy to include role in payload
-5. 🔄 Protect admin endpoints (moderation, creators admin actions, feature-flags)
-6. 🔄 Add @Public() decorator for backward compatibility on open endpoints
-7. 🔄 Add unit tests for guards and e2e tests for protected endpoints
-8. 🔄 Update app.module.ts for global guards if needed
-9. 🔄 Generate and run TypeORM migration for role column
-10. ✅ Test all changes (npm run test & test:e2e)
+6. 🔄 Update JwtStrategy to include role in payload
+7. 🔄 Protect admin endpoints (moderation, creators admin actions, feature-flags)
+8. 🔄 Add @Public() decorator for backward compatibility on open endpoints
+9. 🔄 Add unit tests for guards and e2e tests for protected endpoints
+10. 🔄 Update app.module.ts for global guards if needed
+11. 🔄 Generate and run TypeORM migration for role column
+12. ✅ Test all changes (npm run test & test:e2e)
 
-*Current step marked with 🔄*
+*Current step: 6*
