@@ -18,7 +18,7 @@ describe('DiscoverPage', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ data: [] }),
+        json: async () => ({ creators: [] }),
       }),
     );
     render(<DiscoverPage />);
@@ -44,17 +44,17 @@ describe('DiscoverPage', () => {
       vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({
-          data: [
+          creators: [
             {
               id: '1',
-              username: 'user1',
+              handle: 'user1',
               displayName: 'User One',
               avatarUrl: null,
               subscriberCount: 100,
             },
             {
               id: '2',
-              username: 'user2',
+              handle: 'user2',
               displayName: 'User Two',
               avatarUrl: '/avatar.jpg',
               subscriberCount: 200,
