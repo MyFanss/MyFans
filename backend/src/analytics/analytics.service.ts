@@ -200,6 +200,12 @@ export class AnalyticsService {
 
     const startMs = periodStart.getTime();
     const endMs = periodEnd.getTime();
+    if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
+      throw new BadRequestException('periodStart and periodEnd must be valid dates');
+    }
+    if (startMs >= endMs) {
+      throw new BadRequestException('periodStart must be before periodEnd');
+    }
 
     let newSubscriptions = 0;
     let cancelledSubscriptions = 0;
