@@ -199,7 +199,14 @@ export function createIdempotencyStore(
 }
 
 function hashBody(body: unknown): string {
-  const serialized = JSON.stringify(body ?? null);
+  // Canonical form: object keys sorted recursively, array order preserved.
+  const serialized = JSON.stringify(body ?? null, (_key, value: unknown) =>
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(
+          Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+        )
+      : value,
+  );
   if (Buffer.byteLength(serialized, 'utf8') > MAX_BODY_BYTES) {
     throw new ConflictException('Request body too large for idempotent processing');
   }
