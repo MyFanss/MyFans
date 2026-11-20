@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Inject,
   NotImplementedException,
+  PayloadTooLargeException,
   Post,
   Req,
 } from '@nestjs/common';
@@ -186,7 +187,7 @@ export function createIdempotencyStore(
 function hashBody(body: unknown): string {
   const serialized = JSON.stringify(body ?? null);
   if (Buffer.byteLength(serialized, 'utf8') > MAX_BODY_BYTES) {
-    throw new ConflictException('Request body too large for idempotent processing');
+    throw new PayloadTooLargeException('Request body too large for idempotent processing');
   }
   return createHash('sha256').update(serialized).digest('hex');
 }

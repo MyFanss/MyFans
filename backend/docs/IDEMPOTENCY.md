@@ -27,6 +27,9 @@ used. Without it, a retry against a different instance can double charge.
 - Same key + same body → the first response is returned; the payment function
   is not called again.
 - Same key + different body → `409 Conflict`, on every instance.
+- Body over 1 MiB (serialized JSON) → `413 Payload Too Large`, rejected before
+  any store lookup. This is a size limit, not a key conflict; do not retry with
+  the same key.
 - A key is scoped to the route that produced it.
 
 ## Tests
