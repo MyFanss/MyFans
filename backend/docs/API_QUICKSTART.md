@@ -254,7 +254,48 @@ curl -s -X POST http://localhost:3001/v1/auth/refresh \
 | Users | `/v1/users` | Profiles, settings |
 | Plans | `/v1/plans` | Creator subscription plans and metadata |
 | Subscriptions | `/v1/subscriptions` | Subscribe, cancel, renew |
+| Creators | `/v1/creators` | Creator directory and search (see below) |
 | Webhooks | `/v1/webhooks` | HMAC-signed provider callbacks |
+
+### Creators list response
+
+`GET /v1/creators` returns a page of creators. Each item uses `handle` (not `username`) for the public name.
+
+Query parameters:
+
+| Parameter | Description |
+|-----------|-------------|
+| `limit` | Page size, 1–50. Defaults to `12`. |
+| `cursor` | Pagination cursor. Accepted, but the response does not currently return a next cursor. |
+| `q` | Search term. Trimmed and capped at 100 characters. Ignored when shorter than 2 characters. |
+
+```bash
+curl -s "http://localhost:3001/v1/creators?limit=2&q=ann"
+```
+
+```json
+{
+  "creators": [
+    {
+      "id": "7f3c2a1e-0b9d-4c8e-9a51-2d6f4b8e1a10",
+      "handle": "annbuilds",
+      "displayName": "Ann Builds",
+      "avatarUrl": null,
+      "bio": "Weekly tutorials on indie game art.",
+      "subscriberCount": 128,
+      "isVerified": false
+    }
+  ],
+  "total": 1,
+  "updatedAt": "2026-08-28T00:00:00.000Z"
+}
+```
+
+- `creators` — the page of items above.
+- `total` — the number of items in this response, not the total number of creators.
+- `updatedAt` — ISO 8601 UTC time the response was built.
+
+> **Not mounted yet.** `CreatorsController` exists, but `CreatorsModule` is not in the `AppModule` imports, so `GET /v1/creators` returns `404` until it is added.
 
 ### Plan metadata `asset` field
 
