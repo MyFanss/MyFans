@@ -197,5 +197,16 @@ export class PlansService {
     throw new BadRequestException(
       'interval must be a positive ledger count or a day label such as 30d',
     );
+    }
+
+    // Day label ("30d"): converted to ledgers with the five-second assumption.
+    const match = /^(\d+)d$/.exec(value);
+    if (match && Number(match[1]) > 0) {
+      return String(Number(match[1]) * LEDGERS_PER_DAY);
+    }
+
+    throw new BadRequestException(
+      'interval must be a positive ledger count or a day label such as 30d',
+    );
   }
 }
