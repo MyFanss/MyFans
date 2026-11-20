@@ -88,6 +88,7 @@ describe('canTransition', () => {
   it('rejects any transition out of a terminal state', () => {
     expect(canTransition(SubscriptionStatus.FAILED, SubscriptionStatus.CREATED)).toBe(false);
     expect(canTransition(SubscriptionStatus.FAILED, SubscriptionStatus.SUBMITTED)).toBe(false);
+    expect(canTransition(SubscriptionStatus.FAILED, SubscriptionStatus.ACTIVE)).toBe(false);
     expect(canTransition(SubscriptionStatus.ACTIVE, SubscriptionStatus.CREATED)).toBe(false);
     expect(canTransition(SubscriptionStatus.ACTIVE, SubscriptionStatus.CONFIRMED)).toBe(false);
     expect(canTransition(SubscriptionStatus.CANCELLED, SubscriptionStatus.ACTIVE)).toBe(false);
@@ -152,8 +153,6 @@ describe('Subscription entity', () => {
       sub.submitExpiresAt = null;
       sub.expiresAt = null;
       sub.cancelledAt = null;
-      sub.referralCode = null;
-      sub.referralAttributedAt = null;
       sub.createdAt = new Date();
       sub.updatedAt = new Date();
       return sub;

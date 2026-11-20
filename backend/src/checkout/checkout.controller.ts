@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Inject,
   NotImplementedException,
+  PayloadTooLargeException,
   Post,
   Req,
 } from '@nestjs/common';
@@ -58,14 +59,21 @@ function startSpan(name: string): Span {
     return { end: () => undefined, setAttribute: () => undefined };
   }
   const startedAt = Date.now();
+  const attributes: Record<string, string> = {};
   return {
     end: () => {
       // eslint-disable-next-line no-console
       console.debug(
-        JSON.stringify({ span: name, durationMs: Date.now() - startedAt }),
+        JSON.stringify({
+          span: name,
+          durationMs: Date.now() - startedAt,
+          attributes,
+        }),
       );
     },
-    setAttribute: () => undefined,
+    setAttribute: (key, value) => {
+      attributes[key] = value;
+    },
   };
 }
 
@@ -97,6 +105,14 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
   }
 
   set(key: string, record: IdempotencyRecord): void {
+    // Sweep on write so keys that are never retried are still reclaimed.
+    // shortcut: full O(n) scan per write, fine for single-node volumes; use Redis TTL store beyond that.
+    const now = Date.now();
+    for (const [existingKey, existing] of this.records) {
+      if (existing.expiresAt <= now) {
+        this.records.delete(existingKey);
+      }
+    }
     this.records.set(key, record);
   }
 }
@@ -184,16 +200,23 @@ export function createIdempotencyStore(
 }
 
 function hashBody(body: unknown): string {
-  const serialized = JSON.stringify(body ?? null);
+  // Canonical form: object keys sorted recursively, array order preserved.
+  const serialized = JSON.stringify(body ?? null, (_key, value: unknown) =>
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(
+          Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+        )
+      : value,
+  );
   if (Buffer.byteLength(serialized, 'utf8') > MAX_BODY_BYTES) {
-    throw new ConflictException('Request body too large for idempotent processing');
+    throw new PayloadTooLargeException('Request body too large for idempotent processing');
   }
   return createHash('sha256').update(serialized).digest('hex');
 }
 
 function requireIdempotencyKey(key: string | undefined): string {
   if (!key || key.trim().length === 0) {
-    throw new ConflictException('Idempotency-Key header is required');
+    throw new BadRequestException('Idempotency-Key header is required');
   }
   return key.trim();
 }

@@ -2,8 +2,8 @@
  * Sign-in page — /auth/sign-in
  *
  * Handles wallet connection + JWT exchange.  On success:
- *   1. Calls setAuthToken() to persist the JWT in both localStorage and
- *      the `authToken` cookie so the Edge middleware can read it.
+ *   1. Calls setAuthToken() to start a session. The server sets the JWT as an
+ *      HttpOnly `authToken` cookie so the Edge middleware can read it.
  *   2. Calls refreshUser() to populate the UserContext.
  *   3. Redirects to `returnUrl` (if present and safe) or to the
  *      role-correct home (/dashboard for creators, /discover for fans).
@@ -65,7 +65,7 @@ export default function SignInPage() {
       }
 
       const { token } = (await res.json()) as { token: string };
-      setAuthToken(token);
+      await setAuthToken(token);
 
       // Navigate to returnUrl or role home, using the user the context
       // refresh just fetched -- no second /users/me request needed.
