@@ -25,6 +25,7 @@
 
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { apiFetch } from '@/lib/api/client';
+import { getNetworkPassphrase } from '@/config/network';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -172,6 +173,9 @@ export function reducer(state: PageState, action: Action): PageState {
 export default function DashboardEarningsPage() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const mountedRef = useRef(true);
+  // One prepare/confirm key pair per withdrawal attempt. Reused on retry so the
+  // backend can replay; cleared on success or when the server rejects prepare.
+  const withdrawKeysRef = useRef<{ prepare: string; confirm: string } | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -237,16 +241,29 @@ export default function DashboardEarningsPage() {
       return;
     }
 
+    const networkPassphrase = getNetworkPassphrase();
+    if (!networkPassphrase) {
+      dispatch({
+        type: 'WITHDRAW_ERROR',
+        message: 'Withdrawals are unavailable: NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE is not set.',
+      });
+      return;
+    }
+
     dispatch({ type: 'WITHDRAW_PREPARING' });
+    // crypto.randomUUID() once per attempt; retries reuse the same pair.
+    withdrawKeysRef.current ??= { prepare: crypto.randomUUID(), confirm: crypto.randomUUID() };
+    const keys = withdrawKeysRef.current;
 
     try {
       // Step 1: prepare
       const prepRes = await apiFetch('/api/v1/earnings/withdraw/prepare', {
         method: 'POST',
         body: JSON.stringify({ amount: state.withdrawAmount, asset: state.withdrawAsset }),
-        idempotencyKey: `withdraw-${Date.now()}`,
+        idempotencyKey: keys.prepare,
       });
 
+      if (!prepRes.ok) withdrawKeysRef.current = null; // server rejected: no payout exists, next attempt is new
       if (!mountedRef.current) return;
 
       if (prepRes.status === 401 || prepRes.status === 403) {
@@ -267,10 +284,6 @@ export default function DashboardEarningsPage() {
 
       // Step 2: sign
       const { signTransaction } = await import('@/wallet/freighter');
-      const networkPassphrase =
-        process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ??
-        'Test SDF Network ; September 2015';
-
       const signedXdr = await signTransaction(prep.xdr, networkPassphrase);
       if (!mountedRef.current) return;
 
@@ -280,7 +293,7 @@ export default function DashboardEarningsPage() {
       const confirmRes = await apiFetch('/api/v1/earnings/withdraw/confirm', {
         method: 'POST',
         body: JSON.stringify({ signedXdr, amount: prep.amount, asset: prep.asset }),
-        idempotencyKey: `withdraw-confirm-${Date.now()}`,
+        idempotencyKey: keys.confirm,
       });
 
       if (!mountedRef.current) return;
@@ -294,6 +307,7 @@ export default function DashboardEarningsPage() {
         return;
       }
 
+      withdrawKeysRef.current = null;
       const confirmed = (await confirmRes.json()) as { txHash?: string | null };
       dispatch({
         type: 'WITHDRAW_DONE',
