@@ -269,7 +269,7 @@ export default function SettingsPage() {
     setDeleting(true);
     try {
       await deleteAccount(DELETE_PHRASE);
-      clearAuthToken();
+      await clearAuthToken();
       router.replace('/');
     } catch (err) {
       dispatch({

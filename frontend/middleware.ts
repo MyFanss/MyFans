@@ -5,11 +5,11 @@ import { demoRoutesEnabled, isDemoRoute } from '@/lib/demo-routes';
  * Server-side middleware to protect authenticated routes.
  *
  * ## Cookie name
- * The auth token is stored in the `authToken` cookie (set by the client after
- * a successful wallet-based sign-in).  The same key is used in localStorage by
- * `auth-storage.ts`; the cookie counterpart allows this middleware to redirect
- * unauthenticated requests before any JavaScript runs, eliminating the first-
- * paint flash of protected content that the client RouteGuard cannot prevent.
+ * The auth token is stored in the HttpOnly `authToken` cookie (set by
+ * /api/auth/session after a successful wallet-based sign-in).  Page scripts
+ * cannot read it.  This middleware redirects unauthenticated requests before
+ * any JavaScript runs, eliminating the first-paint flash of protected content
+ * that the client RouteGuard cannot prevent.
  *
  * ## Redirect target
  * Unauthenticated requests are sent to `/auth/sign-in` (not `/auth/login`).

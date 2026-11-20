@@ -1,64 +1,49 @@
 /**
- * Auth storage helpers.
+ * Auth session helpers.
  *
- * The auth token is kept in both localStorage (for client-side reads) and as a
- * cookie so the Next.js Edge middleware can read it server-side without a
- * backend round-trip.
+ * The JWT lives only in an HttpOnly `authToken` cookie, set and cleared by the
+ * same-origin route handler at /api/auth/session. Page scripts never see the
+ * token again, so XSS cannot read it from localStorage or document.cookie.
+ * Edge middleware reads the cookie from the request.
  *
- * Cookie attributes:
- *   - path=/           – accessible from all routes
- *   - SameSite=Strict  – CSRF mitigation
- *   - Secure           – only sent over HTTPS in production
- *
- * Refs: frontend/docs/AUTH_MIDDLEWARE.md, #1828, #1829
+ * Refs: frontend/docs/AUTH_MIDDLEWARE.md, #1828, #1829, #2185
  */
 
 export const AUTH_TOKEN_KEY = 'authToken';
 
-function isSecureContext(): boolean {
-  if (typeof window === 'undefined') return true; // SSR: assume secure
-  return window.location.protocol === 'https:' || window.location.hostname === 'localhost';
-}
+const SESSION_ENDPOINT = '/api/auth/session';
 
 /**
- * Persist the JWT after a successful wallet sign-in.
- * Writes both localStorage and the `authToken` cookie.
+ * Start a session after a successful wallet sign-in.
+ * Throws if the server rejects the token or cannot set the cookie.
  */
-export function setAuthToken(token: string): void {
+export async function setAuthToken(token: string): Promise<void> {
   if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(AUTH_TOKEN_KEY, token);
-  } catch {
-    // Private browsing / storage quota: localStorage may be unavailable.
+  const res = await fetch(SESSION_ENDPOINT, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) {
+    throw new Error('Could not start your session. Please try again.');
   }
-  const secure = isSecureContext() ? '; Secure' : '';
-  document.cookie = `${AUTH_TOKEN_KEY}=${encodeURIComponent(token)}; path=/; SameSite=Strict${secure}`;
-}
-
-/**
- * Read the auth token from localStorage.
- * Returns null when not authenticated.
- */
-export function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return localStorage.getItem(AUTH_TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Remove the auth token from both localStorage and the cookie.
- * Call on sign-out.
- */
-export function clearAuthToken(): void {
-  if (typeof window === 'undefined') return;
+  // Drop any JWT copy written by older builds.
   try {
     localStorage.removeItem(AUTH_TOKEN_KEY);
   } catch {
     // ignore
   }
-  // Expire the cookie immediately.
-  document.cookie = `${AUTH_TOKEN_KEY}=; path=/; SameSite=Strict; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+}
+
+/**
+ * End the session on sign-out. The cookie is HttpOnly, so only the server can expire it.
+ */
+export async function clearAuthToken(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    await fetch(SESSION_ENDPOINT, { method: 'DELETE', credentials: 'same-origin' });
+  } catch {
+    // Network failure: the cookie stays until the next successful sign-out.
+  }
 }
