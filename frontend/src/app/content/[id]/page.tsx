@@ -22,6 +22,8 @@ interface ContentItem {
   likeCount: number;
   commentCount: number;
   creatorId: string;
+  /** Plan a locked post should funnel a fan toward buying. */
+  planId?: string;
 }
 
 interface AccessResponse {
@@ -362,6 +364,7 @@ export default function ContentPage({ params }: { params: { id: string } }) {
         <TeaserView
           teaserUrl={content.teaserUrl}
           creatorId={content.creatorId}
+          planId={content.planId}
         />
       ) : (
         <FullView contentUrl={content.contentUrl} />
@@ -439,10 +442,23 @@ export default function ContentPage({ params }: { params: { id: string } }) {
 function TeaserView({
   teaserUrl,
   creatorId,
+  planId,
 }: {
   teaserUrl?: string;
   creatorId: string;
+  planId?: string;
 }) {
+  // A locked post must never link to `/subscribe/<creatorId>`: that route
+  // reads its parameter as a *plan* id, so a creator id 404s or loads the
+  // wrong plan and the confirm screen cannot show the charge amount. Prefer
+  // the plan id when the content payload carries one; otherwise point the fan
+  // at the creator's plan list, which links to a real `/subscribe/[planId]`.
+  const subscribeHref = planId
+    ? `/subscribe/${planId}`
+    : creatorId
+      ? `/creators/${creatorId}`
+      : null;
+
   return (
     <div style={styles.teaserWrapper} aria-label="Gated content preview">
       {teaserUrl ? (
@@ -459,9 +475,11 @@ function TeaserView({
       <div style={styles.lockOverlay}>
         <span style={styles.lockIcon} aria-hidden="true">🔒</span>
         <p style={styles.lockText}>Subscribe to unlock this content</p>
-        <a href={`/subscribe/${creatorId}`} style={styles.subscribeLink}>
-          Subscribe
-        </a>
+        {subscribeHref && (
+          <a href={subscribeHref} style={styles.subscribeLink}>
+            Subscribe
+          </a>
+        )}
       </div>
     </div>
   );
