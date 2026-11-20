@@ -25,6 +25,7 @@
 
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { apiFetch } from '@/lib/api/client';
+import { getNetworkPassphrase } from '@/config/network';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -237,6 +238,15 @@ export default function DashboardEarningsPage() {
       return;
     }
 
+    const networkPassphrase = getNetworkPassphrase();
+    if (!networkPassphrase) {
+      dispatch({
+        type: 'WITHDRAW_ERROR',
+        message: 'Withdrawals are unavailable: NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE is not set.',
+      });
+      return;
+    }
+
     dispatch({ type: 'WITHDRAW_PREPARING' });
 
     try {
@@ -267,10 +277,6 @@ export default function DashboardEarningsPage() {
 
       // Step 2: sign
       const { signTransaction } = await import('@/wallet/freighter');
-      const networkPassphrase =
-        process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ??
-        'Test SDF Network ; September 2015';
-
       const signedXdr = await signTransaction(prep.xdr, networkPassphrase);
       if (!mountedRef.current) return;
 
