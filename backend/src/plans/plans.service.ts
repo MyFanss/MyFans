@@ -147,9 +147,9 @@ export class PlansService {
   }
 
   private validateInterval(interval: string): string {
-    const match = /^(\d+)d$/.exec(interval);
-    if (!match || Number(match[1]) <= 0) {
-      throw new BadRequestException('interval must be a positive number of days, e.g. 30d');
+    // Leading [1-9] rejects 0d and zero-padded values; the trailing $ makes `m` vs `mo` order-independent.
+    if (!/^[1-9]\d*(s|m|h|d|w|mo|y)$/.test(interval)) {
+      throw new BadRequestException('interval must be a positive duration, e.g. 30d or 1mo');
     }
     return interval;
   }
