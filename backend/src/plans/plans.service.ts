@@ -8,6 +8,7 @@ import {
 
 const CLASSIC_ASSET_PATTERN = /^[A-Z0-9]{2,12}$/;
 const CONTRACT_ASSET_PATTERN = /^C[A-Z0-9]{55}$/;
+const CANONICAL_AMOUNT_PATTERN = /^(0|[1-9]\d*)(\.\d*[1-9])?$/;
 
 function isValidAsset(asset: string): boolean {
   if (typeof asset !== 'string') {
@@ -140,8 +141,12 @@ export class PlansService {
   }
 
   private validateAmount(amount: string): string {
-    if (!/^\d+(\.\d+)?$/.test(amount)) {
-      throw new BadRequestException('amount must be a positive decimal number');
+    // Canonical only: no leading zeros, no trailing fractional zeros, and not zero.
+    // Compared as strings, so values above 2^53 are never rounded.
+    if (!CANONICAL_AMOUNT_PATTERN.test(amount) || amount === '0') {
+      throw new BadRequestException(
+        'amount must be a canonical positive decimal number (e.g. 10 or 0.5, no leading zeros)',
+      );
     }
     return amount;
   }
