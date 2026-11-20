@@ -255,9 +255,8 @@ export default function DashboardPlansPage() {
         sourceAccount: 'PLACEHOLDER_SOURCE',
         contractId,
         networkPassphrase,
-        merchant: 'PLACEHOLDER_CREATOR',
-        amount: String(Math.round(Number(state.form.amount) * 1e7)),
-        interval: Number(state.form.intervalDays) * 86400,
+        // shortcut: placeholder plan id and form asset code; the builder rejects non-address assets. Wire the on-chain plan id and asset contract address before enabling.
+        planId: 0,
         asset: state.form.asset,
       });
 

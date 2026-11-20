@@ -12,11 +12,16 @@ This matches the key used by `src/lib/auth-storage.ts`:
 export const AUTH_TOKEN_KEY = 'authToken';
 ```
 
-The client sets this cookie on successful wallet sign-in via `setAuthToken()`:
+After a successful wallet sign-in, `setAuthToken()` POSTs the JWT to the same-origin
+route `/api/auth/session`, which sets the cookie server-side:
 
-```ts
-document.cookie = `authToken=${token}; path=/; SameSite=Strict; Secure`;
 ```
+Set-Cookie: authToken=<jwt>; Path=/; HttpOnly; SameSite=Strict; Secure   (Secure in production)
+```
+
+The cookie is `HttpOnly`, so page scripts cannot read the JWT. The JWT is never written to
+`localStorage`. Sign-out (`clearAuthToken()`) sends `DELETE /api/auth/session`, which expires the
+cookie with the same path, `SameSite` and `Secure` attributes.
 
 The middleware also accepts the token in an `Authorization: Bearer <token>` header
 for API routes or SSR fetch calls that forward credentials.
@@ -31,7 +36,7 @@ redirected to `/auth/sign-in?returnUrl=<original-pathname>`.
 
 | Prefix           | Notes                               |
 |------------------|-------------------------------------|
-| `/dashboard`     | Creator-only (RouteGuard enforces)  |
+| `/dashboard`     | Creator-only (middleware checks `/v1/users/me`; fans → `/discover`) |
 | `/settings`      | All authenticated users             |
 | `/messages`      | All authenticated users             |
 | `/earnings`      | All authenticated users             |

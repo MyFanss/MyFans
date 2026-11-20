@@ -13,10 +13,10 @@
 import type { SignClient } from "@walletconnect/sign-client";
 
 /** Feature flag key. Defaults to off unless explicitly set to "true". */
-export const WALLETCONNECT_ENABLED_FLAG = "VITE_ENABLE_WALLETCONNECT";
+export const WALLETCONNECT_ENABLED_FLAG = "NEXT_PUBLIC_ENABLE_WALLETCONNECT";
 
 /** Project id env var required when the flag is enabled. */
-export const WALLETCONNECT_PROJECT_ID_ENV = "VITE_WALLETCONNECT_PROJECT_ID";
+export const WALLETCONNECT_PROJECT_ID_ENV = "NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID";
 
 /** Stellar namespace used for WalletConnect sessions. */
 export const STELLAR_NAMESPACE = "stellar";
@@ -36,10 +36,7 @@ export interface WalletConnectConfig {
  * malformed value never enables WalletConnect by accident.
  */
 export function getWalletConnectConfig(
-  env: Record<string, string | undefined> = import.meta.env as Record<
-    string,
-    string | undefined
-  >,
+  env: Record<string, string | undefined> = process.env,
 ): WalletConnectConfig {
   const enabled = env[WALLETCONNECT_ENABLED_FLAG] === "true";
   const projectId = env[WALLETCONNECT_PROJECT_ID_ENV]?.trim() || null;

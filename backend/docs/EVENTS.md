@@ -224,6 +224,20 @@ Published when a comment is deleted.
 
 ---
 
+## Analytics Events
+
+`AnalyticsService` (`backend/src/analytics/analytics.service.ts`) emits analytics event names through `ANALYTICS_EVENTS`. These are separate from the dotted domain event types above. Only these three names are defined:
+
+| Analytics name | `ANALYTICS_EVENTS` key | Emitted by |
+| --- | --- | --- |
+| `subscribe` | `SUBSCRIBE` | `AnalyticsService.recordSubscribe()` |
+| `cancel` | `CANCEL` | `AnalyticsService.recordCancel()` |
+| `upload` | `UPLOAD` | `AnalyticsService.recordUpload()` |
+
+Source of truth: `backend/src/analytics/analytics.service.ts`. The service comment says these names are aligned with the polled subscription events.
+
+---
+
 ## Subscription Event Poller
 
 The `SubscriptionEventPollerService` polls Soroban contract events and translates them into the domain events above. It is the on-chain source of truth for subscription state and must be safe against duplicate delivery.

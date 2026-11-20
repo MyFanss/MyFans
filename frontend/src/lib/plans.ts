@@ -6,6 +6,8 @@
  * mid-flight so callers (usePlan) can disable the sign action immediately.
  */
 
+import { apiFetch } from '@/lib/api/client';
+
 export interface Plan {
   id: string;
   /** Creator handle or address this plan belongs to. */
@@ -20,17 +22,12 @@ export interface Plan {
   network: string;
 }
 
-const API_BASE =
-  typeof process !== 'undefined'
-    ? (process.env.NEXT_PUBLIC_API_URL ?? '')
-    : '';
-
 /**
  * Fetch a plan by id. Returns null when the server returns 404 (plan deleted).
  * Throws on network errors or unexpected server errors.
  */
 export async function fetchPlan(planId: string): Promise<Plan | null> {
-  const res = await fetch(`${API_BASE}/v1/creators/plans/${planId}`);
+  const res = await apiFetch(`/api/v1/plans/${planId}`);
   if (res.status === 404) return null;
   if (!res.ok) {
     throw new Error(`Failed to fetch plan ${planId}: ${res.status}`);

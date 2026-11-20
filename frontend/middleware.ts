@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { demoRoutesEnabled, isDemoRoute } from '@/lib/demo-routes';
+import { getApiBaseUrl } from '@/lib/api/base-url';
 
 /**
  * Server-side middleware to protect authenticated routes.
  *
  * ## Cookie name
- * The auth token is stored in the `authToken` cookie (set by the client after
- * a successful wallet-based sign-in).  The same key is used in localStorage by
- * `auth-storage.ts`; the cookie counterpart allows this middleware to redirect
- * unauthenticated requests before any JavaScript runs, eliminating the first-
- * paint flash of protected content that the client RouteGuard cannot prevent.
+ * The auth token is stored in the HttpOnly `authToken` cookie (set by
+ * /api/auth/session after a successful wallet-based sign-in).  Page scripts
+ * cannot read it.  This middleware redirects unauthenticated requests before
+ * any JavaScript runs, eliminating the first-paint flash of protected content
+ * that the client RouteGuard cannot prevent.
  *
  * ## Redirect target
  * Unauthenticated requests are sent to `/auth/sign-in` (not `/auth/login`).
@@ -23,10 +24,12 @@ import { demoRoutesEnabled, isDemoRoute } from '@/lib/demo-routes';
  * for logged-out visitors without any redirect overhead.
  *
  * ## Role enforcement
- * The middleware only checks for the *presence* of the auth token — it does NOT
- * enforce creator vs fan roles.  Role-level enforcement (e.g. blocking fans from
- * `/dashboard`) is handled by `RouteGuard` on the client, which calls `fetchMe()`
- * and checks `me.is_creator`. See also frontend/docs/ADR-001-role-model.md.
+ * `/dashboard` and its children are creator-only.  The middleware asks the
+ * backend session endpoint (`/v1/users/me`, the same identity `fetchMe()` uses)
+ * for `is_creator` before the page renders.  Fans are redirected to /discover;
+ * any failed lookup fails closed.  The role is never read from the client
+ * (no query parameter, no unverified token claim).  RouteGuard stays as a
+ * second check.  See also frontend/docs/ADR-001-role-model.md.
  *
  * ## Out of scope
  * Edge A/B testing.  Secret values are never written to middleware edge logs.
@@ -50,6 +53,10 @@ const PROTECTED_PREFIXES = [
   '/checkout',
   '/favorites',
 ] as const;
+
+// ── Creator-only prefixes (subset of PROTECTED_PREFIXES) ──────────────────
+
+const CREATOR_ONLY_PREFIXES = ['/dashboard'] as const;
 
 // ── Public asset extensions (skip auth check even if under a protected path) ─
 
@@ -75,9 +82,31 @@ export function isStructurallyValidJwt(token: string): boolean {
   return parts.length === 3 && parts.every((part) => part.length > 0);
 }
 
+// ── Session role lookup ────────────────────────────────────────────────────
+
+/**
+ * Resolves the caller's role from the backend session endpoint.
+ * Any error, non-200 or missing flag resolves to 'fan' (fail closed).
+ * Only a 401 resolves to 'anonymous'.
+ */
+async function sessionRole(authToken: string): Promise<'creator' | 'fan' | 'anonymous'> {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/v1/users/me`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+      cache: 'no-store',
+    });
+    if (res.status === 401) return 'anonymous';
+    if (!res.ok) return 'fan';
+    const me = (await res.json()) as { is_creator?: unknown };
+    return me.is_creator === true ? 'creator' : 'fan';
+  } catch {
+    return 'fan';
+  }
+}
+
 // ── Middleware ─────────────────────────────────────────────────────────────
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Skip public static assets to avoid false-positive auth redirects.
@@ -135,6 +164,27 @@ export function middleware(request: NextRequest) {
     const response = NextResponse.redirect(signInUrl);
     response.headers.set('Cache-Control', 'no-store');
     return response;
+  }
+
+  // Creator-only routes: confirm the role with the backend before rendering.
+  const isCreatorOnlyRoute = CREATOR_ONLY_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+
+  if (isCreatorOnlyRoute) {
+    const role = await sessionRole(authToken);
+    if (role === 'anonymous') {
+      const signInUrl = new URL('/auth/sign-in', request.url);
+      signInUrl.searchParams.set('returnUrl', pathname);
+      const response = NextResponse.redirect(signInUrl);
+      response.headers.set('Cache-Control', 'no-store');
+      return response;
+    }
+    if (role !== 'creator') {
+      const response = NextResponse.redirect(new URL('/discover', request.url));
+      response.headers.set('Cache-Control', 'no-store');
+      return response;
+    }
   }
 
   return NextResponse.next();

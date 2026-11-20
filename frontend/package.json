@@ -16,6 +16,7 @@
     "test": "vitest run && node --test scripts/*.test.mjs"
   },
   "dependencies": {
+    "@stellar/freighter-api": "^6.0.1",
     "@stellar/stellar-sdk": "^14.5.0",
     "@tanstack/react-virtual": "^3.14.13",
     "@walletconnect/sign-client": "^2.25.0",

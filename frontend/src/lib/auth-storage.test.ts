@@ -1,54 +1,29 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  clearAuthToken,
-  getAuthToken,
-  setAuthToken,
-} from './auth-storage';
+import { clearAuthToken, setAuthToken } from './auth-storage';
 
 describe('auth-storage', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     window.localStorage.clear();
   });
 
-  it('returns null when storage is empty', () => {
-    expect(getAuthToken()).toBeNull();
-  });
-
-  it('writes and reads back a token', () => {
-    setAuthToken('test-token-123');
-    expect(getAuthToken()).toBe('test-token-123');
-  });
-
-  it('clears the token on sign-out', () => {
-    setAuthToken('test-token-123');
-    expect(getAuthToken()).toBe('test-token-123');
-
-    clearAuthToken();
-    expect(getAuthToken()).toBeNull();
-  });
-
-  it('does not throw when window is undefined (SSR path)', () => {
+  it('does not throw when window is undefined (SSR path)', async () => {
     const originalWindow = globalThis.window;
     // @ts-expect-error simulate SSR where window is unavailable
     delete globalThis.window;
 
     try {
-      expect(() => getAuthToken()).not.toThrow();
-      expect(() => setAuthToken('ssr-token')).not.toThrow();
-      expect(() => clearAuthToken()).not.toThrow();
-      expect(getAuthToken()).toBeNull();
+      await expect(setAuthToken('ssr-token')).resolves.toBeUndefined();
+      await expect(clearAuthToken()).resolves.toBeUndefined();
     } finally {
       globalThis.window = originalWindow;
     }
   });
 
-  it('does not throw when localStorage is unavailable', () => {
+  it('does not throw when localStorage is unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 204 })));
     const originalLocalStorage = window.localStorage;
     Object.defineProperty(window, 'localStorage', {
       configurable: true,
@@ -58,10 +33,8 @@ describe('auth-storage', () => {
     });
 
     try {
-      expect(() => getAuthToken()).not.toThrow();
-      expect(() => setAuthToken('no-storage-token')).not.toThrow();
-      expect(() => clearAuthToken()).not.toThrow();
-      expect(getAuthToken()).toBeNull();
+      await expect(setAuthToken('no-storage-token')).resolves.toBeUndefined();
+      await expect(clearAuthToken()).resolves.toBeUndefined();
     } finally {
       Object.defineProperty(window, 'localStorage', {
         configurable: true,
