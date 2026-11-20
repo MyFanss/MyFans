@@ -92,12 +92,19 @@ export class PlansService {
       throw new ForbiddenException('Only the plan creator may update this plan');
     }
 
+    // The on-chain plan is fixed at create_plan and has no update entrypoint, so price fields must not drift.
+    if (
+      (input.asset !== undefined && normalizeAsset(input.asset) !== existing.asset) ||
+      (input.amount !== undefined && input.amount !== existing.amount) ||
+      (input.interval !== undefined && input.interval !== existing.interval)
+    ) {
+      throw new ConflictException(
+        'Plan asset, amount and interval are set on-chain and cannot be edited; create a new plan instead',
+      );
+    }
+
     const updated: PlanMetadata = {
       ...existing,
-      asset: input.asset !== undefined ? this.validateAsset(input.asset) : existing.asset,
-      amount: input.amount !== undefined ? this.validateAmount(input.amount) : existing.amount,
-      interval:
-        input.interval !== undefined ? this.validateInterval(input.interval) : existing.interval,
       updatedAt: new Date().toISOString(),
     };
 
