@@ -79,7 +79,22 @@ is recorded with the same idempotency guarantees.
 Keys are scoped to a `(key, fingerprint)` pair where `fingerprint` encodes:
 
 - **Caller identity:** `user:<userId>` (authenticated) or `ip:<clientIp>` (anonymous).
-- **Body hash:** SHA-256 of the JSON-serialised request body.
+- **Body hash:** SHA-256 of the canonical JSON form of the request body (see
+  below).
+
+#### Canonical JSON
+
+Before hashing, the body is serialised with object keys sorted recursively, so
+two bodies that differ only in key order produce the same hash:
+
+- Object keys are sorted by UTF-16 code unit order, at every nesting level.
+- Array element order is preserved; arrays are never sorted.
+- Values are serialised as standard `JSON.stringify` output (no whitespace),
+  with `undefined` properties omitted and a missing body hashed as `null`.
+
+For example, `{ "a": 1, "b": 2 }` and `{ "b": 2, "a": 1 }` both hash as
+`{"a":1,"b":2}`, while `[1, 2]` and `[2, 1]` hash differently and a changed
+amount always produces a different hash.
 
 The combined fingerprint format is `<identity>|<bodyHash>`. This ensures:
 
@@ -113,7 +128,9 @@ double-fulfill.
 ### Body fingerprinting
 
 For money paths the stored record includes a hash of the request body
-(`body_hash = sha256(canonical_json(body))`). This tightens the replay rules:
+(`body_hash = sha256(canonical_json(body))`, canonical form defined above). A
+client that reorders JSON keys on a retry is treated as an identical retry. This
+tightens the replay rules:
 
 | Existing record | Incoming request | Action |
 |-----------------|------------------|--------|
