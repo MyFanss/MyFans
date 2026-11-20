@@ -36,8 +36,10 @@ export interface UpdateSocialLinkInput {
  * - overlong values
  * - any scheme other than https (e.g. javascript:, data:, http:)
  * - malformed URLs
+ * - URLs with a username or password (userinfo), which could hide a
+ *   different host behind a trusted-looking username
  *
- * Returns the normalized (trimmed) URL on success.
+ * Returns the normalized (punycode-host, userinfo-free) URL on success.
  */
 export function sanitizeSocialLinkUrl(rawUrl: unknown): string {
   if (typeof rawUrl !== 'string') {
@@ -73,7 +75,11 @@ export function sanitizeSocialLinkUrl(rawUrl: unknown): string {
     throw new BadRequestException('url must include a hostname');
   }
 
-  return parsed.toString();
+  if (parsed.username || parsed.password) {
+    throw new BadRequestException('url must not include a username or password');
+  }
+
+  return parsed.href;
 }
 
 function sanitizePlatform(rawPlatform: unknown): string {
