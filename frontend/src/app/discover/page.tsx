@@ -9,6 +9,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { apiFetch } from '@/lib/api/client';
 
 interface Creator {
@@ -70,7 +71,11 @@ export default function DiscoverPage() {
         <ul className="discover-page__grid" role="list">
           {creators.map((creator) => (
             <li key={creator.id} className="discover-page__card">
-              <a href={`/creator/${creator.handle}`} className="discover-page__card-link">
+              <Link
+                href={`/creator/${creator.handle}`}
+                className="discover-page__card-link"
+                aria-label={creator.displayName}
+              >
                 {creator.avatarUrl && (
                   <img
                     src={creator.avatarUrl}
@@ -85,7 +90,7 @@ export default function DiscoverPage() {
                 <span className="discover-page__count">
                   {(creator.subscriberCount ?? 0).toLocaleString()} subscribers
                 </span>
-              </a>
+              </Link>
             </li>
           ))}
         </ul>
