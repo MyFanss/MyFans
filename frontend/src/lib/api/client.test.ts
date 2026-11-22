@@ -206,6 +206,93 @@ describe('apiFetch', () => {
     expect(res.status).toBe(403);
   });
 
+  it('GET does not send a Content-Type header', async () => {
+    mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({}),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const apiFetch = await importApiFetch();
+    await apiFetch('/public/data', { method: 'GET' });
+
+    expect(headersOf(1).has('Content-Type')).toBe(false);
+  });
+
+  it('POST sends a Content-Type: application/json header', async () => {
+    mockFetch = vi.fn().mockImplementation((url: string) => {
+      if (url === '/api/v1/csrf/token') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ csrfToken: 'tok' }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const apiFetch = await importApiFetch();
+    await apiFetch('/plans', { method: 'POST' });
+
+    expect(headersOf(2).get('Content-Type')).toBe('application/json');
+  });
+
+  it('does not POST the mutation when the CSRF token endpoint returns 500', async () => {
+    mockFetch = vi.fn().mockImplementation((url: string) => {
+      if (url === '/api/v1/csrf/token') {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({}),
+        });
+      }
+      // Should never be reached for the mutation itself.
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const apiFetch = await importApiFetch();
+    const res = await apiFetch('/plans', { method: 'POST' });
+
+    // Only the (failed) CSRF token fetch happened; the mutation was never sent.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(callArgs(1)[0]).toBe('/api/v1/csrf/token');
+    // The caller gets a clear "could not prepare session" response instead.
+    expect(res.status).toBe(503);
+  });
+
+  it('does not cache an empty/failed token, so a later call retries the endpoint', async () => {
+    let tokenCallCount = 0;
+    mockFetch = vi.fn().mockImplementation((url: string) => {
+      if (url === '/api/v1/csrf/token') {
+        tokenCallCount++;
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({}),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const apiFetch = await importApiFetch();
+    await apiFetch('/plans', { method: 'POST' });
+    await apiFetch('/plans', { method: 'POST' });
+
+    // Both calls re-attempted the token fetch; the failure was never cached.
+    expect(tokenCallCount).toBe(2);
+  });
+
   it('PUT and DELETE also attach the CSRF token', async () => {
     mockFetch = vi.fn().mockImplementation((url: string) => {
       if (url === '/api/v1/csrf/token') {

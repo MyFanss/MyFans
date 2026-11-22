@@ -32,6 +32,13 @@ their own connect path, so a half-wired wallet cannot silently fall through to
 the other. If no supported extension is present, the user sees a clear message
 pointing them at the install page instead of a silent failure.
 
+For Freighter, "detected" means the extension is installed and responded —
+not that this site has already been granted access. A freshly installed
+extension that has never seen this site still counts as detected, and the
+connect flow proceeds straight to `requestAccess`, which is the call that
+prompts the user for approval. Only a missing/non-responding extension is
+reported as `FREIGHTER_MISSING`.
+
 When **both** extensions are installed, the wallet the user selected in the
 connect modal is the one used for the session; the other is ignored. Switching
 wallets mid-session re-runs connect and re-checks the network guard before any
