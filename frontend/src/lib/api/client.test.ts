@@ -206,6 +206,31 @@ describe('apiFetch', () => {
     expect(res.status).toBe(403);
   });
 
+  it('POST /api/v1/earnings/withdraw/prepare includes x-csrf-token when a token is available (#2196)', async () => {
+    mockFetch = vi.fn().mockImplementation((url: string) => {
+      if (url === '/api/v1/csrf/token') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ csrfToken: 'withdraw-token' }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ xdr: 'xdr', amount: '10', asset: 'USDC' }),
+      });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const apiFetch = await importApiFetch();
+    await apiFetch('/api/v1/earnings/withdraw/prepare', {
+      method: 'POST',
+      body: JSON.stringify({ amount: '10', asset: 'USDC' }),
+    });
+
+    expect(callArgs(2)[0]).toBe('/api/v1/earnings/withdraw/prepare');
+    expect(headersOf(2).get('x-csrf-token')).toBe('withdraw-token');
+  });
+
   it('PUT and DELETE also attach the CSRF token', async () => {
     mockFetch = vi.fn().mockImplementation((url: string) => {
       if (url === '/api/v1/csrf/token') {
