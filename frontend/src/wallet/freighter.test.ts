@@ -8,8 +8,7 @@ vi.mock('@stellar/freighter-api', () => ({
   signTransaction: (...args: unknown[]) => signTransactionMock(...args),
 }));
 
-import { assertNetwork, signTransaction } from './freighter';
-import { WalletError } from './errors';
+import { assertNetwork, mapWalletError, signTransaction, WalletError } from './freighter';
 
 const EXPECTED_PASSPHRASE = 'Test SDF Network ; September 2015';
 const OTHER_PASSPHRASE = 'Public Global Stellar Network ; September 2015';
@@ -64,6 +63,26 @@ describe('freighter network guard', () => {
         code: 'NETWORK_MISMATCH',
       });
       expect(signTransactionMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // #2219: a rejection must stay a rejection. The `reject`/`denied`/`cancel`
+  // branch has to run before the generic "Freighter missing" fallback, since
+  // Freighter's own rejection message happens to also mention "Freighter".
+  describe('mapWalletError', () => {
+    it('maps a rejection message to USER_REJECTED and does not tell the user to install Freighter', () => {
+      const err = mapWalletError(new Error('User rejected the request'));
+
+      expect(err).toBeInstanceOf(WalletError);
+      expect(err.code).toBe('USER_REJECTED');
+      expect(err.message.toLowerCase()).not.toContain('install');
+    });
+
+    it('maps an empty Error message to SIGN_FAILED', () => {
+      const err = mapWalletError(new Error(''));
+
+      expect(err).toBeInstanceOf(WalletError);
+      expect(err.code).toBe('SIGN_FAILED');
     });
   });
 });

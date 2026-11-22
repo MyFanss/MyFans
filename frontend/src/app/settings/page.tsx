@@ -16,7 +16,7 @@
  */
 'use client';
 
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
   fetchSettings,
   updateSettings,
@@ -30,6 +30,20 @@ import { clearAuthToken } from '@/lib/auth-storage';
 import { useUser } from '@/context/UserContext';
 import { useRouter } from 'next/navigation';
 import { NotificationPreferencesForm } from '@/components/NotificationPreferencesForm';
+import { NetworkMismatchBanner } from '@/components/NetworkMismatchBanner';
+import { useNetworkGuard, type NetworkId } from '@/hooks/useNetworkGuard';
+import { resolveWalletNetworkId } from '@/wallet/freighter';
+import { getActiveNetwork } from '@/config/network';
+
+/**
+ * Map the app's configured StellarNetwork (config/network.ts) to the
+ * NetworkId vocabulary useNetworkGuard expects ('mainnet' instead of
+ * 'public'; everything else lines up 1:1). Mirrors the mapping used by the
+ * earnings withdraw guard (#2210).
+ */
+function toGuardNetworkId(network: ReturnType<typeof getActiveNetwork>): NetworkId {
+  return network === 'public' ? 'mainnet' : network;
+}
 
 // ── Section tabs ──────────────────────────────────────────────────────────
 
@@ -182,6 +196,15 @@ export default function SettingsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Network guard (#2210): the payout wallet form can save a destination
+  // while the wallet is on another network, with nothing on screen saying
+  // so. Read the active network the same way subscribe confirm does
+  // (config/network's getActiveNetwork) and compare it against the
+  // wallet's live network.
+  const expectedNetwork = useMemo(() => toGuardNetworkId(getActiveNetwork()), []);
+  const resolveActual = useCallback(() => resolveWalletNetworkId(), []);
+  const networkGuard = useNetworkGuard({ expected: expectedNetwork, resolveActual });
+
   // Load settings and cap in parallel.
   useEffect(() => {
     let cancelled = false;
@@ -226,6 +249,13 @@ export default function SettingsPage() {
   // ── Payout wallet save ─────────────────────────────────────────────────
   async function handlePayoutSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (networkGuard.blocked) {
+      dispatch({
+        type: 'SAVE_ERROR',
+        error: networkGuard.reason ?? 'Network mismatch. Switch your wallet network and try again.',
+      });
+      return;
+    }
     const form = e.currentTarget;
     const data = new FormData(form);
     dispatch({ type: 'SAVE_START' });
@@ -360,6 +390,7 @@ export default function SettingsPage() {
       {state.section === 'payout' && state.settings && (
         <section aria-labelledby="payout-heading" className="settings-page__section">
           <h2 id="payout-heading">Payout wallet</h2>
+          <NetworkMismatchBanner expected={expectedNetwork} resolveActual={resolveActual} />
           <p className="settings-page__hint">
             Earnings are sent to this Stellar address. This is the single payout
             wallet used across your dashboard and settings.
@@ -375,7 +406,11 @@ export default function SettingsPage() {
               pattern="G[A-Z2-7]{55}"
               title="Must be a valid Stellar public key"
             />
-            <button type="submit" disabled={state.saving} aria-busy={state.saving}>
+            <button
+              type="submit"
+              disabled={state.saving || networkGuard.blocked}
+              aria-busy={state.saving}
+            >
               {state.saving ? 'Saving…' : 'Save payout wallet'}
             </button>
           </form>

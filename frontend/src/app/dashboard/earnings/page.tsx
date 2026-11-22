@@ -23,9 +23,21 @@
  * "creator-only" message rather than leaking earnings data.
  */
 
-import { useCallback, useEffect, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { apiFetch } from '@/lib/api/client';
-import { getNetworkPassphrase } from '@/config/network';
+import { getActiveNetwork, getNetworkPassphrase } from '@/config/network';
+import { NetworkMismatchBanner } from '@/components/NetworkMismatchBanner';
+import { useNetworkGuard, type NetworkId } from '@/hooks/useNetworkGuard';
+import { resolveWalletNetworkId } from '@/wallet/freighter';
+
+/**
+ * Map the app's configured StellarNetwork (config/network.ts) to the
+ * NetworkId vocabulary useNetworkGuard expects ('mainnet' instead of
+ * 'public'; everything else lines up 1:1).
+ */
+function toGuardNetworkId(network: ReturnType<typeof getActiveNetwork>): NetworkId {
+  return network === 'public' ? 'mainnet' : network;
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -177,6 +189,14 @@ export default function DashboardEarningsPage() {
   // backend can replay; cleared on success or when the server rejects prepare.
   const withdrawKeysRef = useRef<{ prepare: string; confirm: string } | null>(null);
 
+  // Network guard (#2210): read the active network the same way subscribe
+  // confirm does (config/network's getActiveNetwork), and compare it against
+  // the wallet's live network so a mismatch is caught before the amount step
+  // instead of surfacing as a wallet error only once signing starts.
+  const expectedNetwork = useMemo(() => toGuardNetworkId(getActiveNetwork()), []);
+  const resolveActual = useCallback(() => resolveWalletNetworkId(), []);
+  const networkGuard = useNetworkGuard({ expected: expectedNetwork, resolveActual });
+
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
@@ -238,6 +258,14 @@ export default function DashboardEarningsPage() {
   const handleWithdraw = useCallback(async () => {
     if (!state.withdrawAmount || Number(state.withdrawAmount) <= 0) {
       dispatch({ type: 'WITHDRAW_ERROR', message: 'Enter a positive amount.' });
+      return;
+    }
+
+    if (networkGuard.blocked) {
+      dispatch({
+        type: 'WITHDRAW_ERROR',
+        message: networkGuard.reason ?? 'Network mismatch. Switch your wallet network and try again.',
+      });
       return;
     }
 
@@ -320,7 +348,7 @@ export default function DashboardEarningsPage() {
         message: err instanceof Error ? err.message : 'Withdraw failed. Please try again.',
       });
     }
-  }, [state.withdrawAmount, state.withdrawAsset]);
+  }, [state.withdrawAmount, state.withdrawAsset, networkGuard.blocked, networkGuard.reason]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -371,6 +399,8 @@ export default function DashboardEarningsPage() {
       <section style={s.card} aria-label="Withdraw earnings">
         <h2 style={s.cardHeading}>Withdraw</h2>
 
+        <NetworkMismatchBanner expected={expectedNetwork} resolveActual={resolveActual} />
+
         {state.withdrawStep === 'done' && state.withdrawResult ? (
           <WithdrawSuccess
             result={state.withdrawResult}
@@ -396,6 +426,7 @@ export default function DashboardEarningsPage() {
                 amount={state.withdrawAmount}
                 asset={state.withdrawAsset}
                 balances={state.balances}
+                networkBlocked={networkGuard.blocked}
                 onAmountChange={(v) => dispatch({ type: 'WITHDRAW_AMOUNT', value: v })}
                 onAssetChange={(v) => dispatch({ type: 'WITHDRAW_ASSET', value: v })}
                 onSubmit={() => void handleWithdraw()}
@@ -489,6 +520,7 @@ function WithdrawForm({
   amount,
   asset,
   balances,
+  networkBlocked,
   onAmountChange,
   onAssetChange,
   onSubmit,
@@ -496,6 +528,7 @@ function WithdrawForm({
   amount: string;
   asset: string;
   balances: Balance[];
+  networkBlocked: boolean;
   onAmountChange: (v: string) => void;
   onAssetChange: (v: string) => void;
   onSubmit: () => void;
@@ -543,7 +576,7 @@ function WithdrawForm({
         style={s.primaryBtn}
         type="button"
         onClick={onSubmit}
-        disabled={!amount || Number(amount) <= 0}
+        disabled={!amount || Number(amount) <= 0 || networkBlocked}
       >
         Withdraw →
       </button>
