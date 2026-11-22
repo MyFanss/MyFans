@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildContentSecurityPolicy } from './csp';
+import { getRemoteImagePatterns } from './image-remote-patterns';
 
 const STELLAR_HOSTS = [
   'https://horizon-testnet.stellar.org',
@@ -80,5 +81,36 @@ describe('buildContentSecurityPolicy', () => {
     const scriptSrc = toDirectiveMap(policy)['script-src'];
 
     expect(scriptSrc).toBe("'self' 'unsafe-eval'");
+  });
+
+  it('does not allow images from every HTTPS host', () => {
+    const policy = buildContentSecurityPolicy({ apiHost, isProd: true });
+    const imgSrc = toDirectiveMap(policy)['img-src'];
+    const tokens = imgSrc.split(' ');
+
+    // A bare `https:` source would let any HTTPS host be used as an image
+    // (and therefore a fan-tracking pixel); only specific origins allowed.
+    expect(tokens).not.toContain('https:');
+  });
+
+  it('allows exactly the hosts from getRemoteImagePatterns for images', () => {
+    const policy = buildContentSecurityPolicy({ apiHost, isProd: true });
+    const imgSrc = toDirectiveMap(policy)['img-src'];
+
+    for (const pattern of getRemoteImagePatterns()) {
+      const protocol = pattern.protocol ?? 'https';
+      const hostname = pattern.hostname.startsWith('**.')
+        ? `*.${pattern.hostname.slice(3)}`
+        : pattern.hostname;
+      expect(imgSrc).toContain(`${protocol}://${hostname}`);
+    }
+  });
+
+  it('still allows data: and blob: image sources for previews', () => {
+    const policy = buildContentSecurityPolicy({ apiHost, isProd: true });
+    const imgSrc = toDirectiveMap(policy)['img-src'];
+
+    expect(imgSrc).toContain('data:');
+    expect(imgSrc).toContain('blob:');
   });
 });
