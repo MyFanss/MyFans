@@ -70,15 +70,23 @@ describe('buildContentSecurityPolicy', () => {
 
   it('omits unsafe-eval from script-src in production', () => {
     const policy = buildContentSecurityPolicy({ apiHost, isProd: true });
-    const scriptSrc = toDirectiveMap(policy)['script-src'];
+    const directives = toDirectiveMap(policy);
 
-    expect(scriptSrc).not.toContain("'unsafe-eval'");
+    expect(directives['script-src']).not.toContain("'unsafe-eval'");
+    // Regression for #2216: production must stay locked down on these two
+    // directives regardless of the script-src branch taken.
+    expect(directives['frame-ancestors']).toBe("'none'");
+    expect(directives['object-src']).toBe("'none'");
   });
 
   it('includes unsafe-eval in script-src for development', () => {
     const policy = buildContentSecurityPolicy({ apiHost, isProd: false });
-    const scriptSrc = toDirectiveMap(policy)['script-src'];
+    const directives = toDirectiveMap(policy);
 
-    expect(scriptSrc).toBe("'self' 'unsafe-eval'");
+    expect(directives['script-src']).toBe("'self' 'unsafe-eval'");
+    // Regression for #2216: frame-ancestors/object-src must not loosen in
+    // development just because unsafe-eval is allowed there.
+    expect(directives['frame-ancestors']).toBe("'none'");
+    expect(directives['object-src']).toBe("'none'");
   });
 });
