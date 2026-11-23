@@ -12,7 +12,7 @@ vi.mock('@stellar/freighter-api', () => ({
   requestAccess: (...args: unknown[]) => requestAccessMock(...args),
 }));
 
-import { assertNetwork, connectFreighter, detectFreighter, signTransaction, WalletError } from './freighter';
+import { assertNetwork, connectFreighter, detectFreighter, signTransaction, mapWalletError, WalletError } from './freighter';
 
 const EXPECTED_PASSPHRASE = 'Test SDF Network ; September 2015';
 const OTHER_PASSPHRASE = 'Public Global Stellar Network ; September 2015';
@@ -75,6 +75,24 @@ describe('freighter network guard', () => {
         code: 'NETWORK_MISMATCH',
       });
       await expect(assertNetwork(EXPECTED_PASSPHRASE)).rejects.toBeInstanceOf(WalletError);
+    });
+  });
+
+  describe('mapWalletError (#2197)', () => {
+    it('maps a signing failure that merely mentions "Freighter" to SIGN_FAILED, keeping the original text', () => {
+      const mapped = mapWalletError(new Error('Freighter signing failed'));
+      expect(mapped.code).toBe('SIGN_FAILED');
+      expect(mapped.message).toBe('Freighter signing failed');
+    });
+
+    it('maps "not installed" to FREIGHTER_MISSING', () => {
+      const mapped = mapWalletError(new Error('Freighter is not installed'));
+      expect(mapped.code).toBe('FREIGHTER_MISSING');
+    });
+
+    it('still maps a user rejection to USER_REJECTED', () => {
+      const mapped = mapWalletError(new Error('User rejected the request'));
+      expect(mapped.code).toBe('USER_REJECTED');
     });
   });
 

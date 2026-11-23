@@ -229,15 +229,19 @@ describe('apiFetch', () => {
       }
       return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({}),
+        json: () => Promise.resolve({ xdr: 'xdr', amount: '10', asset: 'USDC' }),
       });
     });
     vi.stubGlobal('fetch', mockFetch);
 
     const apiFetch = await importApiFetch();
-    await apiFetch('/plans', { method: 'POST' });
+    await apiFetch('/api/v1/earnings/withdraw/prepare', {
+      method: 'POST',
+      body: JSON.stringify({ amount: '10', asset: 'USDC' }),
+    });
 
-    expect(headersOf(2).get('Content-Type')).toBe('application/json');
+    expect(callArgs(2)[0]).toBe('/api/v1/earnings/withdraw/prepare');
+    expect(headersOf(2).get('x-csrf-token')).toBe('withdraw-token');
   });
 
   it('does not POST the mutation when the CSRF token endpoint returns 500', async () => {

@@ -1,5 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { reducer, initialState, type Action } from './page';
+import { reducer, initialState, isPositiveIntegerAmount, type Action } from './page';
+
+describe('isPositiveIntegerAmount (#2205)', () => {
+  it('rejects "0"', () => {
+    expect(isPositiveIntegerAmount('0')).toBe(false);
+  });
+
+  it('rejects scientific notation "1e2"', () => {
+    expect(isPositiveIntegerAmount('1e2')).toBe(false);
+  });
+
+  it('accepts "10"', () => {
+    expect(isPositiveIntegerAmount('10')).toBe(true);
+  });
+
+  it('rejects a leading zero', () => {
+    expect(isPositiveIntegerAmount('01')).toBe(false);
+  });
+
+  it('rejects a decimal amount', () => {
+    expect(isPositiveIntegerAmount('1.5')).toBe(false);
+  });
+
+  it('rejects an empty string', () => {
+    expect(isPositiveIntegerAmount('')).toBe(false);
+  });
+
+  it('rejects a negative amount', () => {
+    expect(isPositiveIntegerAmount('-10')).toBe(false);
+  });
+});
 
 describe('earnings dashboard reducer', () => {
   it('BALANCES_LOADED stores balances and clears loading/error', () => {

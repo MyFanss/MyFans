@@ -62,7 +62,12 @@ export function mapWalletError(err: unknown): WalletError {
     );
   }
 
-  if (lower.includes('not installed') || lower.includes('not available') || lower.includes('freighter')) {
+  // Only phrases that actually mean "the extension is absent" map to
+  // FREIGHTER_MISSING. Merely mentioning the product name (e.g. a signing
+  // failure returned by the extension itself) must not be treated as a
+  // missing-extension error — that would hide the real failure behind a
+  // misleading "install Freighter" hint (#2197).
+  if (lower.includes('not installed') || lower.includes('not available')) {
     return new WalletError(
       'FREIGHTER_MISSING',
       'Freighter wallet was not detected. Install the Freighter extension and reload the page.',
