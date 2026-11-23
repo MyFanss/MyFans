@@ -91,9 +91,14 @@ never widens the policy:
 - `wss://relay.walletconnect.org`
 - `https://verify.walletconnect.com` (attestation / verify API)
 
-These are added by `buildConnectSrcHosts()` in `src/lib/csp.ts` when the
-WalletConnect feature flag is enabled and a project id is present. If the
-flag is on but the project id is missing, the app surfaces a clear
+These are added by `buildContentSecurityPolicy()` in `src/lib/csp.ts` via its
+`walletConnectEnabled` option, which `getCSP()` in `next.config.ts` sets from
+`isWalletConnectEnabled()` (`NEXT_PUBLIC_ENABLE_WALLETCONNECT === "true"`).
+This check is independent of the production/non-production split used for
+`NEXT_PUBLIC_CSP_EXTRA_CONNECT_SRC` above — the relay hosts are added in
+**any** environment, including production, whenever the flag is on, since
+they are a fixed, explicit allowlist rather than an arbitrary env value. If
+the flag is on but the project id is missing, the app surfaces a clear
 configuration error instead of silently attempting a relay connection that
 CSP would block anyway.
 

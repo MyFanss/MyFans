@@ -78,12 +78,19 @@ export function mapWalletError(err: unknown): WalletError {
 }
 
 /**
- * Detect whether the Freighter extension is available in this browser.
+ * Detect whether the Freighter extension is installed in this browser.
+ *
+ * `isConnected()` resolving — even with `isConnected: false` — means the
+ * extension is present and responded; `isConnected: false` only means this
+ * site has not yet been granted access, not that the extension is missing.
+ * Only a thrown/rejected call (no extension injected into the page) means
+ * Freighter is actually missing. Callers that need to know whether the site
+ * has been granted access should use `requestAccess`, not this function.
  */
 export async function detectFreighter(): Promise<boolean> {
   try {
-    const result = await isConnected();
-    return Boolean(result && (result as { isConnected?: boolean }).isConnected);
+    await isConnected();
+    return true;
   } catch {
     return false;
   }

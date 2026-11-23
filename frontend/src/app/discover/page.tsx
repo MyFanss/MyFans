@@ -8,7 +8,8 @@
  */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { apiFetch } from '@/lib/api/client';
 
 interface Creator {
@@ -24,8 +25,10 @@ export default function DiscoverPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(null);
     apiFetch('/api/v1/creators?limit=24')
       .then((r) => {
         if (!r.ok) throw new Error(`Server error: ${r.status}`);
@@ -46,6 +49,11 @@ export default function DiscoverPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const cancel = load();
+    return cancel;
+  }, [load]);
+
   return (
     <main className="discover-page">
       <h1 className="discover-page__title">Discover Creators</h1>
@@ -57,9 +65,14 @@ export default function DiscoverPage() {
       )}
 
       {!loading && error && (
-        <p className="discover-page__error" role="alert">
-          {error}
-        </p>
+        <>
+          <p className="discover-page__error" role="alert">
+            {error}
+          </p>
+          <button type="button" className="discover-page__retry" onClick={() => void load()}>
+            Retry
+          </button>
+        </>
       )}
 
       {!loading && !error && creators.length === 0 && (
@@ -70,7 +83,11 @@ export default function DiscoverPage() {
         <ul className="discover-page__grid" role="list">
           {creators.map((creator) => (
             <li key={creator.id} className="discover-page__card">
-              <a href={`/creator/${creator.handle}`} className="discover-page__card-link">
+              <Link
+                href={`/creator/${creator.handle}`}
+                className="discover-page__card-link"
+                aria-label={creator.displayName}
+              >
                 {creator.avatarUrl && (
                   <img
                     src={creator.avatarUrl}
@@ -85,7 +102,7 @@ export default function DiscoverPage() {
                 <span className="discover-page__count">
                   {(creator.subscriberCount ?? 0).toLocaleString()} subscribers
                 </span>
-              </a>
+              </Link>
             </li>
           ))}
         </ul>

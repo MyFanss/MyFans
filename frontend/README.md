@@ -32,6 +32,21 @@ and sign, and WalletConnect is behind an off-by-default feature flag. See
 **[docs/WALLET_SETUP.md](./docs/WALLET_SETUP.md)** for the support matrix and
 signing dispatch order.
 
+## API calls
+
+New pages should call the backend with **`apiFetch` from
+[`src/lib/api/client.ts`](./src/lib/api/client.ts)**. It targets the
+same-origin `/api/v1/*` path, which the Next.js rewrite in
+[`next.config.ts`](./next.config.ts) forwards to the Nest backend's `/v1/*`,
+and it automatically attaches the CSRF token (with a retry) for mutating
+requests.
+
+The other two client modules — `src/lib/api-client.ts` and
+`lib/api-client.ts` — are not for new pages: they use different base URLs
+and different CSRF rules, and `lib/api-client.ts` defaults to calling
+`http://localhost:3001` directly. Do not call port `3001` from the browser;
+always go through the `/api/v1` rewrite via `apiFetch`.
+
 ## Scripts
 
 - `npm run dev` — start the Next.js dev server on `:3000`.
