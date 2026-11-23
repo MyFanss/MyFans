@@ -33,6 +33,9 @@ describe('DiscoverPage', () => {
     );
     render(<DiscoverPage />);
     expect(await screen.findByText(/No creators found yet/)).toBeInTheDocument();
+    // The loading status is mutually exclusive with the resolved states; it
+    // must not be left on screen once the request has settled (#2217).
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('renders error alert for non-OK (500) response and not the empty message', async () => {
@@ -46,6 +49,9 @@ describe('DiscoverPage', () => {
     render(<DiscoverPage />);
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(screen.queryByText(/No creators found yet/)).not.toBeInTheDocument();
+    // Same regression as the empty-state case: loading text must clear once
+    // the request settles, even on the error path (#2217).
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   // #2221: the error state must offer a way to retry the fetch without a

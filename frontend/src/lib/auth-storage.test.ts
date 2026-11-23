@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { clearAuthToken, setAuthToken } from './auth-storage';
+import { AUTH_TOKEN_KEY, clearAuthToken, setAuthToken } from './auth-storage';
 
 describe('auth-storage', () => {
   afterEach(() => {
@@ -41,5 +41,55 @@ describe('auth-storage', () => {
         value: originalLocalStorage,
       });
     }
+  });
+
+  it('expires the cookie with a Max-Age on sign-out (regression for #2204)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 204 })));
+    const cookieSetter = vi.fn();
+
+    // The `cookie` accessor is defined somewhere on document's prototype
+    // chain (exactly where varies by DOM implementation); walk up to find
+    // it so this test doesn't assume a specific prototype.
+    let owner: object | null = document;
+    let originalCookieDescriptor: PropertyDescriptor | undefined;
+    while (owner) {
+      originalCookieDescriptor = Object.getOwnPropertyDescriptor(owner, 'cookie');
+      if (originalCookieDescriptor) break;
+      owner = Object.getPrototypeOf(owner);
+    }
+    owner ??= document;
+
+    Object.defineProperty(owner, 'cookie', {
+      configurable: true,
+      get: () => '',
+      set: cookieSetter,
+    });
+
+    try {
+      await clearAuthToken();
+      expect(cookieSetter).toHaveBeenCalledTimes(1);
+      const written = cookieSetter.mock.calls[0][0] as string;
+      // A Max-Age (rather than just `expires`) means this isn't left as a
+      // session cookie that would otherwise outlive — or be outlived by —
+      // any other copy of the token (#2204).
+      expect(written).toContain('Max-Age=0');
+      expect(written).toContain(`${AUTH_TOKEN_KEY}=`);
+    } finally {
+      if (originalCookieDescriptor) {
+        Object.defineProperty(owner, 'cookie', originalCookieDescriptor);
+      } else {
+        // @ts-expect-error restoring a property we only partially know the shape of
+        delete owner.cookie;
+      }
+    }
+  });
+
+  it('clears both the cookie and any legacy localStorage copy on sign-out', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 204 })));
+    window.localStorage.setItem(AUTH_TOKEN_KEY, 'stale-legacy-token');
+
+    await clearAuthToken();
+
+    expect(window.localStorage.getItem(AUTH_TOKEN_KEY)).toBeNull();
   });
 });
