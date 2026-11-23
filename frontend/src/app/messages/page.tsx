@@ -120,7 +120,7 @@ export function reducer(state: PageState, action: Action): PageState {
  * React's JSX already prevents XSS when using {text}, but this makes the
  * intent explicit and guards against dangerouslySetInnerHTML misuse.
  */
-function escapeText(raw: string): string {
+export function escapeText(raw: string): string {
   return raw
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

@@ -8,7 +8,7 @@
  */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api/client';
 
@@ -25,8 +25,10 @@ export default function DiscoverPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(null);
     apiFetch('/api/v1/creators?limit=24')
       .then((r) => {
         if (!r.ok) throw new Error(`Server error: ${r.status}`);
@@ -47,6 +49,11 @@ export default function DiscoverPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const cancel = load();
+    return cancel;
+  }, [load]);
+
   return (
     <main className="discover-page">
       <h1 className="discover-page__title">Discover Creators</h1>
@@ -58,9 +65,14 @@ export default function DiscoverPage() {
       )}
 
       {!loading && error && (
-        <p className="discover-page__error" role="alert">
-          {error}
-        </p>
+        <>
+          <p className="discover-page__error" role="alert">
+            {error}
+          </p>
+          <button type="button" className="discover-page__retry" onClick={() => void load()}>
+            Retry
+          </button>
+        </>
       )}
 
       {!loading && !error && creators.length === 0 && (
