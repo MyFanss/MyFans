@@ -68,6 +68,44 @@ describe('buildContentSecurityPolicy', () => {
     expect(connectSrc).toContain('https://rpc.example.com');
   });
 
+  it('includes the WalletConnect relay hosts when walletConnectEnabled is true, even in production', () => {
+    const policy = buildContentSecurityPolicy({
+      apiHost,
+      isProd: true,
+      walletConnectEnabled: true,
+    });
+    const connectSrc = toDirectiveMap(policy)['connect-src'];
+
+    expect(connectSrc).toContain('wss://relay.walletconnect.com');
+    expect(connectSrc).toContain('wss://relay.walletconnect.org');
+    expect(connectSrc).toContain('https://verify.walletconnect.com');
+  });
+
+  it('omits the WalletConnect relay hosts when the flag is off or unset', () => {
+    const offPolicy = buildContentSecurityPolicy({
+      apiHost,
+      isProd: true,
+      walletConnectEnabled: false,
+    });
+    const unsetPolicy = buildContentSecurityPolicy({ apiHost, isProd: true });
+
+    for (const policy of [offPolicy, unsetPolicy]) {
+      const connectSrc = toDirectiveMap(policy)['connect-src'];
+      expect(connectSrc).not.toContain('walletconnect');
+    }
+  });
+
+  it('never introduces a bare wildcard in connect-src, even with WalletConnect enabled', () => {
+    const policy = buildContentSecurityPolicy({
+      apiHost,
+      isProd: true,
+      walletConnectEnabled: true,
+    });
+    const connectSrc = toDirectiveMap(policy)['connect-src'];
+
+    expect(connectSrc.split(' ')).not.toContain('*');
+  });
+
   it('omits unsafe-eval from script-src in production', () => {
     const policy = buildContentSecurityPolicy({ apiHost, isProd: true });
     const directives = toDirectiveMap(policy);

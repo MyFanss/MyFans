@@ -10,6 +10,13 @@ interface CspOptions {
   apiHost: string;
   isProd: boolean;
   extraConnectSrc?: string[];
+  /**
+   * Whether the WalletConnect feature flag is enabled. When (and only when)
+   * this is exactly `true`, the specific WalletConnect relay origins are
+   * added to connect-src. This is independent of `isProd` — WalletConnect
+   * can be enabled in production — and never introduces a wildcard.
+   */
+  walletConnectEnabled?: boolean;
 }
 
 const STELLAR_HOSTS = [
@@ -24,14 +31,26 @@ const WALLET_EXTENSION_ORIGINS = [
   'chrome-extension://bcacfldlkkdogcmkkibnjlakofdplcbk',
 ];
 
+// WalletConnect relay/verify hosts. Explicit origins only — never a
+// wildcard — added to connect-src only when the WalletConnect feature flag
+// is enabled. See docs/CSP.md and docs/WALLET_SETUP.md.
+const WALLETCONNECT_RELAY_HOSTS = [
+  'wss://relay.walletconnect.com',
+  'wss://relay.walletconnect.org',
+  'https://verify.walletconnect.com',
+];
+
 export function buildContentSecurityPolicy(options: CspOptions): string {
-  const { apiHost, isProd, extraConnectSrc = [] } = options;
+  const { apiHost, isProd, extraConnectSrc = [], walletConnectEnabled } = options;
 
   const connectSrc = [
     "'self'",
     `https://${apiHost}`,
     ...STELLAR_HOSTS,
     ...WALLET_EXTENSION_ORIGINS,
+    // Only add these when the flag is exactly true; off (or anything else)
+    // never widens the policy.
+    ...(walletConnectEnabled === true ? WALLETCONNECT_RELAY_HOSTS : []),
     ...extraConnectSrc,
   ].join(' ');
 
