@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import DiscoverPage from './page';
 
 describe('DiscoverPage', () => {
@@ -36,6 +37,26 @@ describe('DiscoverPage', () => {
     render(<DiscoverPage />);
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(screen.queryByText(/No creators found yet/)).not.toBeInTheDocument();
+  });
+
+  // #2221: the error state must offer a way to retry the fetch without a
+  // full page reload.
+  it('shows a type="button" Retry control that re-fetches creators on click', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+      .mockImplementationOnce(() => new Promise(() => {}));
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+
+    render(<DiscoverPage />);
+    const retryButton = await screen.findByRole('button', { name: 'Retry' });
+    expect(retryButton).toHaveAttribute('type', 'button');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await user.click(retryButton);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('renders creator cards for populated data', async () => {
