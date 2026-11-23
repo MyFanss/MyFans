@@ -104,6 +104,69 @@ describe('DiscoverPage', () => {
     expect(await screen.findByText('@user1')).toBeInTheDocument();
     expect(await screen.findByText('User Two')).toBeInTheDocument();
     expect(await screen.findByText('@user2')).toBeInTheDocument();
+
+    expect(screen.getByRole('link', { name: /User One/ })).toHaveAttribute(
+      'href',
+      '/creator/user1',
+    );
+  });
+
+  it('does not fire a request for a single-character search term', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ creators: [] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DiscoverPage />);
+    await screen.findByText(/No creators found yet/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByLabelText(/search creators/i), {
+      target: { value: 'a' },
+    });
+
+    // Give the debounce timer a chance to fire; it must not, for one char.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires a request with `q` once two characters are typed', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ creators: [] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DiscoverPage />);
+    await screen.findByText(/No creators found yet/);
+
+    fireEvent.change(screen.getByLabelText(/search creators/i), {
+      target: { value: 'an' },
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    const lastCallUrl = fetchMock.mock.calls[1]?.[0] as string;
+    expect(lastCallUrl).toContain('q=an');
+  });
+
+  it('shows a search-specific empty state when a query matches nothing', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ creators: [] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DiscoverPage />);
+    await screen.findByText(/No creators found yet/);
+
+    fireEvent.change(screen.getByLabelText(/search creators/i), {
+      target: { value: 'zz' },
+    });
+
+    expect(await screen.findByText(/No creators match/)).toBeInTheDocument();
   });
 
   it('renders each card as a link with an accessible name and the correct destination', async () => {
