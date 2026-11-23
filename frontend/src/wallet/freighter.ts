@@ -15,6 +15,10 @@ import {
   getNetwork,
   signTransaction as freighterSignTransaction,
 } from '@stellar/freighter-api';
+import { networkFromPassphrase } from './network';
+
+/** Network ids understood by the UI network guard (see hooks/useNetworkGuard). */
+export type UiNetworkId = 'mainnet' | 'testnet' | 'futurenet' | 'unknown';
 
 export type WalletErrorCode =
   | 'FREIGHTER_MISSING'
@@ -119,6 +123,24 @@ export async function connectFreighter(): Promise<string> {
     return address;
   } catch (err) {
     throw mapWalletError(err);
+  }
+}
+
+/**
+ * Resolve Freighter's active network as a UI-facing NetworkId, for guards
+ * that need to show a mismatch banner before the user reaches the sign step
+ * (see useNetworkGuard / NetworkMismatchBanner). Unlike assertNetwork, this
+ * never throws: it resolves to 'unknown' when Freighter is unavailable or
+ * its network can't be read, so a UI guard fails closed instead of crashing.
+ */
+export async function resolveWalletNetworkId(): Promise<UiNetworkId> {
+  try {
+    const network = await getNetwork();
+    const passphrase = (network as { networkPassphrase?: string }).networkPassphrase;
+    const id = networkFromPassphrase(passphrase);
+    return id === 'standalone' ? 'unknown' : id;
+  } catch {
+    return 'unknown';
   }
 }
 

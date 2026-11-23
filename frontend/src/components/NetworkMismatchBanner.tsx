@@ -1,5 +1,7 @@
 import React from 'react';
-import { useNetworkGuard } from '../hooks/useNetworkGuard';
+import { useNetworkGuard, type UseNetworkGuardOptions } from '../hooks/useNetworkGuard';
+
+export type NetworkMismatchBannerProps = UseNetworkGuardOptions;
 
 export interface NetworkMismatchBannerProps {
   /**
@@ -21,7 +23,12 @@ export interface NetworkMismatchBannerProps {
 /**
  * Persistent banner shown whenever the connected wallet's network does not
  * match the network the app expects. Renders nothing when the guard reports
- * a match, so it can be mounted unconditionally at the app root.
+ * a match, so it can be mounted unconditionally.
+ *
+ * Forwards its props straight to useNetworkGuard, so a caller that knows how
+ * to read the live wallet network (expected + resolveActual) can wire this
+ * up for its own screen; callers with no props fail closed (see the hook's
+ * default behavior).
  */
 export function NetworkMismatchBanner(
   props: NetworkMismatchBannerProps = {},
@@ -42,6 +49,12 @@ export function NetworkMismatchBanner(
 
   const actualLabel = isUnknown ? 'unknown / unreachable' : actualNetwork;
 
+  if (!mismatch) {
+    return null;
+  }
+
+  const actualLabel = unreachable || actual === 'unknown' ? 'unknown / unreachable' : actual;
+
   return (
     <div
       role="alert"
@@ -61,7 +74,7 @@ export function NetworkMismatchBanner(
       }}
     >
       <strong>Wrong network.</strong>{' '}
-      Expected <code>{expectedNetwork}</code> but wallet is on{' '}
+      Expected <code>{expected}</code> but wallet is on{' '}
       <code>{actualLabel}</code>. Mutating actions are blocked until the
       network matches.
     </div>

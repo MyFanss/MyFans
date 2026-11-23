@@ -115,4 +115,24 @@ describe('freighter network guard', () => {
       expect(signTransactionMock).not.toHaveBeenCalled();
     });
   });
+
+  // #2219: a rejection must stay a rejection. The `reject`/`denied`/`cancel`
+  // branch has to run before the generic "Freighter missing" fallback, since
+  // Freighter's own rejection message happens to also mention "Freighter".
+  describe('mapWalletError', () => {
+    it('maps a rejection message to USER_REJECTED and does not tell the user to install Freighter', () => {
+      const err = mapWalletError(new Error('User rejected the request'));
+
+      expect(err).toBeInstanceOf(WalletError);
+      expect(err.code).toBe('USER_REJECTED');
+      expect(err.message.toLowerCase()).not.toContain('install');
+    });
+
+    it('maps an empty Error message to SIGN_FAILED', () => {
+      const err = mapWalletError(new Error(''));
+
+      expect(err).toBeInstanceOf(WalletError);
+      expect(err.code).toBe('SIGN_FAILED');
+    });
+  });
 });
