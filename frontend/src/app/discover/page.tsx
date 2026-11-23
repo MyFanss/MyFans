@@ -8,7 +8,7 @@
  */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api/client';
 
@@ -48,7 +48,7 @@ export default function DiscoverPage() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -78,6 +78,11 @@ export default function DiscoverPage() {
 
   const isSearching = appliedQuery.length >= MIN_QUERY_LENGTH;
 
+  useEffect(() => {
+    const cancel = load();
+    return cancel;
+  }, [load]);
+
   return (
     <main className="discover-page">
       <h1 className="discover-page__title">Discover Creators</h1>
@@ -103,9 +108,14 @@ export default function DiscoverPage() {
       )}
 
       {!loading && error && (
-        <p className="discover-page__error" role="alert">
-          {error}
-        </p>
+        <>
+          <p className="discover-page__error" role="alert">
+            {error}
+          </p>
+          <button type="button" className="discover-page__retry" onClick={() => void load()}>
+            Retry
+          </button>
+        </>
       )}
 
       {!loading && !error && creators.length === 0 && (
@@ -120,7 +130,11 @@ export default function DiscoverPage() {
         <ul className="discover-page__grid" role="list">
           {creators.map((creator) => (
             <li key={creator.id} className="discover-page__card">
-              <Link href={`/creator/${creator.handle}`} className="discover-page__card-link">
+              <Link
+                href={`/creator/${creator.handle}`}
+                className="discover-page__card-link"
+                aria-label={creator.displayName}
+              >
                 {creator.avatarUrl && (
                   <img
                     src={creator.avatarUrl}

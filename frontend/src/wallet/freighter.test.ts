@@ -2,14 +2,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getNetworkMock = vi.fn();
 const signTransactionMock = vi.fn();
+const isConnectedMock = vi.fn();
+const requestAccessMock = vi.fn();
 
 vi.mock('@stellar/freighter-api', () => ({
   getNetwork: (...args: unknown[]) => getNetworkMock(...args),
   signTransaction: (...args: unknown[]) => signTransactionMock(...args),
+  isConnected: (...args: unknown[]) => isConnectedMock(...args),
+  requestAccess: (...args: unknown[]) => requestAccessMock(...args),
 }));
 
-import { assertNetwork, signTransaction } from './freighter';
-import { WalletError } from './errors';
+import { assertNetwork, connectFreighter, detectFreighter, signTransaction, mapWalletError, WalletError } from './freighter';
 
 const EXPECTED_PASSPHRASE = 'Test SDF Network ; September 2015';
 const OTHER_PASSPHRASE = 'Public Global Stellar Network ; September 2015';
@@ -18,6 +21,34 @@ describe('freighter network guard', () => {
   beforeEach(() => {
     getNetworkMock.mockReset();
     signTransactionMock.mockReset();
+    isConnectedMock.mockReset();
+    requestAccessMock.mockReset();
+  });
+
+  describe('detectFreighter / connectFreighter', () => {
+    it('calls requestAccess when isConnected resolves false (extension installed, not yet approved)', async () => {
+      // The extension object exists and responds, it just reports that this
+      // site has not been granted access yet.
+      isConnectedMock.mockResolvedValue({ isConnected: false });
+      requestAccessMock.mockResolvedValue({ address: 'GABC...' });
+
+      await expect(detectFreighter()).resolves.toBe(true);
+
+      const address = await connectFreighter();
+      expect(address).toBe('GABC...');
+      expect(requestAccessMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('treats a thrown/missing isConnected call as FREIGHTER_MISSING and never calls requestAccess', async () => {
+      isConnectedMock.mockRejectedValue(new Error('freighterApi is not defined'));
+
+      await expect(detectFreighter()).resolves.toBe(false);
+
+      await expect(connectFreighter()).rejects.toMatchObject({
+        code: 'FREIGHTER_MISSING',
+      });
+      expect(requestAccessMock).not.toHaveBeenCalled();
+    });
   });
 
   describe('assertNetwork', () => {
@@ -44,6 +75,24 @@ describe('freighter network guard', () => {
         code: 'NETWORK_MISMATCH',
       });
       await expect(assertNetwork(EXPECTED_PASSPHRASE)).rejects.toBeInstanceOf(WalletError);
+    });
+  });
+
+  describe('mapWalletError (#2197)', () => {
+    it('maps a signing failure that merely mentions "Freighter" to SIGN_FAILED, keeping the original text', () => {
+      const mapped = mapWalletError(new Error('Freighter signing failed'));
+      expect(mapped.code).toBe('SIGN_FAILED');
+      expect(mapped.message).toBe('Freighter signing failed');
+    });
+
+    it('maps "not installed" to FREIGHTER_MISSING', () => {
+      const mapped = mapWalletError(new Error('Freighter is not installed'));
+      expect(mapped.code).toBe('FREIGHTER_MISSING');
+    });
+
+    it('still maps a user rejection to USER_REJECTED', () => {
+      const mapped = mapWalletError(new Error('User rejected the request'));
+      expect(mapped.code).toBe('USER_REJECTED');
     });
   });
 

@@ -48,6 +48,18 @@ export async function clearAuthToken(): Promise<void> {
   }
   // Expire the cookie immediately. Reuse the same `Secure` suffix as
   // setAuthToken so we clear the cookie that was actually written on https.
-  const secure = isSecureContext() ? '; Secure' : '';
+  // `isSecureContext` is a global boolean (Window.isSecureContext), not a
+  // function — calling it as `isSecureContext()` throws a TypeError and
+  // would abort sign-out before the cookie/localStorage cleanup below runs.
+  // Pre-existing bug, fixed here because it directly blocks this function.
+  const secure = isSecureContext ? '; Secure' : '';
   document.cookie = `${AUTH_TOKEN_KEY}=; path=/; SameSite=Strict; expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0${secure}`;
+  // Drop any legacy JWT copy too, so sign-out clears both places a token
+  // could still live rather than leaving a stale copy for getAuthToken-style
+  // code (current or future) to pick back up once the cookie is gone.
+  try {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch {
+    // ignore
+  }
 }

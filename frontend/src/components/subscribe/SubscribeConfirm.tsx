@@ -5,6 +5,7 @@ import { getActiveNetwork, normalizeNetwork } from '../../config/network';
 import { checkNetworkGuard } from '../../lib/stellar/networkGuard';
 import { buildSubscriptionTx, DEFAULT_NETWORK_PASSPHRASE } from '../../lib/stellar';
 import { connectFreighter, signSubscribeTransaction } from '../../wallet/freighter';
+import { NetworkMismatchBanner } from '../NetworkMismatchBanner';
 
 interface DisplayedParams {
   asset: string;
@@ -165,10 +166,11 @@ export default function SubscribeConfirm() {
       <h1>Confirm subscription</h1>
 
       {networkMismatch && networkGuard && (
-        <div className="banner banner--error" role="alert">
-          Wrong network: connected to {networkGuard.actual ?? network}, expected{' '}
-          {networkGuard.expected}.
-        </div>
+        <NetworkMismatchBanner
+          expectedNetwork={networkGuard.expected}
+          actualNetwork={networkGuard.actual ?? network}
+          isMismatch
+        />
       )}
 
       {argsMismatch && (

@@ -65,6 +65,19 @@ interface PrepareWithdrawResponse {
 
 export type WithdrawStep = 'idle' | 'preparing' | 'signing' | 'confirming' | 'done';
 
+// ── Validation ───────────────────────────────────────────────────────────
+
+// Balances are token base units (integer stroop counts). `Number(...)` is not
+// safe here: it silently rounds integers above 2^53 and accepts scientific
+// notation (e.g. "1e2") and leading zeros as "positive". Only a canonical
+// positive integer string — no sign, no decimal point, no exponent, no
+// leading zero — may reach prepare (#2205).
+const POSITIVE_INTEGER_RE = /^[1-9]\d*$/;
+
+export function isPositiveIntegerAmount(value: string): boolean {
+  return POSITIVE_INTEGER_RE.test(value);
+}
+
 export interface PageState {
   // Balances
   balances: Balance[];
@@ -236,8 +249,8 @@ export default function DashboardEarningsPage() {
   // ── Withdraw flow ─────────────────────────────────────────────────────────
 
   const handleWithdraw = useCallback(async () => {
-    if (!state.withdrawAmount || Number(state.withdrawAmount) <= 0) {
-      dispatch({ type: 'WITHDRAW_ERROR', message: 'Enter a positive amount.' });
+    if (!isPositiveIntegerAmount(state.withdrawAmount)) {
+      dispatch({ type: 'WITHDRAW_ERROR', message: 'Enter a positive whole amount.' });
       return;
     }
 
@@ -543,7 +556,7 @@ function WithdrawForm({
         style={s.primaryBtn}
         type="button"
         onClick={onSubmit}
-        disabled={!amount || Number(amount) <= 0}
+        disabled={!isPositiveIntegerAmount(amount)}
       >
         Withdraw →
       </button>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useReducer, useCallback, useRef } from 'react';
+import { use, useEffect, useReducer, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/api/client';
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -163,8 +163,12 @@ function generateIdempotencyKey(): string {
 
 // ── Page component ────────────────────────────────────────────────────────
 
-export default function ContentPage({ params }: { params: { id: string } }) {
-  const { id } = params;
+export default function ContentPage({ params }: { params: Promise<{ id: string }> }) {
+  // Next.js 15/16 pass `params` as a Promise in the app router. Reading
+  // `.id` off the Promise directly returns undefined, so the content fetch
+  // below would request the wrong URL (or `/api/v1/content/undefined`).
+  // Unwrap it with `use()` so `id` is the actual route segment (#2195).
+  const { id } = use(params);
   const [state, dispatch] = useReducer(reducer, initialState);
   // Issue #2011: the idempotency key for the comment currently being
   // composed. Kept in a ref (not reducer state) since it is pure

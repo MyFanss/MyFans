@@ -3,6 +3,7 @@ import withBundleAnalyzer from "@next/bundle-analyzer";
 import { getRemoteImagePatterns } from "./src/lib/image-remote-patterns";
 import { getApiBaseUrl } from "./src/lib/api/base-url";
 import { buildContentSecurityPolicy } from "./src/lib/csp";
+import { isWalletConnectEnabled } from "./src/wallet/walletconnect";
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -38,14 +39,17 @@ export function getExtraConnectSrc(): string[] {
 
 // Builds the CSP header value, including connect-src hosts derived from
 // NEXT_PUBLIC_SOROBAN_RPC_URL / NEXT_PUBLIC_HORIZON_URL, the backend API,
-// wallet extension origins, and any non-prod NEXT_PUBLIC_CSP_EXTRA_CONNECT_SRC
-// entries. See src/lib/csp.ts and docs/CSP.md for the full host list.
+// wallet extension origins, the WalletConnect relay hosts (only when
+// NEXT_PUBLIC_ENABLE_WALLETCONNECT is "true", in any environment including
+// production), and any non-prod NEXT_PUBLIC_CSP_EXTRA_CONNECT_SRC entries.
+// See src/lib/csp.ts and docs/CSP.md for the full host list.
 export function getCSP() {
   const apiHost = new URL(getApiBaseUrl()).host;
   return buildContentSecurityPolicy({
     apiHost,
     isProd,
     extraConnectSrc: getExtraConnectSrc(),
+    walletConnectEnabled: isWalletConnectEnabled(),
   });
 }
 
