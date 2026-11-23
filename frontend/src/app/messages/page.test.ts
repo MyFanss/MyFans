@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { reducer, getOtherParticipant, type PageState, type Action } from './page';
+import { reducer, getOtherParticipant, escapeText, type PageState, type Action } from './page';
 import { apiFetch } from '@/lib/api/client';
 
 vi.mock('@/lib/api/client', () => ({ apiFetch: vi.fn() }));
@@ -25,6 +25,22 @@ describe('getOtherParticipant', () => {
 
   it('falls back to participant2 when there is no current user id', () => {
     expect(getOtherParticipant(conv, undefined)).toEqual(conv.participant2);
+  });
+});
+
+// #2222: escapeText is the second line of defense against a future
+// dangerouslySetInnerHTML misuse; it must not silently stop escaping.
+describe('escapeText', () => {
+  it('escapes < and > so a script tag cannot be reconstructed', () => {
+    expect(escapeText('<script>')).toContain('&lt;script&gt;');
+  });
+
+  it('escapes &', () => {
+    expect(escapeText('a & b')).toContain('&amp;');
+  });
+
+  it('leaves a normal sentence unchanged aside from those characters', () => {
+    expect(escapeText('Hello, how are you today?')).toBe('Hello, how are you today?');
   });
 });
 

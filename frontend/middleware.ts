@@ -19,7 +19,7 @@ import { getApiBaseUrl } from '@/lib/api/base-url';
  *
  * ## Matcher
  * The `config.matcher` at the bottom of this file lists the exact path prefixes
- * that are protected.  Public routes (/, /discover, /creator/:username, etc.)
+ * that are protected.  Public routes (/, /discover, /creator/:handle, etc.)
  * are intentionally excluded so marketing pages and creator profiles return 200
  * for logged-out visitors without any redirect overhead.
  *

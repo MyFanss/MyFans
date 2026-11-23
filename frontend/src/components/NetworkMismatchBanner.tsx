@@ -3,6 +3,23 @@ import { useNetworkGuard, type UseNetworkGuardOptions } from '../hooks/useNetwor
 
 export type NetworkMismatchBannerProps = UseNetworkGuardOptions;
 
+export interface NetworkMismatchBannerProps {
+  /**
+   * Expected network label to show. When provided (together with
+   * `actualNetwork`), the banner is driven entirely by these props and the
+   * internal `useNetworkGuard()` app-root guard is bypassed. This lets a
+   * caller that already computed its own guard result against a different
+   * "expected" network — e.g. `SubscribeConfirm`, which guards against the
+   * loaded plan's network rather than the static app default — reuse this
+   * shared banner instead of keeping its own copy of the markup/text.
+   */
+  expectedNetwork?: string;
+  /** Actual/connected network label to show. Only used with `expectedNetwork`. */
+  actualNetwork?: string | null;
+  /** Whether the networks currently mismatch. Only used with `expectedNetwork`. */
+  isMismatch?: boolean;
+}
+
 /**
  * Persistent banner shown whenever the connected wallet's network does not
  * match the network the app expects. Renders nothing when the guard reports
@@ -13,8 +30,24 @@ export type NetworkMismatchBannerProps = UseNetworkGuardOptions;
  * up for its own screen; callers with no props fail closed (see the hook's
  * default behavior).
  */
-export function NetworkMismatchBanner(props: NetworkMismatchBannerProps = {}): JSX.Element | null {
-  const { mismatch, expected, actual, unreachable } = useNetworkGuard(props);
+export function NetworkMismatchBanner(
+  props: NetworkMismatchBannerProps = {},
+): JSX.Element | null {
+  const overridden = props.expectedNetwork !== undefined;
+  // Skip the hook's own polling when the caller drives the banner directly;
+  // its result is simply unused in that case.
+  const guard = useNetworkGuard(overridden ? { pollIntervalMs: 0 } : undefined);
+
+  const isMismatch = overridden ? Boolean(props.isMismatch) : guard.mismatch;
+  const expectedNetwork = overridden ? (props.expectedNetwork as string) : guard.expected;
+  const actualNetwork = overridden ? props.actualNetwork ?? null : guard.actual;
+  const isUnknown = actualNetwork === null || actualNetwork === 'unknown';
+
+  if (!isMismatch) {
+    return null;
+  }
+
+  const actualLabel = isUnknown ? 'unknown / unreachable' : actualNetwork;
 
   if (!mismatch) {
     return null;

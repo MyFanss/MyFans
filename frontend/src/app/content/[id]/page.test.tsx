@@ -44,10 +44,29 @@ function routeApiFetch() {
 }
 
 async function renderUnlocked() {
-  const utils = render(<ContentPage params={{ id: 'content-1' }} />);
+  // Next.js 15/16 pass `params` as a Promise in the app router (#2195).
+  const utils = render(<ContentPage params={Promise.resolve({ id: 'content-1' })} />);
   await waitFor(() => expect(screen.getByRole('button', { name: /like/i })).toBeInTheDocument());
   return utils;
 }
+
+describe('content/[id] page — async route params (#2195)', () => {
+  beforeEach(() => {
+    apiFetch.mockReset();
+    routeApiFetch();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('awaits the params Promise and requests the resolved route id', async () => {
+    await renderUnlocked();
+
+    const contentCalls = apiFetch.mock.calls.filter(([path]) => path === '/api/v1/content/content-1');
+    expect(contentCalls.length).toBeGreaterThan(0);
+  });
+});
 
 describe('content/[id] page — like rollback (#2013)', () => {
   beforeEach(() => {
