@@ -58,6 +58,19 @@ export function isSubmissionExpired(
   return sub.submitExpiresAt.getTime() <= now.getTime();
 }
 
+export function isCheckoutAbandoned(
+  sub: { status: SubscriptionStatus; submitExpiresAt: Date | null },
+  now: Date = new Date(),
+): boolean {
+  if (sub.status !== SubscriptionStatus.CREATED) {
+    return false;
+  }
+  if (!sub.submitExpiresAt) {
+    return false;
+  }
+  return sub.submitExpiresAt.getTime() <= now.getTime();
+}
+
 /**
  * A subscription grants paid access only while it is ACTIVE and its contract
  * expiry (expiresAt) is still in the future. Expired rows are not access.
