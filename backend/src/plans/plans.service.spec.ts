@@ -97,8 +97,9 @@ describe('PlansService', () => {
       expect(plan.asset).toBe(contractAsset);
     });
 
-    it('throws BadRequestException for a lowercase asset code', () => {
+    it('throws BadRequestException for a lowercase asset code and does not save the plan', () => {
       expect(() => service.create({ ...basePlan, asset: 'usdc' })).toThrow(BadRequestException);
+      expect(service.listByCreator(basePlan.creator)).toHaveLength(0);
     });
 
     it('throws BadRequestException for an empty asset', () => {
